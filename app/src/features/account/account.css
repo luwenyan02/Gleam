@@ -60,7 +60,7 @@
 .account-detail-hero>p{position:relative;z-index:1;font-size:10px;opacity:.76}.account-detail-hero>h3{position:relative;z-index:1;font-size:31px;margin:3px 0 12px;letter-spacing:-.035em}.account-detail-hero>h3.neg{color:#FFD0C8}
 .account-flow-total{position:relative;z-index:1;display:flex;gap:16px;font-size:10px;opacity:.8}.account-flow-total b{margin-left:4px;color:inherit}
 .account-detail-hero .spark{position:relative;z-index:1;margin-top:10px}.account-detail-hero .spark-cap{position:relative;z-index:1}
-.account-detail-actions{position:relative;z-index:1;display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:12px;padding-top:11px;border-top:1px solid color-mix(in srgb,var(--on-accent) 16%,transparent)}
+.account-detail-actions{position:relative;z-index:1;display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-top:12px;padding-top:11px;border-top:1px solid color-mix(in srgb,var(--on-accent) 16%,transparent)}
 .account-detail-actions button{display:flex;align-items:center;justify-content:center;gap:5px;padding:8px 4px;border-radius:10px;background:color-mix(in srgb,var(--on-accent) 9%,transparent);font-size:10.5px}
 .account-months{display:flex;flex-direction:column;gap:10px;padding-bottom:12px}
 .account-month{overflow:hidden;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);box-shadow:var(--shadow-sm)}
@@ -71,6 +71,9 @@
 .account-month-head .chev svg{transform:rotate(90deg);transition:transform .2s}.account-month.expanded .account-month-head .chev svg{transform:rotate(-90deg)}
 .account-month-entries{display:none;padding:0 14px 5px;border-top:1px solid var(--border)}.account-month.expanded .account-month-entries{display:block}
 .account-month-entries .entry{padding-top:11px;padding-bottom:11px}
+.account-detail-body{padding-bottom:calc(18px + var(--safe-bottom))}
+.account-detail-entry{position:sticky;z-index:6;bottom:calc(4px + var(--safe-bottom));display:flex;align-items:center;justify-content:center;gap:7px;width:100%;min-height:50px;margin-top:12px;border-radius:14px;background:var(--primary);color:var(--on-accent);font-size:13px;font-weight:650;box-shadow:0 10px 24px color-mix(in oklab,var(--seed-primary) 28%,transparent)}
+.account-detail-entry:active{transform:scale(.98)}
 
 @media (max-width:360px){
   .account-detail-hero{padding-left:15px;padding-right:15px}
