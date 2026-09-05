@@ -306,6 +306,7 @@ export const SETTING_DEFAULTS = {
     expenseCategoryId: null as number | null,
     incomeCategoryId: null as number | null,
     accountId: null as number | null,
+    type: null as EntryType | null,
   },
   /** 自动备份：off / daily / weekly */
   'backup.auto': 'off' as 'off' | 'daily' | 'weekly',
