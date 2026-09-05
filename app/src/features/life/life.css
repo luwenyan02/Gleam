@@ -1,0 +1,58 @@
+/**
+ * 拾光 · 生活记录样式（features/life，PRD 4.14）
+ * 习惯卡 / 日记卡 / 照片卡样式迁移自原型 index.html L206-217；
+ * img.photo 补 aspect-ratio + object-fit（原型为内联 SVG 无需裁切）。
+ */
+
+/* 习惯打卡卡 */
+.habit{display:flex;align-items:center;gap:12px}
+.habit .streak{display:flex;gap:5px;margin-left:auto}
+.streak span{width:9px;height:9px;border-radius:50%;background:var(--border)}
+.streak span.done{background:var(--primary)}
+.habit .lf-check{flex:none;margin-left:10px}
+
+/* 日记 / 照片卡 */
+.ln-date{font-size:10.5px;letter-spacing:.14em;color:var(--faint);margin-bottom:6px}
+.ln-title{font-family:var(--font-display);font-size:calc(17px*var(--seed-type));font-weight:600;margin-bottom:8px;letter-spacing:.01em}
+.ln-body{font-size:calc(13px*var(--seed-type));line-height:1.85;color:var(--muted);white-space:pre-wrap}
+.ln-body.sm{font-size:12px;margin-top:10px}
+.ln-tags{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+.photo-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+img.photo{width:100%;border-radius:calc(var(--r) - 6px);display:block;aspect-ratio:4/3;object-fit:cover;background:var(--border)}
+
+/* 打卡按钮（未完成/已完成） */
+.lf-check{font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:999px;border:1px solid var(--border);color:var(--muted);background:var(--surface)}
+.lf-check.on{border-color:transparent;background:var(--accent-soft);color:var(--primary)}
+
+/* 抽屉 */
+.lf-sheet-head{display:flex;align-items:center;gap:12px;margin-bottom:4px}
+.lf-sheet-head .sheet-title{flex:1}
+textarea.note{width:100%;min-height:96px;resize:none;line-height:1.7}
+.lf-type-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left}
+
+/* 照片选择预览 */
+.lf-photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:6px 0 2px}
+.lf-photo-grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;display:block;background:var(--border)}
+.lf-photo-add{display:flex;align-items:center;justify-content:center;aspect-ratio:1;border-radius:10px;border:1.5px dashed var(--border);color:var(--faint)}
+
+/* ── 右下角悬浮「+」入口（shell 挂 #fab-life，显隐随 page-life 路由） ──
+ * .fab.mini 仅覆盖与 base.css .fab 基类的差异：定位/尺寸/去「记账」角标；
+ * 渐变、投影、圆角、flex 居中、:active 缩放均继承基类。
+ * 定位基准是 .app（fixed 全屏，含 tabbar 区），bottom 须叠加 tabbar 高度，
+ * 使按钮悬在 tabbar 顶沿上方 16px（与 .viewport 底边平齐向上让位）；
+ * z-index 39：低于 tabbar(40)/scrim(48)/sheet(50)，抽屉打开时被遮罩盖住不可点。
+ */
+.fab.mini{
+  position:absolute;right:18px;bottom:calc(var(--tabbar-h) + var(--safe-bottom) + 16px);z-index:39;
+  width:46px;height:46px;margin:0;
+}
+.fab.mini::after{content:none}
+.fab.mini svg.ic{width:22px;height:22px}
+
+/* feed 尾部占位：防止最后一行记录被悬浮按钮遮挡（按钮区+呼吸空间） */
+.lf-fab-space{height:72px}
+
+/* 空态引导文案：当月可点，整段触发类型选择抽屉 */
+.lf-empty{cursor:pointer}
+.lf-empty:active{opacity:.65}
+.lf-empty .hint{color:var(--primary)}

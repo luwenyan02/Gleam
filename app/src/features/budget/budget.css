@@ -1,0 +1,7 @@
+/* ═══ 拾光 · 预算中心私有样式 ═══
+ * 通用的 .bd-bar/.bd-row/.bd-meta/.bd-legend 等已在 base.css，
+ * 此处仅补预算总卡的标签与大数（原型 index.html L279-280）。 */
+.budget-overview .label{font-size:10.5px;letter-spacing:.16em;color:var(--faint)}
+.budget-overview .big{font-size:calc(26px * var(--seed-type));font-weight:700;margin:4px 0 6px}
+.bd-empty{text-align:center;padding:20px 0 14px}
+.bd-empty .btn{max-width:200px;margin:14px auto 0}

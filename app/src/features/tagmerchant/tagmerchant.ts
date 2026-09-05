@@ -1,0 +1,222 @@
+/**
+ * 拾光 · 标签与商家（features/tagmerchant，PRD 4.13）
+ * 标签：列表 / 新建 / 改名 / 删除（删除会移除所有账单关联，提示后确认）；
+ * 商家：按使用频次（useCount）排序 / 改名 / 删除（引用账单 merchantId 置空）。
+ * 子页 id 为 sp-tags（团队约定，「我的」页入口指向它）。原型无此独立页，
+ * 视觉沿用 base.css 的 card list / row / chip 语言。数据一律经 repo。
+ */
+import './tagmerchant.css';
+import { iconHtml } from '../../assets/icons';
+import { esc } from '../../core/esc';
+import { on } from '../../core/store';
+import { listTags, ensureTag, renameTag, deleteTag } from '../../core/repo/tagRepo';
+import { listMerchants, ensureMerchant, renameMerchant, deleteMerchant } from '../../core/repo/merchantRepo';
+import { registerSubpage } from '../shell/router';
+import { openSheet, closeSheet } from '../shell/sheet';
+import { showToast } from '../shell/toast';
+import { confirmDialog } from '../shell/dialog';
+import type { Merchant, Tag } from '../../core/types';
+
+/** 抽屉监听器控制：#sheet 为复用容器，重开前必须废止上一次绑定 */
+let sheetAbort: AbortController | undefined;
+
+function sheetSignal(): AbortSignal {
+  sheetAbort?.abort();
+  sheetAbort = new AbortController();
+  return sheetAbort.signal;
+}
+
+/** 注册标签与商家子页（id 约定为 sp-tags），main.ts 调用一次 */
+export function initTagMerchant(): void {
+  registerSubpage('sp-tags', {
+    title: '标签与商家',
+    render(el) {
+      let tags: Tag[] = [];
+      let merchants: Merchant[] = [];
+
+      el.innerHTML = `
+        <p class="sub" style="padding:0 2px 10px">记一笔时可给账单打标签、选商家 · 标签用于报表排行统计，常用商家自动排前</p>
+        <section class="card list" aria-label="标签管理">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 2px 0">
+            <h3 class="card-title" style="padding:0">标签</h3>
+            <button class="restore-link" id="tm-addtag">新建标签</button>
+          </div>
+          <div id="tm-tags"></div>
+        </section>
+        <section class="card list" style="margin-top:12px" aria-label="商家管理">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 2px 0">
+            <h3 class="card-title" style="padding:0">商家 · 按使用频次排序</h3>
+            <button class="restore-link" id="tm-addshop">新建商家</button>
+          </div>
+          <div id="tm-shops"></div>
+        </section>`;
+
+      async function refresh(): Promise<void> {
+        if (!el.isConnected) return;
+        [tags, merchants] = await Promise.all([listTags(), listMerchants()]);
+        if (!el.isConnected) return;
+
+        el.querySelector('#tm-tags')!.innerHTML = tags.length ? tags.map((t) => `
+          <button class="row" data-tag="${t.id}">
+            <span class="e-ic sm">${iconHtml('ic-tag', 17)}</span>#${esc(t.name)}
+            <span class="chev" style="margin-left:auto">${iconHtml('ic-right', 15)}</span>
+          </button>`).join('')
+          : '<p class="sub" style="padding:12px 2px">还没有标签 · 记一笔时打的标签会出现在这里</p>';
+
+        el.querySelector('#tm-shops')!.innerHTML = merchants.length ? merchants.map((m) => `
+          <button class="row" data-shop="${m.id}">
+            <span class="e-ic sm">${iconHtml('ic-shop', 17)}</span>${esc(m.name)}
+            <span class="row-note">用过 ${m.useCount} 次</span>
+            <span class="chev" style="margin-left:auto">${iconHtml('ic-right', 15)}</span>
+          </button>`).join('')
+          : '<p class="sub" style="padding:12px 2px">还没有商家 · 记一笔时选过的商家会出现在这里</p>';
+      }
+
+      el.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('#tm-addtag')) { openNameSheet('tag'); return; }
+        if (target.closest('#tm-addshop')) { openNameSheet('shop'); return; }
+        const tagRow = target.closest<HTMLElement>('[data-tag]');
+        if (tagRow) {
+          const t = tags.find((x) => x.id === Number(tagRow.dataset.tag));
+          if (t) openTagEdit(t);
+          return;
+        }
+        const shopRow = target.closest<HTMLElement>('[data-shop]');
+        if (shopRow) {
+          const m = merchants.find((x) => x.id === Number(shopRow.dataset.shop));
+          if (m) openShopEdit(m);
+        }
+      });
+
+      // 标签/商家写操作后统一 emit 'entries-changed'；子页关闭后自动退订
+      const off = on('entries-changed', () => {
+        if (!el.isConnected) { off(); return; }
+        void refresh();
+      });
+      void refresh();
+    },
+  });
+}
+
+/* ── 新建 / 编辑抽屉 ─────────────────── */
+
+/** 新建标签 / 商家（仅一个名称输入） */
+function openNameSheet(kind: 'tag' | 'shop'): void {
+  const isTag = kind === 'tag';
+  openSheet({
+    ariaLabel: isTag ? '新建标签' : '新建商家',
+    onClose: () => sheetAbort?.abort(),
+    render(el) {
+      el.innerHTML = `
+        <div class="tm-sheet-head">
+          <p class="sheet-title">${isTag ? '新建标签' : '新建商家'}</p>
+          <button class="icon-btn" data-act="close" aria-label="关闭">${iconHtml('ic-close')}</button>
+        </div>
+        <div class="sheet-scroll">
+          <div class="field"><span>名称</span><input class="note" id="tm-name" maxlength="12" placeholder="${isTag ? '如 出差' : '如 瑞幸咖啡'}" style="margin-bottom:0;flex:1"></div>
+          <button class="btn primary" data-act="save" style="margin-top:14px">创建</button>
+        </div>`;
+      el.addEventListener('click', (e) => {
+        const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
+        if (act === 'close') closeSheet();
+        else if (act === 'save') {
+          const name = el.querySelector<HTMLInputElement>('#tm-name')!.value.trim();
+          if (!name) { showToast('请填写名称'); return; }
+          void (isTag ? ensureTag(name) : ensureMerchant(name))
+            .then(() => { closeSheet(); showToast(`已新建「${name}」`); })
+            .catch((err: unknown) => showToast(err instanceof Error ? err.message : String(err)));
+        }
+      }, { signal: sheetSignal() });
+    },
+  });
+}
+
+/** 编辑标签：改名 / 删除（删除会移除所有账单关联） */
+function openTagEdit(tag: Tag): void {
+  openSheet({
+    ariaLabel: `编辑标签：${tag.name}`,
+    onClose: () => sheetAbort?.abort(),
+    render(el) {
+      el.innerHTML = `
+        <div class="tm-sheet-head">
+          <p class="sheet-title">编辑标签「#${esc(tag.name)}」</p>
+          <button class="icon-btn" data-act="close" aria-label="关闭">${iconHtml('ic-close')}</button>
+        </div>
+        <div class="sheet-scroll">
+          <div class="field"><span>名称</span><input class="note" id="tm-name" maxlength="12" value="${esc(tag.name)}" style="margin-bottom:0;flex:1"></div>
+          <button class="btn primary" data-act="save" style="margin-top:14px">保存修改</button>
+          <button class="btn ghost" data-act="del" style="margin-top:10px;color:var(--over)">删除标签</button>
+          <p class="tiny" style="text-align:center;margin-top:10px">删除后将从所有关联账单移除该标签 · 账单本身不受影响</p>
+        </div>`;
+      el.addEventListener('click', (e) => {
+        const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
+        if (act === 'close') closeSheet();
+        else if (act === 'save') {
+          const name = el.querySelector<HTMLInputElement>('#tm-name')!.value.trim();
+          if (!name) { showToast('请填写标签名'); return; }
+          void renameTag(tag.id!, name)
+            .then(() => { closeSheet(); showToast(`已改名为「#${name}」`); })
+            .catch((err: unknown) => showToast(err instanceof Error ? err.message : String(err)));
+        } else if (act === 'del') {
+          void confirmDialog({
+            title: `删除标签「#${tag.name}」？`,
+            message: '删除后将从所有关联账单移除该标签，账单本身不受影响。',
+            okText: '删除',
+            danger: true,
+          }).then(async (ok) => {
+            if (!ok) return;
+            await deleteTag(tag.id!);
+            closeSheet();
+            showToast(`已删除标签「#${tag.name}」`);
+          });
+        }
+      }, { signal: sheetSignal() });
+    },
+  });
+}
+
+/** 编辑商家：改名 / 删除（引用账单 merchantId 置空） */
+function openShopEdit(m: Merchant): void {
+  openSheet({
+    ariaLabel: `编辑商家：${m.name}`,
+    onClose: () => sheetAbort?.abort(),
+    render(el) {
+      el.innerHTML = `
+        <div class="tm-sheet-head">
+          <p class="sheet-title">编辑商家「${esc(m.name)}」</p>
+          <button class="icon-btn" data-act="close" aria-label="关闭">${iconHtml('ic-close')}</button>
+        </div>
+        <div class="sheet-scroll">
+          <div class="field"><span>名称</span><input class="note" id="tm-name" maxlength="12" value="${esc(m.name)}" style="margin-bottom:0;flex:1"></div>
+          <p class="tiny" style="padding:4px 0 0">已使用 ${m.useCount} 次 · 常用商家在记一笔时自动排前</p>
+          <button class="btn primary" data-act="save" style="margin-top:14px">保存修改</button>
+          <button class="btn ghost" data-act="del" style="margin-top:10px;color:var(--over)">删除商家</button>
+          <p class="tiny" style="text-align:center;margin-top:10px">删除后引用它的账单会清除商家信息 · 账单本身不受影响</p>
+        </div>`;
+      el.addEventListener('click', (e) => {
+        const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
+        if (act === 'close') closeSheet();
+        else if (act === 'save') {
+          const name = el.querySelector<HTMLInputElement>('#tm-name')!.value.trim();
+          if (!name) { showToast('请填写商家名'); return; }
+          void renameMerchant(m.id!, name)
+            .then(() => { closeSheet(); showToast(`已改名为「${name}」`); })
+            .catch((err: unknown) => showToast(err instanceof Error ? err.message : String(err)));
+        } else if (act === 'del') {
+          void confirmDialog({
+            title: `删除商家「${m.name}」？`,
+            message: '删除后引用它的账单会清除商家信息，账单本身不受影响。',
+            okText: '删除',
+            danger: true,
+          }).then(async (ok) => {
+            if (!ok) return;
+            await deleteMerchant(m.id!);
+            closeSheet();
+            showToast(`已删除商家「${m.name}」`);
+          });
+        }
+      }, { signal: sheetSignal() });
+    },
+  });
+}

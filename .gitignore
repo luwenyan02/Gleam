@@ -1,0 +1,43 @@
+# macOS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Codex and local working artifacts
+.tmp/
+.selftest/
+outputs/
+uploads/
+release/
+
+# Private fixtures and credentials
+wacai.xls
+.env
+.env.*
+!.env.example
+*.keystore
+*.jks
+*.p12
+*.pem
+.secrets/
+
+# Node / Vite
+app/node_modules/
+app/dist/
+app/.vite/
+app/*.tsbuildinfo
+
+# Python E2E output
+**/__pycache__/
+*.py[cod]
+app/e2e/screenshots/
+app/e2e/shots/
+
+# Android generated and local files
+app/android/.gradle/
+app/android/**/build/
+app/android/local.properties
+app/android/keystore/
+app/android/app/src/main/assets/public/
+*.apk
+*.aab

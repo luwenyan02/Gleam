@@ -1,0 +1,52 @@
+/* 拾光 · AI 记账收件箱（features/ai-inbox，sp-ai-inbox 子页样式） */
+
+/* 配置引导卡 */
+.ai-guide{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.ai-guide .btn{margin-top:4px}
+
+/* 素材输入卡（文本粘贴 + 选图） */
+.ai-input textarea{width:100%;border:1px solid var(--border);border-radius:calc(var(--r) - 4px);background:var(--surface);padding:10px 12px;font-size:14px;font-family:var(--font-body);color:var(--fg);resize:vertical;min-height:64px}
+.ai-input textarea:focus{outline:none;border-color:var(--primary)}
+.ai-input .ai-actions{margin-top:10px}
+.ai-input .tiny{margin-top:8px}
+
+/* 素材 / 待确认卡片 */
+.ai-card{display:flex;flex-direction:column;gap:10px}
+.ai-card.dup{border:1px solid color-mix(in oklab, var(--over) 45%, var(--surface))}
+.ai-card-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ai-merchant{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 置信度徽标（高 / 中 / 低） */
+.ai-conf{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px}
+.ai-conf.hi{background:color-mix(in oklab, var(--income) 14%, var(--surface));color:var(--income)}
+.ai-conf.mid{background:var(--gold-soft);color:var(--accent)}
+.ai-conf.lo{background:color-mix(in oklab, var(--over) 12%, var(--surface));color:var(--over)}
+
+/* 素材摘要（截图缩略图 / 文本片段） */
+.ai-thumb{max-width:120px;max-height:120px;border-radius:var(--r-s);border:1px solid var(--border);object-fit:cover}
+.ai-raw{font-size:12.5px;color:var(--muted);background:var(--accent-soft);border-radius:var(--r-s);padding:8px 10px;word-break:break-all}
+
+/* 内联编辑字段（两列网格，备注占整行） */
+.ai-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
+.ai-fields label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.ai-fields label.wide{grid-column:1 / -1}
+.ai-fields input,.ai-fields .ai-time-btn,.ai-fields .ai-pick-btn{border:1px solid var(--border);border-radius:calc(var(--r) - 6px);background:var(--surface);padding:8px 10px;font-size:14px;color:var(--fg);width:100%;min-width:0}
+.ai-fields input:focus{outline:none;border-color:var(--primary)}
+.ai-time-btn,.ai-pick-btn{text-align:left;cursor:pointer;font-family:var(--font-body)}
+.ai-time-btn:active,.ai-pick-btn:active{background:var(--accent-soft)}
+
+/* 状态与提示 */
+.ai-dup-tip{font-size:12.5px;color:var(--over)}
+.ai-err{font-size:12.5px;color:var(--over);word-break:break-all}
+.ai-fail{font-size:13px;font-weight:600;color:var(--over)}
+.ai-spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--accent-soft);border-top-color:var(--primary);animation:ai-spin .8s linear infinite}
+@keyframes ai-spin{to{transform:rotate(360deg)}}
+
+/* 分区标题与空态 */
+.ai-sec-head{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 0}
+.ai-sec-head h3{font-size:14px;font-weight:700}
+.ai-empty{text-align:center;padding:24px 0}
+
+/* 卡片操作按钮行 */
+.ai-actions{display:flex;gap:8px;justify-content:flex-end}
+.ai-actions .btn{flex:0 0 auto;width:auto;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:10px 16px}

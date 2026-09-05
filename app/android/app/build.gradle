@@ -1,0 +1,98 @@
+apply plugin: 'com.android.application'
+
+import groovy.json.JsonSlurper
+
+def packageJsonFile = new File(rootProject.projectDir, '../package.json')
+def appVersion = new JsonSlurper().parse(packageJsonFile).version as String
+def versionParts = appVersion.tokenize('.').collect { it as Integer }
+def appVersionCode = versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]
+
+def signingProperties = new Properties()
+def signingPropertiesPath = System.getenv('GLEAM_KEYSTORE_PROPERTIES')
+def signingPropertiesFile = signingPropertiesPath
+        ? file(signingPropertiesPath)
+        : new File(System.getProperty('user.home'), 'Library/Application Support/Gleam/signing/keystore.properties')
+if (signingPropertiesFile.exists()) {
+    signingPropertiesFile.withInputStream { signingProperties.load(it) }
+}
+
+def signingStoreFile = System.getenv('GLEAM_KEYSTORE_PATH') ?: signingProperties.getProperty('storeFile')
+def signingStorePassword = System.getenv('GLEAM_KEYSTORE_PASSWORD') ?: signingProperties.getProperty('storePassword')
+def signingKeyAlias = System.getenv('GLEAM_KEY_ALIAS') ?: signingProperties.getProperty('keyAlias')
+def signingKeyPassword = System.getenv('GLEAM_KEY_PASSWORD') ?: signingProperties.getProperty('keyPassword')
+def hasReleaseSigning = [signingStoreFile, signingStorePassword, signingKeyAlias, signingKeyPassword].every { it }
+
+android {
+    namespace = "com.gleam.shiguang"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.gleam.shiguang"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode appVersionCode
+        versionName appVersion
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile file(signingStoreFile)
+                storePassword signingStorePassword
+                keyAlias signingKeyAlias
+                keyPassword signingKeyPassword
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    def requestsRelease = graph.allTasks.any { task ->
+        task.project == project && task.name.toLowerCase().contains('release')
+    }
+    if (requestsRelease && !hasReleaseSigning) {
+        throw new GradleException('Release signing is not configured. Set GLEAM_KEYSTORE_* or GLEAM_KEYSTORE_PROPERTIES.')
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

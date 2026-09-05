@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 私密安全报告
+    url: https://github.com/luwenyan02/Gleam/security/advisories/new
+    about: 涉及漏洞、凭据或隐私数据时使用此入口

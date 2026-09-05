@@ -1,0 +1,17 @@
+/* 拾光 · 挖财导入向导（沿用 base.css 卡片体系，此处仅补向导专属细节） */
+.imp-steps{display:flex;gap:6px;margin:2px 2px 12px;flex-wrap:wrap}
+.imp-steps span{font-size:11.5px;color:var(--muted);padding:5px 10px;border-radius:999px;background:var(--surface-2,rgba(0,0,0,.04))}
+.imp-steps span.on{color:#fff;background:var(--primary);font-weight:600}
+
+.imp-stat{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.imp-stat b{font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;background:var(--accent-soft);color:var(--primary)}
+
+.imp-issues{margin-top:10px;border-top:1px dashed var(--border);padding-top:8px}
+.imp-issues p{font-size:12px;color:var(--muted);padding:3px 0}
+.imp-issues p b{color:var(--danger,#d0552e)}
+
+.imp-map .pick-btn{max-width:46vw;border:1px solid var(--border);border-radius:calc(var(--r) - 6px);background:var(--surface);padding:7px 8px;font-size:12.5px;color:var(--fg);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.imp-map td{vertical-align:middle}
+
+.imp-report p{font-size:13px;padding:4px 0}
+.imp-report .big{font-size:calc(26px * var(--seed-type));font-weight:700;padding:6px 0}

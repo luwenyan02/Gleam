@@ -1,0 +1,40 @@
+/* 拾光 · 首页私有样式（月度总览卡；其余 card/day/entry 等通用类在 base.css） */
+
+.month-card{
+  border-radius:var(--r-l);
+  padding:calc(15px * var(--seed-density)) calc(16px * var(--seed-density));
+  margin-bottom:calc(10px * var(--seed-density));
+  color:var(--on-accent);
+  background:linear-gradient(140deg, var(--mc-a), var(--mc-b) 62%, var(--mc-c));
+  box-shadow:0 14px 30px color-mix(in oklab, var(--mc-b) 28%, transparent);
+}
+.mc-label{font-size:10.5px;letter-spacing:.15em;opacity:.85}
+.mc-amt{font-size:calc(33px * var(--seed-type));font-weight:700;margin:4px 0 10px;letter-spacing:-0.02em;line-height:1.08}
+.mc-amt small{font-size:.5em;font-weight:500;opacity:.8;margin-right:2px}
+.mc-row{display:flex;gap:20px}
+.mc-row p:first-child{font-size:10px;letter-spacing:.09em;opacity:.75;margin-bottom:2px}
+.mc-row .num{font-size:calc(13.5px * var(--seed-type));font-weight:600}
+
+/* 快捷区只保留一手可点的 30px 图标，将纵向空间让给今日流水。 */
+#hm-quick{padding:7px 4px;margin-bottom:12px}
+#hm-quick .qa{gap:3px;font-size:10px}
+#hm-quick .qa-ic{width:30px;height:30px;border-radius:10px}
+#hm-quick .qa-ic svg.ic{width:16px;height:16px}
+
+/* 空状态：保留原卡片语言，增加一个清晰、可触达的记账动作。 */
+.home-empty{display:flex;align-items:center;gap:10px;padding:14px!important}
+.home-empty>.e-ic{flex:none}
+.home-empty>div{flex:1;min-width:0}
+.home-empty>.chip{flex:none;padding:7px 11px;color:var(--primary);border-color:color-mix(in oklab,var(--seed-primary) 24%,var(--border))}
+
+/* 时间线加载提示 */
+.hm-more{text-align:center;padding:6px 0 12px}
+
+@media (max-width:360px){
+  .month-card{padding:13px 14px}
+  .mc-amt{font-size:calc(31px * var(--seed-type));margin-bottom:8px}
+  .mc-row{gap:10px}
+  .mc-row .num{font-size:calc(12.5px * var(--seed-type))}
+  .home-empty{padding:12px!important}
+  .home-empty>.chip{padding:6px 9px;font-size:11px}
+}

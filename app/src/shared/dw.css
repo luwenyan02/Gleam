@@ -1,0 +1,33 @@
+/* 拾光 · 日期/时间滚轮选择器共享样式（自 search.css 迁移，搜索页与记一笔共用） */
+
+/* ── 日期滚轮选择器 ──
+   面板与 .app 外壳同宽（max-width + margin auto 对齐 base.css 的 .app 居中约束），
+   宽屏下不再铺满视口造成与 App 错位的悬浮感；窄屏（≤480px）仍满宽贴边 */
+.dw-panel{position:fixed;inset:0;z-index:210;display:flex;flex-direction:column;justify-content:flex-end;max-width:var(--app-max-width);margin:0 auto;opacity:0;pointer-events:none;transition:opacity .22s}
+.dw-panel.dw-open{opacity:1;pointer-events:auto}
+.dw-mask{position:absolute;inset:0;background:rgba(0,0,0,.35)}
+/* 底部抽屉与 .sheet 同风格：满宽贴边、圆角仅上方两角、上投影阴影、底部安全区同款 */
+.dw-content{position:relative;background:var(--surface);border-radius:var(--r-l) var(--r-l) 0 0;padding:20px 18px calc(30px + var(--safe-bottom));box-shadow:0 -18px 50px color-mix(in oklab, var(--seed-fg) 22%, transparent);transform:translateY(100%);transition:transform .3s cubic-bezier(.22,.78,.3,1)}
+.dw-panel.dw-open .dw-content{transform:none}
+.dw-columns{display:flex;gap:4px;margin-bottom:16px}
+.dw-col{position:relative;flex:1;overflow:hidden;touch-action:none;user-select:none}
+.dw-list{position:absolute;left:0;right:0;top:0;display:flex;flex-direction:column;align-items:center;will-change:transform}
+.dw-item{width:100%;text-align:center;font-size:14px;color:var(--fg);transition:transform .06s,opacity .06s}
+.dw-indicator{position:absolute;left:0;right:0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);pointer-events:none}
+.dw-confirm{display:block;width:100%;padding:13px;border-radius:calc(var(--r) - 2px);font-size:14px;font-weight:600;text-align:center;color:var(--primary);background:transparent;border:1.5px solid var(--primary);transition:all .18s}
+.dw-confirm:active{background:var(--accent-soft)}
+
+/* ── 顶部：tab 栏（withTime 时）+「今天」快捷按钮同排 ──
+   无 tab（搜索页形态）时仅「今天」靠右；有 tab 时 tab 靠左（margin-right:auto）、今天靠右 */
+.dw-head{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin:-4px 0 10px}
+.dw-tabs{display:flex;gap:18px;margin-right:auto}
+.dw-tab{font-size:14px;color:var(--muted);padding:4px 2px 6px;border-bottom:2px solid transparent;transition:color .15s,border-color .15s}
+.dw-tab.active{color:var(--fg);font-weight:600;border-bottom-color:var(--primary)}
+.dw-today{font-size:12px;color:var(--primary);padding:5px 14px;border-radius:999px;border:1px solid color-mix(in oklab,var(--primary) 30%,var(--border));background:transparent;transition:all .18s}
+.dw-today:active{background:var(--accent-soft)}
+
+/* ── 双页容器（withTime）：时间页 4 列（月/日/时/分）与日期页 3 列（年/月/日）均由
+   .dw-col flex:1 均分满宽；列实例常驻（月/日列切 tab 时由 dateTimeWheel.ts 迁移节点），
+   tab 仅切页显隐（display:none，需显式声明覆盖 flex） ── */
+.dw-page{display:flex;flex:1;gap:4px;min-width:0}
+.dw-page[hidden]{display:none}

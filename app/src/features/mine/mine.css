@@ -1,0 +1,6 @@
+/* ═══ 拾光 · 我的页私有样式 ═══
+ * 原型 index.html L220-223（.mine-head/.avatar 未随通用类迁入 base.css）。 */
+.mine-head{display:flex;align-items:center;gap:14px;padding:12px 2px 18px}
+.avatar{width:52px;height:52px;flex:none;border-radius:50%;background:linear-gradient(140deg,var(--primary),color-mix(in oklab, var(--seed-primary) 70%, var(--seed-accent)));color:var(--on-accent);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:24px;font-weight:700}
+.mine-head h2{font-size:calc(17px * var(--seed-type));font-weight:600}
+.mine-head .icon-btn{margin-left:auto}

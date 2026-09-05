@@ -1,0 +1,559 @@
+/**
+ * 拾光 · 账户页（features/account，PRD 4.6）
+ * 顶部资产卡（净资产 + 近 6 个月走势线）、四组分组列表（折叠/小计）、
+ * 添加/编辑账户、单账户流水、对账调整余额、长按隐藏与恢复显示。
+ * 视觉结构与原型 index.html #page-acct（L680-738）一致；数据一律经 repo，
+ * 金额格式化只走 money.ts。
+ */
+import './account.css';
+import { iconHtml } from '../../assets/icons';
+import { esc } from '../../core/esc';
+import { on } from '../../core/store';
+import { formatFen, formatFenCny, parseYuanToFen } from '../../core/money';
+import {
+  addAccount, getAccount, getNetWorth, listAccountsByGroup, reconcileAccount, updateAccount,
+} from '../../core/repo/accountRepo';
+import { netWorthTrend } from '../../core/repo/statsRepo';
+import { getEntry, listEntries } from '../../core/repo/entryRepo';
+import { listCategories } from '../../core/repo/categoryRepo';
+import { getSetting } from '../../core/repo/settingsRepo';
+import { registerPage, registerSubpage, openSubpage } from '../shell/router';
+import { openSheet, closeSheet } from '../shell/sheet';
+import { openEntrySheet } from '../entry/entrySheet';
+import { openEntryDetail } from '../detail/detail';
+import {
+  bindEntrySwipeActions, entrySwipeActionsHtml, runEntryQuickAction, type EntryQuickAction,
+} from '../detail/entrySwipe';
+import { showToast } from '../shell/toast';
+import { confirmDialog } from '../shell/dialog';
+import {
+  ACCOUNT_GROUPS, ACCOUNT_GROUP_NAMES, LOAN_KIND_META,
+  type Account, type AccountGroup, type Entry,
+} from '../../core/types';
+
+/* ── 模块状态 ── */
+let root: HTMLElement | undefined;
+/** 折叠中的分组（跨刷新保持） */
+const folded = new Set<AccountGroup>();
+/** 并发刷新令牌 */
+let refreshToken = 0;
+/** 长按计时器与标记（长按隐藏后抑制本次 click） */
+let pressTimer: number | undefined;
+let pressFired = false;
+/** 抽屉监听器控制：#sheet 为复用容器，重开前必须废止上一次绑定，否则监听器叠加导致重复提交 */
+let sheetAbort: AbortController | undefined;
+let detailAccountId: number | undefined;
+
+/** 废止上一抽屉的监听器并返回本次绑定用的 signal */
+function sheetSignal(): AbortSignal {
+  sheetAbort?.abort();
+  sheetAbort = new AbortController();
+  return sheetAbort.signal;
+}
+
+/** 账户组 → 行图标（与原型一致：现金钱包、卡片、网络支付） */
+const GROUP_ICONS: Record<AccountGroup, string> = {
+  cash: 'ic-wallet',
+  credit: 'ic-card',
+  debit: 'ic-card',
+  online: 'ic-pay',
+  investment: 'ic-chart',
+  receivable: 'ic-coin',
+  stored: 'ic-card',
+  other: 'ic-wallet',
+};
+
+/** 元整数展示（原型 fmt0 语义）：丢弃分位小数 */
+function fmtYuan0(fen: number): string {
+  return formatFen(fen).split('.')[0];
+}
+
+/** 解析可带负号的元输入（信用卡余额），符号在 UI 层处理，换算仍走 money.ts */
+function parseSignedYuan(input: string): number {
+  const s = input.trim();
+  const neg = s.startsWith('-');
+  const fen = parseYuanToFen(neg ? s.slice(1) : s);
+  return neg ? -fen : fen;
+}
+
+/** 信用卡还款日 → 下一个还款日期文案，如 '9月10日 还款' */
+function repayNote(a: Account): string | undefined {
+  if (a.group !== 'credit' || !a.repayDay) return undefined;
+  const today = new Date();
+  let y = today.getFullYear();
+  let m = today.getMonth();
+  if (today.getDate() > a.repayDay) {
+    m += 1;
+    if (m > 11) { m = 0; y += 1; }
+  }
+  const day = Math.min(a.repayDay, new Date(y, m + 1, 0).getDate());
+  return `${m + 1}月${day}日 还款`;
+}
+
+/** 行备注：信用卡优先展示还款日，其余展示备注 */
+function rowNote(a: Account): string {
+  return repayNote(a) ?? a.note ?? '';
+}
+
+/* ── 顶部资产卡 ── */
+
+/** 近 6 个月走势线（SVG polyline，同原型 .spark 结构） */
+function sparkHtml(trend: { month: string; net: number }[], metric = '净资产'): string {
+  if (trend.length < 2) return '';
+  const x0 = 6, x1 = 234, yTop = 7, yBot = 36;
+  const nets = trend.map((t) => t.net);
+  const min = Math.min(...nets);
+  const max = Math.max(...nets);
+  const pts = trend.map((t, i) => {
+    const x = x0 + (i * (x1 - x0)) / (trend.length - 1);
+    const y = max === min ? (yTop + yBot) / 2 : yBot - ((t.net - min) / (max - min)) * (yBot - yTop);
+    return { x, y };
+  });
+  const last = pts[pts.length - 1];
+  const mLabel = (m: string): string => `${Number(m.split('-')[1])}月`;
+  const first = trend[0];
+  const end = trend[trend.length - 1];
+  return `
+    <svg class="spark" viewBox="0 0 240 44" role="img" aria-label="近六个月${esc(metric)}走势">
+      <polyline points="${pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="color-mix(in srgb, var(--on-accent) 85%, transparent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="3" fill="var(--on-accent)"/>
+    </svg>
+    <p class="spark-cap">近 6 个月${esc(metric)} · ${mLabel(first.month)} ¥${fmtYuan0(first.net)} → ${mLabel(end.month)} ¥${fmtYuan0(end.net)}</p>`;
+}
+
+/* ── 页面渲染 ── */
+
+/** 重新取数并整页刷新 */
+async function refresh(): Promise<void> {
+  if (!root) return;
+  const token = ++refreshToken;
+  const [worth, trend, groups, includeHidden] = await Promise.all([
+    getNetWorth(),
+    netWorthTrend(6),
+    listAccountsByGroup(),
+    getSetting('netWorth.includeHidden'),
+  ]);
+  if (token !== refreshToken || !root) return;
+
+  const all = ACCOUNT_GROUPS.flatMap((g) => groups[g]);
+  const hidden = all.filter((a) => a.hidden);
+  const subHead = `${all.length} 个账户${hidden.length ? ` · ${hidden.length} 个已隐藏` : ''} · 数据仅保存在本机`;
+
+  const groupCards = ACCOUNT_GROUPS.map((g) => {
+    const rows = groups[g].filter((a) => !a.hidden);
+    if (rows.length === 0) return '';
+    const subtotal = rows.reduce((sum, a) => sum + a.balance, 0);
+    return `
+      <section class="card list acct-group${folded.has(g) ? ' folded' : ''}" aria-label="${ACCOUNT_GROUP_NAMES[g]}账户">
+        <button class="row group-head" data-group="${g}" aria-expanded="${!folded.has(g)}">${ACCOUNT_GROUP_NAMES[g]}<span class="g-count">${rows.length} 个</span><span class="acct-amt num${subtotal < 0 ? ' neg' : ''}">${formatFenCny(subtotal)}</span><span class="chev">${iconHtml('ic-right')}</span></button>
+        <div class="g-rows">
+          ${rows.map((a) => `
+            <button class="row" data-acct="${a.id}"><span class="e-ic">${iconHtml(GROUP_ICONS[g], 18)}</span>${esc(a.name)}${rowNote(a) ? `<span class="row-note">${esc(rowNote(a))}</span>` : ''}<span class="acct-amt num${a.balance < 0 ? ' neg' : ''}">${formatFenCny(a.balance)}</span></button>`).join('')}
+        </div>
+      </section>`;
+  }).join('');
+
+  const hiddenCard = hidden.length === 0 ? '' : `
+    <section class="card list" aria-label="已隐藏账户">
+      <h3 class="card-title" style="padding:10px 2px 0">已隐藏账户</h3>
+      ${hidden.map((a) => `
+        <div class="row"><span class="e-ic neutral">${iconHtml('ic-eye', 18)}</span>${esc(a.name)}<span class="row-note num">${includeHidden ? '计入净资产' : '不计入净资产'} · ${formatFenCny(a.balance)}</span><button class="restore-link" data-unhide="${a.id}">显示</button></div>`).join('')}
+      <p class="tiny" style="padding:6px 2px 10px">长按账户可隐藏 · 隐藏账户默认不计入净资产，可在设置中改为计入</p>
+    </section>`;
+
+  root.innerHTML = `
+    <header class="page-head">
+      <div>
+        <h1 class="brand sm">账户</h1>
+        <p class="sub">${subHead}</p>
+      </div>
+      <button class="icon-btn" data-add aria-label="添加账户">${iconHtml('ic-plus')}</button>
+    </header>
+
+    <section class="card asset acct-hero">
+      <p class="label">净资产</p>
+      <p class="big num">${formatFenCny(worth.net)}</p>
+      <div class="asset-row">
+        <p>总资产<span class="num">${formatFenCny(worth.assets)}</span></p>
+        <p>总负债<span class="num">${formatFenCny(worth.debts)}</span></p>
+      </div>
+      ${sparkHtml(trend)}
+    </section>
+
+    ${groupCards || `
+      <section class="card">
+        <p class="sub" style="text-align:center;padding:18px 0">还没有可展示的账户<br>点右上角 <b>＋</b> 添加现金、储蓄卡、网络账户或信用卡</p>
+      </section>`}
+    ${hiddenCard}
+    <p class="tiny" style="text-align:center;padding:4px 0 10px">点击分组可收起 · 转账不计收支，只在账户间流动</p>`;
+}
+
+/* ── 账户详情抽屉（流水 / 编辑 / 对账 / 隐藏） ── */
+
+/** 单账户视角的金额增减（分；正 = 流入该账户） */
+function flowDelta(e: Entry, acctId: number): number {
+  switch (e.type) {
+    case 'expense': return e.refundFlag ? e.amount : -e.amount;
+    case 'income': return e.amount;
+    case 'transfer': return e.toAccountId === acctId ? e.amount : -e.amount;
+    case 'loan': return e.loanKind === 'borrow' || e.loanKind === 'collect' ? e.amount : -e.amount;
+  }
+}
+
+/** 流水条目 HTML（复用原型 .entry 结构 + .entry-swipe 左滑外壳，与首页/明细同一套操作） */
+function flowEntryHtml(
+  e: Entry,
+  acctId: number,
+  catMap: Map<number, { name: string; icon: string }>,
+  acctNames: Map<number, string>,
+): string {
+  let title = '';
+  let icon = 'ic-coin';
+  let cls = '';
+  if (e.type === 'transfer') {
+    title = e.note === '余额对账调整' ? '余额对账调整' : '转账';
+    icon = 'ic-swap';
+    cls = ' neutral';
+  } else if (e.type === 'loan') {
+    const meta = LOAN_KIND_META[e.loanKind!];
+    title = meta.name;
+    icon = meta.icon;
+    cls = ' neutral';
+  } else {
+    const cat = e.categoryId != null ? catMap.get(e.categoryId) : undefined;
+    title = e.refundFlag ? `${cat?.name ?? '支出'}退款` : cat?.name ?? (e.type === 'income' ? '收入' : '支出');
+    icon = cat?.icon ?? 'ic-coin';
+    if (e.type === 'income' || e.refundFlag) cls = ' neutral';
+  }
+  const d = new Date(e.occurredAt);
+  const time = `${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const metaTail = e.type === 'transfer'
+    ? `${acctNames.get(e.fromAccountId ?? -1) ?? '—'} → ${acctNames.get(e.toAccountId ?? -1) ?? '—'}`
+    : acctNames.get(e.accountId ?? -1) ?? '';
+  const sub = e.note && e.note !== '余额对账调整' ? ` <span class="e-sub">· ${esc(e.note)}</span>` : '';
+  const delta = flowDelta(e, acctId);
+  return `<div class="entry-swipe" data-eid="${e.id}">
+    ${entrySwipeActionsHtml(e)}
+    <article class="entry entry-swipe-content">
+      <span class="e-ic${cls}">${iconHtml(icon, 18)}</span>
+      <div class="e-main"><p class="e-title">${esc(title)}${sub}</p><p class="e-meta">${time}${metaTail ? ` · ${esc(metaTail)}` : ''}</p></div>
+      <p class="e-amt num ${delta < 0 ? 'out' : 'in'}">${formatFen(delta, { sign: true })}</p>
+    </article>
+  </div>`;
+}
+
+/** 从账户一级页进入账户详情子页。 */
+function openAccountDetail(id: number): void {
+  detailAccountId = id;
+  openSubpage('sp-account-detail');
+}
+
+function monthKey(ts: number): string {
+  const date = new Date(ts);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** 账户详情：余额趋势、月度流入流出与逐笔流水。 */
+async function renderAccountDetail(body: HTMLElement): Promise<void> {
+  const accountId = detailAccountId;
+  if (accountId == null) { body.innerHTML = '<p class="tiny">未指定账户</p>'; return; }
+  const targetAccountId = accountId;
+  let currentAccount: Account | undefined;
+
+  async function refreshDetail(): Promise<void> {
+    const [acct, expenseCats, incomeCats, groups, entries] = await Promise.all([
+      getAccount(targetAccountId), listCategories('expense'), listCategories('income'),
+      listAccountsByGroup(), listEntries({ accountIds: [targetAccountId] }),
+    ]);
+    if (!acct) { body.innerHTML = '<div class="placeholder"><p class="sub">账户不存在</p></div>'; return; }
+    currentAccount = acct;
+    body.closest<HTMLElement>('.subpage')!.querySelector<HTMLElement>('.sub-head h2')!.textContent = acct.name;
+    const catMap = new Map<number, { name: string; icon: string }>();
+    for (const cat of [...expenseCats, ...incomeCats]) catMap.set(cat.id, { name: cat.name, icon: cat.icon });
+    const acctNames = new Map<number, string>();
+    for (const group of ACCOUNT_GROUPS) for (const account of groups[group]) acctNames.set(account.id, account.name);
+
+    const monthRows: { key: string; income: number; expense: number; closing: number; entries: Entry[] }[] = [];
+    let closing = acct.balance;
+    const nowDate = new Date();
+    for (let offset = 0; offset < 8; offset += 1) {
+      const date = new Date(nowDate.getFullYear(), nowDate.getMonth() - offset, 1);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const rows = entries.filter((entry) => monthKey(entry.occurredAt) === key);
+      let income = 0;
+      let expense = 0;
+      for (const entry of rows) {
+        const delta = flowDelta(entry, targetAccountId);
+        if (delta >= 0) income += delta;
+        else expense += -delta;
+      }
+      monthRows.push({ key, income, expense, closing, entries: rows });
+      closing -= income - expense;
+    }
+    const totalIn = entries.reduce((sum, entry) => Math.max(0, flowDelta(entry, targetAccountId)) + sum, 0);
+    const totalOut = entries.reduce((sum, entry) => Math.max(0, -flowDelta(entry, targetAccountId)) + sum, 0);
+    const trend = [...monthRows].reverse().map((row) => ({ month: row.key, net: row.closing }));
+
+    body.innerHTML = `
+      <section class="account-detail-hero">
+        <div class="account-detail-top"><span>${ACCOUNT_GROUP_NAMES[acct.group]}</span><small>${esc(repayNote(acct) ?? acct.note ?? '人民币账户')}</small></div>
+        <p>当前余额</p>
+        <h3 class="num${acct.balance < 0 ? ' neg' : ''}">${formatFenCny(acct.balance)}</h3>
+        <div class="account-flow-total"><span>总流入 <b class="num">${formatFenCny(totalIn)}</b></span><span>总流出 <b class="num">${formatFenCny(totalOut)}</b></span></div>
+        ${sparkHtml(trend, '账户余额')}
+        <div class="account-detail-actions">
+          <button data-account-action="entry">${iconHtml('ic-plus', 17)}记一笔</button>
+          <button data-account-action="edit">${iconHtml('ic-pen', 17)}编辑</button>
+          <button data-account-action="reconcile">${iconHtml('ic-swap', 17)}对账</button>
+        </div>
+      </section>
+      <div class="account-months" id="account-months">
+        ${monthRows.map((row, index) => {
+          const [year, month] = row.key.split('-');
+          return `<section class="account-month${index === 0 ? ' expanded' : ''}" data-account-month="${row.key}">
+            <button class="account-month-head" aria-expanded="${index === 0}">
+              <span class="account-month-date"><b>${Number(month)}月</b><small>${year}</small></span>
+              <span class="account-month-flow"><i>流入 ${formatFenCny(row.income)}</i><i>流出 ${formatFenCny(row.expense)}</i></span>
+              <span class="account-month-balance"><b class="num">${formatFen(row.closing)}</b><small>余额</small></span>
+              <span class="chev">${iconHtml('ic-right', 15)}</span>
+            </button>
+            <div class="account-month-entries">
+              ${row.entries.length ? row.entries.map((entry) => flowEntryHtml(entry, targetAccountId, catMap, acctNames)).join('') : '<p class="acct-flow-empty">本月暂无流水</p>'}
+            </div>
+          </section>`;
+        }).join('')}
+      </div>`;
+  }
+
+  body.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement;
+    const actionButton = target.closest<HTMLElement>('[data-entry-action]');
+    const entryRow = target.closest<HTMLElement>('[data-eid]');
+    if (entryRow?.dataset.swipeSuppress === 'true') return;
+    if (actionButton && entryRow) {
+      if (actionButton.getAttribute('aria-disabled') === 'true') { showToast('仅普通支出账单支持退款'); return; }
+      void getEntry(Number(entryRow.dataset.eid)).then((entry) => {
+        if (entry) void runEntryQuickAction(actionButton.dataset.entryAction as EntryQuickAction, entry);
+      });
+      return;
+    }
+    if (entryRow) { openEntryDetail(Number(entryRow.dataset.eid)); return; }
+    const month = target.closest<HTMLElement>('[data-account-month]');
+    if (month && target.closest('.account-month-head')) {
+      month.classList.toggle('expanded');
+      month.querySelector('.account-month-head')!.setAttribute('aria-expanded', String(month.classList.contains('expanded')));
+      return;
+    }
+    const action = target.closest<HTMLElement>('[data-account-action]')?.dataset.accountAction;
+    if (!action || !currentAccount) return;
+    if (action === 'entry') void openEntrySheet({ presetAccountId: currentAccount.id });
+    else if (action === 'edit') void openAccountForm(currentAccount);
+    else if (action === 'reconcile') openReconcileSheet(currentAccount);
+  });
+  bindEntrySwipeActions(body);
+  const offAccounts = on('accounts-changed', () => {
+    if (!body.isConnected) { offAccounts(); return; }
+    void refreshDetail();
+  });
+  const offEntries = on('entries-changed', () => {
+    if (!body.isConnected) { offEntries(); return; }
+    void refreshDetail();
+  });
+  await refreshDetail();
+}
+
+/* ── 隐藏 / 恢复显示 ── */
+
+/**
+ * 隐藏或恢复账户。隐藏时同步 countInNetWorth=false（默认不计净资产，
+ * 设置「隐藏账户计入净资产」开启时由 getNetWorth 统一放行），恢复时还原为 true。
+ */
+async function toggleHidden(acct: Account): Promise<void> {
+  if (!acct.hidden) {
+    const ok = await confirmDialog({
+      title: `隐藏「${acct.name}」？`,
+      message: '隐藏后该账户移入「已隐藏账户」分区，默认不计入净资产（可在设置中改为计入），可随时恢复显示。',
+      okText: '隐藏',
+    });
+    if (!ok) return;
+  }
+  closeSheet();
+  await updateAccount(acct.id, { hidden: !acct.hidden, countInNetWorth: acct.hidden });
+  showToast(acct.hidden ? `已恢复显示「${acct.name}」` : `已隐藏「${acct.name}」`);
+}
+
+/* ── 添加 / 编辑账户表单 ── */
+
+/** 添加（不传 acct）或编辑（传 acct）账户表单抽屉 */
+async function openAccountForm(acct?: Account): Promise<void> {
+  let group: AccountGroup = acct?.group ?? 'cash';
+  openSheet({
+    ariaLabel: acct ? '编辑账户' : '添加账户',
+    onClose: () => sheetAbort?.abort(),
+    render(el) {
+      el.innerHTML = `
+        <div class="acct-sheet-head">
+          <p class="sheet-title">${acct ? '编辑账户' : '添加账户'}</p>
+          <button class="icon-btn" data-act="close" aria-label="关闭">${iconHtml('ic-close')}</button>
+        </div>
+        <div class="sheet-scroll acct-form">
+          <div class="field"><span>类型</span>
+            <div class="chip-group acct-type-grid" id="af-group">
+              ${ACCOUNT_GROUPS.map((g) => `<button class="chip${g === group ? ' active' : ''}" data-g="${g}"${acct ? ' disabled style="opacity:.5"' : ''}>${g === 'debit' ? '储蓄卡' : ACCOUNT_GROUP_NAMES[g]}</button>`).join('')}
+            </div>
+          </div>
+          <div class="field"><span>名称</span><input class="note" id="af-name" maxlength="20" placeholder="如 招行储蓄卡 ·6688" value="${esc(acct?.name ?? '')}"></div>
+          ${acct ? '' : '<div class="field"><span>初始余额</span><input class="note num" id="af-balance" inputmode="text" placeholder="元，信用卡欠款填负数如 -4800" value=""></div>'}
+          <div class="field"><span>备注</span><input class="note" id="af-note" maxlength="30" placeholder="选填，如 工资卡" value="${esc(acct?.note ?? '')}"></div>
+          <div class="field" id="af-repay-field"${group === 'credit' ? '' : ' hidden'}><span>还款日</span><input class="note num" id="af-repay" inputmode="numeric" placeholder="每月几号（1-31），选填" value="${acct?.repayDay ?? ''}"></div>
+          <button class="btn primary" data-act="save" style="margin-top:10px">${acct ? '保存修改' : '添加账户'}</button>
+          ${acct ? '<p class="tiny" style="text-align:center;margin-top:10px">余额由账单驱动，不能直接修改 · 需要校准请使用「对账」</p>' : ''}
+        </div>`;
+      el.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        const chip = target.closest<HTMLElement>('[data-g]');
+        if (chip && !acct) {
+          group = chip.dataset.g as AccountGroup;
+          for (const c of el.querySelectorAll<HTMLElement>('[data-g]')) c.classList.toggle('active', c === chip);
+          el.querySelector<HTMLElement>('#af-repay-field')!.hidden = group !== 'credit';
+          return;
+        }
+        const act = target.closest<HTMLElement>('[data-act]')?.dataset.act;
+        if (act === 'close') closeSheet();
+        else if (act === 'save') void save();
+      }, { signal: sheetSignal() });
+
+      async function save(): Promise<void> {
+        const name = el.querySelector<HTMLInputElement>('#af-name')!.value.trim();
+        if (!name) { showToast('请填写账户名称'); return; }
+        const note = el.querySelector<HTMLInputElement>('#af-note')!.value.trim() || undefined;
+        const repayRaw = el.querySelector<HTMLInputElement>('#af-repay')?.value.trim();
+        let repayDay: number | undefined;
+        if (group === 'credit' && repayRaw) {
+          repayDay = Number(repayRaw);
+          if (!Number.isInteger(repayDay) || repayDay < 1 || repayDay > 31) { showToast('还款日须为 1-31 的整数'); return; }
+        }
+        try {
+          if (acct) {
+            await updateAccount(acct.id, { name, note, repayDay: group === 'credit' ? repayDay : undefined });
+            closeSheet();
+            showToast('账户已更新');
+          } else {
+            const balRaw = el.querySelector<HTMLInputElement>('#af-balance')!.value.trim();
+            const balance = balRaw ? parseSignedYuan(balRaw) : 0;
+            await addAccount({ name, group, balance, note, repayDay });
+            closeSheet();
+            showToast(`已添加「${name}」`);
+          }
+        } catch (err) {
+          showToast(err instanceof Error ? err.message : String(err));
+        }
+      }
+    },
+  });
+}
+
+/* ── 对账 ── */
+
+/** 对账抽屉：输入实际余额，生成「余额对账调整」记录而非直接改数 */
+function openReconcileSheet(acct: Account): void {
+  openSheet({
+    ariaLabel: `对账：${acct.name}`,
+    onClose: () => sheetAbort?.abort(),
+    render(el) {
+      el.innerHTML = `
+        <div class="acct-sheet-head">
+          <p class="sheet-title">对账 · ${esc(acct.name)}</p>
+          <button class="icon-btn" data-act="close" aria-label="关闭">${iconHtml('ic-close')}</button>
+        </div>
+        <div class="sheet-scroll acct-form">
+          <div class="acct-hero-mini" style="padding-top:4px">
+            <p class="label">账内余额</p>
+            <p class="big num${acct.balance < 0 ? ' neg' : ''}">${formatFenCny(acct.balance)}</p>
+          </div>
+          <div class="field"><span>实际余额</span><input class="note num" id="rc-target" inputmode="text" placeholder="元，信用卡欠款填负数" value="${formatFen(acct.balance).replace(/,/g, '')}"></div>
+          <button class="btn primary" data-act="save" style="margin-top:10px">生成对账调整</button>
+          <p class="tiny" style="text-align:center;margin-top:10px">差额会生成一笔「余额对账调整」记录（不计收支、可追溯），不会直接改数</p>
+        </div>`;
+      el.addEventListener('click', (e) => {
+        const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
+        if (act === 'close') closeSheet();
+        else if (act === 'save') void save();
+      }, { signal: sheetSignal() });
+
+      async function save(): Promise<void> {
+        try {
+          const target = parseSignedYuan(el.querySelector<HTMLInputElement>('#rc-target')!.value);
+          const entryId = await reconcileAccount(acct.id, target);
+          closeSheet();
+          showToast(entryId == null ? '余额一致，无需调整' : `已生成对账调整：${formatFen(target - acct.balance, { sign: true })} 元`);
+        } catch (err) {
+          showToast(err instanceof Error ? err.message : String(err));
+        }
+      }
+    },
+  });
+}
+
+/* ── 页面装配 ── */
+
+/** 渲染账户页并绑定交互（registerPage render，事件委托只绑一次） */
+function render(el: HTMLElement): void {
+  root = el;
+
+  el.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-add]')) { void openAccountForm(); return; }
+    const unhide = target.closest<HTMLElement>('[data-unhide]');
+    if (unhide) {
+      const id = Number(unhide.dataset.unhide);
+      void updateAccount(id, { hidden: false, countInNetWorth: true }).then(() => showToast('已恢复显示'));
+      return;
+    }
+    const head = target.closest<HTMLElement>('[data-group]');
+    if (head) {
+      const g = head.dataset.group as AccountGroup;
+      const card = head.closest('.acct-group')!;
+      if (folded.has(g)) folded.delete(g);
+      else folded.add(g);
+      card.classList.toggle('folded', folded.has(g));
+      head.setAttribute('aria-expanded', String(!folded.has(g)));
+      return;
+    }
+    const row = target.closest<HTMLElement>('[data-acct]');
+    if (row) {
+      if (pressFired) { pressFired = false; return; } // 长按隐藏后不再触发点击
+      void openAccountDetail(Number(row.dataset.acct));
+    }
+  });
+
+  // 长按账户行 → 隐藏（550ms；移动/滚动/抬起取消）
+  el.addEventListener('pointerdown', (e) => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>('[data-acct]');
+    if (!row) return;
+    pressFired = false;
+    pressTimer = window.setTimeout(() => {
+      pressFired = true;
+      void getAccount(Number(row.dataset.acct)).then((a) => a && toggleHidden(a));
+    }, 550);
+  });
+  for (const evt of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
+    el.addEventListener(evt, () => { if (pressTimer) clearTimeout(pressTimer); });
+  }
+  el.addEventListener('scroll', () => { if (pressTimer) clearTimeout(pressTimer); }, { passive: true });
+
+  on('accounts-changed', () => void refresh());
+  on('entries-changed', () => void refresh());
+  on('settings-changed', () => void refresh());
+
+  void refresh();
+}
+
+/** 注册账户一级页（覆盖占位页），main.ts 在 mountShell 后调用 */
+export function registerAccountPage(): void {
+  registerPage('page-acct', { render, onShow: () => void refresh() });
+  registerSubpage('sp-account-detail', {
+    title: '账户详情',
+    render(body) { void renderAccountDetail(body); },
+  });
+}

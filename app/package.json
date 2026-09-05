@@ -1,0 +1,43 @@
+{
+  "name": "gleam-app",
+  "private": true,
+  "version": "1.0.8",
+  "description": "拾光 · 本地优先的记账与生活记录 PWA",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "gen:icons": "node scripts/gen-icons.mjs",
+    "test": "npm run test:unit",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:e2e": "python3 e2e/run_all.py",
+    "check:secrets": "node scripts/check-sensitive-files.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/share": "^8.0.1",
+    "@capgo/capacitor-share-target": "^8.0.48",
+    "aws4fetch": "^1.0.20",
+    "dexie": "^4.0.11",
+    "jszip": "^3.10.1",
+    "xlsx": "file:vendor/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^6.3.5",
+    "vite-plugin-pwa": "^0.21.2",
+    "vitest": "^5.0.0"
+  },
+  "overrides": {
+    "@xmldom/xmldom": "0.9.12",
+    "fast-uri": "3.1.6",
+    "uuid": "11.1.1"
+  }
+}

@@ -1,0 +1,88 @@
+/**
+ * 拾光 · 分类仓库（categoryRepo）
+ * 支出两级（parentId 指向大类）、收入单级。写操作后 emit 'categories-changed'。
+ */
+import { db, now, stamp } from '../db';
+import { emit } from '../store';
+import type { Category, CategoryKind } from '../types';
+
+/** 新建分类输入 */
+export type NewCategory = Omit<Category, 'id' | 'createdAt' | 'updatedAt' | 'sortOrder'> & { sortOrder?: number };
+
+/**
+ * 新增分类（大类：parentId 不传；小类：parentId 指向支出大类）。
+ * @returns 新分类 id
+ */
+export async function addCategory(input: NewCategory): Promise<number> {
+  if (input.parentId != null) {
+    const parent = await db.categories.get(input.parentId);
+    if (!parent || parent.kind !== 'expense' || parent.parentId != null) throw new Error('parentId 须为支出大类');
+  }
+  const maxSort = (await db.categories.orderBy('sortOrder').last())?.sortOrder ?? 0;
+  const id = await db.categories.add(stamp({ sortOrder: maxSort + 1, ...input }) as Category);
+  emit('categories-changed', { id });
+  return id;
+}
+
+/** 改名 / 换图标 / 调整排序 */
+export async function updateCategory(
+  id: number,
+  patch: Partial<Pick<Category, 'name' | 'icon' | 'sortOrder'>>,
+): Promise<void> {
+  await db.categories.update(id, { ...patch, updatedAt: now() });
+  emit('categories-changed', { id });
+}
+
+/**
+ * 移动小类到其他大类（targetParentId 传 undefined 即升为大类）。
+ */
+export async function moveCategory(id: number, targetParentId: number | undefined): Promise<void> {
+  if (targetParentId != null) {
+    const parent = await db.categories.get(targetParentId);
+    if (!parent || parent.kind !== 'expense' || parent.parentId != null) throw new Error('目标须为支出大类');
+  }
+  await db.categories.update(id, { parentId: targetParentId, updatedAt: now() });
+  emit('categories-changed', { id });
+}
+
+/**
+ * 删除分类。有账单引用时必须提供 transferToId，事务内把引用账单转移过去；
+ * 删除大类要求先处理其下小类（存在小类时抛错）。
+ */
+export async function deleteCategory(id: number, transferToId?: number): Promise<void> {
+  await db.transaction('rw', [db.categories, db.entries], async () => {
+    const children = await db.categories.where('parentId').equals(id).count();
+    if (children > 0) throw new Error('请先移动或删除该大类下的小类');
+    const used = await db.entries.where('categoryId').equals(id).count();
+    if (used > 0) {
+      if (transferToId == null) throw new Error(`该分类有 ${used} 笔账单引用，须指定转移目标分类`);
+      await db.entries.where('categoryId').equals(id).modify({ categoryId: transferToId, updatedAt: now() });
+    }
+    await db.categories.delete(id);
+  });
+  emit('categories-changed', { id });
+  if (transferToId != null) emit('entries-changed');
+}
+
+/** 单个分类 */
+export async function getCategory(id: number): Promise<Category | undefined> {
+  return db.categories.get(id);
+}
+
+/** 某 kind 全部分类，sortOrder 升序 */
+export async function listCategories(kind: CategoryKind): Promise<Category[]> {
+  const rows = await db.categories.where('kind').equals(kind).toArray();
+  return rows.sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+/**
+ * 支出分类树：[{ parent, children }]，均按 sortOrder 排序，供分类管理与记一笔宫格。
+ */
+export async function listExpenseTree(): Promise<{ parent: Category; children: Category[] }[]> {
+  const rows = await listCategories('expense');
+  const parents = rows.filter((c) => c.parentId == null);
+  return parents.map((parent) => ({
+    parent,
+    children: rows.filter((c) => c.parentId === parent.id),
+  }));
+}

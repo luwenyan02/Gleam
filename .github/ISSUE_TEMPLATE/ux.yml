@@ -1,0 +1,28 @@
+name: 交互改进
+description: 报告流程、信息层级或可访问性问题
+title: "[UX] "
+labels: [ux]
+body:
+  - type: textarea
+    id: task
+    attributes:
+      label: 用户正在完成什么任务
+    validations:
+      required: true
+  - type: textarea
+    id: friction
+    attributes:
+      label: 当前阻碍
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 脱敏截图、录屏或参考产品
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台
+      options: [Android, PWA 手机, PWA 桌面, 全部]
+    validations:
+      required: true

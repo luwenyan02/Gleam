@@ -1,0 +1,19 @@
+/* ═══ 拾光 · 借贷往来私有样式 ═══
+ * 原型无借贷子页，视觉沿用通用卡片/列表语言（.card/.row/.e-ic/.switch 在 base.css）。
+ * 前缀 .lo-，避免与原型生活记录 .ln-* 冲突。 */
+.lo-sum{display:flex;gap:0}
+.lo-sum > div{flex:1}
+.lo-sum .label{font-size:10.5px;letter-spacing:.16em;color:var(--faint)}
+.lo-sum .big{font-size:calc(20px * var(--seed-type));font-weight:700;margin:4px 0 2px}
+.lo-sum .big.in{color:var(--income)}
+.lo-sum .big.out{color:var(--expense)}
+.lo-empty{text-align:center;padding:20px 0 14px}
+.lo-empty .btn{max-width:200px;margin:14px auto 0}
+/* 对象余额语义色 */
+.lo-bal.pos{color:var(--income)}
+.lo-bal.neg{color:var(--expense)}
+/* 对象详情抽屉：余额 hero 与操作行 */
+.lo-hero{text-align:center;padding:6px 0 12px}
+.lo-hero .label{font-size:10.5px;letter-spacing:.16em;color:var(--faint)}
+.lo-hero .big{font-size:calc(24px * var(--seed-type));font-weight:700;margin:4px 0 2px}
+.lo-acts{display:flex;gap:8px;justify-content:center;padding-bottom:6px}

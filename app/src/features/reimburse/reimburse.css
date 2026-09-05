@@ -1,0 +1,20 @@
+/**
+ * 拾光 · 报销管理样式（features/reimburse，PRD 4.10）
+ * .backup-status/.bs-ic 迁移自原型 index.html（L307-312），类名与原型一致；
+ * .restore-link 与 account.css 同定义，此处自备避免模块加载顺序依赖。
+ */
+.backup-status{text-align:center;padding:calc(24px * var(--seed-density)) var(--pad)}
+.bs-ic{width:52px;height:52px;margin:0 auto 12px;border-radius:50%;background:var(--accent-soft);color:var(--primary);display:flex;align-items:center;justify-content:center}
+.bs-ic svg.ic{width:26px;height:26px}
+.backup-status .big{font-size:calc(30px * var(--seed-type));font-weight:700}
+.backup-status .big small{font-size:13px;font-weight:400;color:var(--muted);font-family:var(--font-body)}
+.backup-status .sub{margin:6px 0 0}
+.restore-link{margin-left:auto;flex:none;font-size:11.5px;color:var(--primary);font-weight:600;padding:6px 10px;border-radius:999px;background:var(--accent-soft)}
+
+/* 报销到账抽屉：所选账单的到账金额输入行 */
+.rb-sheet-head{display:flex;align-items:center;gap:12px;margin-bottom:4px}
+.rb-sheet-head .sheet-title{flex:1}
+.rb-amt-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+.rb-amt-row:last-child{border-bottom:0}
+.rb-amt-row .e-main{flex:1;min-width:0}
+.rb-amt-row input.note{width:110px;flex:none;margin-bottom:0;padding:9px 12px;text-align:right}

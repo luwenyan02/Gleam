@@ -1,0 +1,237 @@
+/**
+ * 拾光 · 预算中心（features/budget，PRD 4.8）
+ * 总预算卡（额度/进度/已用/剩余/日均可用/节奏提示）+ 分类子预算三态色 +
+ * 预算设置抽屉（总额度、各大类额度、自动延续开关）。
+ * 「已用」一律 statsRepo.budgetUsage，与首页月度总览严格同源；
+ * 月末不结转，下月延续由 budgetRepo.ensureMonthBudget 保证（进入本页时消费）。
+ * 视觉结构与原型 index.html #page-budget（L894-924）一致。
+ */
+import './budget.css';
+import { iconHtml } from '../../assets/icons';
+import { esc } from '../../core/esc';
+import { on } from '../../core/store';
+import { formatFen, formatFenCny, parseYuanToFen } from '../../core/money';
+import { getBudget, ensureMonthBudget, listCategoryBudgets, setBudget, setCategoryBudget } from '../../core/repo/budgetRepo';
+import { budgetUsage } from '../../core/repo/statsRepo';
+import { listExpenseTree } from '../../core/repo/categoryRepo';
+import { getSetting } from '../../core/repo/settingsRepo';
+import { registerSubpage } from '../shell/router';
+import { openSheet, closeSheet } from '../shell/sheet';
+import { showToast } from '../shell/toast';
+import type { Category } from '../../core/types';
+
+/* ── 模块状态 ── */
+let body: HTMLElement | undefined;
+/** 并发刷新令牌 */
+let refreshToken = 0;
+/** 抽屉监听器控制（#sheet 为复用容器，重开前废止上一次绑定，防重复提交） */
+let sheetAbort: AbortController | undefined;
+
+function sheetSignal(): AbortSignal {
+  sheetAbort?.abort();
+  sheetAbort = new AbortController();
+  return sheetAbort.signal;
+}
+
+const CN_MONTHS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'];
+
+/** 当前月 'YYYY-MM' */
+function curMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** 元整数展示（原型 fmt0 语义，用于 '/ ¥1,800' 的额度） */
+function fmtYuan0(fen: number): string {
+  return formatFen(fen).split('.')[0];
+}
+
+/** 进度三态：绿(<60%) / 主题橙(60–100%) / 红(>100%) */
+function stateOf(pct: number): 'ok' | 'warn' | 'over' {
+  if (pct > 100) return 'over';
+  return pct < 60 ? 'ok' : 'warn';
+}
+
+/* ── 页面渲染 ── */
+
+async function refresh(): Promise<void> {
+  const el = body;
+  if (!el?.isConnected) return;
+  const token = ++refreshToken;
+  const month = curMonth();
+  // ensureMonthBudget：上月开启延续时按上月额度（含子预算）自动建档
+  const [budget, usage, tree, catBudgets] = await Promise.all([
+    ensureMonthBudget(month), budgetUsage(month), listExpenseTree(), listCategoryBudgets(month),
+  ]);
+  if (token !== refreshToken || !el.isConnected) return;
+
+  const d = new Date();
+  const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  const timePct = (d.getDate() / daysInMonth) * 100;
+
+  /* 总预算卡 */
+  let overviewHtml: string;
+  if (budget && budget.totalLimit > 0) {
+    const used = usage.totalUsed;
+    const usedPct = (used / budget.totalLimit) * 100;
+    const remain = budget.totalLimit - used;
+    const remainDays = daysInMonth - d.getDate() + 1;
+    const daily = Math.max(0, Math.floor(remain / remainDays));
+    const barCls = usedPct > 100 ? 'over' : usedPct > timePct ? 'warn' : 'ok';
+    let hint: string;
+    if (usedPct > 100) {
+      hint = `预算已超支 ${formatFenCny(used - budget.totalLimit)} —— 建议压缩本月剩余开销`;
+    } else if (usedPct > timePct) {
+      hint = `刚过 ${d.getMonth() + 1}月${d.getDate()}日，时间进度 ${timePct.toFixed(1)}%，但预算已用 ${usedPct.toFixed(1)}% —— 消费偏快，注意后面的节奏`;
+    } else {
+      hint = `时间进度 ${timePct.toFixed(1)}%，预算已用 ${usedPct.toFixed(1)}% —— 节奏稳健，继续保持`;
+    }
+    overviewHtml = `
+      <section class="card budget-overview" aria-label="本月总预算">
+        <p class="label">${CN_MONTHS[d.getMonth()]}月总预算</p>
+        <p class="big num">${formatFenCny(budget.totalLimit)}</p>
+        <div class="bd-bar"><i class="${barCls}" style="width:${Math.min(100, usedPct).toFixed(1)}%"></i></div>
+        <div class="bd-meta">
+          <p>已使用<span class="num">${formatFenCny(used)}</span></p>
+          <p>剩余<span class="num">${formatFenCny(remain)}</span></p>
+          <p>日均可用<span class="num">${formatFenCny(daily)}</span></p>
+        </div>
+        <p class="tiny" style="margin-top:8px">${hint}</p>
+      </section>`;
+  } else {
+    overviewHtml = `
+      <section class="card budget-overview" aria-label="本月总预算">
+        <p class="label">${CN_MONTHS[d.getMonth()]}月总预算</p>
+        <div class="bd-empty">
+          <p class="sub">还没有设置本月预算<br>设定总额度后，首页总览与这里会同步展示进度</p>
+          <button class="btn primary" data-act="setup">设置预算</button>
+        </div>
+      </section>`;
+  }
+
+  /* 分类子预算 */
+  const limitMap = new Map<number, number>(catBudgets.map((cb) => [cb.categoryId, cb.limit]));
+  const rows = tree
+    .map((g) => ({ cat: g.parent, limit: limitMap.get(g.parent.id) ?? 0 }))
+    .filter((r) => r.limit > 0);
+  const rowsHtml = rows.map(({ cat, limit }) => {
+    const used = usage.byCategory.get(cat.id) ?? 0;
+    const pct = (used / limit) * 100;
+    const st = stateOf(pct);
+    const flag = st === 'over' ? `<em class="bd-flag">超支 ${formatFenCny(used - limit)}</em>` : '';
+    return `
+      <div class="bd-row">
+        <div class="bd-top"><span>${esc(cat.name)}</span><span class="num">${formatFenCny(used)} <em class="lim">/ ¥${fmtYuan0(limit)}</em>${flag}</span></div>
+        <div class="bd-bar"><i class="${st}" style="width:${Math.min(100, pct).toFixed(1)}%"></i></div>
+      </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    ${overviewHtml}
+    <section class="card" aria-label="分类子预算">
+      <h3 class="card-title">分类子预算</h3>
+      ${rowsHtml || '<p class="sub" style="padding:8px 0 12px">还没有分类子预算 · 点右上角设置，按支出大类分配额度</p>'}
+      <p class="bd-legend"><span><i style="background:var(--income)"></i>进度良好</span><span><i style="background:var(--primary)"></i>消费偏快</span><span><i style="background:var(--over)"></i>已超支</span></p>
+    </section>
+    <p class="tiny" style="text-align:center">月末未用完的预算不结转 · ${budget?.autoRenew !== false ? '下月自动按本月额度延续，可在预算设置中关闭' : '已关闭自动延续，下月需重新设置'}</p>`;
+}
+
+/* ── 预算设置抽屉 ── */
+
+async function openBudgetSheet(): Promise<void> {
+  const month = curMonth();
+  const [budget, tree, catBudgets, renewDefault] = await Promise.all([
+    getBudget(month), listExpenseTree(), listCategoryBudgets(month), getSetting('budget.autoRenew'),
+  ]);
+  const limitMap = new Map<number, number>(catBudgets.map((cb) => [cb.categoryId, cb.limit]));
+  let autoRenew = budget?.autoRenew ?? renewDefault;
+  const parents: Category[] = tree.map((g) => g.parent);
+  const d = new Date();
+
+  openSheet({
+    ariaLabel: '预算设置',
+    onClose: () => sheetAbort?.abort(),
+    render(el) {
+      el.innerHTML = `
+        <div class="sheet-head">
+          <p class="sheet-title">预算设置 · ${CN_MONTHS[d.getMonth()]}月</p>
+          <button class="icon-btn" data-act="close" aria-label="关闭">${iconHtml('ic-close')}</button>
+        </div>
+        <div class="sheet-scroll">
+          <div class="field"><span>总额度</span><input class="note num" id="bd-total" inputmode="decimal" style="max-width:160px;margin-bottom:0;text-align:right" placeholder="元，留空则不设" value="${budget && budget.totalLimit > 0 ? formatFen(budget.totalLimit).replace(/,/g, '') : ''}"></div>
+          <div class="field"><span>下月自动延续</span><button class="switch${autoRenew ? ' on' : ''}" id="bd-renew" role="switch" aria-checked="${autoRenew}" aria-label="下月自动按本月额度延续"></button></div>
+          <p class="tiny" style="padding:2px 0 8px">月末未用完不结转 · 开启延续后，下月按本月额度（含子预算）自动建档</p>
+          <h3 class="card-title" style="margin:6px 0 2px">分类子预算（按支出大类）</h3>
+          ${parents.map((p) => `
+            <div class="field"><span>${esc(p.name)}</span><input class="note num" data-cat="${p.id}" inputmode="decimal" style="max-width:140px;margin-bottom:0;text-align:right" placeholder="不设" value="${(limitMap.get(p.id) ?? 0) > 0 ? formatFen(limitMap.get(p.id)!).replace(/,/g, '') : ''}"></div>`).join('')}
+          <button class="btn primary" data-act="save" style="margin-top:14px">保存预算</button>
+          <p class="tiny" style="text-align:center;margin-top:10px">子预算留空或填 0 表示不对该大类设限</p>
+        </div>`;
+      el.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('#bd-renew')) {
+          autoRenew = !autoRenew;
+          const sw = el.querySelector('#bd-renew')!;
+          sw.classList.toggle('on', autoRenew);
+          sw.setAttribute('aria-checked', String(autoRenew));
+          return;
+        }
+        const act = target.closest<HTMLElement>('[data-act]')?.dataset.act;
+        if (act === 'close') closeSheet();
+        else if (act === 'save') void save();
+      }, { signal: sheetSignal() });
+
+      async function save(): Promise<void> {
+        try {
+          const totalRaw = el.querySelector<HTMLInputElement>('#bd-total')!.value.trim();
+          const totalFen = totalRaw ? parseYuanToFen(totalRaw) : 0;
+          const catLimits: { id: number; fen: number }[] = [];
+          for (const input of el.querySelectorAll<HTMLInputElement>('[data-cat]')) {
+            const raw = input.value.trim();
+            catLimits.push({ id: Number(input.dataset.cat), fen: raw ? parseYuanToFen(raw) : 0 });
+          }
+          await setBudget(month, totalFen, autoRenew);
+          for (const { id, fen } of catLimits) await setCategoryBudget(month, id, fen);
+          closeSheet();
+          showToast(totalFen > 0 ? `${CN_MONTHS[d.getMonth()]}月预算已保存` : '已清除本月总预算');
+        } catch (err) {
+          showToast(err instanceof Error ? err.message : String(err));
+        }
+      }
+    },
+  });
+}
+
+/* ── 装配 ── */
+
+/** 注册预算中心子页（覆盖 shell 占位 sp-budget），main.ts 调用一次 */
+export function initBudget(): void {
+  registerSubpage('sp-budget', {
+    title: '预算中心',
+    render(el) {
+      body = el;
+      // 设置按钮挂到子页头部（router 只渲染返回与标题，与原型 L898 一致）
+      const head = el.closest('.subpage')?.querySelector('.sub-head');
+      if (head && !head.querySelector('[data-bd-set]')) {
+        const btn = document.createElement('button');
+        btn.className = 'icon-btn';
+        btn.style.marginLeft = 'auto';
+        btn.dataset.bdSet = '';
+        btn.setAttribute('aria-label', '设置预算');
+        btn.innerHTML = iconHtml('ic-set');
+        btn.addEventListener('click', () => void openBudgetSheet());
+        head.appendChild(btn);
+      }
+      el.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('[data-act="setup"]')) void openBudgetSheet();
+      });
+      void refresh();
+    },
+    onShow() { void refresh(); },
+  });
+
+  // 账单/预算/口径变化时刷新（子页关闭即销毁，refresh 内部以 isConnected 兜底）
+  on('entries-changed', () => void refresh());
+  on('budgets-changed', () => void refresh());
+  on('settings-changed', () => void refresh());
+}

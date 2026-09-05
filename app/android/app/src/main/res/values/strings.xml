@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">拾光</string>
+    <string name="title_activity_main">拾光</string>
+    <string name="package_name">com.gleam.shiguang</string>
+    <string name="custom_url_scheme">com.gleam.shiguang</string>
+</resources>

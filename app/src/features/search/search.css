@@ -1,0 +1,95 @@
+/* 拾光 · 搜索子页（全新交互，参考挖财记账 UX） */
+
+/* ── A. 搜索栏：字段选择器 + 输入框 + 取消 ── */
+.sr-topbar{display:flex;align-items:center;gap:8px;padding:0 0 10px}
+.sr-field-btn{display:flex;align-items:center;gap:4px;padding:7px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--fg);white-space:nowrap;flex:none}
+.sr-field-btn svg.ic{width:12px;height:12px;stroke-width:2.2}
+.sr-input-wrap{flex:1;min-width:0;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:8px 12px}
+.sr-input-wrap .sr-ic{color:var(--muted);display:flex;flex:none}
+.sr-input-wrap .sr-ic svg.ic{width:16px;height:16px}
+.sr-input-wrap input{flex:1;min-width:0;border:0;background:transparent;font-size:14px;color:var(--fg);outline:none}
+.sr-input-wrap input::placeholder{color:var(--faint)}
+.sr-input-wrap .sr-clear{display:flex;color:var(--faint);padding:2px}
+.sr-input-wrap .sr-clear svg.ic{width:14px;height:14px}
+.sr-cancel{font-size:14px;color:var(--primary);font-weight:500;flex:none;padding:4px}
+
+/* ── B. 日期范围行 ── */
+.sr-date-row{display:flex;align-items:center;justify-content:center;gap:6px;padding:4px 0 8px;font-size:13px}
+.sr-date-btn{color:var(--primary);font-weight:500;border-bottom:1px dashed color-mix(in oklab, var(--primary) 40%, transparent)}
+.sr-date-sep{color:var(--muted);font-size:12px}
+.sr-filter-icon{margin-left:auto;display:flex;align-items:center;padding:4px;color:var(--muted)}
+.sr-filter-icon.active{color:var(--primary)}
+.sr-filter-icon svg.ic{width:18px;height:18px}
+
+/* 日期快捷 chips 行 */
+.sr-dates{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:0 1px;margin-bottom:10px}
+.sr-dates::-webkit-scrollbar{display:none}
+.sr-dates .chip{flex:none}
+
+/* ── C. 搜索历史 ── */
+.sr-history{padding:8px 0}
+.sr-history-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.sr-history-head h3{font-size:13px;font-weight:600;color:var(--fg)}
+.sr-history-head button{color:var(--faint);display:flex}
+.sr-history-head button svg.ic{width:16px;height:16px}
+.sr-history-chips{display:flex;flex-wrap:wrap;gap:8px}
+.sr-history-chips .chip{font-size:12px;padding:6px 12px}
+
+/* ── D. 结果汇总卡（横向滑动） ── */
+.sr-summary-row{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;padding:4px 0 12px;margin:0 -2px}
+.sr-summary-row::-webkit-scrollbar{display:none}
+.sr-summary-card{flex:none;min-width:120px;padding:12px 14px;border-radius:var(--r-s);background:var(--surface);border:1.5px solid var(--border);cursor:pointer;transition:border-color .18s,box-shadow .18s}
+.sr-summary-card.active{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
+.sr-summary-card .sc-label{font-size:11px;color:var(--faint);margin-bottom:4px}
+.sr-summary-card .sc-amount{font-size:15px;font-weight:700;font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.sr-summary-card .sc-count{font-size:10.5px;color:var(--muted);margin-top:2px}
+.sr-summary-card:nth-child(1) .sc-amount{color:var(--fg)}
+.sr-summary-card:nth-child(2) .sc-amount{color:var(--expense)}
+.sr-summary-card:nth-child(3) .sc-amount{color:var(--income)}
+
+/* ── E. 结果列表头 ── */
+.sr-list-head{display:flex;align-items:center;justify-content:space-between;padding:4px 2px 8px}
+.sr-list-head h3{font-size:13px;font-weight:600}
+
+/* ── 左滑操作保持 ── */
+#sr-results .entry-swipe .row.entry-swipe-content{position:relative;z-index:2;background:var(--surface);border-bottom:0;transition:transform .24s cubic-bezier(.22,.78,.3,1)}
+
+/* ── 字段选择器底部弹出 ── */
+.sr-field-sheet{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;justify-content:flex-end;opacity:0;pointer-events:none;transition:opacity .22s}
+.sr-field-sheet.open{opacity:1;pointer-events:auto}
+.sr-field-sheet .fs-mask{position:absolute;inset:0;background:rgba(0,0,0,.35)}
+.sr-field-sheet .fs-card{position:relative;background:var(--surface);border-radius:var(--r-l) var(--r-l) 0 0;padding:16px 18px calc(20px + var(--safe-bottom));max-height:60vh;overflow-y:auto;transform:translateY(100%);transition:transform .28s cubic-bezier(.22,.78,.3,1)}
+.sr-field-sheet.open .fs-card{transform:none}
+.sr-field-sheet .fs-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.sr-field-sheet .fs-head h3{font-size:14px;font-weight:600}
+.sr-field-sheet .fs-head button{color:var(--faint)}
+.sr-field-sheet .fs-item{display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px 0;border-bottom:1px solid var(--border);font-size:14px}
+.sr-field-sheet .fs-item:last-child{border-bottom:0}
+.sr-field-sheet .fs-item .fs-check{color:var(--primary);font-size:18px;font-weight:700}
+
+/* 日期滚轮选择器 .dw-* 已迁至 src/shared/dw.css（dateTimeWheel 共享组件） */
+
+/* ── 高级筛选面板 ── */
+.fp-panel{position:fixed;inset:0;z-index:200;background:var(--bg);display:flex;flex-direction:column;animation:fpSlideIn .28s ease forwards}
+@keyframes fpSlideIn{from{transform:translateX(100%)}to{transform:none}}
+.fp-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+.fp-header h2{font-size:16px;font-weight:600}
+.fp-cancel{font-size:14px;color:var(--primary);font-weight:500}
+.fp-body{flex:1;overflow-y:auto;padding:0 18px}
+.fp-section{border-bottom:1px solid var(--border);padding:4px 0}
+.fp-row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;cursor:pointer}
+.fp-label{font-size:14px;font-weight:500}
+.fp-value{font-size:13px;color:var(--faint)}
+.fp-expand{padding:0 0 12px}
+.fp-expand[hidden]{display:none}
+.fp-chips{display:flex;flex-wrap:wrap;gap:8px}
+.fp-chips .chip{font-size:12px;padding:6px 12px}
+.fp-amount-inputs{display:flex;align-items:center;gap:8px;padding:4px 0 14px}
+.fp-amount-inputs input{flex:1;min-width:0;padding:10px 12px;border:1.5px solid var(--border);border-radius:calc(var(--r) - 4px);background:var(--surface);font-size:13px;color:var(--fg);outline:none}
+.fp-amount-inputs input:focus{border-color:var(--primary)}
+.fp-sep{color:var(--faint);font-size:14px}
+.fp-footer{display:flex;gap:12px;padding:12px 18px calc(12px + var(--safe-bottom));border-top:1px solid var(--border)}
+.fp-footer .btn{flex:1}
+
+/* ── 空状态 / 加载 ── */
+.sr-empty{text-align:center;padding:40px 16px;color:var(--muted);font-size:13px}

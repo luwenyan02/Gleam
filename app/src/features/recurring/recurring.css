@@ -1,0 +1,11 @@
+/* ═══ 拾光 · 周期账私有样式 ═══
+ * 列表行 .row/.e-ic/.switch、表单 .field/.chip-group 均在 base.css，
+ * 此处补汇总卡的标签与大数（原型 index.html L279-280）及本页专用控件。 */
+.cycle-sum .label{font-size:10.5px;letter-spacing:.16em;color:var(--faint)}
+.cycle-sum .big{font-size:calc(26px * var(--seed-type));font-weight:700;margin:4px 0 6px}
+.rc-empty{text-align:center;padding:20px 0 14px}
+.rc-empty .btn{max-width:200px;margin:14px auto 0}
+/* 表单里的分类/账户选择按钮（模块内私有，避免污染全局） */
+.pick-btn{max-width:170px;padding:8px 12px;border:1.5px solid var(--border);border-radius:calc(var(--r) - 4px);background:var(--bg);color:var(--fg);font:inherit;font-size:12.5px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 待确认抽屉：字段行里的到期说明 */
+.rc-due{display:block;font-size:10.5px;color:var(--faint);margin-top:2px;font-style:normal}

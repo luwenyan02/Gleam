@@ -1,0 +1,99 @@
+/* 拾光 · 共享 pickList 浮层选择器样式
+ * 底部滑入面板，供全 App 列表选择场景统一使用。
+ * 样式全部使用 tokens.css 设计令牌，禁止散落硬编码色值。 */
+
+/* ── 遮罩层：绝对定位铺满容器，不用 fixed ── */
+.picker-mask{
+  position:absolute;inset:0;z-index:100;
+  background:color-mix(in srgb, var(--seed-fg) 30%, transparent);
+  display:flex;align-items:flex-end;
+  animation:picker-mask-in 200ms ease;
+}
+@keyframes picker-mask-in{from{opacity:0}to{opacity:1}}
+
+/* ── 底部面板：滑入动画由 .open 控制 ── */
+.picker-panel{
+  width:100%;
+  background:var(--surface);
+  border-radius:var(--r-l) var(--r-l) 0 0;
+  max-height:60vh;
+  overflow:hidden;
+  display:flex;flex-direction:column;
+  transform:translateY(100%);
+  transition:transform 200ms ease-out;
+  box-shadow:0 -12px 34px color-mix(in oklab, var(--seed-fg) 20%, transparent);
+}
+.picker-panel.open{transform:translateY(0)}
+
+/* ── 标题 ── */
+.picker-title{
+  padding:14px 18px 4px;
+  font-size:calc(14px * var(--seed-type));
+  font-weight:600;letter-spacing:.02em;
+  flex:none;
+}
+
+/* ── 搜索栏 ── */
+.picker-search{padding:8px 16px 4px;flex:none}
+.picker-search input{
+  width:100%;padding:9px 12px;
+  border-radius:var(--r-s);
+  border:1px solid var(--border);
+  font-size:14px;color:var(--fg);
+  background:var(--bg);font-family:inherit;
+  outline:none;transition:border-color .15s;
+  box-sizing:border-box;
+}
+.picker-search input:focus{border-color:var(--primary)}
+.picker-search input::placeholder{color:var(--faint)}
+
+/* ── 列表区 ── */
+.picker-list{
+  overflow-y:auto;
+  padding-bottom:env(safe-area-inset-bottom, 0px);
+  scrollbar-width:none;
+  min-height:0;
+}
+.picker-list::-webkit-scrollbar{display:none}
+
+/* ── 选项行 ── */
+.picker-item{
+  display:flex;align-items:center;gap:10px;
+  padding:14px 18px;font-size:15px;
+  border-bottom:1px solid var(--border);
+  background:none;width:100%;text-align:left;
+  color:var(--fg);font-family:inherit;
+  cursor:pointer;transition:background .12s;
+  border:none;border-bottom:1px solid var(--border);
+}
+.picker-item:last-child{border-bottom:none}
+.picker-item:active{background:var(--accent-soft)}
+.picker-item.selected{color:var(--primary);font-weight:600}
+
+/* 图标 */
+.picker-item-icon{
+  flex:none;display:flex;align-items:center;justify-content:center;
+  width:24px;height:24px;color:var(--muted);
+}
+.picker-item.selected .picker-item-icon{color:var(--primary)}
+
+/* 标签文字 */
+.picker-item-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 右侧辅助文案（余额/状态等） */
+.picker-item-note{
+  flex:none;font-size:12px;color:var(--muted);
+  font-variant-numeric:tabular-nums;
+}
+
+/* 选中勾 */
+.picker-item-check{
+  flex:none;font-size:16px;color:var(--primary);font-weight:700;
+}
+
+/* ── 分组标题 ── */
+.picker-group-title{
+  padding:8px 18px;font-size:12px;
+  color:var(--muted);font-weight:600;
+  letter-spacing:.06em;
+}

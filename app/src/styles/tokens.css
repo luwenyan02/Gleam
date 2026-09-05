@@ -1,0 +1,75 @@
+/* ═══ 拾光 · 设计令牌 ═══
+ * 原样迁移自原型 index.html :root（L10-61）。
+ * 所有派生色由 seed 计算（color-mix），禁止散落硬编码色值。
+ * 已剔除仅供原型手机壳/插画使用的 --frame-* / --island / --ph-* 变量。
+ */
+:root{
+  --seed-bg:#FAF3E9;
+  --seed-fg:#3B2C1F;
+  --seed-primary:#D66A2C;
+  --seed-accent:#B9852F;
+  --seed-surface:#FFFDF9;
+  --seed-radius:16px;
+  --seed-type:1;
+  --seed-density:1;
+
+  --bg:var(--seed-bg);
+  --fg:var(--seed-fg);
+  --primary:var(--seed-primary);
+  --accent:var(--seed-accent);
+  --surface:var(--seed-surface);
+  --muted:color-mix(in oklab, var(--seed-fg) 62%, var(--seed-bg));
+  --faint:color-mix(in oklab, var(--seed-fg) 50%, var(--seed-bg));
+  --border:color-mix(in oklab, var(--seed-fg) 12%, var(--seed-bg));
+  --accent-soft:color-mix(in oklab, var(--seed-primary) 12%, var(--seed-surface));
+  --gold-soft:color-mix(in oklab, var(--seed-accent) 14%, var(--seed-surface));
+  --expense:color-mix(in oklab, var(--seed-primary) 72%, var(--seed-fg));
+  --income:color-mix(in oklab, #3E8E5A 74%, var(--seed-fg));
+  --over:color-mix(in oklab, #B3261E 78%, var(--seed-fg));
+  --danger:var(--over);
+  --on-accent:#FFF9F2;
+  --mc-deep:#33200E;
+  --mc-a:color-mix(in oklab, var(--seed-primary) 80%, var(--mc-deep));
+  --mc-b:color-mix(in oklab, var(--seed-primary) 92%, var(--mc-deep));
+  --mc-c:color-mix(in oklab, color-mix(in oklab, var(--seed-primary) 80%, var(--seed-accent)) 88%, var(--mc-deep));
+  --shadow:0 16px 36px color-mix(in oklab, var(--seed-fg) 14%, transparent);
+  --shadow-sm:0 4px 14px color-mix(in oklab, var(--seed-fg) 8%, transparent);
+  --r:var(--seed-radius);
+  --r-s:calc(var(--seed-radius) * 0.62);
+  --r-l:calc(var(--seed-radius) * 1.4);
+  --font-display:'Noto Serif SC','Songti SC','STSong',Georgia,serif;
+  --font-body:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;
+  --font-mono:ui-monospace,'SF Mono','JetBrains Mono',Menlo,monospace;
+  --c1:var(--seed-primary);
+  --c2:var(--seed-accent);
+  --c3:color-mix(in oklab, var(--seed-primary) 52%, var(--seed-fg));
+  --c4:color-mix(in oklab, var(--seed-accent) 42%, var(--seed-bg));
+  --c5:color-mix(in oklab, var(--seed-fg) 46%, var(--seed-bg));
+  --c6:color-mix(in oklab, var(--seed-accent) 55%, var(--seed-fg));
+  --pad:calc(18px * var(--seed-density));
+
+  /* App 布局补充令牌（原型为固定 390×844 屏，PWA 改为全视口） */
+  --app-max-width:480px;
+  --tabbar-h:78px;
+  --safe-top:env(safe-area-inset-top, 0px);
+  --safe-bottom:env(safe-area-inset-bottom, 0px);
+}
+
+/* ═══ 深色模式 ═══
+ * <html data-theme="dark"> 由 core/theme.ts 维护（浅色态不设属性）。
+ * 仅覆写种子与少量直接色值，全部 color-mix 派生色自动跟随。
+ */
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --seed-bg:#1C1712;
+  --seed-fg:#E8E0D4;
+  --seed-primary:#E8853F;
+  --seed-accent:#C99A45;
+  --seed-surface:#282019;
+  /* 亮橙实色按钮上改用深棕文字，对比度优于浅色态的米白 */
+  --on-accent:#2A1708;
+  --mc-deep:#0F0A06;
+  /* 暗色下阴影不能再用 seed-fg（已变浅色），改用加重黑色投影 */
+  --shadow:0 16px 36px rgba(0,0,0,.5);
+  --shadow-sm:0 4px 14px rgba(0,0,0,.35);
+}

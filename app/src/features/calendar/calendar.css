@@ -1,0 +1,16 @@
+/* ═══ 拾光 · 日历账单切换动画 ═══
+ * 结构样式在 base.css「日历」段，此处只放视图模式/月份切换过渡；
+ * 类名由 calendar.ts 在 refresh 拼进 .cal-grid（一次性，随重渲染消费）；
+ * prefers-reduced-motion 时由 base.css 末尾全局媒体查询整体禁用。
+ */
+
+/* 月份/年月跳转：整格内容淡入上移 */
+.cal-grid.anim-month{animation:cal-fade-in .2s ease-out both}
+@keyframes cal-fade-in{from{opacity:0;transform:translateY(5px)}}
+
+/* 视图模式切换：热力底色渐显（动画期间 background-color 覆盖内联热力色） */
+.cal-grid.anim-mode .cal-day{animation:cal-bg-in .25s ease-out}
+@keyframes cal-bg-in{from{background-color:transparent}}
+/* 标准模式的金额/收入金点同步淡入 */
+.cal-grid.anim-mode .cd-amt,.cal-grid.anim-mode .cd-in{animation:cal-el-in .2s ease-out}
+@keyframes cal-el-in{from{opacity:0}}

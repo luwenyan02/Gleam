@@ -1,0 +1,1988 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="canvas:width" content="430">
+<meta name="canvas:height" content="940">
+<title>拾光 · 记账与生活记录 App 高保真原型</title>
+<style>
+:root{
+  --seed-bg:#FAF3E9;
+  --seed-fg:#3B2C1F;
+  --seed-primary:#D66A2C;
+  --seed-accent:#B9852F;
+  --seed-surface:#FFFDF9;
+  --seed-radius:16px;
+  --seed-type:1;
+  --seed-density:1;
+
+  --bg:var(--seed-bg);
+  --fg:var(--seed-fg);
+  --primary:var(--seed-primary);
+  --accent:var(--seed-accent);
+  --surface:var(--seed-surface);
+  --muted:color-mix(in oklab, var(--seed-fg) 62%, var(--seed-bg));
+  --faint:color-mix(in oklab, var(--seed-fg) 50%, var(--seed-bg));
+  --border:color-mix(in oklab, var(--seed-fg) 12%, var(--seed-bg));
+  --accent-soft:color-mix(in oklab, var(--seed-primary) 12%, var(--seed-surface));
+  --gold-soft:color-mix(in oklab, var(--seed-accent) 14%, var(--seed-surface));
+  --expense:color-mix(in oklab, var(--seed-primary) 72%, var(--seed-fg));
+  --income:color-mix(in oklab, #3E8E5A 74%, var(--seed-fg));
+  --over:color-mix(in oklab, #B3261E 78%, var(--seed-fg));
+  --on-accent:#FFF9F2;
+  --mc-deep:#33200E;
+  --mc-a:color-mix(in oklab, var(--seed-primary) 80%, var(--mc-deep));
+  --mc-b:color-mix(in oklab, var(--seed-primary) 92%, var(--mc-deep));
+  --mc-c:color-mix(in oklab, color-mix(in oklab, var(--seed-primary) 80%, var(--seed-accent)) 88%, var(--mc-deep));
+  --shadow:0 16px 36px color-mix(in oklab, var(--seed-fg) 14%, transparent);
+  --shadow-sm:0 4px 14px color-mix(in oklab, var(--seed-fg) 8%, transparent);
+  --r:var(--seed-radius);
+  --r-s:calc(var(--seed-radius) * 0.62);
+  --r-l:calc(var(--seed-radius) * 1.4);
+  --font-display:'Noto Serif SC','Songti SC','STSong',Georgia,serif;
+  --font-body:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;
+  --font-mono:ui-monospace,'SF Mono','JetBrains Mono',Menlo,monospace;
+  --c1:var(--seed-primary);
+  --c2:var(--seed-accent);
+  --c3:color-mix(in oklab, var(--seed-primary) 52%, var(--seed-fg));
+  --c4:color-mix(in oklab, var(--seed-accent) 42%, var(--seed-bg));
+  --c5:color-mix(in oklab, var(--seed-fg) 46%, var(--seed-bg));
+  --c6:color-mix(in oklab, var(--seed-accent) 55%, var(--seed-fg));
+  --pad:calc(18px * var(--seed-density));
+  --frame-hi:#453629;
+  --frame-lo:#241B14;
+  --frame-edge:#1C140E;
+  --island:#120C08;
+  --ph-a1:#F6BC7A; --ph-a2:#E98A4E; --ph-a3:#C2552F;
+  --ph-b1:#F3A968; --ph-b2:#D96A3B; --ph-b3:#9E4126;
+  --ph-sun:#FFE9C4; --ph-sun2:#FFDFAE;
+  --ph-ground:#5C3A2E; --ph-bld:#6E4636; --ph-dark:#4A2A1E; --ph-wire:#5C3226;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:var(--font-body);
+  color:var(--fg);
+  background:color-mix(in oklab, var(--seed-fg) 6%, var(--seed-bg));
+  -webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer}
+svg.ic{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;width:20px;height:20px;display:block}
+.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
+
+/* ── 舞台 ─────────────────────────── */
+.stage{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:14px}
+.caption{text-align:center;color:var(--muted)}
+.caption h1{font-family:var(--font-display);font-size:17px;font-weight:600;letter-spacing:.02em;color:var(--fg)}
+.caption p{font-size:11px;letter-spacing:.14em;text-transform:uppercase;margin-top:2px}
+.stage-hint{font-size:11px;color:var(--faint)}
+@media (max-height:920px){.device{transform:scale(.94);transform-origin:center top}}
+
+/* ── 手机机身 ─────────────────────── */
+.device{
+  position:relative;width:406px;height:860px;flex:none;
+  background:linear-gradient(160deg,var(--frame-hi),var(--frame-lo));
+  border-radius:58px;padding:8px;
+  box-shadow:var(--shadow),inset 0 0 0 2px rgba(255,246,232,.08);
+}
+.device::before{content:"";position:absolute;right:-2.5px;top:190px;width:2.5px;height:64px;border-radius:2px;background:var(--frame-edge)}
+.device::after{content:"";position:absolute;left:-2.5px;top:150px;width:2.5px;height:96px;border-radius:2px;background:var(--frame-edge)}
+.screen{position:relative;width:390px;height:844px;border-radius:50px;overflow:hidden;background:var(--bg)}
+.island{position:absolute;top:13px;left:50%;transform:translateX(-50%);width:15px;height:15px;border-radius:50%;background:var(--island);z-index:60}
+.home-indicator{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:104px;height:4px;border-radius:2px;background:color-mix(in oklab, var(--seed-fg) 80%, var(--seed-bg));opacity:.85;z-index:60;pointer-events:none}
+
+/* ── 状态栏 ───────────────────────── */
+.statusbar{position:absolute;top:0;left:0;right:0;height:54px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 30px 8px;z-index:55;pointer-events:none;color:var(--fg)}
+.statusbar .time{font-size:15px;font-weight:600;letter-spacing:.02em}
+
+/* ── App 布局 ─────────────────────── */
+main.viewport{position:absolute;top:54px;bottom:78px;left:0;right:0;overflow:hidden}
+.page{position:absolute;inset:0;overflow-y:auto;padding:calc(10px * var(--seed-density)) 18px 26px;opacity:0;pointer-events:none;transform:translateY(8px);transition:opacity .22s ease,transform .22s ease;scrollbar-width:none}
+.page::-webkit-scrollbar{display:none}
+.page.is-active{opacity:1;pointer-events:auto;transform:none}
+
+/* ── 底部导航 ─────────────────────── */
+.tabbar{position:absolute;bottom:0;left:0;right:0;height:78px;z-index:40;display:grid;grid-template-columns:repeat(5,1fr);align-items:start;padding:8px 10px 0;
+  background:var(--surface);border-top:1px solid var(--border)}
+.tab{display:flex;flex-direction:column;align-items:center;gap:3px;padding-top:4px;color:var(--faint);font-size:10px;letter-spacing:.06em;transition:color .18s}
+.tab.active{color:var(--fg);font-weight:600}
+.tab svg.ic{width:22px;height:22px}
+.fab{width:52px;height:52px;margin:-18px auto 0;border-radius:50%;background:var(--primary);color:var(--on-accent);display:flex;align-items:center;justify-content:center;box-shadow:0 10px 22px color-mix(in oklab, var(--seed-primary) 45%, transparent);transition:transform .18s}
+.fab:active{transform:scale(.92)}
+.fab svg.ic{width:24px;height:24px;stroke-width:2}
+
+/* ── 通用组件 ─────────────────────── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:var(--pad);box-shadow:var(--shadow-sm);margin-bottom:calc(14px * var(--seed-density))}
+.card-title{font-size:calc(13px * var(--seed-type));font-weight:600;margin-bottom:12px;letter-spacing:.02em}
+.sub{font-size:calc(11.5px * var(--seed-type));color:var(--muted);line-height:1.6}
+.tiny{font-size:10.5px;color:var(--faint);line-height:1.6}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:999px;border:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--muted);transition:all .18s;white-space:nowrap}
+.chip.active{background:var(--fg);border-color:var(--fg);color:var(--bg);font-weight:600}
+.chip.tag{background:var(--gold-soft);border-color:transparent;color:color-mix(in oklab, var(--seed-accent) 70%, var(--seed-fg));font-size:11px;padding:5px 11px}
+.icon-btn{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--surface);border:1px solid var(--border);color:var(--muted);transition:all .18s}
+.icon-btn:active{transform:scale(.92)}
+.btn{display:block;width:100%;padding:14px;border-radius:calc(var(--r) - 2px);font-size:calc(14px * var(--seed-type));font-weight:600;text-align:center;transition:all .18s;letter-spacing:.04em}
+.btn.primary{background:var(--primary);color:var(--on-accent);box-shadow:0 8px 18px color-mix(in oklab, var(--seed-primary) 32%, transparent)}
+.btn.primary:disabled{opacity:.45;box-shadow:none;cursor:default}
+.btn.primary:not(:disabled):active{transform:scale(.98)}
+.btn.ghost{border:1.5px solid var(--border);color:var(--fg);background:var(--surface)}
+.switch{width:44px;height:26px;flex:none;border-radius:13px;background:var(--border);position:relative;transition:background .2s}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--surface);box-shadow:0 1px 4px rgba(0,0,0,.2);transition:transform .2s}
+.switch.on{background:var(--primary)}
+.switch.on::after{transform:translateX(18px)}
+
+/* ── 页头 ─────────────────────────── */
+.page-head{display:flex;align-items:center;justify-content:space-between;padding:8px 2px 14px}
+.brand{font-family:var(--font-display);font-size:calc(24px * var(--seed-type));font-weight:700;letter-spacing:-0.01em}
+.brand.sm{font-size:calc(21px * var(--seed-type))}
+.page-head .sub{margin-top:2px}
+
+/* ── 首页 · 月度总览 ───────────────── */
+.month-card{
+  border-radius:var(--r-l);padding:calc(20px * var(--seed-density));margin-bottom:calc(16px * var(--seed-density));
+  color:var(--on-accent);
+  background:linear-gradient(140deg, var(--mc-a), var(--mc-b) 62%, var(--mc-c));
+  box-shadow:0 14px 30px color-mix(in oklab, var(--mc-b) 28%, transparent);
+}
+.mc-label{font-size:12px;letter-spacing:.18em;opacity:.85}
+.mc-amt{font-size:calc(36px * var(--seed-type));font-weight:700;margin:6px 0 14px;letter-spacing:-0.02em}
+.mc-amt small{font-size:.5em;font-weight:500;opacity:.8;margin-right:2px}
+.mc-row{display:flex;gap:20px;margin-bottom:16px}
+.mc-row p:first-child{font-size:10.5px;letter-spacing:.1em;opacity:.75;margin-bottom:3px}
+.mc-row .num{font-size:calc(14px * var(--seed-type));font-weight:600}
+.mc-bar{height:6px;border-radius:3px;background:color-mix(in srgb, var(--on-accent) 24%, transparent);overflow:hidden}
+.mc-bar i{display:block;height:100%;border-radius:3px;background:var(--on-accent);transition:width .4s ease}
+.mc-hint{font-size:10.5px;opacity:.8;margin-top:8px;letter-spacing:.04em}
+
+/* ── 首页 · 流水时间线 ─────────────── */
+.day{display:flex;align-items:baseline;justify-content:space-between;padding:6px 4px 10px}
+.day h3{font-size:calc(13px * var(--seed-type));font-weight:600;letter-spacing:.02em}
+.day-sum{font-size:11px;color:var(--muted)}
+.card.list{padding:calc(6px * var(--seed-density)) calc(14px * var(--seed-density))}
+.entry{display:flex;align-items:center;gap:12px;padding:calc(12px * var(--seed-density)) 2px;border-bottom:1px solid var(--border)}
+.entry:last-child{border-bottom:0}
+.e-ic{width:38px;height:38px;flex:none;border-radius:calc(var(--r) - 4px);background:var(--accent-soft);color:var(--primary);display:flex;align-items:center;justify-content:center}
+.e-ic.life{background:var(--gold-soft);color:color-mix(in oklab, var(--seed-accent) 78%, var(--seed-fg))}
+.e-ic.neutral{background:color-mix(in oklab, var(--seed-fg) 7%, var(--seed-surface));color:var(--muted)}
+.e-ic.sm{width:32px;height:32px}
+.e-ic.sm svg.ic{width:17px;height:17px}
+.e-main{flex:1;min-width:0}
+.e-title{font-size:calc(13.5px * var(--seed-type));font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.e-title .e-sub{color:var(--muted);font-weight:400}
+.e-meta{font-size:11px;color:var(--faint);margin-top:2px}
+.e-amt{font-size:calc(14.5px * var(--seed-type));font-weight:600}
+.e-amt.out{color:var(--expense)}
+.e-amt.in{color:var(--income)}
+
+/* ── 报表 ─────────────────────────── */
+.seg{display:inline-flex;background:color-mix(in oklab, var(--seed-fg) 6%, var(--seed-surface));border-radius:999px;padding:3px;gap:2px}
+.seg button{padding:7px 18px;border-radius:999px;font-size:12.5px;color:var(--muted);transition:all .18s}
+.seg button.active{background:var(--surface);color:var(--fg);font-weight:600;box-shadow:var(--shadow-sm)}
+.r-sum{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px;align-items:end}
+.r-sum p:first-child{font-size:10.5px;letter-spacing:.12em;color:var(--faint);margin-bottom:4px}
+.r-sum .big{font-size:calc(22px * var(--seed-type));font-weight:700;color:var(--expense);white-space:nowrap}
+.r-sum .mid{font-size:calc(14px * var(--seed-type));font-weight:600}
+.r-sum .mid.in{color:var(--income)}
+.chart-box{margin:4px 0 0}
+.chart-box svg{display:block;width:100%}
+.chart-cap{font-size:10.5px;color:var(--faint);margin-top:8px;letter-spacing:.04em}
+.donut-wrap{display:flex;align-items:center;gap:18px}
+.donut-wrap svg{width:132px;flex:none}
+.legend{list-style:none;flex:1}
+.legend li{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);padding:4px 0}
+.legend b{margin-left:auto;font-weight:600;color:var(--fg);font-size:11.5px}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.rank{list-style:none}
+.rank-row{display:flex;align-items:center;gap:12px;padding:calc(10px * var(--seed-density)) 0;border-bottom:1px solid var(--border)}
+.rank-row:last-child{border-bottom:0}
+.rank-main{flex:1;min-width:0}
+.rank-top{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px}
+.rank-top .num{font-weight:600}
+.rank-bar{height:5px;border-radius:3px;background:color-mix(in oklab, var(--seed-fg) 7%, var(--seed-surface));overflow:hidden}
+.rank-bar i{display:block;height:100%;border-radius:3px}
+.rank-pct{font-size:11px;color:var(--faint);width:44px;text-align:right}
+
+/* ── 生活 ─────────────────────────── */
+.habit{display:flex;align-items:center;gap:12px}
+.habit .streak{display:flex;gap:5px;margin-left:auto}
+.streak span{width:9px;height:9px;border-radius:50%;background:var(--border)}
+.streak span.done{background:var(--primary)}
+.ln-date{font-size:10.5px;letter-spacing:.14em;color:var(--faint);margin-bottom:6px}
+.ln-title{font-family:var(--font-display);font-size:calc(17px * var(--seed-type));font-weight:600;margin-bottom:8px;letter-spacing:.01em}
+.ln-body{font-size:calc(13px * var(--seed-type));line-height:1.85;color:var(--muted)}
+.ln-body.sm{font-size:12px;margin-top:10px}
+.ln-tags{margin-top:12px;display:flex;gap:8px}
+.photo-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.photo{width:100%;border-radius:calc(var(--r) - 6px);display:block}
+
+/* ── 我的 ─────────────────────────── */
+.mine-head{display:flex;align-items:center;gap:14px;padding:12px 2px 18px}
+.avatar{width:52px;height:52px;flex:none;border-radius:50%;background:linear-gradient(140deg,var(--primary),color-mix(in oklab, var(--seed-primary) 70%, var(--seed-accent)));color:var(--on-accent);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:24px;font-weight:700}
+.mine-head h2{font-size:calc(17px * var(--seed-type));font-weight:600}
+.mine-head .icon-btn{margin-left:auto}
+.asset .label{font-size:10.5px;letter-spacing:.16em;color:var(--faint)}
+.asset .big{font-size:calc(30px * var(--seed-type));font-weight:700;margin:4px 0 12px}
+.asset-row{display:flex;gap:24px;font-size:12px;color:var(--muted)}
+.asset-row .num{font-weight:600;color:var(--fg);margin-left:6px}
+.row{display:flex;align-items:center;gap:12px;width:100%;padding:calc(13px * var(--seed-density)) 2px;border-bottom:1px solid var(--border);text-align:left;font-size:calc(13.5px * var(--seed-type))}
+.row:last-child{border-bottom:0}
+.row .e-ic{width:34px;height:34px}
+.row .e-ic svg.ic{width:18px;height:18px}
+.row-note{margin-left:auto;font-size:11.5px;color:var(--faint)}
+.row .chev{color:var(--faint);flex:none}
+.row .chev svg.ic{width:15px;height:15px}
+.acct-amt{margin-left:auto;font-size:13px;font-weight:600}
+.acct-amt.neg{color:var(--expense)}
+
+/* ── 账户页 ─────────────────────────── */
+.tabbar [hidden]{display:none!important}
+.acct-hero{color:var(--on-accent);border:none;
+  background:linear-gradient(140deg, color-mix(in oklab, var(--seed-accent) 84%, var(--mc-deep)), color-mix(in oklab, var(--seed-accent) 72%, var(--seed-primary)) 88%);
+  box-shadow:0 12px 26px color-mix(in oklab, var(--seed-accent) 28%, transparent)}
+.acct-hero .label{color:color-mix(in srgb, var(--on-accent) 78%, transparent)}
+.acct-hero .asset-row{color:color-mix(in srgb, var(--on-accent) 80%, transparent)}
+.acct-hero .asset-row .num{color:var(--on-accent)}
+.group-head{font-size:12px;color:var(--muted);letter-spacing:.08em;font-weight:600}
+.group-head .g-count{font-size:10.5px;color:var(--faint);font-weight:400;margin-left:2px}
+.group-head .acct-amt{font-size:12px;color:var(--muted)}
+.group-head .acct-amt.neg{color:var(--expense)}
+.group-head .chev svg.ic{transform:rotate(90deg);transition:transform .2s ease}
+.acct-group.folded .group-head .chev svg.ic{transform:none}
+.acct-group.folded .g-rows{display:none}
+.acct-group.folded .group-head{border-bottom:none}
+
+/* ── 首页快捷区 ───────────────────── */
+.quick-row{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;padding:12px 6px}
+.qa{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:11px;color:var(--muted);transition:opacity .15s}
+.qa:active{opacity:.55}
+.qa-ic{width:38px;height:38px;border-radius:13px;background:var(--accent-soft);color:var(--primary);display:flex;align-items:center;justify-content:center}
+.qa-ic svg.ic{width:19px;height:19px}
+
+/* ── 日历账单 ─────────────────────── */
+.cal-nav{display:flex;align-items:center;justify-content:space-between;padding:0 2px 8px}
+.cal-title{font-size:calc(15px * var(--seed-type));font-weight:600}
+.cal-head{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;font-size:10.5px;color:var(--faint);letter-spacing:.08em;padding-bottom:6px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-day{display:flex;flex-direction:column;align-items:center;gap:1px;min-height:46px;padding:6px 0 4px;border-radius:10px;font-size:12.5px;color:var(--fg);transition:background .15s}
+.cal-day .d-num{line-height:1.35}
+.cal-day.today .d-num{color:var(--primary);font-weight:700}
+.cal-day.sel{background:var(--accent-soft)}
+.cal-day:disabled{color:var(--faint);opacity:.5}
+.cd-amt{font-size:8.5px;font-family:var(--font-mono);color:var(--expense);line-height:1.3}
+.cd-in{width:4px;height:4px;border-radius:50%;background:var(--seed-accent)}
+.cd-sum{display:flex;gap:18px;font-size:12.5px;color:var(--muted);padding:4px 0 2px}
+.cd-sum b{font-family:var(--font-mono);font-weight:600;color:var(--expense);margin-left:6px}
+.cd-sum b.in{color:var(--income)}
+
+/* ── 周期账 / 预算中心 ─────────────── */
+.cycle-sum .label,.budget-overview .label{font-size:10.5px;letter-spacing:.16em;color:var(--faint)}
+.cycle-sum .big,.budget-overview .big{font-size:calc(26px * var(--seed-type));font-weight:700;margin:4px 0 6px}
+.bd-bar{height:8px;border-radius:999px;background:var(--accent-soft);overflow:hidden;margin:10px 0 8px}
+.bd-bar i{display:block;height:100%;border-radius:999px;background:var(--primary)}
+.bd-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--faint)}
+.bd-meta .num{display:block;font-size:13px;font-weight:600;color:var(--fg);margin-top:3px}
+.bd-row{padding:9px 0;border-bottom:1px solid var(--border)}
+.bd-row:last-child{border-bottom:0;padding-bottom:2px}
+.bd-row .bd-bar{height:6px;margin:8px 0 0}
+.bd-top{display:flex;justify-content:space-between;align-items:baseline;font-size:13px}
+.bd-top .num{font-weight:600}
+.lim{font-style:normal;font-size:10.5px;color:var(--faint);font-weight:400}
+
+/* ── 速记模板 ─────────────────────── */
+.tpl-row{display:flex;align-items:center;gap:7px;overflow-x:auto;padding:0 2px 10px;scrollbar-width:none}
+.tpl-row::-webkit-scrollbar{display:none}
+.tpl-row[hidden]{display:none}
+[hidden]{display:none!important}
+.tpl-lbl{font-size:10.5px;color:var(--faint);letter-spacing:.1em;flex:none}
+.tpl-row .chip{flex:none}
+
+/* ── 备份子页 ─────────────────────── */
+.subpage{position:absolute;top:54px;left:0;right:0;bottom:0;z-index:45;background:var(--bg);transform:translateX(102%);transition:transform .26s ease;display:flex;flex-direction:column}
+.subpage.open{transform:none}
+.sub-head{display:flex;align-items:center;gap:12px;padding:10px 18px}
+.sub-head h2{font-size:calc(16px * var(--seed-type));font-weight:600;letter-spacing:.02em}
+.sub-body{flex:1;overflow-y:auto;padding:6px 18px 40px;scrollbar-width:none}
+.sub-body::-webkit-scrollbar{display:none}
+.backup-status{text-align:center;padding:calc(24px * var(--seed-density)) var(--pad)}
+.bs-ic{width:52px;height:52px;margin:0 auto 12px;border-radius:50%;background:var(--accent-soft);color:var(--primary);display:flex;align-items:center;justify-content:center}
+.bs-ic svg.ic{width:26px;height:26px}
+.backup-status .big{font-size:calc(30px * var(--seed-type));font-weight:700}
+.backup-status .big small{font-size:13px;font-weight:400;color:var(--muted);font-family:var(--font-body)}
+.backup-status .sub{margin:6px 0 18px}
+.field{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;font-size:13px}
+.field > span{color:var(--muted);flex:none}
+.chip-group{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.chip-group .chip{padding:6px 12px;font-size:11.5px}
+.map-table{width:100%;border-collapse:collapse;font-size:12px;margin:4px 0 14px}
+.map-table th{font-size:10.5px;letter-spacing:.12em;color:var(--faint);font-weight:600;text-align:left;padding:6px 4px;border-bottom:1px solid var(--border)}
+.map-table td{padding:8px 4px;border-bottom:1px solid var(--border);color:var(--muted)}
+.map-table td:last-child{color:var(--fg);font-weight:500}
+.map-table tr:last-child td{border-bottom:0}
+.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.restore-link{margin-left:auto;flex:none;font-size:11.5px;color:var(--primary);font-weight:600;padding:6px 10px;border-radius:999px;background:var(--accent-soft)}
+
+/* ── 预算状态色 ─────────────────── */
+.bd-bar i.ok{background:var(--income)}
+.bd-bar i.warn{background:var(--primary)}
+.bd-bar i.over{background:var(--over)}
+.bd-flag{font-style:normal;font-size:10px;color:var(--over);font-weight:700;margin-left:6px}
+.bd-legend{display:flex;gap:14px;font-size:10.5px;color:var(--faint);margin-top:12px;align-items:center;flex-wrap:wrap}
+.bd-legend i{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:-1px}
+
+/* ── 明细筛选与批量 ─────────────── */
+.flt-row{display:flex;align-items:center;gap:7px;overflow-x:auto;padding:0 2px 10px;scrollbar-width:none}
+.flt-row::-webkit-scrollbar{display:none}
+.flt-row .chip{flex:none;padding:6px 12px;font-size:11.5px}
+.ck{width:19px;height:19px;flex:none;border:1.5px solid var(--border);border-radius:6px;background:var(--surface);position:relative;transition:all .15s}
+.ck.on{background:var(--primary);border-color:var(--primary)}
+.ck.on::after{content:'';position:absolute;left:6px;top:2.5px;width:4px;height:9px;border:solid var(--on-accent);border-width:0 2px 2px 0;transform:rotate(42deg)}
+.batch-bar{display:flex;align-items:center;gap:8px;padding:12px 18px;border-top:1px solid var(--border);background:var(--surface)}
+.batch-bar .sub{margin-right:auto}
+.chip.danger{color:var(--over);border-color:color-mix(in oklab, var(--over) 36%, var(--seed-bg))}
+
+/* ── 资产走势 ───────────────────── */
+.spark{width:100%;height:44px;margin-top:14px;display:block}
+.spark-cap{font-size:10px;opacity:.78;margin-top:4px;letter-spacing:.04em}
+
+/* ── 排行维度 ───────────────────── */
+.seg.mini button{padding:5px 12px;font-size:11.5px}
+.rank-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.rank-head .card-title{margin-bottom:0}
+
+/* ── 记一笔抽屉 ───────────────────── */
+#scrim{position:absolute;inset:0;z-index:48;background:color-mix(in srgb, var(--seed-fg) 42%, transparent);opacity:0;pointer-events:none;transition:opacity .24s}
+#scrim.show{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:50;background:var(--surface);border-radius:var(--r-l) var(--r-l) 0 0;transform:translateY(104%);transition:transform .28s cubic-bezier(.32,.72,.28,1);display:flex;flex-direction:column;max-height:92%;padding:14px 16px 30px;box-shadow:0 -18px 50px color-mix(in oklab, var(--seed-fg) 22%, transparent)}
+.sheet.open{transform:none}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.sheet-head .seg{flex:1;background:none;border-radius:0;padding:0;gap:18px}
+.sheet-head .seg button{padding:8px 2px;border-radius:0;font-size:14px;position:relative}
+.sheet-head .seg button.active{background:none;box-shadow:none;color:var(--fg);font-weight:700}
+.sheet-head .seg button.active::after{content:'';position:absolute;left:50%;transform:translateX(-50%);bottom:1px;width:20px;height:3px;border-radius:2px;background:var(--primary)}
+.pick-card{display:flex;align-items:center;gap:10px;padding:12px 14px;margin:2px 0;border:1px solid var(--border);border-radius:calc(var(--r) - 4px);background:var(--bg)}
+.pick-ic{width:40px;height:40px;flex:none;border-radius:50%;background:var(--primary);color:var(--on-accent);display:flex;align-items:center;justify-content:center}
+.pick-ic svg.ic{width:20px;height:20px}
+.pick-name{font-size:14.5px;font-weight:600}
+.pick-card .amt{margin-left:auto;font-size:calc(28px * var(--seed-type));font-weight:700;letter-spacing:-0.02em}
+.pick-card .amt.empty{color:var(--faint)}
+.pick-card .amt.long{font-size:calc(19px * var(--seed-type))}
+.sheet-scroll{overflow-y:auto;margin:12px 0 4px;scrollbar-width:none;max-height:236px}
+.sheet-scroll::-webkit-scrollbar{display:none}
+.cat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.cat{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 4px;border-radius:calc(var(--r) - 4px);font-size:11.5px;color:var(--muted);transition:all .16s}
+.cat-ic{width:40px;height:40px;border-radius:50%;background:color-mix(in oklab, var(--seed-fg) 6%, var(--seed-surface));display:flex;align-items:center;justify-content:center;transition:all .16s}
+.cat.sel{color:var(--fg);font-weight:600}
+.cat.sel .cat-ic{background:var(--primary);color:var(--on-accent)}
+.transfer{display:flex;align-items:stretch;gap:6px;padding:6px 2px}
+.t-row{flex:1;min-width:0;display:grid;grid-template-columns:1fr auto;align-items:center;row-gap:3px;padding:10px 12px;border:1.5px solid var(--border);border-radius:calc(var(--r) - 4px);font-size:13px;text-align:left}
+.t-row .lbl{grid-row:1;grid-column:1;font-size:10.5px;color:var(--faint);letter-spacing:.08em}
+.t-row b{grid-row:2;grid-column:1/-1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t-row .chev{grid-row:1;grid-column:2;color:var(--faint)}
+.t-arrow{align-self:center;flex:none;color:var(--muted)}
+.meta-row{display:flex;gap:8px;padding:10px 0;overflow-x:auto;scrollbar-width:none}
+.meta-row::-webkit-scrollbar{display:none}
+.toggle-chip input{accent-color:var(--primary);width:14px;height:14px}
+.note{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:calc(var(--r) - 4px);background:var(--bg);font-size:13px;color:var(--fg);font-family:inherit;margin-bottom:12px;outline:none;transition:border-color .18s}
+.note:focus{border-color:var(--primary)}
+.note::placeholder{color:var(--faint)}
+.keypad{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.keypad button{height:50px;border-radius:calc(var(--r) - 4px);background:color-mix(in oklab, var(--seed-fg) 5%, var(--seed-surface));font-size:19px;font-weight:500;font-family:var(--font-mono);transition:all .12s;display:flex;align-items:center;justify-content:center}
+.keypad button:active{transform:scale(.94);background:color-mix(in oklab, var(--seed-fg) 10%, var(--seed-surface))}
+.keypad .op{font-size:16px;color:var(--muted)}
+.keypad .zero{grid-column:span 2}
+.keypad .again{font-family:var(--font-body);font-size:14px;font-weight:600;color:var(--primary)}
+.keypad .save{grid-row:span 2;height:auto;background:var(--primary);color:var(--on-accent);font-family:var(--font-body);font-size:16px;font-weight:600;letter-spacing:.15em;box-shadow:0 8px 18px color-mix(in oklab, var(--seed-primary) 30%, transparent)}
+.keypad .save:active{background:color-mix(in oklab, var(--seed-primary) 88%, var(--seed-fg))}
+
+/* ── Toast ────────────────────────── */
+#toast{position:absolute;left:50%;bottom:120px;transform:translate(-50%,16px);z-index:70;background:color-mix(in oklab, var(--seed-fg) 94%, var(--seed-bg));color:var(--bg);font-size:12.5px;padding:11px 18px;border-radius:999px;opacity:0;pointer-events:none;transition:all .24s;max-width:320px;text-align:center;line-height:1.5;box-shadow:var(--shadow)}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{transition:none!important;animation:none!important}
+}
+</style>
+</head>
+<body>
+
+<!-- 图标库：手绘单线 SVG，1.7px 描边 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="ic-home" viewBox="0 0 24 24"><path d="M4 11.2 12 4.5l8 6.7V19a1 1 0 0 1-1 1h-4.6v-5.2H9.6V20H5a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="ic-chart" viewBox="0 0 24 24"><path d="M5.5 20v-8M12 20V5M18.5 20v-5.5M3.5 20h17"/></symbol>
+    <symbol id="ic-book" viewBox="0 0 24 24"><path d="M5 5A2 2 0 0 1 7 3h12v15.5H7A2 2 0 0 0 5 20.5z"/><path d="M5 18.5A2 2 0 0 1 7 16.5h12"/></symbol>
+    <symbol id="ic-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/></symbol>
+    <symbol id="ic-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="ic-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="ic-left" viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5"/></symbol>
+    <symbol id="ic-right" viewBox="0 0 24 24"><path d="M9.5 5.5 16 12l-6.5 6.5"/></symbol>
+    <symbol id="ic-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m15.8 15.8 4.2 4.2"/></symbol>
+    <symbol id="ic-bowl" viewBox="0 0 24 24"><path d="M4 11.5h16a8 8 0 0 1-5 7.2v1.3H9v-1.3a8 8 0 0 1-5-7.2z"/><path d="m9.5 7.5 1-4M14 7.5l1.5-3.5"/></symbol>
+    <symbol id="ic-cup" viewBox="0 0 24 24"><path d="M5 9h11v5.5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5z"/><path d="M16 10h1.5a2.5 2.5 0 0 1 0 5H16M8.5 6V4M12 6V4"/></symbol>
+    <symbol id="ic-cart" viewBox="0 0 24 24"><circle cx="9.5" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/><path d="M3 4h2.2l2.2 11.5h10.4L20 8H6.3"/></symbol>
+    <symbol id="ic-bus" viewBox="0 0 24 24"><rect x="4.5" y="4" width="15" height="12.5" rx="2.5"/><path d="M4.5 10h15M8 20.5v-2M16 20.5v-2"/></symbol>
+    <symbol id="ic-car" viewBox="0 0 24 24"><path d="M5 16.5V12l2.2-5h9.6L19 12v4.5M5 12h14"/><circle cx="8" cy="16.5" r="1.4"/><circle cx="16" cy="16.5" r="1.4"/></symbol>
+    <symbol id="ic-metro" viewBox="0 0 24 24"><rect x="6" y="3.5" width="12" height="13.5" rx="3"/><path d="M6 11.5h12M8 20.5l1.5-2.5M16 20.5l-1.5-2.5M9.8 14.5h.01M14.2 14.5h.01"/></symbol>
+    <symbol id="ic-house" viewBox="0 0 24 24"><path d="M4.5 11.5 12 5l7.5 6.5"/><path d="M6.5 10.5V19h11v-8.5M10.5 19v-4.5h3V19"/></symbol>
+    <symbol id="ic-film" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m10.3 9.3 4.4 2.7-4.4 2.7z"/></symbol>
+    <symbol id="ic-med" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8.5v7M8.5 12h7"/></symbol>
+    <symbol id="ic-cap" viewBox="0 0 24 24"><path d="M3 9.5 12 5l9 4.5-9 4.5z"/><path d="M6.5 11.8v3.9c0 1.2 2.4 2.3 5.5 2.3s5.5-1.1 5.5-2.3v-3.9"/></symbol>
+    <symbol id="ic-gift" viewBox="0 0 24 24"><path d="M4.5 8h15v3.5h-15zM6 11.5V19a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-7.5M12 8v12"/><path d="M12 8C12 5.5 10 4 8.8 4.8 7.6 5.6 8.5 8 12 8zm0 0c0-2.5 2-4 3.2-3.2C16.4 5.6 15.5 8 12 8z"/></symbol>
+    <symbol id="ic-wallet" viewBox="0 0 24 24"><path d="M4 8a2 2 0 0 1 2-2h12.5v3.2H20a.8.8 0 0 1 .8.8v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M15.5 13.6h2"/></symbol>
+    <symbol id="ic-card" viewBox="0 0 24 24"><rect x="3.5" y="6" width="17" height="12.5" rx="2"/><path d="M3.5 10.5h17M7 15h4"/></symbol>
+    <symbol id="ic-pay" viewBox="0 0 24 24"><rect x="7" y="3.5" width="10" height="17" rx="2.2"/><path d="M11 17.5h2M9.5 9.5l2.5 2.7 2.5-2.7M12 12.2v3"/></symbol>
+    <symbol id="ic-brief" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="2"/><path d="M9 8V6.5A1.5 1.5 0 0 1 10.5 5h3A1.5 1.5 0 0 1 15 6.5V8M4 13h16"/></symbol>
+    <symbol id="ic-pen" viewBox="0 0 24 24"><path d="m5 19 1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L9 18zM14.5 6.5l3 3"/></symbol>
+    <symbol id="ic-camera" viewBox="0 0 24 24"><rect x="3.5" y="7" width="17" height="12" rx="2.5"/><circle cx="12" cy="13" r="3.4"/><path d="M8.5 7l1.3-2h4.4L15.5 7"/></symbol>
+    <symbol id="ic-pulse" viewBox="0 0 24 24"><path d="M3.5 12.5h4L10 6l4 12 2.5-5.5h4"/></symbol>
+    <symbol id="ic-cloud" viewBox="0 0 24 24"><path d="M7 18.5a4 4 0 0 1-.4-8A5.5 5.5 0 0 1 17 9a4.2 4.2 0 0 1 .6 8.3"/><path d="M12 20v-6M9.6 16.2 12 13.8l2.4 2.4"/></symbol>
+    <symbol id="ic-file" viewBox="0 0 24 24"><path d="M6.5 3.5h7L18.5 8v12.5h-12zM13.5 3.5V8h5"/><path d="M9.5 13h5M9.5 16h5"/></symbol>
+    <symbol id="ic-lock" viewBox="0 0 24 24"><rect x="5.5" y="10.5" width="13" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5M12 14.5v2"/></symbol>
+    <symbol id="ic-swap" viewBox="0 0 24 24"><path d="M7 4.5 3.5 8 7 11.5M3.5 8h13M17 12.5 20.5 16 17 19.5M20.5 16h-13"/></symbol>
+    <symbol id="ic-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m9.3 8.8 2.7 3.2 2.7-3.2M12 12v4M9.8 13.4h4.4"/></symbol>
+    <symbol id="ic-set" viewBox="0 0 24 24"><path d="M4.5 8h2.8M11.7 8h7.8M4.5 16h7.8M16.7 16h2.8"/><circle cx="9.5" cy="8" r="2.2"/><circle cx="14.5" cy="16" r="2.2"/></symbol>
+    <symbol id="ic-cal" viewBox="0 0 24 24"><rect x="4.5" y="5.5" width="15" height="14" rx="2"/><path d="M4.5 10h15M8.5 3.5v3.5M15.5 3.5v3.5"/></symbol>
+    <symbol id="ic-bolt" viewBox="0 0 24 24"><path d="M13 3.5 6 13.5h5L11 20.5l7-10h-5z"/></symbol>
+    <symbol id="ic-mic" viewBox="0 0 24 24"><rect x="9.5" y="3.5" width="5" height="10.5" rx="2.5"/><path d="M6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v3.5M9 20.5h6"/></symbol>
+    <symbol id="ic-repeat" viewBox="0 0 24 24"><path d="m17.5 4.5 2.5 2.5-2.5 2.5M4.5 12v-1.5A3.5 3.5 0 0 1 8 7h12M6.5 19.5 4 17l2.5-2.5M19.5 12v1.5A3.5 3.5 0 0 1 16 17H4"/></symbol>
+    <symbol id="ic-del" viewBox="0 0 24 24"><path d="M8.5 5h10A1.5 1.5 0 0 1 20 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-10L3 12z"/><path d="m11 9.5 5 5M16 9.5l-5 5"/></symbol>
+    <symbol id="ic-loan-in" viewBox="0 0 24 24"><path d="M12 3.5v9M12 12.5 15.5 9M12 12.5 8.5 9"/><path d="M4.5 14.5v3A2.5 2.5 0 0 0 7 20h10a2.5 2.5 0 0 0 2.5-2.5v-3"/></symbol>
+    <symbol id="ic-loan-out" viewBox="0 0 24 24"><path d="M12 12.5v-9M12 3.5 15.5 7M12 3.5 8.5 7"/><path d="M4.5 14.5v3A2.5 2.5 0 0 0 7 20h10a2.5 2.5 0 0 0 2.5-2.5v-3"/></symbol>
+    <symbol id="ic-repay" viewBox="0 0 24 24"><path d="M9 14 4.5 9.5 9 5"/><path d="M4.5 9.5H14a5.5 5.5 0 0 1 0 11h-4"/></symbol>
+    <symbol id="ic-collect" viewBox="0 0 24 24"><circle cx="12" cy="6.8" r="3"/><path d="m10.8 5.4 1.2 1.4 1.2-1.4M12 6.8v1.8"/><path d="M3.5 13.5h17M4.5 13.5 6 18.5a2 2 0 0 0 1.9 1.5h8.2a2 2 0 0 0 1.9-1.5l1.5-5"/></symbol>
+    <symbol id="ic-sun" viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="3.8"/><path d="M12 5V3.5M6 7.5 5 6.5M18 7.5l1-1M4.5 13.5h-2M21.5 13.5h-2M5 19.5h14"/></symbol>
+    <symbol id="ic-moon" viewBox="0 0 24 24"><path d="M19.5 13.8A7.3 7.3 0 1 1 10.2 4.5a5.8 5.8 0 0 0 9.3 9.3z"/></symbol>
+    <symbol id="ic-fruit" viewBox="0 0 24 24"><path d="M9 8.2c-2.6 0-4.3 2.1-4.3 4.8 0 3.4 2.3 6.9 4.4 6.9.9 0 1.5-.5 2.9-.5s2 .5 2.9.5c2.1 0 4.4-3.5 4.4-6.9 0-2.7-1.7-4.8-4.3-4.8-1.1 0-2 .5-3 .5s-1.9-.5-3-.5z"/><path d="M12 8.7c0-2.2 1.4-3.7 3.4-4.2"/></symbol>
+    <symbol id="ic-cone" viewBox="0 0 24 24"><path d="M8.2 11.5h7.6L12 20.5z"/><path d="M8.2 11.5a4 4 0 1 1 7.6 0"/></symbol>
+    <symbol id="ic-park" viewBox="0 0 24 24"><rect x="4.8" y="4.2" width="14.4" height="15.6" rx="3.2"/><path d="M10 16.5v-9h3.2a2.4 2.4 0 0 1 0 4.8H10"/></symbol>
+    <symbol id="ic-shirt" viewBox="0 0 24 24"><path d="M8.5 4.5 3.8 7.4l1.7 3 2-1v10.1h9V9.4l2 1 1.7-3-4.7-2.9a3.5 3.5 0 0 1-7 0z"/></symbol>
+    <symbol id="ic-bottle" viewBox="0 0 24 24"><path d="M9.5 8V5.5h5V8M8 5.5h8"/><rect x="7.5" y="8" width="9" height="12" rx="2"/><path d="M9.8 12.5h4.4"/></symbol>
+    <symbol id="ic-tag" viewBox="0 0 24 24"><path d="M4 4.5h7.5a1.5 1.5 0 0 1 1.05.44L20 12.4a1.5 1.5 0 0 1 0 2.1L14.5 20a1.5 1.5 0 0 1-2.1 0L4.44 12.05A1.5 1.5 0 0 1 4 11z"/><circle cx="9" cy="9" r="1.4"/></symbol>
+    <symbol id="ic-shop" viewBox="0 0 24 24"><path d="M4.5 9.5 6 4.5h12l1.5 5M3.5 9.5h17M6 9.5V19a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V9.5M10 20v-5.5h4V20"/></symbol>
+    <symbol id="ic-trash" viewBox="0 0 24 24"><path d="M4.5 6.8h15M9.5 6.8V5a1.5 1.5 0 0 1 1.5-1.5h2A1.5 1.5 0 0 1 14.5 5v1.8M6.5 6.8l1 12.7a1 1 0 0 0 1 .9h7a1 1 0 0 0 1-.9l1-12.7M10 10.8v5.4M14 10.8v5.4"/></symbol>
+    <symbol id="ic-eye" viewBox="0 0 24 24"><path d="M3.5 12S6.8 6.2 12 6.2 20.5 12 20.5 12 17.2 17.8 12 17.8 3.5 12 3.5 12z"/><circle cx="12" cy="12" r="2.6"/></symbol>
+  </defs>
+</svg>
+
+<div class="stage">
+  <header class="caption" data-component="stage-caption">
+    <h1>拾光 · 记账与生活记录</h1>
+    <p>SHIGUANG · Android 高保真可交互原型</p>
+  </header>
+
+  <div class="device">
+    <div class="screen">
+      <div class="island"></div>
+
+      <div class="statusbar">
+        <span class="time num">9:41</span>
+        <svg width="66" height="13" viewBox="0 0 66 13" fill="currentColor" aria-hidden="true">
+          <rect x="0" y="8" width="3" height="4" rx="1"/><rect x="4.6" y="6" width="3" height="6" rx="1"/><rect x="9.2" y="3.6" width="3" height="8.4" rx="1"/><rect x="13.8" y="1.2" width="3" height="10.8" rx="1"/>
+          <path d="M25.5 5.4a8.6 8.6 0 0 1 11 0l-1.7 2a6 6 0 0 0-7.6 0zM28.4 8.7a4.3 4.3 0 0 1 5.2 0L31 11.6z"/>
+          <rect x="44" y="1.6" width="16" height="9.8" rx="3" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".45"/>
+          <rect x="45.9" y="3.5" width="9.4" height="6" rx="1.6"/>
+          <path d="M61.4 4.4v4.2a2.3 2.3 0 0 0 0-4.2z" opacity=".45"/>
+        </svg>
+      </div>
+
+      <main class="viewport">
+
+        <!-- ═══ 首页 · 流水 ═══ -->
+        <section class="page is-active" id="page-home" aria-label="首页流水" data-component="home-timeline">
+          <header class="page-head" data-component="page-header">
+            <div>
+              <h1 class="brand">拾光</h1>
+              <p class="sub">8月7日 · 周五 · 立秋</p>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="icon-btn" id="btn-home-edit" aria-label="自定义首页模块"><svg class="ic"><use href="#ic-set"/></svg></button>
+              <button class="icon-btn" id="btn-search" aria-label="搜索流水与生活记录"><svg class="ic"><use href="#ic-search"/></svg></button>
+            </div>
+          </header>
+
+          <section class="month-card" id="hm-month" data-component="month-overview" aria-label="八月收支总览">
+            <p class="mc-label">八月 · 本月支出</p>
+            <p class="mc-amt num"><small>¥</small><span id="m-spend">3,286.40</span></p>
+            <div class="mc-row">
+              <div><p>收入</p><p class="num" id="m-income">¥18,650.00</p></div>
+              <div><p>结余</p><p class="num" id="m-balance">¥15,363.60</p></div>
+              <div><p>预算剩余</p><p class="num" id="m-remain">¥2,713.60</p></div>
+            </div>
+            <div class="mc-bar"><i id="m-bar" style="width:54.8%"></i></div>
+            <p class="mc-hint">月预算 ¥6,000 · 已使用 <span class="num" id="m-pct">54.8%</span></p>
+          </section>
+
+          <nav class="card quick-row" id="hm-quick" data-component="quick-actions" aria-label="快捷功能">
+            <button class="qa" id="qa-note"><span class="qa-ic"><svg class="ic"><use href="#ic-bolt"/></svg></span>速记</button>
+            <button class="qa" id="qa-detail"><span class="qa-ic"><svg class="ic"><use href="#ic-file"/></svg></span>明细</button>
+            <button class="qa" id="qa-cal"><span class="qa-ic"><svg class="ic"><use href="#ic-cal"/></svg></span>日历</button>
+            <button class="qa" id="qa-cycle"><span class="qa-ic"><svg class="ic"><use href="#ic-repeat"/></svg></span>周期账</button>
+            <button class="qa" id="qa-budget"><span class="qa-ic"><svg class="ic"><use href="#ic-coin"/></svg></span>预算</button>
+          </nav>
+
+          <section id="hm-today" aria-label="今天的记录" data-component="day-group">
+            <header class="day" data-component="day-header"><h3>今天 · 8月7日 周五</h3><p class="day-sum num" id="today-sub">支出 ¥86.50</p></header>
+            <div class="card list" id="today-list">
+              <article class="entry" data-component="entry"><span class="e-ic life"><svg class="ic"><use href="#ic-pulse"/></svg></span><div class="e-main"><p class="e-title">晨跑打卡 <span class="e-sub">· 连续第 12 天</span></p><p class="e-meta">生活记录 · 06:32 完成</p></div></article>
+              <article class="entry" data-component="entry"><span class="e-ic"><svg class="ic"><use href="#ic-cup"/></svg></span><div class="e-main"><p class="e-title">咖啡 <span class="e-sub">· Manner 拿铁</span></p><p class="e-meta">餐饮 · 招行储蓄卡</p></div><p class="e-amt num out">-20.00</p></article>
+              <article class="entry" data-component="entry"><span class="e-ic"><svg class="ic"><use href="#ic-cart"/></svg></span><div class="e-main"><p class="e-title">晚餐食材 <span class="e-sub">· 永辉超市</span></p><p class="e-meta">餐饮 · 微信零钱</p></div><p class="e-amt num out">-30.00</p></article>
+              <article class="entry" data-component="entry"><span class="e-ic"><svg class="ic"><use href="#ic-bowl"/></svg></span><div class="e-main"><p class="e-title">午餐 <span class="e-sub">· 公司食堂</span></p><p class="e-meta">餐饮 · 微信零钱</p></div><p class="e-amt num out">-18.00</p></article>
+              <article class="entry" data-component="entry"><span class="e-ic life"><svg class="ic"><use href="#ic-pen"/></svg></span><div class="e-main"><p class="e-title">日记 <span class="e-sub">· 立秋后的第一场雨</span></p><p class="e-meta">生活记录 · 心情 平静</p></div></article>
+              <article class="entry" data-component="entry"><span class="e-ic"><svg class="ic"><use href="#ic-metro"/></svg></span><div class="e-main"><p class="e-title">地铁通勤</p><p class="e-meta">交通 · 支付宝</p></div><p class="e-amt num out">-4.00</p></article>
+              <article class="entry" data-component="entry"><span class="e-ic"><svg class="ic"><use href="#ic-bowl"/></svg></span><div class="e-main"><p class="e-title">早餐 <span class="e-sub">· 粟上海灌汤包</span></p><p class="e-meta">餐饮 · 微信零钱</p></div><p class="e-amt num out">-14.50</p></article>
+            </div>
+          </section>
+
+          <section class="hm-past" aria-label="8月6日的记录" data-component="day-group">
+            <header class="day" data-component="day-header"><h3>8月6日 · 周四</h3><p class="day-sum num">支出 ¥215.80 · 收入 ¥150.00</p></header>
+            <div class="card list">
+              <article class="entry" data-component="entry"><span class="e-ic"><svg class="ic"><use href="#ic-bowl"/></svg></span><div class="e-main"><p class="e-title">麻辣香锅 <span class="e-sub">· 外卖</span></p><p class="e-meta">餐饮 · 支付宝</p></div><p class="e-amt num out">-45.00</p></article>
+              <article class="entry" data-component="entry"><span class="e-ic life"><svg class="ic"><use href="#ic-camera"/></svg></span><div class="e-main"><p class="e-title">照片 <span class="e-sub">· 傍晚的晚霞</span></p><p class="e-meta">生活记录 · 2 张照片</p></div></article>
+              <article class="entry" data-component="entry"><span class="e-ic"><svg class="ic"><use href="#ic-cart"/></svg></span><div class="e-main"><p class="e-title">夏凉被 <span class="e-sub">· 淘宝</span></p><p class="e-meta">购物 · 支付宝</p></div><p class="e-amt num out">-139.00</p></article>
+              <article class="entry" data-component="entry"><span class="e-ic"><svg class="ic"><use href="#ic-car"/></svg></span><div class="e-main"><p class="e-title">打车 <span class="e-sub">· 滴滴</span></p><p class="e-meta">交通 · 微信零钱</p></div><p class="e-amt num out">-23.80</p></article>
+              <article class="entry" data-component="entry"><span class="e-ic neutral"><svg class="ic"><use href="#ic-pen"/></svg></span><div class="e-main"><p class="e-title">稿费</p><p class="e-meta">兼职收入 · 招行储蓄卡</p></div><p class="e-amt num in">+150.00</p></article>
+              <article class="entry" data-component="entry"><span class="e-ic"><svg class="ic"><use href="#ic-bowl"/></svg></span><div class="e-main"><p class="e-title">早餐 <span class="e-sub">· 包子豆浆</span></p><p class="e-meta">餐饮 · 现金</p></div><p class="e-amt num out">-8.00</p></article>
+            </div>
+          </section>
+
+          <section class="hm-past" aria-label="8月5日的记录" data-component="day-group">
+            <header class="day" data-component="day-header"><h3>8月5日 · 周三</h3><p class="day-sum num">支出 ¥368.00 · 收入 ¥18,500.00</p></header>
+            <div class="card list">
+              <article class="entry" data-component="entry"><span class="e-ic neutral"><svg class="ic"><use href="#ic-brief"/></svg></span><div class="e-main"><p class="e-title">工资到账</p><p class="e-meta">工资收入 · 招行储蓄卡</p></div><p class="e-amt num in">+18,500.00</p></article>
+              <article class="entry" data-component="entry"><span class="e-ic life"><svg class="ic"><use href="#ic-pen"/></svg></span><div class="e-main"><p class="e-title">日记 <span class="e-sub">· 发薪日的小确幸</span></p><p class="e-meta">生活记录 · 心情 开心</p></div></article>
+              <article class="entry" data-component="entry"><span class="e-ic"><svg class="ic"><use href="#ic-bowl"/></svg></span><div class="e-main"><p class="e-title">老友火锅 <span class="e-sub">· AA</span></p><p class="e-meta">餐饮 · 微信零钱</p></div><p class="e-amt num out">-200.00</p></article>
+              <article class="entry" data-component="entry"><span class="e-ic"><svg class="ic"><use href="#ic-bolt"/></svg></span><div class="e-main"><p class="e-title">水电燃气</p><p class="e-meta">居住 · 支付宝</p></div><p class="e-amt num out">-168.00</p></article>
+            </div>
+          </section>
+        </section>
+
+        <!-- ═══ 报表 ═══ -->
+        <section class="page" id="page-report" aria-label="报表统计" data-component="report-page">
+          <header class="page-head" data-component="page-header">
+            <div>
+              <h2 class="brand sm">报表</h2>
+              <p class="sub" id="r-label">2026年8月</p>
+            </div>
+            <div class="seg" id="r-seg" role="tablist" aria-label="统计周期">
+              <button data-p="week" role="tab">周</button>
+              <button data-p="month" class="active" role="tab" aria-selected="true">月</button>
+              <button data-p="year" role="tab">年</button>
+            </div>
+          </header>
+
+          <section class="card" data-component="report-summary">
+            <div class="r-sum">
+              <div><p>支出</p><p class="big num" id="r-spend">¥3,286.40</p></div>
+              <div><p>收入</p><p class="mid in num" id="r-income">¥18,650.00</p></div>
+              <div><p>结余</p><p class="mid num" id="r-balance">¥15,363.60</p></div>
+            </div>
+          </section>
+
+          <section class="card" data-component="report-trend">
+            <h3 class="card-title">收支趋势</h3>
+            <div class="chart-box" id="trend"></div>
+            <p class="chart-cap" id="trend-cap"></p>
+          </section>
+
+          <section class="card" data-component="report-donut">
+            <h3 class="card-title">支出构成</h3>
+            <div class="donut-wrap">
+              <svg viewBox="0 0 120 120" id="donut-svg" role="img" aria-label="支出分类占比环形图"></svg>
+              <ul class="legend" id="donut-legend"></ul>
+            </div>
+          </section>
+
+          <section class="card" data-component="report-rank">
+            <div class="rank-head">
+              <h3 class="card-title">排行</h3>
+              <div class="seg mini" id="rank-dim" role="tablist" aria-label="排行维度">
+                <button class="active" data-d="cat" role="tab" aria-selected="true">分类</button>
+                <button data-d="acct" role="tab">账户</button>
+                <button data-d="tag" role="tab">标签</button>
+              </div>
+            </div>
+            <ul class="rank" id="rank"></ul>
+            <p class="tiny" id="rank-note" hidden>标签排行只统计打了标签的支出 · 未打标签的账单不在此列</p>
+          </section>
+        </section>
+
+        <!-- ═══ 生活 ═══ -->
+        <section class="page" id="page-life" aria-label="生活记录" data-component="life-feed">
+          <header class="page-head" data-component="page-header">
+            <div>
+              <h2 class="brand sm">生活</h2>
+              <p class="sub">8月 · 12 篇记录 · 连续打卡 12 天</p>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="icon-btn" data-toast="原型演示：切换查看 7月的生活记录" aria-label="查看上一月"><svg class="ic"><use href="#ic-left"/></svg></button>
+              <button class="icon-btn" id="life-add" aria-label="写一条生活记录"><svg class="ic"><use href="#ic-pen"/></svg></button>
+            </div>
+          </header>
+
+          <p class="sub" id="life-today-sum" data-component="life-day-summary" style="padding:0 4px 12px">今天共花了 ¥86.50 · 5 笔</p>
+
+          <section class="card habit" data-component="habit-card">
+            <span class="e-ic life"><svg class="ic"><use href="#ic-pulse"/></svg></span>
+            <div>
+              <p class="e-title">晨跑打卡</p>
+              <p class="e-meta">已连续 12 天 · 今天 06:32 完成</p>
+            </div>
+            <div class="streak" aria-label="近 7 天全部完成">
+              <span class="done"></span><span class="done"></span><span class="done"></span><span class="done"></span><span class="done"></span><span class="done"></span><span class="done"></span>
+            </div>
+          </section>
+
+          <article class="card" data-component="life-note">
+            <p class="ln-date">今天 · 8月7日 立秋</p>
+            <h3 class="ln-title">立秋后的第一场雨</h3>
+            <p class="ln-body">下班路上下起了小雨，空气里有青草味。买了一杯拿铁，在便利店屋檐下站了十分钟，看行人打伞跑过，忽然觉得日子慢一点也挺好。</p>
+            <p class="ln-tags"><span class="chip tag">心情 · 平静</span><span class="chip tag">下雨</span><span class="chip tag num">关联支出 ¥20.00</span></p>
+          </article>
+
+          <article class="card" data-component="life-note">
+            <p class="ln-date">8月6日 · 周四</p>
+            <h3 class="ln-title">傍晚的晚霞</h3>
+            <div class="photo-row">
+              <svg class="photo" viewBox="0 0 120 90" role="img" aria-label="照片：橘色晚霞下的城市天际线">
+                <defs><linearGradient id="sky1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--ph-a1)"/><stop offset=".55" style="stop-color:var(--ph-a2)"/><stop offset="1" style="stop-color:var(--ph-a3)"/></linearGradient></defs>
+                <rect width="120" height="90" fill="url(#sky1)"/>
+                <circle cx="86" cy="34" r="11" style="fill:var(--ph-sun)" opacity=".95"/>
+                <rect x="0" y="64" width="120" height="26" style="fill:var(--ph-ground)"/>
+                <rect x="8" y="50" width="13" height="14" style="fill:var(--ph-bld)"/>
+                <rect x="26" y="44" width="10" height="20" style="fill:var(--ph-bld)"/>
+                <rect x="42" y="54" width="16" height="10" style="fill:var(--ph-bld)"/>
+                <rect x="66" y="47" width="9" height="17" style="fill:var(--ph-bld)"/>
+                <rect x="82" y="56" width="14" height="8" style="fill:var(--ph-bld)"/>
+                <rect x="102" y="49" width="11" height="15" style="fill:var(--ph-bld)"/>
+              </svg>
+              <svg class="photo" viewBox="0 0 120 90" role="img" aria-label="照片：晚霞中的电线与飞鸟">
+                <defs><linearGradient id="sky2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--ph-b1)"/><stop offset=".6" style="stop-color:var(--ph-b2)"/><stop offset="1" style="stop-color:var(--ph-b3)"/></linearGradient></defs>
+                <rect width="120" height="90" fill="url(#sky2)"/>
+                <circle cx="34" cy="52" r="14" style="fill:var(--ph-sun2)" opacity=".9"/>
+                <path d="M0 26c30 6 76-8 120-2M0 40c34 4 70-6 120-1" style="stroke:var(--ph-wire)" stroke-width="1.4" fill="none" opacity=".8"/>
+                <path d="M70 20c2-3 5-3 7 0M80 24c2-3 5-3 7 0M62 30c2-3 5-3 7 0" style="stroke:var(--ph-dark)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+                <rect x="0" y="74" width="120" height="16" style="fill:var(--ph-dark)"/>
+              </svg>
+            </div>
+            <p class="ln-body sm">加班到七点，出门抬头就是这片橘子色的天。</p>
+          </article>
+
+          <article class="card" data-component="life-note">
+            <p class="ln-date">8月5日 · 周三</p>
+            <h3 class="ln-title">发薪日的小确幸</h3>
+            <p class="ln-body">工资到账，给这个月的预算留了 ¥6,000。晚上和老友吃了顿火锅，AA 之后每人 ¥200，值。回家路上把下半年的旅行基金也建好了。</p>
+            <p class="ln-tags"><span class="chip tag">心情 · 开心</span><span class="chip tag">朋友</span></p>
+          </article>
+        </section>
+
+        <!-- ═══ 账户 ═══ -->
+        <section class="page" id="page-acct" aria-label="账户管理" data-component="account-page">
+          <header class="page-head" data-component="page-header">
+            <div>
+              <h1 class="brand sm">账户</h1>
+              <p class="sub">6 个账户 · 1 个已隐藏 · 数据仅保存在本机</p>
+            </div>
+            <button class="icon-btn" data-toast="原型演示：添加账户，支持储蓄卡、信用卡、网络账户与自定义类型" aria-label="添加账户"><svg class="ic"><use href="#ic-plus"/></svg></button>
+          </header>
+
+          <section class="card asset acct-hero" data-component="asset-card">
+            <p class="label">净资产</p>
+            <p class="big num">¥86,420.55</p>
+            <div class="asset-row">
+              <p>总资产<span class="num">¥91,220.55</span></p>
+              <p>总负债<span class="num">¥4,800.00</span></p>
+            </div>
+            <svg class="spark" viewBox="0 0 240 44" role="img" aria-label="近六个月净资产走势：从三月约 79,200 元稳步增长到八月 86,420 元">
+              <polyline points="6,36 52,32 98,27.5 144,22 190,13.5 234,7" fill="none" stroke="color-mix(in srgb, var(--on-accent) 85%, transparent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="234" cy="7" r="3" fill="var(--on-accent)"/>
+            </svg>
+            <p class="spark-cap">近 6 个月净资产 · 3月 ¥79,180 → 8月 ¥86,421</p>
+          </section>
+
+          <section class="card list acct-group" data-component="account-group" aria-label="现金账户">
+            <button class="row group-head" aria-expanded="true">现金<span class="g-count">1 个</span><span class="acct-amt num">¥1,235.00</span><span class="chev"><svg class="ic"><use href="#ic-right"/></svg></span></button>
+            <div class="g-rows">
+              <button class="row" data-toast="原型演示：查看现金流水，可编辑余额与备注"><span class="e-ic"><svg class="ic"><use href="#ic-wallet"/></svg></span>现金<span class="row-note">钱包零钱</span><span class="acct-amt num">¥1,235.00</span></button>
+            </div>
+          </section>
+
+          <section class="card list acct-group" data-component="account-group" aria-label="储蓄卡账户">
+            <button class="row group-head" aria-expanded="true">储蓄卡<span class="g-count">1 个</span><span class="acct-amt num">¥76,412.35</span><span class="chev"><svg class="ic"><use href="#ic-right"/></svg></span></button>
+            <div class="g-rows">
+              <button class="row" data-toast="原型演示：查看招行储蓄卡流水，支持对账与调整余额"><span class="e-ic"><svg class="ic"><use href="#ic-card"/></svg></span>招行储蓄卡 ·6688<span class="row-note">工资卡</span><span class="acct-amt num">¥76,412.35</span></button>
+            </div>
+          </section>
+
+          <section class="card list acct-group" data-component="account-group" aria-label="网络账户">
+            <button class="row group-head" aria-expanded="true">网络账户<span class="g-count">2 个</span><span class="acct-amt num">¥13,573.20</span><span class="chev"><svg class="ic"><use href="#ic-right"/></svg></span></button>
+            <div class="g-rows">
+              <button class="row" data-toast="原型演示：查看支付宝流水，可与账单对账"><span class="e-ic"><svg class="ic"><use href="#ic-pay"/></svg></span>支付宝<span class="acct-amt num">¥8,326.20</span></button>
+              <button class="row" data-toast="原型演示：查看微信零钱流水，可与账单对账"><span class="e-ic"><svg class="ic"><use href="#ic-pay"/></svg></span>微信零钱<span class="acct-amt num">¥5,247.00</span></button>
+            </div>
+          </section>
+
+          <section class="card list acct-group" data-component="account-group" aria-label="信用卡账户">
+            <button class="row group-head" aria-expanded="true">信用卡<span class="g-count">1 个</span><span class="acct-amt num neg">-¥4,800.00</span><span class="chev"><svg class="ic"><use href="#ic-right"/></svg></span></button>
+            <div class="g-rows">
+              <button class="row" data-toast="原型演示：查看信用卡账单，支持还款提醒"><span class="e-ic"><svg class="ic"><use href="#ic-card"/></svg></span>信用卡 ·3021<span class="row-note">9月10日 还款</span><span class="acct-amt num neg">-¥4,800.00</span></button>
+            </div>
+          </section>
+
+          <section class="card list" data-component="account-hidden" aria-label="已隐藏账户">
+            <h3 class="card-title" style="padding:10px 2px 0">已隐藏账户</h3>
+            <div class="row"><span class="e-ic neutral"><svg class="ic"><use href="#ic-eye"/></svg></span>公交卡 ·0988<span class="row-note" id="hid-note">不计入净资产</span><button class="restore-link" id="unhide-acct">显示</button></div>
+            <p class="tiny" style="padding:6px 2px 10px">长按账户可隐藏 · 隐藏账户默认不计入净资产，可在设置中改为计入</p>
+          </section>
+          <p class="tiny" style="text-align:center;padding:4px 0 10px">点击分组可收起 · 转账不计收支，只在账户间流动</p>
+        </section>
+
+        <!-- ═══ 我的 ═══ -->
+        <section class="page" id="page-mine" aria-label="我的与设置" data-component="mine-page">
+          <header class="mine-head" data-component="mine-header">
+            <span class="avatar" aria-hidden="true">拾</span>
+            <div>
+              <h2>晚风的拾光</h2>
+              <p class="sub">已记录 583 天 · 2,847 条流水</p>
+            </div>
+            <button class="icon-btn" data-toast="原型演示：进入应用设置" aria-label="应用设置"><svg class="ic"><use href="#ic-set"/></svg></button>
+          </header>
+
+          <section class="card list" aria-label="功能入口" data-component="mine-menu">
+            <button class="row" id="go-backup"><span class="e-ic"><svg class="ic"><use href="#ic-cloud"/></svg></span>备份与恢复<span class="row-note">上次 8月5日</span><span class="chev"><svg class="ic"><use href="#ic-right"/></svg></span></button>
+            <button class="row" id="go-migrate"><span class="e-ic"><svg class="ic"><use href="#ic-swap"/></svg></span>账单导入<span class="row-note">挖财 / 微信 / 支付宝</span><span class="chev"><svg class="ic"><use href="#ic-right"/></svg></span></button>
+            <button class="row" id="go-reimburse"><span class="e-ic"><svg class="ic"><use href="#ic-file"/></svg></span>报销管理<span class="row-note num" id="rb-note">2 笔 · ¥309.80</span><span class="chev"><svg class="ic"><use href="#ic-right"/></svg></span></button>
+            <button class="row" id="go-budget"><span class="e-ic"><svg class="ic"><use href="#ic-coin"/></svg></span>预算中心<span class="row-note num">本月剩余 ¥2,713.60</span><span class="chev"><svg class="ic"><use href="#ic-right"/></svg></span></button>
+            <button class="row" id="go-cats"><span class="e-ic"><svg class="ic"><use href="#ic-set"/></svg></span>分类管理<span class="row-note">支出两级 · 收入单级</span><span class="chev"><svg class="ic"><use href="#ic-right"/></svg></span></button>
+            <button class="row" id="go-trash"><span class="e-ic"><svg class="ic"><use href="#ic-trash"/></svg></span>回收站<span class="row-note" id="trash-note">2 条</span><span class="chev"><svg class="ic"><use href="#ic-right"/></svg></span></button>
+            <div class="row"><span class="e-ic"><svg class="ic"><use href="#ic-lock"/></svg></span>指纹解锁<button class="switch on" style="margin-left:auto" role="switch" aria-checked="true" aria-label="指纹解锁开关"></button></div>
+            <button class="row" data-toast="拾光 v0.9.0 · 数据仅保存在本机"><span class="e-ic"><svg class="ic"><use href="#ic-file"/></svg></span>关于拾光<span class="row-note">v0.9.0 原型</span><span class="chev"><svg class="ic"><use href="#ic-right"/></svg></span></button>
+          </section>
+          <p class="tiny" style="text-align:center;padding:4px 0 10px">所有数据仅保存在本机 · 云端只存放你主动生成的备份包与 Excel 导出</p>
+        </section>
+
+      </main>
+
+      <!-- ═══ 备份与恢复子页 ═══ -->
+      <section class="subpage" id="page-backup" aria-label="备份与恢复" data-component="backup-panel">
+        <header class="sub-head" data-component="subpage-header">
+          <button class="icon-btn" id="backup-back" aria-label="返回我的页"><svg class="ic"><use href="#ic-left"/></svg></button>
+          <h2>备份与恢复</h2>
+        </header>
+        <div class="sub-body">
+          <section class="card backup-status">
+            <span class="bs-ic"><svg class="ic"><use href="#ic-cloud"/></svg></span>
+            <p class="big num">2,847 <small>条记录 · 约 4.6 MB</small></p>
+            <p class="sub">数据均保存在本机 · 上次备份 <b id="last-backup">8月5日 08:00</b></p>
+            <button class="btn primary" id="btn-backup">立即备份到云盘</button>
+            <p class="tiny" style="margin-top:8px">生成完整备份包（.skbak，可全量恢复）+ 可读 Excel · 上传至已连接云盘</p>
+          </section>
+
+          <section class="card list" aria-label="云盘连接" data-component="cloud-provider-panel">
+            <h3 class="card-title" style="padding:10px 2px 0">云盘连接</h3>
+            <button class="row" data-provider="aliyun"><span class="e-ic"><svg class="ic"><use href="#ic-cloud"/></svg></span><div class="e-main"><p class="e-title">阿里云盘 <span class="tiny">默认</span></p><p class="e-meta" id="pv-aliyun">已连接 · 自动上传至「拾光备份」文件夹</p></div><span class="chev"><svg class="ic"><use href="#ic-right"/></svg></span></button>
+            <button class="row" data-provider="baidu"><span class="e-ic"><svg class="ic"><use href="#ic-cloud"/></svg></span><div class="e-main"><p class="e-title">百度网盘</p><p class="e-meta" id="pv-baidu">未连接 · 点击授权（官方接口）</p></div><span class="chev"><svg class="ic"><use href="#ic-right"/></svg></span></button>
+            <p class="tiny" style="padding:6px 2px 10px">仅接入官方 OAuth 授权的云盘，不经手网盘密码 · 云盘上只保存备份文件，看不到任何账目明细</p>
+          </section>
+
+          <section class="card" aria-label="自动备份设置" data-component="backup-settings">
+            <h3 class="card-title">自动备份</h3>
+            <div class="field"><span>频率</span>
+              <div class="chip-group" data-group="频率"><button class="chip active">每日</button><button class="chip">每周</button><button class="chip">手动</button></div>
+            </div>
+            <div class="field"><span>目标云盘</span>
+              <div class="chip-group" data-group="目标云盘"><button class="chip active">阿里云盘</button><button class="chip">百度网盘</button></div>
+            </div>
+            <div class="field"><span>仅 Wi-Fi 下上传</span><button class="switch on" role="switch" aria-checked="true" aria-label="仅 Wi-Fi 下上传"></button></div>
+            <div class="field"><span>保留策略</span><button class="chip" data-toast="原型演示：可改为全部保留或自定义份数">最近 7 份 + 每月存档 1 份</button></div>
+            <p class="tiny">当前仅支持官方 OAuth 授权的云盘；夸克网盘等待官方接口开放后再接入</p>
+          </section>
+
+          <section class="card list" aria-label="备份历史" data-component="backup-history-panel">
+            <h3 class="card-title" style="padding:10px 2px 0">备份历史</h3>
+            <div id="backup-history">
+              <div class="row"><span class="e-ic neutral"><svg class="ic"><use href="#ic-lock"/></svg></span><div class="e-main"><p class="e-title">拾光备份_20260805_0800.skbak</p><p class="e-meta">4.6 MB · 阿里云盘 · 2,847 条 · 已加密</p></div><button class="restore-link js-restore">恢复</button></div>
+              <div class="row"><span class="e-ic neutral"><svg class="ic"><use href="#ic-lock"/></svg></span><div class="e-main"><p class="e-title">拾光备份_20260728_0800.skbak</p><p class="e-meta">4.4 MB · 阿里云盘 · 2,791 条 · 已加密</p></div><button class="restore-link js-restore">恢复</button></div>
+              <div class="row"><span class="e-ic neutral"><svg class="ic"><use href="#ic-file"/></svg></span><div class="e-main"><p class="e-title">拾光账单_2026-07.xlsx</p><p class="e-meta">1.2 MB · Excel 导出 · 仅供查看，恢复请用备份包</p></div><span class="row-note">查看用</span></div>
+            </div>
+            <p class="tiny" style="padding:6px 2px 10px">恢复为全量替换：会先自动创建当前数据的本地快照，7 天内可撤销</p>
+          </section>
+
+          <section class="card" id="migrate-block" data-component="import-panel" aria-label="账单导入">
+            <h3 class="card-title">账单导入</h3>
+            <div class="flt-row" id="imp-src" role="tablist" aria-label="导入来源" style="margin-bottom:10px">
+              <button class="chip active" data-src="wacai" role="tab" aria-selected="true">挖财 Excel</button>
+              <button class="chip" data-src="wechat" role="tab">微信账单</button>
+              <button class="chip" data-src="alipay" role="tab">支付宝账单</button>
+            </div>
+            <p class="sub" style="margin-bottom:10px" id="imp-desc">挖财导出为单张工作表，每行一条流水，「类型」列区分支出 / 收入 / 转账 / 借贷；拾光按下表逐列映射，导入本地数据库。</p>
+            <table class="map-table" id="map-tbl">
+              <thead><tr><th>挖财字段</th><th>拾光处理</th></tr></thead>
+              <tbody>
+                <tr><td>日期时间</td><td>记账时间（精确到分钟）</td></tr>
+                <tr><td>类型</td><td>账单类型：支出 / 收入 / 转账 / 借贷</td></tr>
+                <tr><td>类别</td><td>两级分类：「餐饮/早餐」按斜杠拆为大类＋小类，无斜杠自动匹配</td></tr>
+                <tr><td>金额 / 币种</td><td>金额；外币按当日汇率折算并在备注保留原币种</td></tr>
+                <tr><td>收付账户</td><td>账户；转账行「现金：-1.00, 微信钱包：+1.00」自动拆为转出 / 转入</td></tr>
+                <tr><td>收付款人</td><td>借贷对象与往来金额（如「张三：+100.00」）</td></tr>
+                <tr><td>参与人</td><td>多人分摊只记「自己」份额入账，完整分摊明细写入备注</td></tr>
+                <tr><td>标签</td><td>标签，逗号分隔可多个</td></tr>
+                <tr><td>商家</td><td>商家</td></tr>
+                <tr><td>属性 / 备注</td><td>「已报销」→ 报销状态标记；备注原样保留</td></tr>
+              </tbody>
+            </table>
+            <div class="btn-row">
+              <button class="btn ghost" id="btn-import">选择 Excel 文件</button>
+              <button class="btn primary" id="btn-migrate" disabled>开始导入</button>
+            </div>
+            <p class="tiny" id="import-hint">支持 .xlsx / .xls · 导入前会自动创建一次本地备份</p>
+          </section>
+        </div>
+      </section>
+
+      <!-- ═══ 日历账单子页 ═══ -->
+      <section class="subpage" id="page-cal" aria-label="日历账单" data-component="calendar-panel">
+        <header class="sub-head" data-component="subpage-header">
+          <button class="icon-btn" data-close-sub aria-label="返回"><svg class="ic"><use href="#ic-left"/></svg></button>
+          <h2>日历账单</h2>
+        </header>
+        <div class="sub-body">
+          <section class="card" data-component="calendar-card">
+            <div class="cal-nav">
+              <button class="icon-btn" data-toast="原型演示：切换查看 7月日历账单" aria-label="上一月"><svg class="ic"><use href="#ic-left"/></svg></button>
+              <h3 class="cal-title">2026年8月</h3>
+              <button class="icon-btn" data-toast="原型演示：9月尚无账单" aria-label="下一月"><svg class="ic"><use href="#ic-right"/></svg></button>
+            </div>
+            <div class="cal-head" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+            <div class="cal-grid" id="cal-grid" role="listbox" aria-label="选择日期"></div>
+            <div class="flt-row" id="cal-mode" style="padding:10px 2px 0" role="tablist" aria-label="日历视图">
+              <button class="chip active" data-m="std" role="tab" aria-selected="true">标准</button>
+              <button class="chip" data-m="heat" role="tab">支出热力</button>
+              <button class="chip" data-m="net" role="tab">结余热力</button>
+            </div>
+            <p class="tiny" style="margin-top:10px" id="cal-tip">金点 = 当日有收入 · 点选日期查看当日收支，空缺日期可补账</p>
+          </section>
+          <section class="card" id="cal-detail" data-component="calendar-day-detail" aria-live="polite"></section>
+        </div>
+      </section>
+
+      <!-- ═══ 周期账子页 ═══ -->
+      <section class="subpage" id="page-cycle" aria-label="周期账" data-component="cycle-panel">
+        <header class="sub-head" data-component="subpage-header">
+          <button class="icon-btn" data-close-sub aria-label="返回"><svg class="ic"><use href="#ic-left"/></svg></button>
+          <h2>周期账</h2>
+          <button class="icon-btn" style="margin-left:auto" data-toast="原型演示：新建周期账，支持日/周/月/年与多个入账日" aria-label="新建周期账"><svg class="ic"><use href="#ic-plus"/></svg></button>
+        </header>
+        <div class="sub-body">
+          <section class="card cycle-sum" data-component="cycle-summary">
+            <p class="label">每月固定支出</p>
+            <p class="big num">¥2,263.00</p>
+            <p class="sub">4 项已启用 · 到期自动入账并提醒，入账前可修改金额</p>
+          </section>
+          <section class="card list" data-component="cycle-list" aria-label="周期账列表">
+            <div class="row"><span class="e-ic"><svg class="ic"><use href="#ic-house"/></svg></span><div class="e-main"><p class="e-title">房租 <span class="e-sub">· ¥2,000.00</span></p><p class="e-meta">每月28日 · 招行储蓄卡 · 下次 8月28日</p></div><button class="switch on" role="switch" aria-checked="true" aria-label="房租周期账开关"></button></div>
+            <div class="row"><span class="e-ic"><svg class="ic"><use href="#ic-bolt"/></svg></span><div class="e-main"><p class="e-title">话费 <span class="e-sub">· ¥58.00</span></p><p class="e-meta">每月10日 · 支付宝 · 下次 8月10日</p></div><button class="switch on" role="switch" aria-checked="true" aria-label="话费周期账开关"></button></div>
+            <div class="row"><span class="e-ic"><svg class="ic"><use href="#ic-house"/></svg></span><div class="e-main"><p class="e-title">水电燃气 <span class="e-sub">· 约 ¥180.00</span></p><p class="e-meta">每月20日 · 微信零钱 · 入账时按抄表确认金额</p></div><button class="switch on" role="switch" aria-checked="true" aria-label="水电燃气周期账开关"></button></div>
+            <div class="row"><span class="e-ic"><svg class="ic"><use href="#ic-film"/></svg></span><div class="e-main"><p class="e-title">视频会员 <span class="e-sub">· ¥25.00</span></p><p class="e-meta">每月15日 · 支付宝 · 下次 8月15日</p></div><button class="switch on" role="switch" aria-checked="true" aria-label="视频会员周期账开关"></button></div>
+            <div class="row"><span class="e-ic neutral"><svg class="ic"><use href="#ic-car"/></svg></span><div class="e-main"><p class="e-title">停车月租 <span class="e-sub">· ¥300.00</span></p><p class="e-meta">每月5日 · 已暂停，本月未入账</p></div><button class="switch" role="switch" aria-checked="false" aria-label="停车月租周期账开关"></button></div>
+          </section>
+          <p class="tiny" style="text-align:center">周期账入账后会出现在首页流水，并计入报表与预算</p>
+        </div>
+      </section>
+
+      <!-- ═══ 预算中心子页 ═══ -->
+      <section class="subpage" id="page-budget" aria-label="预算中心" data-component="budget-panel">
+        <header class="sub-head" data-component="subpage-header">
+          <button class="icon-btn" data-close-sub aria-label="返回"><svg class="ic"><use href="#ic-left"/></svg></button>
+          <h2>预算中心</h2>
+          <button class="icon-btn" style="margin-left:auto" data-toast="原型演示：调整总预算与分类子预算，支持自动延续到下月" aria-label="设置预算"><svg class="ic"><use href="#ic-set"/></svg></button>
+        </header>
+        <div class="sub-body">
+          <section class="card" data-component="budget-overview">
+            <p class="label">八月总预算</p>
+            <p class="big num">¥6,000.00</p>
+            <div class="bd-bar"><i class="warn" style="width:54.8%"></i></div>
+            <div class="bd-meta">
+              <p>已使用<span class="num">¥3,286.40</span></p>
+              <p>剩余<span class="num">¥2,713.60</span></p>
+              <p>日均可用<span class="num">¥113.07</span></p>
+            </div>
+            <p class="tiny" style="margin-top:8px">刚过 8月7日，进度 22.6%，但预算已用 54.8% —— 消费偏快，注意后半月节奏</p>
+          </section>
+          <section class="card" data-component="budget-categories" aria-label="分类子预算">
+            <h3 class="card-title">分类子预算</h3>
+            <div class="bd-row"><div class="bd-top"><span>餐饮</span><span class="num">¥1,286.40 <em class="lim">/ ¥1,800</em></span></div><div class="bd-bar"><i class="warn" style="width:71.5%"></i></div></div>
+            <div class="bd-row"><div class="bd-top"><span>购物</span><span class="num">¥782.00 <em class="lim">/ ¥1,200</em></span></div><div class="bd-bar"><i class="warn" style="width:65.2%"></i></div></div>
+            <div class="bd-row"><div class="bd-top"><span>居住</span><span class="num">¥468.00 <em class="lim">/ ¥900</em></span></div><div class="bd-bar"><i class="ok" style="width:52%"></i></div></div>
+            <div class="bd-row"><div class="bd-top"><span>交通</span><span class="num">¥356.00 <em class="lim">/ ¥300</em><em class="bd-flag">超支 ¥56.00</em></span></div><div class="bd-bar"><i class="over" style="width:100%"></i></div></div>
+            <div class="bd-row"><div class="bd-top"><span>娱乐</span><span class="num">¥248.00 <em class="lim">/ ¥600</em></span></div><div class="bd-bar"><i class="ok" style="width:41.3%"></i></div></div>
+            <div class="bd-row"><div class="bd-top"><span>其他</span><span class="num">¥146.00 <em class="lim">/ ¥900</em></span></div><div class="bd-bar"><i class="ok" style="width:16.2%"></i></div></div>
+            <p class="bd-legend"><span><i style="background:var(--income)"></i>进度良好</span><span><i style="background:var(--primary)"></i>消费偏快</span><span><i style="background:var(--over)"></i>已超支</span></p>
+          </section>
+          <p class="tiny" style="text-align:center">月末未用完的预算不结转 · 下月自动按本月额度延续，可在预算设置中关闭</p>
+        </div>
+      </section>
+
+      <!-- ═══ 报销管理子页 ═══ -->
+      <section class="subpage" id="page-reimburse" aria-label="报销管理" data-component="reimburse-panel">
+        <header class="sub-head" data-component="subpage-header">
+          <button class="icon-btn" data-close-sub aria-label="返回"><svg class="ic"><use href="#ic-left"/></svg></button>
+          <h2>报销管理</h2>
+        </header>
+        <div class="sub-body">
+          <section class="card backup-status" data-component="reimburse-summary">
+            <span class="bs-ic"><svg class="ic"><use href="#ic-file"/></svg></span>
+            <p class="big num" id="rb-sum">¥309.80</p>
+            <p class="sub" id="rb-sub">2 笔待报销 · 记一笔时点亮「报销」会自动归到这里</p>
+          </section>
+          <section class="card list" data-component="reimburse-pending" aria-label="待报销账单">
+            <h3 class="card-title" style="padding:10px 2px 0">待报销 · 点击勾选</h3>
+            <div id="rb-list"></div>
+            <div class="field" style="border-top:1px solid var(--border)"><span id="rb-selinfo">已选 0 笔 · ¥0.00</span><button class="restore-link" id="rb-go">报销到账</button></div>
+          </section>
+          <section class="card" data-component="reimburse-settings" aria-label="报销统计口径">
+            <div class="field"><span>报销款计入收入统计</span><button class="switch on" id="rb-mode" role="switch" aria-checked="true" aria-label="报销款计入收入统计"></button></div>
+            <p class="tiny">开启：报销到账记为一笔「报销」收入 · 关闭：报销款只冲抵原支出、不进收入统计。支持部分报销，未报销差额仍计入支出。</p>
+          </section>
+          <section class="card list" data-component="reimburse-done" aria-label="已报销记录">
+            <h3 class="card-title" style="padding:10px 2px 0">已报销</h3>
+            <div id="rb-done">
+              <div class="row"><span class="e-ic neutral"><svg class="ic"><use href="#ic-file"/></svg></span><div class="e-main"><p class="e-title">团建聚餐垫付</p><p class="e-meta">7月18日 · 7月25日报销到账 → 招行储蓄卡 ·6688</p></div><p class="e-amt num in">+¥368.00</p></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ═══ 分类管理子页 ═══ -->
+      <section class="subpage" id="page-cats" aria-label="分类管理" data-component="category-manager">
+        <header class="sub-head" data-component="subpage-header">
+          <button class="icon-btn" data-close-sub aria-label="返回"><svg class="ic"><use href="#ic-left"/></svg></button>
+          <h2>分类管理</h2>
+          <div class="seg mini" id="cm-seg" style="margin-left:auto" role="tablist" aria-label="分类类型">
+            <button class="active" data-t="expense" role="tab" aria-selected="true">支出</button>
+            <button data-t="income" role="tab">收入</button>
+          </div>
+        </header>
+        <div class="sub-body">
+          <p class="sub" id="cm-tip" style="padding:0 2px 10px">支出为两级分类：大类下挂小类 · 点小类可改名、换图标、移动或升为大类 · 长按拖动排序</p>
+          <div id="cm-list"></div>
+          <button class="btn ghost" id="cm-add">新建大类</button>
+        </div>
+      </section>
+
+      <!-- ═══ 账单明细子页 ═══ -->
+      <section class="subpage" id="page-detail" aria-label="账单明细" data-component="detail-panel">
+        <header class="sub-head" data-component="subpage-header">
+          <button class="icon-btn" data-close-sub aria-label="返回"><svg class="ic"><use href="#ic-left"/></svg></button>
+          <h2>账单明细</h2>
+          <button class="chip" id="dt-batch" style="margin-left:auto">批量</button>
+        </header>
+        <div class="sub-body">
+          <div class="flt-row" id="flt-cat" role="tablist" aria-label="按分类筛选">
+            <span class="tpl-lbl">分类</span>
+            <button class="chip active">全部</button><button class="chip">餐饮</button><button class="chip">交通</button><button class="chip">购物</button><button class="chip">居住</button><button class="chip">收入</button>
+          </div>
+          <div class="flt-row" id="flt-acct" role="tablist" aria-label="按账户筛选">
+            <span class="tpl-lbl">账户</span>
+            <button class="chip active">全部</button><button class="chip">微信零钱</button><button class="chip">支付宝</button><button class="chip">招行储蓄卡</button><button class="chip">现金</button>
+          </div>
+          <p class="sub" id="dt-sum" style="padding:2px 2px 10px"></p>
+          <div class="card list" id="dt-list" aria-label="账单列表"></div>
+          <p class="tiny" style="text-align:center">展示 8月1日–7日 有代表性的账单 · 更早的历史可在日历或搜索中查看</p>
+        </div>
+        <div class="batch-bar" id="batch-bar" hidden>
+          <span class="sub" id="bb-count">已选 0 笔</span>
+          <button class="chip" id="bb-cat">改分类</button>
+          <button class="chip" id="bb-acct">改账户</button>
+          <button class="chip danger" id="bb-del">删除</button>
+        </div>
+      </section>
+
+      <!-- ═══ 回收站子页 ═══ -->
+      <section class="subpage" id="page-trash" aria-label="回收站" data-component="trash-panel">
+        <header class="sub-head" data-component="subpage-header">
+          <button class="icon-btn" data-close-sub aria-label="返回"><svg class="ic"><use href="#ic-left"/></svg></button>
+          <h2>回收站</h2>
+          <button class="chip" id="tr-clear" style="margin-left:auto">清空</button>
+        </header>
+        <div class="sub-body">
+          <p class="sub" style="padding:0 2px 10px">删除的账单在这里保留 30 天，到期自动清除 · 删除的账户与账本不会自动清除，需在此手动处理</p>
+          <div class="card list" id="trash-list" aria-label="已删除账单"></div>
+          <p class="tiny" style="text-align:center">恢复后账单回到原日期的流水中，并重新计入报表与预算</p>
+        </div>
+      </section>
+
+      <!-- ═══ 首页自定义子页 ═══ -->
+      <section class="subpage" id="page-homeedit" aria-label="首页自定义" data-component="home-edit-panel">
+        <header class="sub-head" data-component="subpage-header">
+          <button class="icon-btn" data-close-sub aria-label="返回"><svg class="ic"><use href="#ic-left"/></svg></button>
+          <h2>首页自定义</h2>
+        </header>
+        <div class="sub-body">
+          <p class="sub" style="padding:0 2px 10px">选择首页要显示的模块，关闭后随时可以再打开 · 完整版支持拖动调整顺序</p>
+          <section class="card list" id="homeedit-list" aria-label="首页模块开关">
+            <div class="row"><span class="e-ic"><svg class="ic"><use href="#ic-coin"/></svg></span>月度总览<span class="row-note">支出 / 收入 / 预算进度</span><button class="switch on" data-mod="month" data-name="月度总览" style="margin-left:6px" role="switch" aria-checked="true" aria-label="月度总览模块开关"></button></div>
+            <div class="row"><span class="e-ic"><svg class="ic"><use href="#ic-bolt"/></svg></span>快捷功能<span class="row-note">速记 / 明细 / 日历…</span><button class="switch on" data-mod="quick" data-name="快捷功能" style="margin-left:6px" role="switch" aria-checked="true" aria-label="快捷功能模块开关"></button></div>
+            <div class="row"><span class="e-ic"><svg class="ic"><use href="#ic-book"/></svg></span>今天的流水<span class="row-note">含生活记录</span><button class="switch on" data-mod="today" data-name="今天的流水" style="margin-left:6px" role="switch" aria-checked="true" aria-label="今天的流水模块开关"></button></div>
+            <div class="row"><span class="e-ic"><svg class="ic"><use href="#ic-cal"/></svg></span>更早的流水<span class="row-note">近几日账单</span><button class="switch on" data-mod="past" data-name="更早的流水" style="margin-left:6px" role="switch" aria-checked="true" aria-label="更早的流水模块开关"></button></div>
+          </section>
+          <p class="tiny" style="text-align:center">「记一笔」按钮与底部导航不可隐藏</p>
+        </div>
+      </section>
+
+      <!-- ═══ 底部导航 ═══ -->
+      <nav class="tabbar" data-component="tabbar" aria-label="主导航">
+        <button class="tab" data-page="page-acct"><svg class="ic"><use href="#ic-wallet"/></svg>账户</button>
+        <button class="tab" data-page="page-report"><svg class="ic"><use href="#ic-chart"/></svg>报表</button>
+        <button class="fab" id="fab" aria-label="记一笔"><svg class="ic"><use href="#ic-plus"/></svg></button>
+        <button class="tab" id="tab-home" data-page="page-home" hidden><svg class="ic"><use href="#ic-home"/></svg>首页</button>
+        <button class="tab" data-page="page-life"><svg class="ic"><use href="#ic-book"/></svg>生活</button>
+        <button class="tab" data-page="page-mine"><svg class="ic"><use href="#ic-user"/></svg>我的</button>
+      </nav>
+
+      <div id="scrim"></div>
+
+      <!-- ═══ 记一笔抽屉 ═══ -->
+      <section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="记一笔" data-component="add-entry-sheet">
+        <header class="sheet-head" data-component="sheet-header">
+          <div class="seg" id="seg" role="tablist" aria-label="记账类型">
+            <button data-type="income" role="tab">收入</button>
+            <button class="active" data-type="expense" role="tab" aria-selected="true">支出</button>
+            <button data-type="transfer" role="tab">转账</button>
+            <button data-type="loan" role="tab">借贷</button>
+          </div>
+          <button class="icon-btn" data-toast="原型演示：语音记账——说「昨天午饭花了 25」自动生成账单" aria-label="语音记账"><svg class="ic"><use href="#ic-mic"/></svg></button>
+          <button class="icon-btn" id="sheet-close" aria-label="关闭记一笔"><svg class="ic"><use href="#ic-close"/></svg></button>
+        </header>
+        <div class="pick-card" data-component="picked-category">
+          <span class="pick-ic" id="pick-ic"><svg class="ic"><use href="#ic-sun"/></svg></span>
+          <span class="pick-name" id="pick-name">早餐</span>
+          <span class="amt num empty" id="amt">0.00</span>
+        </div>
+        <div class="sheet-scroll">
+          <div class="tpl-row" id="tpl-row" data-component="quick-templates" aria-label="速记模板">
+            <span class="tpl-lbl">速记</span>
+            <button class="chip" type="button" data-amt="14.50" data-cat="0">早餐 ¥14.5</button>
+            <button class="chip" type="button" data-amt="18" data-cat="4">咖啡 ¥18</button>
+            <button class="chip" type="button" data-amt="4" data-cat="6">地铁 ¥4</button>
+            <button class="chip" type="button" data-amt="25" data-cat="1">午餐 ¥25</button>
+          </div>
+          <div id="cat-grid" class="cat-grid" role="listbox" aria-label="选择分类"></div>
+          <div id="transfer-block" class="transfer" hidden>
+            <button class="t-row" id="t-from"><span class="lbl">转出</span><b>微信零钱</b><span class="chev"><svg class="ic" style="width:15px;height:15px"><use href="#ic-right"/></svg></span></button>
+            <span class="t-arrow"><svg class="ic"><use href="#ic-swap"/></svg></span>
+            <button class="t-row" id="t-to"><span class="lbl">转入</span><b>招行储蓄卡 ·6688</b><span class="chev"><svg class="ic" style="width:15px;height:15px"><use href="#ic-right"/></svg></span></button>
+          </div>
+          <div id="loan-block" hidden>
+            <div class="transfer">
+              <button class="t-row" id="loan-who"><span class="lbl">对象</span><b>室友小林</b><span class="chev"><svg class="ic" style="width:15px;height:15px"><use href="#ic-right"/></svg></span></button>
+              <button class="t-row" id="loan-acct"><span class="lbl" id="loan-acct-lbl">转入账户</span><b>微信零钱</b><span class="chev"><svg class="ic" style="width:15px;height:15px"><use href="#ic-right"/></svg></span></button>
+            </div>
+            <p class="tiny" id="loan-hint" style="padding:2px 4px 0">与 TA 的往来：TA 欠你 ¥120.00</p>
+          </div>
+        </div>
+        <input class="note" id="note" type="text" placeholder="输入备注…" aria-label="备注">
+        <div class="meta-row">
+          <button class="chip" id="date-chip" data-toast="原型演示：可选择任意记账日期，也可从日历页对空缺日期补账"><svg class="ic" style="width:14px;height:14px"><use href="#ic-cal"/></svg><span id="date-txt">今天 8月7日</span></button>
+          <button class="chip" id="acct-btn"><svg class="ic" style="width:14px;height:14px"><use href="#ic-wallet"/></svg><span id="acct-name">微信零钱</span></button>
+          <button class="chip" type="button" id="mark-bx" aria-pressed="false">报销</button>
+          <button class="chip" type="button" id="mark-tk" aria-pressed="false">退款</button>
+          <button class="chip" type="button" id="chip-tag" aria-pressed="false"><svg class="ic" style="width:14px;height:14px"><use href="#ic-tag"/></svg><span id="tag-txt">标签</span></button>
+          <button class="chip" type="button" id="chip-shop" aria-pressed="false"><svg class="ic" style="width:14px;height:14px"><use href="#ic-shop"/></svg><span id="shop-txt">商家</span></button>
+          <button class="chip" type="button" id="chip-interest" data-toast="原型演示：为这笔借贷设置利息与还款提醒" hidden>利息</button>
+          <label class="chip toggle-chip"><input type="checkbox" id="life-toggle">同时写生活记录</label>
+          <button class="chip" data-toast="原型演示：拍小票照片，自动识别金额与分类" aria-label="拍小票记账"><svg class="ic" style="width:14px;height:14px"><use href="#ic-camera"/></svg></button>
+        </div>
+        <div class="keypad" id="keypad" aria-label="计算器键盘">
+          <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button><button data-k="+" class="op" aria-label="加">+</button><button data-k="del" class="op" aria-label="删除一位"><svg class="ic"><use href="#ic-del"/></svg></button>
+          <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button><button data-k="-" class="op" aria-label="减">−</button><button data-k="again" class="again">再记</button>
+          <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button><button data-k="md" class="op" aria-label="乘除">×÷</button><button data-k="save" class="save">保存</button>
+          <button data-k="0" class="zero">0</button><button data-k=".">.</button><button data-k="=" class="op" aria-label="等于">=</button>
+        </div>
+      </section>
+
+      <div id="toast" role="status" aria-live="polite"></div>
+      <div class="home-indicator"></div>
+    </div>
+  </div>
+
+  <p class="stage-hint">首页点「+」记一笔（支持报销 / 标签 / 商家）· 快捷区可进明细筛选与批量管理 · 日历页可切热力图并补账 · 我的 → 报销管理 / 分类管理 / 回收站 / 备份与账单导入</p>
+</div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const fmt = n => n.toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmt0 = n => Math.round(n).toLocaleString('zh-CN');
+const fmtS = n => (n<0?'-¥':'¥')+fmt(Math.abs(n));
+
+/* ── Toast ── */
+let toastTimer;
+function toast(msg){
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+$$('[data-toast]').forEach(el=>el.addEventListener('click',()=>toast(el.dataset.toast)));
+
+/* ── 页签切换 ── */
+function switchPage(id){
+  $$('.page').forEach(p=>p.classList.toggle('is-active', p.id===id));
+  $$('.tab[data-page]').forEach(t=>{
+    const on = t.dataset.page===id && id!=='page-home';
+    t.classList.toggle('active', on);
+  });
+  const home = id==='page-home';
+  $('#fab').hidden = !home;
+  $('#tab-home').hidden = home;
+  $$('.subpage').forEach(s=>s.classList.remove('open'));
+}
+$$('.tab[data-page]').forEach(tab=>tab.addEventListener('click',()=>switchPage(tab.dataset.page)));
+
+$$('.acct-group .group-head').forEach(h=>h.addEventListener('click',()=>{
+  const g = h.closest('.acct-group');
+  g.classList.toggle('folded');
+  h.setAttribute('aria-expanded', String(!g.classList.contains('folded')));
+}));
+$('#btn-search').addEventListener('click',()=>toast('原型演示：搜索流水、备注与生活记录'));
+$('#life-add').addEventListener('click',()=>toast('原型演示：完整版可写日记、传照片、习惯打卡'));
+$$('.switch').forEach(sw=>sw.addEventListener('click',()=>{
+  sw.classList.toggle('on');
+  sw.setAttribute('aria-checked', sw.classList.contains('on'));
+}));
+
+/* ── 全局账目状态 ── */
+const state = {
+  monthSpend: 3286.40, monthIncome: 18650.00, todaySpend: 86.50, todayIncome: 0, todayCount: 5, budget: 6000,
+  amt:'', type:'expense', cat:0, acct:0, from:0, to:2, prev:null, op:null, loanWho:0
+};
+const ACCOUNTS = ['微信零钱','支付宝','招行储蓄卡 ·6688','现金'];
+const LOAN_PEOPLE = [['室友小林',120.00],['爸妈',-2000.00],['同事阿哲',0]];
+const CATS = {
+  expense:[
+    ['早餐','ic-sun','餐饮'],['午餐','ic-bowl','餐饮'],['晚餐','ic-moon','餐饮'],['饮料水果','ic-fruit','餐饮'],
+    ['咖啡','ic-cup','餐饮'],['零食','ic-cone','餐饮'],['地铁','ic-metro','交通'],['公交','ic-bus','交通'],
+    ['打车','ic-car','交通'],['停车费','ic-park','交通'],['超市','ic-cart','购物'],['服饰鞋包','ic-shirt','购物'],
+    ['家居百货','ic-bottle','购物'],['住宿房租','ic-house','居住'],['水电燃气','ic-bolt','居住'],['运动健身','ic-pulse','娱乐'],
+    ['电影演出','ic-film','娱乐'],['医疗药品','ic-med','其他'],['学习培训','ic-cap','其他'],['人情礼物','ic-gift','其他']
+  ],
+  income:[
+    ['工资','ic-brief'],['奖金','ic-coin'],['兼职','ic-pen'],['理财','ic-coin'],
+    ['红包','ic-gift'],['退款','ic-swap'],['报销','ic-file'],['其他','ic-wallet']
+  ],
+  loan:[
+    ['借入','ic-loan-in'],['借出','ic-loan-out'],['还款','ic-repay'],['收款','ic-collect']
+  ]
+};
+
+/* ── 报表数据 ── */
+const REPORT = {
+  week:{label:'8月2日 – 8月7日', spend:1037.50, income:18650.00,
+    labels:['8/2','8/3','8/4','8/5','8/6','8/7'], expense:[128.60,96.40,142.20,368.00,215.80,86.50],
+    cats:[['餐饮',402.50],['购物',227.00],['居住',168.00],['交通',118.00],['娱乐',78.00],['其他',44.00]],
+    accts:[['微信零钱',396.30],['支付宝',337.20],['招行储蓄卡',236.00],['现金',68.00]],
+    tags:[['外卖',145.00],['咖啡',38.00],['出差',23.80]]},
+  month:{label:'2026年8月', spend:3286.40, income:18650.00,
+    labels:['3月','4月','5月','6月','7月','8月'], expense:[5842,6310,5127,7208,5586,3286.4], incomes:[18500,18650,18500,19800,18500,18650],
+    cats:[['餐饮',1286.40],['购物',782.00],['居住',468.00],['交通',356.00],['娱乐',248.00],['其他',146.00]],
+    accts:[['微信零钱',1180.30],['支付宝',962.10],['招行储蓄卡',720.00],['现金',424.00]],
+    tags:[['外卖',420.00],['出差',309.80],['家庭',268.00],['咖啡',152.00]]},
+  year:{label:'2026年（截至8月）', spend:41359.00, income:131100.00,
+    labels:['2021','2022','2023','2024','2025','2026'], expense:[45210,48930,52470,58660,60120,41359], incomes:[98000,104500,112000,121000,126800,131100],
+    cats:[['餐饮',15230],['购物',9480],['居住',6820],['交通',4210],['娱乐',3650],['其他',1969]],
+    accts:[['微信零钱',15320],['支付宝',12480],['招行储蓄卡',9559],['现金',4000]],
+    tags:[['外卖',5230],['旅行',4180],['出差',3120],['家庭',2860]]}
+};
+const CAT_ICONS = {'餐饮':'ic-bowl','购物':'ic-cart','居住':'ic-house','交通':'ic-bus','娱乐':'ic-film','其他':'ic-coin'};
+const ACCT_ICONS = {'微信零钱':'ic-pay','支付宝':'ic-pay','招行储蓄卡':'ic-card','现金':'ic-wallet'};
+
+function renderTrend(d){
+  const W=336,H=168,base=134,maxH=100;
+  const series = d.incomes || d.expense;
+  const max = Math.max(...d.expense, ...(d.incomes||[0]));
+  const n = d.labels.length, slot = W/n;
+  let s = '';
+  [0,0.5,1].forEach(k=>{
+    s += `<line x1="0" y1="${base-maxH*k}" x2="${W}" y2="${base-maxH*k}" stroke="var(--border)" stroke-width="1"${k?' stroke-dasharray="3 4"':''}/>`;
+  });
+  d.labels.forEach((lb,i)=>{
+    const cx = slot*i + slot/2;
+    const eh = Math.max(3, d.expense[i]/max*maxH);
+    if(d.incomes){
+      const ih = Math.max(3, d.incomes[i]/max*maxH);
+      s += `<rect x="${(cx-13).toFixed(1)}" y="${(base-eh).toFixed(1)}" width="12" height="${eh.toFixed(1)}" rx="3" fill="var(--c1)"/>`;
+      s += `<rect x="${(cx+1).toFixed(1)}" y="${(base-ih).toFixed(1)}" width="12" height="${ih.toFixed(1)}" rx="3" fill="var(--c4)"/>`;
+    }else{
+      s += `<rect x="${(cx-11).toFixed(1)}" y="${(base-eh).toFixed(1)}" width="22" height="${eh.toFixed(1)}" rx="4" fill="var(--c1)"/>`;
+    }
+    s += `<text x="${cx.toFixed(1)}" y="${base+18}" text-anchor="middle" font-size="10" fill="var(--muted)">${lb}</text>`;
+  });
+  $('#trend').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="收支趋势柱状图">${s}</svg>`;
+  $('#trend-cap').textContent = d.incomes ? '深色为支出 · 浅色为收入（单位：元）' : '每日支出（单位：元）';
+}
+function renderDonut(d){
+  const C = 2*Math.PI*48;
+  let acc = 0, s = '';
+  d.cats.forEach(([name,v],i)=>{
+    const len = v/d.spend*C;
+    s += `<circle cx="60" cy="60" r="48" fill="none" stroke="var(--c${i+1})" stroke-width="15" stroke-dasharray="${Math.max(0,len-2.4).toFixed(2)} ${(C-len+2.4).toFixed(2)}" stroke-dashoffset="${(-acc).toFixed(2)}" transform="rotate(-90 60 60)"/>`;
+    acc += len;
+  });
+  s += `<text x="60" y="56" text-anchor="middle" font-size="9" fill="var(--muted)">总支出</text>`;
+  s += `<text x="60" y="72" text-anchor="middle" font-size="13" font-weight="700" fill="var(--fg)" font-family="var(--font-mono)">¥${fmt0(d.spend)}</text>`;
+  $('#donut-svg').innerHTML = s;
+  $('#donut-legend').innerHTML = d.cats.map(([name,v],i)=>
+    `<li><span class="dot" style="background:var(--c${i+1})"></span>${name}<b class="num">${(v/d.spend*100).toFixed(1)}%</b></li>`).join('');
+}
+let rankDim = 'cat';
+const DIM_KEY = {cat:'cats', acct:'accts', tag:'tags'};
+function renderRank(d){
+  const rows = d[DIM_KEY[rankDim]] || d.cats;
+  $('#rank').innerHTML = rows.map(([name,v],i)=>{
+    const pct = v/d.spend*100;
+    const ic = rankDim==='tag' ? 'ic-tag' : rankDim==='acct' ? (ACCT_ICONS[name]||'ic-wallet') : (CAT_ICONS[name]||'ic-coin');
+    return `<li class="rank-row">
+      <span class="e-ic sm"><svg class="ic"><use href="${'#'+ic}"/></svg></span>
+      <div class="rank-main">
+        <div class="rank-top"><span>${rankDim==='tag'?'#'+name:name}</span><span class="num">¥${fmt(v)}</span></div>
+        <div class="rank-bar"><i style="width:${pct.toFixed(1)}%;background:var(--c${i%6+1})"></i></div>
+      </div>
+      <span class="rank-pct num">${pct.toFixed(1)}%</span></li>`;
+  }).join('');
+  $('#rank-note').hidden = rankDim!=='tag';
+}
+$$('#rank-dim button').forEach(b=>b.addEventListener('click',()=>{
+  $$('#rank-dim button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});
+  b.classList.add('active'); b.setAttribute('aria-selected','true');
+  rankDim = b.dataset.d;
+  renderRank(REPORT[$('#r-seg .active').dataset.p]);
+}));
+function renderReport(key){
+  const d = REPORT[key];
+  $('#r-label').textContent = d.label;
+  $('#r-spend').textContent = '¥'+fmt(d.spend);
+  $('#r-income').textContent = '¥'+fmt(d.income);
+  $('#r-balance').textContent = fmtS(d.income-d.spend);
+  renderTrend(d); renderDonut(d); renderRank(d);
+}
+$$('#r-seg button').forEach(b=>b.addEventListener('click',()=>{
+  $$('#r-seg button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});
+  b.classList.add('active'); b.setAttribute('aria-selected','true');
+  renderReport(b.dataset.p);
+}));
+renderReport('month');
+
+/* ── 记一笔抽屉 ── */
+function openSheet(){ $('#sheet').classList.add('open'); $('#scrim').classList.add('show'); setTimeout(()=>$('#sheet-close').focus(),300); }
+function closeSheet(){
+  const wasOpen = $('#sheet').classList.contains('open');
+  $('#sheet').classList.remove('open'); $('#scrim').classList.remove('show');
+  $('#date-txt').textContent = '今天 8月7日';
+  if(wasOpen) $('#fab').focus();
+}
+$('#fab').addEventListener('click', openSheet);
+$('#sheet-close').addEventListener('click', closeSheet);
+$('#scrim').addEventListener('click', closeSheet);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeSheet(); });
+
+function updatePick(){
+  if(state.type==='transfer'){
+    $('#pick-ic').innerHTML = `<svg class="ic"><use href="${'#'+'ic-swap'}"/></svg>`;
+    $('#pick-name').textContent = '转账';
+    return;
+  }
+  const c = CATS[state.type][state.cat];
+  $('#pick-ic').innerHTML = `<svg class="ic"><use href="${'#'+c[1]}"/></svg>`;
+  $('#pick-name').textContent = c[0];
+}
+function renderCats(){
+  const isTransfer = state.type==='transfer', isLoan = state.type==='loan';
+  $('#tpl-row').hidden = state.type!=='expense';
+  $('#cat-grid').hidden = isTransfer;
+  $('#transfer-block').hidden = !isTransfer;
+  $('#loan-block').hidden = !isLoan;
+  $('#mark-bx').hidden = $('#mark-tk').hidden = state.type!=='expense';
+  $('#chip-tag').hidden = $('#chip-shop').hidden = isTransfer || isLoan;
+  $('#chip-interest').hidden = !isLoan;
+  $('#acct-btn').hidden = isTransfer || isLoan;
+  if(isLoan){
+    const kind = CATS.loan[state.cat][0];
+    $('#loan-acct-lbl').textContent = (kind==='借入'||kind==='收款') ? '转入账户' : '转出账户';
+    $('#loan-acct b').textContent = ACCOUNTS[state.acct];
+  }
+  updatePick();
+  if(isTransfer) return;
+  const list = CATS[state.type];
+  $('#cat-grid').innerHTML = list.map((c,i)=>
+    `<button class="cat${i===state.cat?' sel':''}" data-i="${i}" type="button" role="option" aria-selected="${i===state.cat}">
+      <span class="cat-ic"><svg class="ic"><use href="${'#'+c[1]}"/></svg></span><span>${c[0]}</span></button>`).join('');
+}
+$('#cat-grid').addEventListener('click', e=>{
+  const b = e.target.closest('.cat'); if(!b) return;
+  state.cat = +b.dataset.i;
+  renderCats();
+});
+$$('#seg button').forEach(b=>b.addEventListener('click',()=>{
+  $$('#seg button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});
+  b.classList.add('active'); b.setAttribute('aria-selected','true');
+  state.type = b.dataset.type; state.cat = 0;
+  renderCats();
+}));
+$('#acct-btn').addEventListener('click',()=>{
+  state.acct = (state.acct+1) % ACCOUNTS.length;
+  $('#acct-name').textContent = ACCOUNTS[state.acct];
+  $('#loan-acct b').textContent = ACCOUNTS[state.acct];
+});
+$('#loan-acct').addEventListener('click',()=>{
+  state.acct = (state.acct+1) % ACCOUNTS.length;
+  $('#acct-name').textContent = ACCOUNTS[state.acct];
+  $('#loan-acct b').textContent = ACCOUNTS[state.acct];
+});
+$('#t-from').addEventListener('click',()=>{
+  state.from = (state.from+1) % ACCOUNTS.length;
+  if(state.from===state.to) state.from = (state.from+1) % ACCOUNTS.length;
+  $('#t-from b').textContent = ACCOUNTS[state.from];
+});
+$('#t-to').addEventListener('click',()=>{
+  state.to = (state.to+1) % ACCOUNTS.length;
+  if(state.to===state.from) state.to = (state.to+1) % ACCOUNTS.length;
+  $('#t-to b').textContent = ACCOUNTS[state.to];
+});
+function updateLoanHint(){
+  const [name, bal] = LOAN_PEOPLE[state.loanWho];
+  $('#loan-who b').textContent = name;
+  $('#loan-hint').textContent = bal>0 ? `与 TA 的往来：TA 欠你 ¥${fmt(bal)}`
+    : bal<0 ? `与 TA 的往来：你欠 TA ¥${fmt(-bal)}`
+    : '与 TA 的往来：暂无未结清款项';
+}
+$('#loan-who').addEventListener('click',()=>{
+  state.loanWho = (state.loanWho+1) % LOAN_PEOPLE.length;
+  updateLoanHint();
+});
+updateLoanHint();
+renderCats();
+
+/* ── 计算器键盘 ── */
+const OP_SYM = {'+':' + ','-':' − ','*':' × ','/':' ÷ '};
+function refreshAmt(){
+  const el = $('#amt');
+  if(state.op!=null){
+    el.textContent = String(state.prev) + OP_SYM[state.op] + (state.amt||'');
+    el.classList.remove('empty');
+  }else{
+    el.textContent = state.amt || '0.00';
+    el.classList.toggle('empty', !state.amt);
+  }
+  el.classList.toggle('long', el.textContent.length>8);
+}
+function calcApply(){
+  if(state.op==null || state.prev==null) return;
+  const cur = parseFloat(state.amt||'0');
+  let r = state.prev;
+  if(state.op==='+') r = state.prev + cur;
+  else if(state.op==='-') r = state.prev - cur;
+  else if(state.op==='*') r = state.prev * cur;
+  else if(cur!==0) r = state.prev / cur;
+  r = Math.round(Math.max(0, r) * 100) / 100;
+  state.amt = r ? String(r) : '';
+  state.prev = null; state.op = null;
+}
+function setOp(op){
+  if(state.op!=null && !state.amt){ state.op = op; return; }
+  if(state.op!=null && state.amt) calcApply();
+  if(!state.amt) return;
+  state.prev = parseFloat(state.amt); state.amt = '';
+  state.op = op;
+}
+function pushDigit(ch){
+  let next = state.amt + ch;
+  if(next.includes('.') && next.split('.')[1].length>2) return;
+  if(next.replace('.','').length>8) return;
+  if(next.length>1 && next[0]==='0' && next[1]!=='.') next = next.replace(/^0+/,'') || '0';
+  state.amt = next;
+}
+$('#keypad').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b) return;
+  const k = b.dataset.k;
+  if(k==='del'){
+    if(state.amt){ state.amt = state.amt.slice(0,-1); }
+    else if(state.op!=null){ state.amt = String(state.prev); state.prev = null; state.op = null; }
+  }
+  else if(k==='save'){ saveEntry(false); return; }
+  else if(k==='again'){ saveEntry(true); return; }
+  else if(k==='.'){ if(!state.amt.includes('.')) state.amt = (state.amt||'0')+'.'; }
+  else if(k==='+'||k==='-'){ setOp(k); }
+  else if(k==='md'){
+    if(!state.amt && state.op==='*') state.op = '/';
+    else if(!state.amt && state.op==='/') state.op = '*';
+    else setOp('*');
+  }
+  else if(k==='='){ calcApply(); }
+  else{ pushDigit(k); }
+  refreshAmt();
+});
+
+/* ── 保存一笔 ── */
+function updateOverview(){
+  $('#m-spend').textContent = fmt(state.monthSpend);
+  $('#m-income').textContent = '¥'+fmt(state.monthIncome);
+  $('#m-balance').textContent = '¥'+fmt(state.monthIncome-state.monthSpend);
+  const remain = state.budget-state.monthSpend;
+  $('#m-remain').textContent = (remain<0?'-¥'+fmt(-remain):'¥'+fmt(remain));
+  const pct = Math.min(100, state.monthSpend/state.budget*100);
+  $('#m-bar').style.width = pct.toFixed(1)+'%';
+  $('#m-pct').textContent = pct.toFixed(1)+'%';
+  $('#today-sub').textContent = '支出 ¥'+fmt(state.todaySpend) + (state.todayIncome ? ' · 收入 ¥'+fmt(state.todayIncome) : '');
+  const lifeSum = $('#life-today-sum');
+  if(lifeSum) lifeSum.textContent = `今天共花了 ¥${fmt(state.todaySpend)} · ${state.todayCount} 笔`;
+}
+function prependEntry({icon, cls, title, subTitle, meta, amtHtml}){
+  const art = document.createElement('article');
+  art.className = 'entry';
+  art.dataset.component = 'entry';
+  art.innerHTML = `<span class="e-ic${cls?' '+cls:''}"><svg class="ic"><use href="${'#'+icon}"/></svg></span>
+    <div class="e-main"><p class="e-title">${title}${subTitle?` <span class="e-sub">· ${subTitle}</span>`:''}</p><p class="e-meta">${meta}</p></div>${amtHtml||''}`;
+  $('#today-list').prepend(art);
+}
+function saveEntry(stay){
+  if(state.op != null){ calcApply(); refreshAmt(); }
+  const v = parseFloat(state.amt||'0');
+  if(!v){ toast('请先输入金额'); return; }
+  const note = $('#note').value.trim();
+  const acct = ACCOUNTS[state.acct];
+  if(state.type==='transfer'){
+    prependEntry({icon:'ic-swap', cls:'neutral', title:'转账', subTitle:`${ACCOUNTS[state.from]} → ${ACCOUNTS[state.to]}`, meta:'账户互转 · 不计收支', amtHtml:`<p class="e-amt num">¥${fmt(v)}</p>`});
+    toast(`转账已记录：${ACCOUNTS[state.from]} → ${ACCOUNTS[state.to]} ¥${fmt(v)}`);
+  }else if(state.type==='loan'){
+    const [kindName, icon] = CATS.loan[state.cat];
+    const who = LOAN_PEOPLE[state.loanWho][0];
+    const inFlow = kindName==='借入' || kindName==='收款';
+    const delta = kindName==='借出' ? v : kindName==='还款' ? v : -v;
+    LOAN_PEOPLE[state.loanWho][1] = Math.round((LOAN_PEOPLE[state.loanWho][1] + delta) * 100) / 100;
+    updateLoanHint();
+    prependEntry({icon, cls:'neutral', title:kindName, subTitle:`${who}${note?' · '+note:''}`, meta:`借贷 · ${inFlow?'转入':'转出'} ${acct} · 不计收支`, amtHtml:`<p class="e-amt num">${inFlow?'+':'-'}¥${fmt(v)}</p>`});
+    toast(`已记借贷：${kindName} ${who} ¥${fmt(v)}${stay?'，可继续记下一笔':''}`);
+  }else{
+    const [catName, icon, parent] = CATS[state.type][state.cat];
+    const repCat = parent || catName;
+    const title = catName;
+    const dateTxt = $('#date-txt').textContent;
+    const backdated = dateTxt.indexOf('今天')!==0;
+    const backDay = backdated ? parseInt(dateTxt.replace(/^8月/,''),10) : 7;
+    const tagTxt = tagIdx>=0 ? ' · #'+TAGS[tagIdx] : '';
+    const shopTxt = shopIdx>=0 ? ' · '+SHOPS[shopIdx] : '';
+    if(state.type==='expense'){
+      state.monthSpend += v;
+      REPORT.month.spend = state.monthSpend;
+      const hit = REPORT.month.cats.find(c=>c[0]===repCat) || REPORT.month.cats[REPORT.month.cats.length-1];
+      hit[1] += v;
+      REPORT.month.expense[REPORT.month.expense.length-1] = state.monthSpend;
+      const flags = (marks.bx?' · 待报销':'') + (marks.tk?' · 退款在途':'') + tagTxt + shopTxt;
+      if(backdated){
+        if(CAL[backDay]){ CAL[backDay].out = Math.round((CAL[backDay].out+v)*100)/100; CAL[backDay].n += 1; }
+        else CAL[backDay] = {out:v, in:0, n:1, top:'补记账单'};
+        renderCal(); renderCalDetail(calSel);
+        toast(`已为 ${dateTxt} 补记：${catName} ¥${fmt(v)}，计入当日流水与本月报表`);
+      }else{
+        state.todaySpend += v; state.todayCount += 1;
+        REPORT.week.spend += v;
+        REPORT.week.expense[REPORT.week.expense.length-1] += v;
+        const hitW = REPORT.week.cats.find(c=>c[0]===repCat) || REPORT.week.cats[REPORT.week.cats.length-1];
+        hitW[1] += v;
+        CAL[7].out = Math.round((CAL[7].out+v)*100)/100; CAL[7].n += 1;
+        DETAIL.unshift({d:'8月7日', t:catName+(note?' · '+note:''), c:repCat, a:acct.split(' ')[0], v:-v, ic:icon});
+        renderDetail();
+        prependEntry({icon, title, subTitle:note, meta:`${repCat} · ${acct}${flags}`, amtHtml:`<p class="e-amt num out">-${fmt(v)}</p>`});
+        toast(`已记一笔：${catName} ¥${fmt(v)}${stay?'，可继续记下一笔':''}`);
+      }
+      if(marks.bx){
+        REIM.unshift({t:catName+(note?' · '+note:''), meta:`${backdated?dateTxt:'今天'} · ${repCat} · ${acct}`, v, sel:false});
+        renderReim();
+      }
+    }else{
+      state.monthIncome += v;
+      REPORT.month.income = state.monthIncome;
+      REPORT.month.incomes[REPORT.month.incomes.length-1] = state.monthIncome;
+      if(backdated){
+        if(CAL[backDay]){ CAL[backDay].in = Math.round((CAL[backDay].in+v)*100)/100; CAL[backDay].n += 1; }
+        else CAL[backDay] = {out:0, in:v, n:1, top:'补记收入'};
+        renderCal(); renderCalDetail(calSel);
+        toast(`已为 ${dateTxt} 补记收入：${catName} ¥${fmt(v)}`);
+      }else{
+        state.todayIncome += v;
+        REPORT.week.income += v;
+        CAL[7].in = Math.round((CAL[7].in+v)*100)/100; CAL[7].n += 1;
+        DETAIL.unshift({d:'8月7日', t:catName+(note?' · '+note:''), c:'收入', a:acct.split(' ')[0], v, ic:icon});
+        renderDetail();
+        prependEntry({icon, cls:'neutral', title, subTitle:note, meta:`${catName}收入 · ${acct}${tagTxt}${shopTxt}`, amtHtml:`<p class="e-amt num in">+${fmt(v)}</p>`});
+        toast(`已记收入：${catName} ¥${fmt(v)}${stay?'，可继续记下一笔':''}`);
+      }
+    }
+    updateOverview();
+    const curPeriod = $('#r-seg .active').dataset.p;
+    if(curPeriod==='month' || curPeriod==='week') renderReport(curPeriod);
+  }
+  if($('#life-toggle').checked){
+    prependEntry({icon:'ic-pen', cls:'life', title:'随手记', subTitle:note||'记一笔时留下的一句话', meta:'生活记录 · 刚刚'});
+  }
+  state.amt=''; state.prev=null; state.op=null; refreshAmt();
+  $('#note').value=''; $('#life-toggle').checked=false;
+  resetMarks(); resetTagShop();
+  $('#date-txt').textContent = '今天 8月7日';
+  if(!stay){
+    closeSheet();
+    switchPage('page-home');
+  }
+}
+
+/* ── 备份与恢复 ── */
+function openBackup(scrollToMigrate){
+  $('#page-backup').classList.add('open');
+  if(scrollToMigrate){
+    setTimeout(()=>$('#migrate-block').scrollIntoView({behavior:'smooth',block:'start'}), 320);
+  }
+}
+$('#go-backup').addEventListener('click',()=>openBackup(false));
+$('#go-migrate').addEventListener('click',()=>openBackup(true));
+$('#backup-back').addEventListener('click',()=>$('#page-backup').classList.remove('open'));
+
+/* ── 子页导航（日历 / 周期账 / 预算） ── */
+function openSub(id){ $('#'+id).classList.add('open'); }
+$$('[data-close-sub]').forEach(b=>b.addEventListener('click',()=>b.closest('.subpage').classList.remove('open')));
+$('#qa-note').addEventListener('click', openSheet);
+$('#qa-cal').addEventListener('click',()=>{ openSub('page-cal'); });
+$('#qa-cycle').addEventListener('click',()=>openSub('page-cycle'));
+$('#qa-budget').addEventListener('click',()=>openSub('page-budget'));
+$('#go-budget').addEventListener('click',()=>openSub('page-budget'));
+
+/* ── 日历账单 ── */
+const CAL = {
+  1:{out:2248.90, in:0, n:4, top:'周末出游 · 采购与聚餐为主'},
+  2:{out:128.60, in:0, n:3, top:'通勤日常 · 三餐与地铁为主'},
+  3:{out:96.40, in:0, n:4, top:'日常开销 · 以餐饮为主'},
+  4:{out:142.20, in:0, n:4, top:'含打车与日用品补货'},
+  5:{out:368.00, in:18500.00, n:4, top:'工资到账 +¥18,500.00'},
+  6:{out:215.80, in:150.00, n:5, top:'稿费到账 +¥150.00'},
+  7:{out:86.50, in:0, n:5, top:'今天 · 已记 5 笔，另有 2 条生活记录'}
+};
+let calSel = 7;
+let calMode = 'std';
+const CAL_TIPS = {
+  std:'金点 = 当日有收入 · 点选日期查看当日收支，空缺日期可补账',
+  heat:'颜色越深 = 当日支出越多 · 8月1日出游采购是本月单日最高',
+  net:'绿色 = 当日结余为正（收入大于支出）· 主色 = 当日净支出'
+};
+function calCellStyle(rec){
+  if(!rec || calMode==='std') return '';
+  if(calMode==='heat'){
+    const k = Math.min(1, rec.out/2300);
+    return ` style="background:color-mix(in oklab, var(--seed-primary) ${(k*38+4).toFixed(1)}%, transparent)"`;
+  }
+  const net = rec.in - rec.out;
+  if(net>0) return ' style="background:color-mix(in oklab, #3E8E5A 26%, transparent)"';
+  const k = Math.min(1, rec.out/2300);
+  return ` style="background:color-mix(in oklab, var(--seed-primary) ${(k*30+4).toFixed(1)}%, transparent)"`;
+}
+function renderCal(){
+  const cells = [];
+  for(let i=0;i<5;i++) cells.push('<span class="cal-day" aria-hidden="true"></span>');
+  for(let d=1;d<=31;d++){
+    const rec = CAL[d];
+    const future = d>7;
+    const cls = 'cal-day'+(d===7?' today':'')+(d===calSel?' sel':'');
+    const amt = rec && rec.out && calMode==='std' ? `<span class="cd-amt">-${fmt0(rec.out)}</span>` : '';
+    const dot = rec && rec.in && calMode==='std' ? '<span class="cd-in"></span>' : '';
+    cells.push(`<button class="${cls}" data-d="${d}" type="button" role="option" aria-selected="${d===calSel}"${future?' disabled':''}${calSel===d?'':calCellStyle(rec)}><span class="d-num">${d}</span>${amt}${dot}</button>`);
+  }
+  $('#cal-grid').innerHTML = cells.join('');
+}
+$('#cal-mode').addEventListener('click', e=>{
+  const b = e.target.closest('.chip[data-m]'); if(!b) return;
+  $$('#cal-mode .chip').forEach(c=>{c.classList.remove('active');c.setAttribute('aria-selected','false');});
+  b.classList.add('active'); b.setAttribute('aria-selected','true');
+  calMode = b.dataset.m;
+  $('#cal-tip').textContent = CAL_TIPS[calMode];
+  renderCal();
+});
+const WD = ['日','一','二','三','四','五','六'];
+function renderCalDetail(d){
+  const rec = CAL[d];
+  const wd = WD[new Date(2026,7,d).getDay()];
+  const body = rec
+    ? `<div class="cd-sum"><span>支出<b>-¥${fmt(rec.out)}</b></span>${rec.in?`<span>收入<b class="in">+¥${fmt(rec.in)}</b></span>`:''}<span>共 ${rec.n} 笔</span></div>
+       ${rec.top?`<p class="tiny" style="margin-top:6px">${rec.top}</p>`:''}
+       ${d!==7?`<button class="chip" id="cal-add" style="margin-top:10px">给 8月${d}日 补一笔</button>`:''}`
+    : `<p class="sub" style="margin-top:6px">这一天还没有记录</p>
+       <button class="chip" id="cal-add" style="margin-top:10px">给 8月${d}日 补一笔</button>`;
+  $('#cal-detail').innerHTML = `<h3 class="card-title">8月${d}日 · 周${wd}${d===7?' <span class="tiny">今天</span>':''}</h3>${body}`;
+}
+$('#cal-detail').addEventListener('click', e=>{
+  const b = e.target.closest('#cal-add'); if(!b) return;
+  $('#date-txt').textContent = `8月${calSel}日`;
+  openSheet();
+  toast(`记账日期已设为 8月${calSel}日，保存后计入当日流水`);
+});
+$('#cal-grid').addEventListener('click', e=>{
+  const b = e.target.closest('.cal-day[data-d]'); if(!b) return;
+  calSel = +b.dataset.d;
+  renderCal(); renderCalDetail(calSel);
+});
+renderCal(); renderCalDetail(calSel);
+
+/* ── 速记模板 ── */
+$('#tpl-row').addEventListener('click', e=>{
+  const b = e.target.closest('.chip[data-amt]'); if(!b) return;
+  state.type = 'expense';
+  $$('#seg button').forEach(x=>{
+    const on = x.dataset.type==='expense';
+    x.classList.toggle('active', on); x.setAttribute('aria-selected', String(on));
+  });
+  state.amt = b.dataset.amt; state.cat = +b.dataset.cat; state.prev = null; state.op = null;
+  renderCats(); refreshAmt();
+  toast(`已按模板填好：${b.textContent.trim()}，点保存即可入账`);
+});
+
+/* ── 报销 / 退款标记 ── */
+const marks = {bx:false, tk:false};
+[['#mark-bx','bx'],['#mark-tk','tk']].forEach(([sel,key])=>{
+  $(sel).addEventListener('click',()=>{
+    marks[key] = !marks[key];
+    $(sel).classList.toggle('active', marks[key]);
+    $(sel).setAttribute('aria-pressed', String(marks[key]));
+  });
+});
+function resetMarks(){
+  marks.bx = marks.tk = false;
+  ['#mark-bx','#mark-tk'].forEach(s=>{ $(s).classList.remove('active'); $(s).setAttribute('aria-pressed','false'); });
+}
+
+$('#btn-backup').addEventListener('click',function(){
+  this.disabled = true; this.textContent = '正在生成备份包…';
+  setTimeout(()=>{ this.textContent = '正在上传到阿里云盘…'; }, 700);
+  setTimeout(()=>{
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<span class="e-ic neutral"><svg class="ic"><use href="#ic-lock"/></svg></span>
+      <div class="e-main"><p class="e-title">拾光备份_20260808_0941.skbak</p><p class="e-meta">4.6 MB · 阿里云盘 · 2,847 条 · 已加密</p></div>
+      <button class="restore-link js-restore">恢复</button>`;
+    $('#backup-history').prepend(row);
+    $('#last-backup').textContent = '刚刚（8月8日 09:41）';
+    this.disabled = false; this.textContent = '立即备份到云盘';
+    toast('备份完成：备份包与 Excel 已上传到阿里云盘「拾光备份」');
+  }, 1500);
+});
+$('#backup-history').addEventListener('click',e=>{
+  const btn = e.target.closest('.js-restore'); if(!btn || btn.disabled) return;
+  const name = btn.parentElement.querySelector('.e-title').textContent;
+  btn.disabled = true; btn.textContent = '校验中…';
+  setTimeout(()=>{ btn.textContent = '恢复中…'; }, 700);
+  setTimeout(()=>{
+    btn.disabled = false; btn.textContent = '恢复';
+    toast(`已从「${name}」恢复全量数据 · 2,847 条记录（恢复前已自动创建本地快照，7 天内可撤销）`);
+  }, 1600);
+});
+const PROVIDER_ACTS = {
+  aliyun: ()=>toast('阿里云盘已连接：备份将自动上传至「拾光备份」文件夹'),
+  baidu(){ $('#pv-baidu').textContent = '已连接 · 自动上传至「/apps/拾光」'; toast('已通过百度网盘官方接口授权，自动备份可选百度网盘'); },
+};
+$$('[data-provider]').forEach(b=>b.addEventListener('click',()=>PROVIDER_ACTS[b.dataset.provider]()));
+$$('.chip-group').forEach(g=>g.addEventListener('click',e=>{
+  const b = e.target.closest('.chip'); if(!b) return;
+  g.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+  b.classList.add('active');
+  toast(`自动备份${g.dataset.group}已设为：${b.textContent}`);
+}));
+
+/* ── 账单导入（挖财 / 微信 / 支付宝） ── */
+const IMP_INFO = {
+  wacai:{
+    desc:'挖财导出为单张工作表，每行一条流水，「类型」列区分支出 / 收入 / 转账 / 借贷；拾光按下表逐列映射，导入本地数据库。',
+    btn:'选择 Excel 文件', hint:'支持挖财导出的 .xls / .xlsx 模版 · 导入前会自动创建一次本地备份',
+    file:'wacai.xls', found:'识别 2,847 行流水：支出 2,206 / 收入 214 / 转账 355 / 借贷 72 · 两级类别、标签、商家、「已报销」属性均可映射，3 笔外币将按当日汇率折算', map:true,
+    done:'2,847 条挖财流水已导入：转账已拆为转出 / 转入账户，借贷已按收付款人建立往来对象，「已报销」账单已归入报销管理'
+  },
+  wechat:{
+    desc:'在微信 → 我 → 服务 → 钱包 → 账单中申请导出「用于个人对账」的 CSV 账单，拾光按商户名自动归类，导入前可逐条确认。',
+    btn:'选择 CSV 账单', hint:'支持微信官方 CSV · 与已记账单自动查重，不会重复入账',
+    file:'微信支付账单(20260701-20260807).csv', found:'识别 186 笔交易 · 172 笔已自动归类，14 笔待确认', map:false,
+    done:'186 笔微信交易已导入，14 笔待确认分类已放入「待整理」'
+  },
+  alipay:{
+    desc:'在支付宝 → 我的 → 账单中申请「用于个人对账」的 CSV 流水，拾光按商户名自动归类，导入前可逐条确认。',
+    btn:'选择 CSV 账单', hint:'支持支付宝官方 CSV · 与已记账单自动查重，不会重复入账',
+    file:'alipay_record_20260807.csv', found:'识别 143 笔交易 · 131 笔已自动归类，12 笔待确认', map:false,
+    done:'143 笔支付宝交易已导入，12 笔待确认分类已放入「待整理」'
+  }
+};
+let impSrc = 'wacai';
+$('#imp-src').addEventListener('click', e=>{
+  const b = e.target.closest('.chip[data-src]'); if(!b) return;
+  $$('#imp-src .chip').forEach(c=>{c.classList.remove('active');c.setAttribute('aria-selected','false');});
+  b.classList.add('active'); b.setAttribute('aria-selected','true');
+  impSrc = b.dataset.src;
+  const info = IMP_INFO[impSrc];
+  $('#imp-desc').textContent = info.desc;
+  $('#map-tbl').hidden = !info.map;
+  $('#btn-import').textContent = info.btn;
+  $('#import-hint').textContent = info.hint;
+  const mg = $('#btn-migrate'); mg.disabled = true; mg.textContent = '开始导入';
+});
+$('#btn-import').addEventListener('click',()=>{
+  const info = IMP_INFO[impSrc];
+  $('#import-hint').textContent = `已选择「${info.file}」· ${info.found}`;
+  $('#btn-migrate').disabled = false;
+  toast('文件解析完成，可以开始导入');
+});
+$('#btn-migrate').addEventListener('click',function(){
+  this.disabled = true; this.textContent = '正在导入…';
+  setTimeout(()=>{
+    this.textContent = '导入完成';
+    $('#import-hint').textContent = '导入完成：' + IMP_INFO[impSrc].done;
+    toast('导入完成，已计入报表与预算');
+  }, 1100);
+});
+
+/* ── 标签 / 商家 ── */
+const TAGS = ['出差','家庭','旅行'];
+const SHOPS = ['永辉超市','滴滴出行','美团外卖'];
+let tagIdx = -1, shopIdx = -1;
+$('#chip-tag').addEventListener('click',()=>{
+  tagIdx = tagIdx>=TAGS.length-1 ? -1 : tagIdx+1;
+  const on = tagIdx>=0;
+  $('#tag-txt').textContent = on ? '#'+TAGS[tagIdx] : '标签';
+  $('#chip-tag').classList.toggle('active', on);
+  $('#chip-tag').setAttribute('aria-pressed', String(on));
+  if(on) toast(`已打标签 #${TAGS[tagIdx]} · 再点切换，报表排行可按标签统计`);
+});
+$('#chip-shop').addEventListener('click',()=>{
+  shopIdx = shopIdx>=SHOPS.length-1 ? -1 : shopIdx+1;
+  const on = shopIdx>=0;
+  $('#shop-txt').textContent = on ? SHOPS[shopIdx] : '商家';
+  $('#chip-shop').classList.toggle('active', on);
+  $('#chip-shop').setAttribute('aria-pressed', String(on));
+  if(on) toast(`商家已选「${SHOPS[shopIdx]}」· 常用商家会自动排前`);
+});
+function resetTagShop(){
+  tagIdx = shopIdx = -1;
+  $('#tag-txt').textContent = '标签'; $('#shop-txt').textContent = '商家';
+  ['#chip-tag','#chip-shop'].forEach(s=>{ $(s).classList.remove('active'); $(s).setAttribute('aria-pressed','false'); });
+}
+
+/* ── 报销管理 ── */
+let REIM = [
+  {t:'打车 · 滴滴', meta:'8月6日 · 交通 · 微信零钱', v:23.80, sel:false},
+  {t:'高铁票 · 出差往返', meta:'7月30日 · 交通 · 招行储蓄卡 ·6688', v:286.00, sel:false}
+];
+function renderReim(){
+  $('#rb-list').innerHTML = REIM.length ? REIM.map((r,i)=>
+    `<div class="row" data-i="${i}" role="button" tabindex="0"><span class="ck${r.sel?' on':''}" aria-hidden="true"></span><div class="e-main"><p class="e-title">${r.t}</p><p class="e-meta">${r.meta}</p></div><p class="e-amt num">¥${fmt(r.v)}</p></div>`).join('')
+    : '<p class="sub" style="padding:12px 2px">暂无待报销账单 · 记一笔时点亮「报销」会自动归到这里</p>';
+  const sum = REIM.reduce((s,r)=>s+r.v,0);
+  $('#rb-sum').textContent = '¥'+fmt(sum);
+  $('#rb-sub').textContent = REIM.length ? `${REIM.length} 笔待报销 · 记一笔时点亮「报销」会自动归到这里` : '待报销已全部结清';
+  $('#rb-note').textContent = REIM.length ? `${REIM.length} 笔 · ¥${fmt(sum)}` : '已结清';
+  const sel = REIM.filter(r=>r.sel);
+  $('#rb-selinfo').textContent = `已选 ${sel.length} 笔 · ¥${fmt(sel.reduce((s,r)=>s+r.v,0))}`;
+}
+$('#rb-list').addEventListener('click', e=>{
+  const row = e.target.closest('.row[data-i]'); if(!row) return;
+  const r = REIM[+row.dataset.i]; r.sel = !r.sel;
+  renderReim();
+});
+$('#rb-go').addEventListener('click',()=>{
+  const sel = REIM.filter(r=>r.sel);
+  if(!sel.length){ toast('先勾选要报销的账单'); return; }
+  const sum = Math.round(sel.reduce((s,r)=>s+r.v,0)*100)/100;
+  const countIn = $('#rb-mode').classList.contains('on');
+  sel.forEach(r=>{
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<span class="e-ic neutral"><svg class="ic"><use href="#ic-file"/></svg></span><div class="e-main"><p class="e-title">${r.t}</p><p class="e-meta">${r.meta.split(' · ')[0]} · 今天报销到账 → 招行储蓄卡 ·6688</p></div><p class="e-amt num in">+¥${fmt(r.v)}</p>`;
+    $('#rb-done').prepend(row);
+  });
+  REIM = REIM.filter(r=>!r.sel);
+  renderReim();
+  if(countIn){
+    state.monthIncome += sum; state.todayIncome += sum;
+    REPORT.month.income = state.monthIncome;
+    REPORT.month.incomes[REPORT.month.incomes.length-1] = state.monthIncome;
+    REPORT.week.income += sum;
+    prependEntry({icon:'ic-file', cls:'neutral', title:'报销款', subTitle:`${sel.length} 笔报销到账`, meta:'报销收入 · 招行储蓄卡 ·6688', amtHtml:`<p class="e-amt num in">+¥${fmt(sum)}</p>`});
+    updateOverview();
+    const cp = $('#r-seg .active').dataset.p;
+    if(cp==='month'||cp==='week') renderReport(cp);
+    toast(`报销到账 ¥${fmt(sum)}：已记为一笔「报销」收入`);
+  }else{
+    prependEntry({icon:'ic-file', cls:'neutral', title:'报销到账', subTitle:`${sel.length} 笔`, meta:'冲抵原支出 · 不计入收入统计', amtHtml:`<p class="e-amt num">¥${fmt(sum)}</p>`});
+    toast(`报销到账 ¥${fmt(sum)}：已冲抵原支出，不计入收入统计`);
+  }
+});
+$('#rb-mode').addEventListener('click',()=>{
+  toast($('#rb-mode').classList.contains('on') ? '已开启：报销到账将记为一笔「报销」收入' : '已关闭：报销到账只冲抵原支出，不进收入统计');
+});
+
+/* ── 分类管理（支出两级 / 收入单级） ── */
+function renderCatManager(type){
+  if(type==='expense'){
+    const groups = {};
+    CATS.expense.forEach(([name,ic,parent])=>{ (groups[parent] = groups[parent]||[]).push([name,ic]); });
+    $('#cm-list').innerHTML = Object.entries(groups).map(([g,items])=>
+      `<section class="card list" style="margin-bottom:12px" aria-label="${g}大类">
+        <div class="row"><span class="e-ic sm"><svg class="ic"><use href="${'#'+(CAT_ICONS[g]||'ic-coin')}"/></svg></span><b>${g}</b><span class="row-note">${items.length} 个小类</span><button class="restore-link cm-addsub" data-g="${g}">添加小类</button></div>
+        ${items.map(([n,ic])=>`<button class="row cm-item" data-n="${n}"><span class="e-ic sm"><svg class="ic"><use href="${'#'+ic}"/></svg></span>${n}<span class="chev" style="margin-left:auto"><svg class="ic" style="width:15px;height:15px"><use href="#ic-right"/></svg></span></button>`).join('')}
+      </section>`).join('');
+  }else{
+    $('#cm-list').innerHTML = `<section class="card list" aria-label="收入分类">
+      ${CATS.income.map(([n,ic])=>`<button class="row cm-item" data-n="${n}"><span class="e-ic sm"><svg class="ic"><use href="${'#'+ic}"/></svg></span>${n}<span class="chev" style="margin-left:auto"><svg class="ic" style="width:15px;height:15px"><use href="#ic-right"/></svg></span></button>`).join('')}
+    </section>`;
+  }
+}
+$('#cm-list').addEventListener('click', e=>{
+  const add = e.target.closest('.cm-addsub');
+  if(add){ toast(`原型演示：在「${add.dataset.g}」大类下新建小类，可选名称与图标`); return; }
+  const it = e.target.closest('.cm-item');
+  if(it) toast(`原型演示：编辑「${it.dataset.n}」—— 改名、换图标、移动到其他大类或升为大类`);
+});
+$$('#cm-seg button').forEach(b=>b.addEventListener('click',()=>{
+  $$('#cm-seg button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});
+  b.classList.add('active'); b.setAttribute('aria-selected','true');
+  renderCatManager(b.dataset.t);
+  $('#cm-tip').textContent = b.dataset.t==='expense'
+    ? '支出为两级分类：大类下挂小类 · 点小类可改名、换图标、移动或升为大类 · 长按拖动排序'
+    : '收入为单级分类 · 点分类可改名、换图标 · 长按拖动排序';
+}));
+$('#cm-add').addEventListener('click',()=>toast('原型演示：新建大类，可从图标库中选择图标与颜色'));
+
+/* ── 回收站 ── */
+const TRASH = [
+  {t:'奶茶 · 一点点', meta:'8月3日 · 餐饮 · 8月3日删除，25 天后自动清除', v:-15.00},
+  {t:'重复记录 · 地铁', meta:'8月2日 · 交通 · 8月2日删除，24 天后自动清除', v:-4.00}
+];
+function renderTrash(){
+  $('#trash-list').innerHTML = TRASH.length ? TRASH.map((r,i)=>
+    `<div class="row"><span class="e-ic neutral"><svg class="ic"><use href="#ic-trash"/></svg></span><div class="e-main"><p class="e-title">${r.t}</p><p class="e-meta">${r.meta}</p></div><button class="restore-link tr-restore" data-i="${i}">恢复</button></div>`).join('')
+    : '<p class="sub" style="padding:12px 2px">回收站是空的</p>';
+  $('#trash-note').textContent = TRASH.length ? `${TRASH.length} 条` : '空';
+}
+$('#trash-list').addEventListener('click', e=>{
+  const b = e.target.closest('.tr-restore'); if(!b) return;
+  const [r] = TRASH.splice(+b.dataset.i,1);
+  if(r.src){ r.src.sel = false; DETAIL.unshift(r.src); renderDetail(); }
+  renderTrash();
+  toast(`已恢复「${r.t}」：回到原日期流水，并重新计入报表与预算`);
+});
+$('#tr-clear').addEventListener('click',()=>{
+  if(!TRASH.length){ toast('回收站已经是空的'); return; }
+  TRASH.length = 0; renderTrash();
+  toast('回收站已清空（原型演示：完整版会先二次确认）');
+});
+
+/* ── 账单明细 · 筛选与批量 ── */
+const DETAIL = [
+  {d:'8月7日', t:'咖啡 · 瑞幸', c:'餐饮', a:'微信零钱', v:-18.00, ic:'ic-cup'},
+  {d:'8月7日', t:'晚餐食材', c:'餐饮', a:'支付宝', v:-32.50, ic:'ic-moon'},
+  {d:'8月7日', t:'午餐 · 公司楼下', c:'餐饮', a:'微信零钱', v:-25.00, ic:'ic-bowl'},
+  {d:'8月7日', t:'地铁通勤', c:'交通', a:'支付宝', v:-4.00, ic:'ic-metro'},
+  {d:'8月7日', t:'早餐 · 包子豆浆', c:'餐饮', a:'现金', v:-7.00, ic:'ic-sun'},
+  {d:'8月6日', t:'麻辣香锅 · 和同事', c:'餐饮', a:'微信零钱', v:-45.00, ic:'ic-bowl'},
+  {d:'8月6日', t:'夏凉被', c:'购物', a:'支付宝', v:-129.00, ic:'ic-cart'},
+  {d:'8月6日', t:'打车 · 滴滴', c:'交通', a:'微信零钱', v:-23.80, ic:'ic-car'},
+  {d:'8月6日', t:'稿费', c:'收入', a:'支付宝', v:150.00, ic:'ic-pen'},
+  {d:'8月6日', t:'早餐', c:'餐饮', a:'现金', v:-6.50, ic:'ic-sun'},
+  {d:'8月5日', t:'工资到账', c:'收入', a:'招行储蓄卡', v:18500.00, ic:'ic-brief'},
+  {d:'8月5日', t:'老友火锅', c:'餐饮', a:'微信零钱', v:-186.00, ic:'ic-bowl'},
+  {d:'8月5日', t:'水电燃气', c:'居住', a:'招行储蓄卡', v:-182.00, ic:'ic-bolt'},
+  {d:'8月4日', t:'打车 · 加班回家', c:'交通', a:'微信零钱', v:-32.20, ic:'ic-car'},
+  {d:'8月4日', t:'日用品补货', c:'购物', a:'支付宝', v:-68.00, ic:'ic-bottle'}
+];
+let fltCat = '全部', fltAcct = '全部', batchMode = false;
+function renderDetail(){
+  const rows = DETAIL.filter(r=>(fltCat==='全部'||r.c===fltCat) && (fltAcct==='全部'||r.a===fltAcct));
+  const out = rows.filter(r=>r.v<0).reduce((s,r)=>s-r.v,0);
+  const inc = rows.filter(r=>r.v>0).reduce((s,r)=>s+r.v,0);
+  $('#dt-sum').textContent = `筛选结果：${rows.length} 笔 · 支出 ¥${fmt(out)} · 收入 ¥${fmt(inc)}`;
+  $('#dt-list').innerHTML = rows.length ? rows.map(r=>{
+    const i = DETAIL.indexOf(r);
+    const lead = batchMode
+      ? `<span class="ck${r.sel?' on':''}" aria-hidden="true"></span>`
+      : `<span class="e-ic sm${r.v>0?' neutral':''}"><svg class="ic"><use href="${'#'+r.ic}"/></svg></span>`;
+    return `<div class="row" data-i="${i}" role="button" tabindex="0">${lead}<div class="e-main"><p class="e-title">${r.t}</p><p class="e-meta">${r.d} · ${r.c} · ${r.a}</p></div><p class="e-amt num${r.v>0?' in':''}">${r.v>0?'+':'-'}¥${fmt(Math.abs(r.v))}</p></div>`;
+  }).join('') : '<p class="sub" style="padding:12px 2px">没有符合筛选条件的账单</p>';
+  $('#bb-count').textContent = `已选 ${DETAIL.filter(r=>r.sel).length} 笔`;
+}
+function bindFlt(sel, apply){
+  $(sel).addEventListener('click', e=>{
+    const b = e.target.closest('.chip'); if(!b) return;
+    $(sel).querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+    b.classList.add('active');
+    apply(b.textContent.trim());
+    renderDetail();
+  });
+}
+bindFlt('#flt-cat', v=>fltCat=v);
+bindFlt('#flt-acct', v=>fltAcct=v);
+$('#dt-batch').addEventListener('click',()=>{
+  batchMode = !batchMode;
+  $('#dt-batch').textContent = batchMode ? '完成' : '批量';
+  $('#dt-batch').classList.toggle('active', batchMode);
+  $('#batch-bar').hidden = !batchMode;
+  if(!batchMode) DETAIL.forEach(r=>r.sel=false);
+  renderDetail();
+});
+$('#dt-list').addEventListener('click', e=>{
+  const row = e.target.closest('.row[data-i]'); if(!row) return;
+  const r = DETAIL[+row.dataset.i];
+  if(batchMode){ r.sel = !r.sel; renderDetail(); }
+  else toast(`原型演示：查看「${r.t}」详情，可编辑、复制或删除`);
+});
+$('#bb-cat').addEventListener('click',()=>{
+  const n = DETAIL.filter(r=>r.sel).length;
+  toast(n ? `原型演示：为已选 ${n} 笔批量选择新分类` : '先勾选要处理的账单');
+});
+$('#bb-acct').addEventListener('click',()=>{
+  const n = DETAIL.filter(r=>r.sel).length;
+  toast(n ? `原型演示：为已选 ${n} 笔批量选择新账户` : '先勾选要处理的账单');
+});
+$('#bb-del').addEventListener('click',()=>{
+  const sel = DETAIL.filter(r=>r.sel);
+  if(!sel.length){ toast('先勾选要删除的账单'); return; }
+  sel.forEach(r=>TRASH.unshift({t:r.t, meta:`${r.d} · ${r.c} · 今天删除，30 天后自动清除`, v:r.v, src:r}));
+  sel.forEach(r=>DETAIL.splice(DETAIL.indexOf(r),1));
+  renderDetail(); renderTrash();
+  toast(`已删除 ${sel.length} 笔，30 天内可在「我的 → 回收站」恢复`);
+});
+
+/* ── 首页自定义 ── */
+const HOME_MODS = {month:'#hm-month', quick:'#hm-quick', today:'#hm-today', past:'.hm-past'};
+$('#homeedit-list').addEventListener('click', e=>{
+  const sw = e.target.closest('.switch[data-mod]'); if(!sw) return;
+  const on = sw.classList.contains('on');
+  $$(HOME_MODS[sw.dataset.mod]).forEach(el=>el.hidden = !on);
+  toast(on ? `「${sw.dataset.name}」已恢复显示` : `「${sw.dataset.name}」已从首页隐藏，随时可再打开`);
+});
+
+/* ── 隐藏账户 ── */
+$('#unhide-acct').addEventListener('click',()=>{
+  const showing = $('#unhide-acct').textContent==='显示';
+  $('#unhide-acct').textContent = showing ? '隐藏' : '显示';
+  $('#hid-note').textContent = showing ? '已显示 · 不计入净资产' : '不计入净资产';
+  toast(showing ? '公交卡 ·0988 已重新显示在账户列表，余额仍不计入净资产' : '公交卡 ·0988 已从账户列表隐藏');
+});
+
+/* ── 新子页入口 ── */
+$('#qa-detail').addEventListener('click',()=>openSub('page-detail'));
+$('#go-reimburse').addEventListener('click',()=>openSub('page-reimburse'));
+$('#go-cats').addEventListener('click',()=>openSub('page-cats'));
+$('#go-trash').addEventListener('click',()=>openSub('page-trash'));
+$('#btn-home-edit').addEventListener('click',()=>openSub('page-homeedit'));
+
+renderReim();
+renderCatManager('expense');
+renderTrash();
+renderDetail();
+</script>
+</body>
+</html>

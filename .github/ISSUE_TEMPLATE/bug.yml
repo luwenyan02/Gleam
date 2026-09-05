@@ -1,0 +1,37 @@
+name: 缺陷报告
+description: 报告可复现的功能、数据或界面问题
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: 请勿上传真实账目、备份文件、API 密钥或签名材料。
+  - type: input
+    id: version
+    attributes:
+      label: 版本与平台
+      placeholder: v1.0.8 / Android 16 或 PWA
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 脱敏截图或日志

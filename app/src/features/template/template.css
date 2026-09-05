@@ -1,0 +1,16 @@
+/* 拾光 · 速记模板管理（列表排序按钮 + 表单抽屉分类树） */
+
+/* 列表行：名称主体 + 上下移按钮（ic-left/ic-right 旋转 90° 作上下箭头） */
+.tm-item .tm-main{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.tm-item .tm-main b{font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tm-item .tm-main .row-note{margin-left:0}
+.tm-sort{display:flex;gap:2px;flex:none}
+.tm-sort .icon-btn:disabled{opacity:.35}
+.tm-up svg{transform:rotate(90deg)}
+.tm-down svg{transform:rotate(90deg)}
+
+/* 表单抽屉：支出分类树（大类分区 + chip 选择） */
+.tm-cats{max-height:38vh;overflow-y:auto;scrollbar-width:none;margin-top:4px}
+.tm-cats::-webkit-scrollbar{display:none}
+.tm-cat-sec{font-size:10.5px;letter-spacing:.14em;color:var(--faint);padding:10px 2px 6px}
+.tm-cat-row{display:flex;flex-wrap:wrap;gap:7px}
