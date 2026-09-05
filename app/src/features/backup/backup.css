@@ -1,6 +1,7 @@
 /* 拾光 · 备份与恢复子页（视觉迁自原型 index.html L307-323） */
 .backup-status{text-align:center;padding:calc(24px * var(--seed-density)) var(--pad)}
 .bs-ic{width:52px;height:52px;margin:0 auto 12px;border-radius:50%;background:var(--accent-soft);color:var(--primary);display:flex;align-items:center;justify-content:center}
+.bk-group-title{padding:3px 4px 8px;font-size:11px;letter-spacing:.14em;color:var(--faint);font-weight:650}
 .bs-ic svg.ic{width:26px;height:26px}
 .backup-status .big{font-size:calc(30px * var(--seed-type));font-weight:700}
 .backup-status .big small{font-size:13px;font-weight:400;color:var(--muted);font-family:var(--font-body)}

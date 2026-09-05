@@ -13,6 +13,7 @@ import type { Account, AiPendingItem, Attachment, Category, ImportBatch } from '
 import { getSetting, setSetting } from './settingsRepo';
 import { listCategories } from './categoryRepo';
 import { listAccounts } from './accountRepo';
+import { secretStore } from '../secretStore';
 
 /* ── 识别结果与错误 ─────────────────── */
 
@@ -72,9 +73,9 @@ function modelsEndpoint(baseUrl: string): string {
 /** 读取 AI 配置；未配置抛 AiConfigError */
 async function loadConfig(): Promise<{ baseUrl: string; model: string; apiKey: string }> {
   const [baseUrl, model, apiKey] = await Promise.all([
-    getSetting('ai.baseUrl'), getSetting('ai.model'), getSetting('ai.apiKey'),
+    getSetting('ai.baseUrl'), getSetting('ai.model'), secretStore.get('ai.apiKey'),
   ]);
-  if (!baseUrl.trim() || !model.trim() || !apiKey.trim()) throw new AiConfigError();
+  if (!baseUrl.trim() || !model.trim() || !apiKey?.trim()) throw new AiConfigError();
   return { baseUrl, model, apiKey };
 }
 
@@ -137,8 +138,8 @@ const MODELS_LIMIT = 10;
  * @throws 未配置地址/Key、Key 无效（401/403）、平台不支持拉取或网络失败的引导文案
  */
 export async function listAiModels(preferred: string[] = []): Promise<string[]> {
-  const [baseUrl, apiKey] = await Promise.all([getSetting('ai.baseUrl'), getSetting('ai.apiKey')]);
-  if (!baseUrl.trim() || !apiKey.trim()) throw new Error('请先填写 API 地址与 API Key');
+  const [baseUrl, apiKey] = await Promise.all([getSetting('ai.baseUrl'), secretStore.get('ai.apiKey')]);
+  if (!baseUrl.trim() || !apiKey?.trim()) throw new Error('请先填写 API 地址与 API Key');
 
   const ctrl = new AbortController();
   const timer = window.setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT);

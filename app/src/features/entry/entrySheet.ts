@@ -1,5 +1,5 @@
 /**
- * 拾光 · 记一笔底部抽屉（PRD 4.1）
+ * 拾光 · 记一笔全高度工作台（PRD 4.1）
  * 通过 shell 的 openSheet 承载。四类型分段切换（收入/支出/转账/借贷），
  * 计算器键盘连续四则运算（从左到右、无优先级），速记模板、标签/商家/报销退款标记、
  * 历史日期补账、「同时写生活记录」联动，编辑模式预填全部字段。
@@ -15,14 +15,14 @@ import {
   type LoanContact, type Merchant, type QuickTemplate, type Tag,
 } from '../../core/types';
 import {
-  addEntry, updateEntry, getEntry, getEntryTagIds, dayKey, getNoteFrequencies, listEntries,
+  getEntry, getEntryTagIds, dayKey, getNoteFrequencies, listEntries,
   type NewEntry, type NoteFrequency,
 } from '../../core/repo/entryRepo';
 import { listExpenseTree, listCategories } from '../../core/repo/categoryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
 import { listTemplates } from '../../core/repo/templateRepo';
 import { listTags, ensureTag } from '../../core/repo/tagRepo';
-import { listMerchants, ensureMerchant, touchMerchant } from '../../core/repo/merchantRepo';
+import { listMerchants, ensureMerchant } from '../../core/repo/merchantRepo';
 import { listLoanContacts, getLoanContact, ensureLoanContact } from '../../core/repo/loanRepo';
 import { addLifeNote } from '../../core/repo/lifeRepo';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
@@ -33,6 +33,16 @@ import { showToast } from '../shell/toast';
 import { openDateTimeWheel } from '../../shared/dateTimeWheel';
 import { openPickList, type PickListItem } from '../../shared/pickList';
 import { createRepeatDraft, rankFrequentCategories, resolveInitialEntryType } from './entryWorkspace';
+import {
+  OPERATOR_SYMBOL, applyCalculation, appendDigit, chooseOperator, deleteDigit,
+  type CalculatorOperator, type CalculatorState,
+} from './entryCalculator';
+import { renderAdvancedFields } from './entryAdvancedFields';
+import { renderTypeForms } from './entryTypeForms';
+import {
+  renderCategoryButton, renderCategoryToggle, selectQuickCategories,
+} from './entryCategoryPicker';
+import { persistEntry } from './entrySaveService';
 import './entry.css';
 
 /**
@@ -64,15 +74,12 @@ export interface EntrySheetOptions {
 
 /* ── 抽屉内部状态 ─────────────────── */
 
-type Op = '+' | '-' | '*' | '/';
-const OP_SYM: Record<Op, string> = { '+': ' + ', '-': ' − ', '*': ' × ', '/': ' ÷ ' };
-
 interface SheetCtx {
   type: EntryType;
   /** 当前操作数（元，字符串） */
   amt: string;
   prev: number | null;
-  op: Op | null;
+  op: CalculatorOperator | null;
   /** 支出/收入选中分类 id */
   categoryId?: number;
   loanKind: LoanKind;
@@ -278,18 +285,7 @@ function renderSheet(el: HTMLElement, note: string): void {
         <span>常用分类</span><small>按近 90 天使用习惯排序</small>
       </div>
       <div id="cat-grid" class="cat-grid" role="listbox" aria-label="选择分类"></div>
-      <div id="transfer-block" class="transfer" hidden>
-        <button class="t-row" id="t-from"><span class="lbl">转出</span><b></b><span class="chev">${iconHtml('ic-right', 15)}</span></button>
-        <span class="t-arrow">${iconHtml('ic-swap')}</span>
-        <button class="t-row" id="t-to"><span class="lbl">转入</span><b></b><span class="chev">${iconHtml('ic-right', 15)}</span></button>
-      </div>
-      <div id="loan-block" hidden>
-        <div class="transfer">
-          <button class="t-row" id="loan-who"><span class="lbl">对象</span><b></b><span class="chev">${iconHtml('ic-right', 15)}</span></button>
-          <button class="t-row" id="loan-acct"><span class="lbl" id="loan-acct-lbl">转入账户</span><b></b><span class="chev">${iconHtml('ic-right', 15)}</span></button>
-        </div>
-        <p class="tiny" id="loan-hint" style="padding:2px 4px 0"></p>
-      </div>
+      ${renderTypeForms()}
       <input class="note" id="note" type="text" placeholder="写点备注（可选）" aria-label="备注">
       <div class="note-suggest" id="note-suggest" aria-label="备注历史建议"></div>
       <div class="meta-row primary-meta">
@@ -300,19 +296,7 @@ function renderSheet(el: HTMLElement, note: string): void {
           ${iconHtml('ic-set', 16)}<span id="advanced-label">更多</span>
         </button>
       </div>
-      <section class="advanced-fields" id="advanced-fields" aria-label="更多记账信息" hidden>
-        <div class="tpl-row" id="tpl-row" aria-label="速记模板">
-          <span class="tpl-lbl">速记</span>
-          ${c.templates.map((t) => `<button class="chip" type="button" data-tpl="${t.id}">${esc(t.name)} ¥${formatFen(t.amount)}</button>`).join('')}
-          <button class="chip" type="button" data-tpl-manage>${c.templates.length ? '管理' : '添加模板'}</button>
-        </div>
-        <div class="meta-row advanced-meta">
-          <button class="chip" type="button" id="mark-tk" aria-pressed="false">退款</button>
-          <button class="chip" type="button" id="chip-tag" aria-pressed="false">${iconHtml('ic-tag', 16)}<span id="tag-txt">标签</span></button>
-          <button class="chip" type="button" id="chip-shop" aria-pressed="false">${iconHtml('ic-shop', 16)}<span id="shop-txt">商家</span></button>
-          <button class="chip toggle-chip" id="life-toggle" type="button" role="switch" aria-checked="false">同时写生活记录</button>
-        </div>
-      </section>
+      ${renderAdvancedFields(c.templates)}
     </div>
     <div class="keypad" id="keypad" aria-label="计算器键盘">
       <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button><button data-k="+" class="op" aria-label="加">+</button><button data-k="del" class="op" aria-label="删除一位">${iconHtml('ic-del')}</button>
@@ -404,39 +388,24 @@ function renderCats(): void {
       grid.innerHTML = c.expenseTree.map((group) => {
         const choices = group.children.length ? group.children : [group.parent];
         return `<div class="cat-sec">${esc(group.parent.name)}</div>` +
-          choices.map((cat) => catBtn(cat, cat.id === c.categoryId)).join('');
-      }).join('') + categoryMoreButton(true);
+          choices.map((cat) => renderCategoryButton(cat, cat.id === c.categoryId)).join('');
+      }).join('') + renderCategoryToggle(true);
     } else {
-      grid.innerHTML = quickCategories(c.quickExpenseCats, c.categoryId)
-        .map((cat) => catBtn(cat, cat.id === c.categoryId)).join('') + categoryMoreButton(false);
+      grid.innerHTML = selectQuickCategories(c.quickExpenseCats, findCategory(c.categoryId))
+        .map((cat) => renderCategoryButton(cat, cat.id === c.categoryId)).join('') + renderCategoryToggle(false);
     }
   } else if (c.type === 'income') {
-    const choices = c.showAllCategories ? c.incomeCats : quickCategories(c.quickIncomeCats, c.categoryId);
-    grid.innerHTML = choices.map((cat) => catBtn(cat, cat.id === c.categoryId)).join('') +
-      categoryMoreButton(c.showAllCategories);
+    const choices = c.showAllCategories
+      ? c.incomeCats
+      : selectQuickCategories(c.quickIncomeCats, findCategory(c.categoryId));
+    grid.innerHTML = choices.map((cat) => renderCategoryButton(cat, cat.id === c.categoryId)).join('') +
+      renderCategoryToggle(c.showAllCategories);
   }
   if (isTransfer) {
     q('#t-from b').textContent = accountName(c.fromId);
     q('#t-to b').textContent = accountName(c.toId);
   }
   updatePick();
-}
-
-function quickCategories(categories: Category[], selectedId?: number): Category[] {
-  if (selectedId == null || categories.some((item) => item.id === selectedId)) return categories.slice(0, 7);
-  const selected = findCategory(selectedId);
-  return selected ? [selected, ...categories.filter((item) => item.id !== selectedId)].slice(0, 7) : categories.slice(0, 7);
-}
-
-function categoryMoreButton(expanded: boolean): string {
-  return `<button class="cat cat-more" data-cat-more type="button" aria-expanded="${expanded}">
-    <span class="cat-ic">${iconHtml(expanded ? 'ic-left' : 'ic-set')}</span><span>${expanded ? '收起' : '更多'}</span>
-  </button>`;
-}
-
-function catBtn(cat: Category, sel: boolean): string {
-  return `<button class="cat${sel ? ' sel' : ''}" data-id="${cat.id}" type="button" role="option" aria-selected="${sel}">
-    <span class="cat-ic">${iconHtml(cat.icon)}</span><span>${esc(cat.name)}</span></button>`;
 }
 
 /** 借贷往来余额提示（正 = TA 欠你） */
@@ -512,7 +481,7 @@ function refreshAmt(): void {
   const c = ctx!;
   const el = q('#amt');
   if (c.op != null) {
-    el.textContent = String(c.prev) + OP_SYM[c.op] + (c.amt || '');
+    el.textContent = String(c.prev) + OPERATOR_SYMBOL[c.op] + (c.amt || '');
     el.classList.remove('empty');
   } else {
     el.textContent = c.amt || '0.00';
@@ -521,39 +490,35 @@ function refreshAmt(): void {
   el.classList.toggle('long', (el.textContent ?? '').length > 8);
 }
 
-function calcApply(): void {
+function calculatorState(): CalculatorState {
   const c = ctx!;
-  if (c.op == null || c.prev == null) return;
-  const cur = parseFloat(c.amt || '0');
-  let r = c.prev;
-  if (c.op === '+') r = c.prev + cur;
-  else if (c.op === '-') r = c.prev - cur;
-  else if (c.op === '*') r = c.prev * cur;
-  else if (cur !== 0) r = c.prev / cur;
-  r = Math.round(Math.max(0, r) * 100) / 100;
-  c.amt = r ? String(r) : '';
-  c.prev = null;
-  c.op = null;
+  return { amount: c.amt, previous: c.prev, operator: c.op };
 }
 
-function setOp(op: Op): void {
+function syncCalculator(state: CalculatorState): void {
   const c = ctx!;
-  if (c.op != null && !c.amt) { c.op = op; return; }
-  if (c.op != null && c.amt) calcApply();
-  if (!c.amt) return;
-  c.prev = parseFloat(c.amt);
-  c.amt = '';
-  c.op = op;
+  c.amt = state.amount;
+  c.prev = state.previous;
+  c.op = state.operator;
+}
+
+function calcApply(): void {
+  const state = calculatorState();
+  applyCalculation(state);
+  syncCalculator(state);
+}
+
+function setOp(operator: CalculatorOperator): void {
+  const state = calculatorState();
+  chooseOperator(state, operator);
+  syncCalculator(state);
 }
 
 /** 追加一位数字：整数+小数合计最多 8 位、小数最多 2 位 */
 function pushDigit(ch: string): void {
-  const c = ctx!;
-  let next = c.amt + ch;
-  if (next.includes('.') && next.split('.')[1].length > 2) return;
-  if (next.replace('.', '').length > 8) return;
-  if (next.length > 1 && next[0] === '0' && next[1] !== '.') next = next.replace(/^0+/, '') || '0';
-  c.amt = next;
+  const state = calculatorState();
+  appendDigit(state, ch);
+  syncCalculator(state);
 }
 
 function switchEntryType(type: EntryType): void {
@@ -779,11 +744,12 @@ function bindEvents(el: HTMLElement): void {
     const k = btn.dataset.k!;
     const c = ctx;
     if (k === 'del') {
-      if (c.amt) c.amt = c.amt.slice(0, -1);
-      else if (c.op != null) { c.amt = String(c.prev); c.prev = null; c.op = null; }
+      const state = calculatorState();
+      deleteDigit(state);
+      syncCalculator(state);
     } else if (k === 'save') { void save(false); return; }
     else if (k === 'again') { void save(true); return; }
-    else if (k === '.') { if (!c.amt.includes('.')) c.amt = (c.amt || '0') + '.'; }
+    else if (k === '.') pushDigit('.');
     else if (k === '+' || k === '-') setOp(k);
     else if (k === 'md') {
       if (!c.amt && c.op === '*') c.op = '/';
@@ -1091,18 +1057,18 @@ async function doSave(stay: boolean): Promise<void> {
       });
     }
 
-    if (c.editingId != null) {
-      await updateEntry(c.editingId, base, tagIds);
-      if (base.merchantId != null && base.merchantId !== c.origMerchantId) await touchMerchant(base.merchantId);
-      await rememberLastUsed(c).catch(() => undefined);
+    const persisted = await persistEntry({
+      editingId: c.editingId,
+      entry: base,
+      tagIds,
+      originalMerchantId: c.origMerchantId,
+    });
+    await rememberLastUsed(c).catch(() => undefined);
+    if (persisted === 'updated') {
       showToast('账单已更新');
       closeSheet();
       return;
     }
-
-    await addEntry(base, tagIds);
-    if (base.merchantId != null) await touchMerchant(base.merchantId);
-    await rememberLastUsed(c).catch(() => undefined);
   } catch (err) {
     showToast(String(err instanceof Error ? err.message : err));
     return;

@@ -38,6 +38,12 @@ function rowHtml(sub: string, icon: string, title: string, note: string): string
     </button>`;
 }
 
+function groupHtml(title: string, rows: string, label: string): string {
+  return `<section class="mine-group" aria-label="${label}">
+    <h3>${title}</h3><div class="card list">${rows}</div>
+  </section>`;
+}
+
 /* ── 页面渲染 ── */
 
 async function refresh(): Promise<void> {
@@ -76,8 +82,7 @@ async function refresh(): Promise<void> {
       </div>
       <button class="icon-btn" data-sub="sp-settings" aria-label="应用设置">${iconHtml('ic-set')}</button>
     </header>
-    <section class="card list" aria-label="功能入口">
-      ${rowHtml('sp-backup', 'ic-cloud', '备份与恢复', '含挖财账单导入')}
+    ${groupHtml('记账偏好', `
       ${rowHtml('sp-reimburse', 'ic-file', '报销管理', bxNote)}
       ${rowHtml('sp-budget', 'ic-coin', '预算中心', budgetNote)}
       ${rowHtml('sp-loan', 'ic-loan-in', '借贷往来', loanNote)}
@@ -85,15 +90,27 @@ async function refresh(): Promise<void> {
       ${rowHtml('sp-categories', 'ic-set', '分类管理', '支出两级 · 收入单级')}
       ${rowHtml('sp-template-manage', 'ic-bolt', '速记模板', '分类加金额 · 一键记账')}
       ${rowHtml('sp-tags', 'ic-tag', '标签与商家', '排行与筛选维度')}
+    `, '记账偏好')}
+    ${groupHtml('数据与备份', `
+      ${rowHtml('sp-backup', 'ic-cloud', '备份与恢复', '备份 · 恢复 · Excel')}
       ${rowHtml('sp-trash', 'ic-trash', '回收站', '删除账单保留 30 天')}
+    `, '数据与备份')}
+    ${groupHtml('智能能力与通知', `
       ${rowHtml('sp-ai-inbox', 'ic-ai', 'AI 记账收件箱', '分享截图 · 粘贴账单')}
+    `, '智能能力与通知')}
+    ${groupHtml('外观与安全', `
+      ${rowHtml('sp-settings', 'ic-set', '设置中心', '通知 · 外观 · 应用锁')}
+    `, '外观与安全')}
+    <section class="mine-group" aria-label="关于和帮助">
+      <h3>关于和帮助</h3><div class="card list">
       <button class="row" data-about>
         <span class="e-ic">${iconHtml('ic-file', 18)}</span>关于拾光
         <span class="row-note">v${APP_VERSION} · PWA</span>
         <span class="chev">${iconHtml('ic-right', 15)}</span>
       </button>
+      </div>
     </section>
-    <p class="tiny" style="text-align:center;padding:4px 0 10px">所有数据仅保存在本机 · 云端只存放你主动生成的备份包与 Excel 导出</p>`;
+    <p class="tiny" style="text-align:center;padding:4px 0 10px">账本数据本地保存 · 仅在你主动启用云备份或 AI 识别时连接外部服务</p>`;
 }
 
 /* ── 装配 ── */

@@ -5,11 +5,12 @@
  */
 
 /* 习惯打卡卡 */
-.habit{display:flex;align-items:center;gap:12px}
+.habit{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px 12px}
 .habit .streak{display:flex;gap:5px;margin-left:auto}
 .streak span{width:9px;height:9px;border-radius:50%;background:var(--border)}
 .streak span.done{background:var(--primary)}
-.habit .lf-check{flex:none;margin-left:10px}
+.habit .lf-check{grid-column:3;grid-row:1;flex:none}
+.habit .streak{grid-column:2/4;grid-row:2;justify-self:end}
 
 /* 日记 / 照片卡 */
 .ln-date{font-size:10.5px;letter-spacing:.14em;color:var(--faint);margin-bottom:6px}
@@ -56,3 +57,6 @@ textarea.note{width:100%;min-height:96px;resize:none;line-height:1.7}
 .lf-empty{cursor:pointer}
 .lf-empty:active{opacity:.65}
 .lf-empty .hint{color:var(--primary)}
+.lf-empty-state{display:flex;min-height:260px;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center}
+.lf-empty-state h3{font-family:var(--font-display);font-size:18px}
+.lf-empty-state .btn{max-width:190px;margin-top:6px}

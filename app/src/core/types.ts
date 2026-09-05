@@ -323,6 +323,8 @@ export const SETTING_DEFAULTS = {
   'security.pin': null as { hash: string; salt: string } | null,
   /** WebAuthn 平台认证器凭据（base64url 编码的 credential id），null = 未启用 */
   'security.webauthn': null as { credId: string } | null,
+  /** 旧版 IndexedDB 明文凭据已迁移并清空。 */
+  'security.secretsMigrated': false as boolean,
   /** 周期账 amountConfirm 待确认项持久化（刷新不丢失，确认/入账后移除） */
   'recurring.pendingConfirms': [] as {
     ruleId: number; name: string; amount: number; dueAt: number; accountId: number; categoryId: number;
@@ -332,7 +334,7 @@ export const SETTING_DEFAULTS = {
   'ai.baseUrl': '' as string,
   /** Vision/文本模型名（如 gpt-4o-mini） */
   'ai.model': '' as string,
-  /** API Key（明文存本机 IndexedDB，受应用锁保护，不上传） */
+  /** 旧版迁移占位；正式 API Key 由 SecretStore 保存。 */
   'ai.apiKey': '' as string,
   /** 静默入账置信度阈值（0-100）；有效置信度 ≥ 阈值且分类/账户映射成功时自动入账 */
   'ai.autoConfirmThreshold': 80,
@@ -343,11 +345,11 @@ export const SETTING_DEFAULTS = {
   /* ── [R06] 云备份设置键 ── */
   /** 云备份通道：无 / WebDAV / S3 兼容对象存储 */
   'cloud.provider': 'none' as 'none' | 'webdav' | 's3',
-  /** WebDAV 配置（凭证仅存本机 settings KV，不上传、不写日志） */
+  /** WebDAV 非敏感配置；password 字段仅作旧版迁移占位。 */
   'cloud.webdav': { server: '', username: '', password: '', path: '拾光备份' } as {
     server: string; username: string; password: string; path: string;
   },
-  /** S3 兼容对象存储配置（自定义 endpoint 兼容 R2/MinIO/OSS；凭证仅存本机） */
+  /** S3 非敏感配置；accessKey/secretKey 字段仅作旧版迁移占位。 */
   'cloud.s3': { endpoint: '', region: '', bucket: '', accessKey: '', secretKey: '', prefix: 'gleam-backup/' } as {
     endpoint: string; region: string; bucket: string; accessKey: string; secretKey: string; prefix: string;
   },

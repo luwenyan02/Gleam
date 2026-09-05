@@ -11,6 +11,7 @@ import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
 import { addBackupRecord, exportAll, sanitizeDumpForBackup } from '../../core/repo/backupRepo';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
+import { secretStore } from '../../core/secretStore';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { confirmDialog } from '../shell/dialog';
 import { showToast } from '../shell/toast';
@@ -97,8 +98,11 @@ function fieldRows(
 export function mountCloudBackup(host: HTMLElement, hooks: CloudBackupHooks): void {
   const token = ++mountToken;
   void (async () => {
-    const [provKind, webdavCfg, s3Cfg] = await Promise.all([
+    const [provKind, webdavCfg, s3Cfg, webdavPassword, s3AccessKey, s3SecretKey] = await Promise.all([
       getSetting('cloud.provider'), getSetting('cloud.webdav'), getSetting('cloud.s3'),
+      secretStore.get('cloud.webdav.password'),
+      secretStore.get('cloud.s3.accessKey'),
+      secretStore.get('cloud.s3.secretKey'),
     ]);
     if (token !== mountToken || !host.isConnected) return;
 
@@ -108,9 +112,9 @@ export function mountCloudBackup(host: HTMLElement, hooks: CloudBackupHooks): vo
       ? '<p class="tiny cb-hint">浏览器版直连云端可能受 CORS 限制（视服务端配置而定），建议在 Android 端使用</p>'
       : '';
     const form = provKind === 'webdav'
-      ? fieldRows(WEBDAV_FIELDS, webdavCfg as unknown as Record<string, string>)
+      ? fieldRows(WEBDAV_FIELDS, { ...webdavCfg, password: webdavPassword ?? '' } as unknown as Record<string, string>)
       : provKind === 's3'
-        ? fieldRows(S3_FIELDS, s3Cfg as unknown as Record<string, string>)
+        ? fieldRows(S3_FIELDS, { ...s3Cfg, accessKey: s3AccessKey ?? '', secretKey: s3SecretKey ?? '' } as unknown as Record<string, string>)
         : '';
 
     host.innerHTML = `
@@ -120,14 +124,14 @@ export function mountCloudBackup(host: HTMLElement, hooks: CloudBackupHooks): vo
         ${chip('none', '不启用')}${chip('webdav', 'WebDAV')}${chip('s3', 'S3 兼容')}
       </div>
       ${provKind === 'none' ? `
-        <p class="tiny" style="padding:4px 2px 10px">支持 WebDAV（坚果云 / 群晖 / Nextcloud）与 S3 兼容对象存储（R2 / MinIO / OSS）；上传的是完整备份包（.skbak），恢复需手动确认，凭证仅保存在本机</p>
+        <p class="tiny" style="padding:4px 2px 10px">支持 WebDAV（坚果云 / 群晖 / Nextcloud）与 S3 兼容对象存储（R2 / MinIO / OSS）；上传的是完整备份包（.skbak），恢复需手动确认；${secretStore.kind === 'android-keystore' ? '凭证由 Android 系统 Keystore 加密保存' : '浏览器版凭证只在当前标签页会话中保留'}</p>
       ` : `
         <div class="cb-form">${form}</div>
         <div class="btn-row cb-actions">
           <button class="btn ghost" data-cb-act="test">测试连接</button>
           <button class="btn primary" data-cb-act="upload">上传到云端</button>
         </div>
-        <p class="tiny" style="padding:2px 2px 6px">整包上传当前全部数据（.skbak，可选口令加密）；凭证仅保存在本机，修改后点「测试连接」即自动保存</p>
+        <p class="tiny" style="padding:2px 2px 6px">整包上传当前全部数据（.skbak，可选口令加密）；${secretStore.kind === 'android-keystore' ? '凭证由 Android 系统 Keystore 加密保存' : '浏览器版凭证仅保留在当前标签页会话'}，修改后点「测试连接」即保存</p>
         <div class="cb-list" id="cb-list"><p class="sub cb-list-state">正在加载云端列表…</p></div>
       `}`;
 
@@ -143,7 +147,10 @@ async function saveFormAndBuild(host: HTMLElement): Promise<BackupProvider | und
     host.querySelector<HTMLInputElement>(`[data-cb-field="${key}"]`)?.value.trim() ?? '';
   if (kind === 'webdav') {
     const cfg = { server: read('server'), username: read('username'), password: read('password'), path: read('path') };
-    await setSetting('cloud.webdav', cfg);
+    await Promise.all([
+      setSetting('cloud.webdav', { ...cfg, password: '' }),
+      cfg.password ? secretStore.set('cloud.webdav.password', cfg.password) : secretStore.remove('cloud.webdav.password'),
+    ]);
     if (!cfg.server || !cfg.username) { showToast('请先填写服务器地址与用户名'); return undefined; }
     return createWebdavProvider(cfg);
   }
@@ -152,7 +159,11 @@ async function saveFormAndBuild(host: HTMLElement): Promise<BackupProvider | und
       endpoint: read('endpoint'), region: read('region'), bucket: read('bucket'),
       accessKey: read('accessKey'), secretKey: read('secretKey'), prefix: read('prefix'),
     };
-    await setSetting('cloud.s3', cfg);
+    await Promise.all([
+      setSetting('cloud.s3', { ...cfg, accessKey: '', secretKey: '' }),
+      cfg.accessKey ? secretStore.set('cloud.s3.accessKey', cfg.accessKey) : secretStore.remove('cloud.s3.accessKey'),
+      cfg.secretKey ? secretStore.set('cloud.s3.secretKey', cfg.secretKey) : secretStore.remove('cloud.s3.secretKey'),
+    ]);
     if (!cfg.bucket || !cfg.accessKey || !cfg.secretKey) { showToast('请先填写 Bucket 与密钥'); return undefined; }
     const { createS3Provider } = await import('./providers/s3');
     return createS3Provider(cfg);

@@ -38,6 +38,7 @@ python3 -m playwright install chromium
 - DOM 输出中的用户文本必须经 `core/esc.ts` 转义。
 - 金额解析和格式化只使用 `core/money.ts`。
 - 数据写入只经过对应 `core/repo`，多表更新使用 Dexie 事务。
+- API Key、WebDAV 密码和 S3 密钥只能通过 `core/secretStore.ts` 读取或保存，不得新增明文设置项。
 - CSS 优先复用 `styles/tokens.css`；交互控件须有可见焦点和不小于 44px 的触控区域。
 - UI 变更保留 `data-qoder-id`、`data-qoder-source` 等已有来源属性。
 

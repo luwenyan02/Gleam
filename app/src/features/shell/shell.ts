@@ -72,7 +72,7 @@ export function mountShell(root: HTMLElement): void {
       <button class="fab mini" id="fab-life" aria-label="写一条生活记录" hidden>${iconHtml('ic-plus')}</button>
       <div id="scrim"></div>
       <section class="sheet" id="sheet" role="dialog" aria-modal="true"></section>
-      <div class="dialog-scrim" id="dialog-scrim"></div>
+      <div class="dialog-scrim" id="dialog-scrim" aria-hidden="true" inert></div>
       <div id="toast" role="status" aria-live="polite"></div>
     </div>`;
 

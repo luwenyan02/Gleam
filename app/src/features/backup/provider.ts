@@ -1,10 +1,11 @@
 /**
  * 拾光 · 云备份通道抽象（features/backup/provider）[R06]
  * 红线：仅承载「整包 .skbak 上传 / 下载 / 删除 / 列表」，严禁任何增量同步语义；
- * 凭证只从 settings KV 读取，任何错误消息、日志不得包含服务器地址与凭证。
+ * 非敏感配置从 settings KV 读取，凭证只从 SecretStore 读取；错误消息与日志不得包含地址或凭证。
  * 具体实现见 providers/webdav.ts 与 providers/s3.ts。
  */
 import { getSetting } from '../../core/repo/settingsRepo';
+import { secretStore } from '../../core/secretStore';
 
 /** 云端备份文件元信息 */
 export interface CloudFile {
@@ -95,13 +96,21 @@ export function ensureOk(res: Response, action: string): void {
 export async function buildCurrentProvider(): Promise<BackupProvider | undefined> {
   const kind = await getSetting('cloud.provider');
   if (kind === 'webdav') {
-    const cfg = await getSetting('cloud.webdav');
+    const [saved, password] = await Promise.all([
+      getSetting('cloud.webdav'), secretStore.get('cloud.webdav.password'),
+    ]);
+    const cfg = { ...saved, password: password ?? '' };
     if (!cfg.server || !cfg.username) return undefined;
     const { createWebdavProvider } = await import('./providers/webdav');
     return createWebdavProvider(cfg);
   }
   if (kind === 's3') {
-    const cfg = await getSetting('cloud.s3');
+    const [saved, accessKey, secretKey] = await Promise.all([
+      getSetting('cloud.s3'),
+      secretStore.get('cloud.s3.accessKey'),
+      secretStore.get('cloud.s3.secretKey'),
+    ]);
+    const cfg = { ...saved, accessKey: accessKey ?? '', secretKey: secretKey ?? '' };
     if (!cfg.bucket || !cfg.accessKey || !cfg.secretKey) return undefined;
     const { createS3Provider } = await import('./providers/s3');
     return createS3Provider(cfg);
