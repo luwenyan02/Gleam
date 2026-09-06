@@ -14,6 +14,7 @@ import { formatFen, formatFenCny, parseYuanToFen } from '../../core/money';
 import type { AiPendingItem, Account, Category } from '../../core/types';
 import { on } from '../../core/store';
 import { getSetting } from '../../core/repo/settingsRepo';
+import { secretStore } from '../../core/secretStore';
 import { listCategories } from '../../core/repo/categoryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
 import { ensureMerchant, touchMerchant } from '../../core/repo/merchantRepo';
@@ -397,7 +398,7 @@ async function refresh(): Promise<void> {
   const [items, batches, expenseCats, incomeCats, accounts, apiKey, baseUrl, model, entries] = await Promise.all([
     listAiPendingItems(), listAiBatches(3),
     listCategories('expense'), listCategories('income'), listAccounts(),
-    getSetting('ai.apiKey'), getSetting('ai.baseUrl'), getSetting('ai.model'),
+    secretStore.get('ai.apiKey'), getSetting('ai.baseUrl'), getSetting('ai.model'),
     listEntries(),
   ]);
   // 截图预览：附件 → object URL（旧 URL 统一回收）
@@ -432,7 +433,7 @@ async function refresh(): Promise<void> {
   incCatItems = incomeCats.map((c) => ({ value: c.id, label: c.name }));
   acctItems = accounts.map((a) => ({ value: a.id, label: a.name }));
 
-  const configured = !!(apiKey.trim() && baseUrl.trim() && model.trim());
+  const configured = !!(apiKey?.trim() && baseUrl.trim() && model.trim());
   const ready = items.filter((it) => it.status === 'ready');
   const raws = items.filter((it) => it.status !== 'ready');
   const liveCountByBatch = new Map<number, number>();

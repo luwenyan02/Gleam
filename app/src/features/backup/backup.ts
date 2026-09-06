@@ -1,8 +1,7 @@
 /**
  * 拾光 · 备份与恢复子页（features/backup，PRD 4.15 Web 适配版，覆盖 sp-backup）
- * 结构对照原型 index.html #page-backup（L767 起）：
- * 备份状态卡 → 云端备份（R06 WebDAV/S3，见 cloudBackup.ts）→ 自动备份设置 → 可撤销快照 → 备份历史 →
- * Excel 导出 → 挖财导入入口（向导在 features/import）。
+ * 信息架构：立即备份 → 云端配置 → 恢复与历史 → Excel 导入导出。
+ * 云端备份见 cloudBackup.ts；导入向导见 features/import。
  * 生成 .skbak 走 skbak.ts（可选口令加密）；恢复五步：
  * 选文件 → 校验 → 自动快照 → 事务化整库替换 → 完成报告。
  */
@@ -78,7 +77,8 @@ async function refresh(): Promise<void> {
   exMonth = curMonth;
 
   el.innerHTML = `
-    <section class="card backup-status">
+    <h3 class="bk-group-title">立即备份</h3>
+    <section class="card backup-status" aria-label="立即备份">
       <span class="bs-ic">${iconHtml('ic-cloud', 26)}</span>
       <p class="big num">${counts.total.toLocaleString('zh-CN')} <small>条记录 · 本机 IndexedDB</small></p>
       <p class="sub">数据均保存在本机 · 上次备份 <b>${lastAt ? fmtTime(lastAt) : '从未备份'}</b></p>
@@ -89,9 +89,9 @@ async function refresh(): Promise<void> {
       </div>
       <button class="btn primary" data-act="backup">立即备份（下载 .skbak）</button>
       <p class="tiny" style="margin-top:8px">生成完整备份包（.skbak，可全量恢复），支持口令加密 · 保存到本机后可自行上传网盘</p>
-      <button class="btn ghost" data-act="restore" style="margin-top:10px">从备份文件恢复…</button>
     </section>
 
+    <h3 class="bk-group-title">云端配置</h3>
     <section class="card list" id="cloud-backup" aria-label="云端备份"></section>
 
     <section class="card" aria-label="自动备份设置">
@@ -101,6 +101,12 @@ async function refresh(): Promise<void> {
       </div>
       <div class="field"><span>仅 Wi-Fi 下上传</span><button class="switch${wifiOnly ? ' on' : ''}" role="switch" aria-checked="${wifiOnly}" data-act="wifi" aria-label="仅 Wi-Fi 下上传"></button></div>
       <p class="tiny">网页版不能后台自动生成文件：到期时会在此页与首页提醒「该备份了」，点一下即可完成</p>
+    </section>
+
+    <h3 class="bk-group-title">恢复与历史</h3>
+    <section class="card" aria-label="从备份恢复">
+      <button class="btn ghost" data-act="restore">从备份文件恢复…</button>
+      <p class="tiny" style="margin-top:8px">恢复前会先校验文件并创建当前数据快照；确认后才会全量替换</p>
     </section>
 
     ${snapshots.length ? `
@@ -123,8 +129,9 @@ async function refresh(): Promise<void> {
       <p class="tiny" style="padding:6px 2px 10px">恢复为全量替换：会先自动创建当前数据的本地快照，7 天内可撤销</p>
     </section>
 
+    <h3 class="bk-group-title">Excel 导入导出</h3>
     <section class="card" aria-label="Excel 导出">
-      <h3 class="card-title">Excel 导出</h3>
+      <h3 class="card-title">按月导出</h3>
       <div class="bk-month">
         <button class="chip" id="bk-month" data-act="month-pick">${fmtMonth(exMonth)}</button>
         <button class="btn ghost" data-act="excel">导出 Excel</button>
@@ -133,33 +140,18 @@ async function refresh(): Promise<void> {
     </section>
 
     <section class="card" id="migrate-block" aria-label="账单导入">
-      <h3 class="card-title">账单导入</h3>
+      <h3 class="card-title">导入账单</h3>
       <div class="flt-row" role="tablist" aria-label="导入来源" style="margin-bottom:10px">
         <button class="chip active" data-src="wacai" role="tab" aria-selected="true">挖财 Excel</button>
         <button class="chip" data-src="wechat" role="tab">微信账单</button>
         <button class="chip" data-src="alipay" role="tab">支付宝账单</button>
       </div>
-      <p class="sub" style="margin-bottom:10px">挖财导出为单张工作表，每行一条流水，「类型」列区分支出 / 收入 / 转账 / 借贷；拾光按下表逐列映射，导入本地数据库。</p>
-      <table class="map-table">
-        <thead><tr><th>挖财字段</th><th>拾光处理</th></tr></thead>
-        <tbody>
-          <tr><td>日期时间</td><td>记账时间（精确到分钟）</td></tr>
-          <tr><td>类型</td><td>账单类型：支出 / 收入 / 转账 / 借贷</td></tr>
-          <tr><td>类别</td><td>两级分类：「餐饮/早餐」按斜杠拆为大类＋小类，无斜杠自动匹配</td></tr>
-          <tr><td>金额 / 币种</td><td>金额；外币按参考汇率折算并在备注保留原币种</td></tr>
-          <tr><td>收付账户</td><td>账户；转账行「现金：-1.00, 微信钱包：+1.00」自动拆为转出 / 转入</td></tr>
-          <tr><td>收付款人</td><td>借贷对象与往来金额（如「张三：+100.00」）</td></tr>
-          <tr><td>参与人</td><td>多人分摊只记「自己」份额入账，完整分摊明细写入备注</td></tr>
-          <tr><td>标签</td><td>标签，逗号分隔可多个</td></tr>
-          <tr><td>商家</td><td>商家</td></tr>
-          <tr><td>属性 / 备注</td><td>「已报销」→ 报销状态标记；「退款」→ 按普通支出入账并在备注标注；备注原样保留</td></tr>
-        </tbody>
-      </table>
+      <p class="sub" style="margin-bottom:10px">支持挖财 Excel；导入前可预览字段识别与分类、账户映射，确认后才写入本地账本。</p>
       <div class="btn-row">
         <button class="btn ghost" data-act="pick-import">选择 Excel 文件</button>
         <button class="btn primary" disabled>开始导入</button>
       </div>
-      <p class="tiny">支持 .xlsx / .xls · 导入前会自动创建一次本地快照，7 天内可撤销</p>
+      <p class="tiny">支持 .xlsx / .xls · 导入前会自动创建一次本地快照，7 天内可撤销 · 详细字段规则见 docs/data-backup.md</p>
     </section>`;
 
   // [R06] 云端备份区挂载（内部自行异步加载配置与云端列表）

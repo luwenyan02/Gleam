@@ -1,8 +1,6 @@
 /**
  * 拾光 · 设置与安全子页（features/settings，PRD 4.19，覆盖 sp-settings）
- * 分区：安全（PIN / 生物识别）→ 外观（浅色 / 深色 / 跟随系统）→
- * 记账偏好（报销口径 / 隐藏账户净资产 / 预算延续）→
- * 备份（自动备份频率，与备份页同一 settings key）→ 数据（回收站策略只读）→ 关于。
+ * 分区顺序：记账偏好 → 数据与备份 → 智能能力与通知 → 外观与安全 → 关于。
  * 入口：我的页右上角齿轮（data-sub="sp-settings"，M1 已接）。
  */
 import './settings.css';
@@ -22,6 +20,7 @@ import {
   setPin, verifyPin, clearPin, biometricAvailable, enrollBiometric,
 } from './lock';
 import { openPickList } from '../../shared/pickList';
+import { secretStore } from '../../core/secretStore';
 
 let body: HTMLElement | undefined;
 let sheetAbort: AbortController | undefined;
@@ -55,7 +54,7 @@ async function refresh(): Promise<void> {
   if (!el.isConnected) return;
   // [AI] AI 记账配置（OpenAI 兼容接口 + 静默入账阈值）
   const [aiBase, aiModel, aiKey, aiThreshold] = await Promise.all([
-    getSetting('ai.baseUrl'), getSetting('ai.model'), getSetting('ai.apiKey'), getSetting('ai.autoConfirmThreshold'),
+    getSetting('ai.baseUrl'), getSetting('ai.model'), secretStore.get('ai.apiKey'), getSetting('ai.autoConfirmThreshold'),
   ]);
   if (!el.isConnected) return;
 
@@ -132,7 +131,7 @@ async function refresh(): Promise<void> {
           <button id="ai-model-pick" class="ai-pick-btn" type="button">${esc(modelLabel)}</button>
         </label>
         <label>模型名（可修改）<input id="ai-model" type="text" value="${esc(aiModel)}" placeholder="如 gpt-4o-mini / qwen-vl-plus（需支持图片）" autocomplete="off"></label>
-        <label>API Key<input id="ai-key" type="password" value="${esc(aiKey)}" placeholder="sk-..." autocomplete="off"></label>
+        <label>API Key<input id="ai-key" type="password" value="${esc(aiKey ?? '')}" placeholder="sk-..." autocomplete="off"></label>
         <label>静默入账置信度阈值
           <div class="ai-thres"><input id="ai-thres" type="range" min="50" max="100" step="5" value="${aiThreshold}"><span class="num" id="ai-thres-val">${aiThreshold}%</span></div>
         </label>
@@ -143,15 +142,22 @@ async function refresh(): Promise<void> {
           <button class="chip" data-act="ai-test">测试连接</button>
         </div>
       </div>
-      <p class="tiny">识别请求直连你填写的接口，Key 仅保存在本机；置信度达阈值且分类账户齐全时自动入账，否则进收件箱待确认</p>
+      <p class="tiny">识别请求直连你填写的接口；${secretStore.kind === 'android-keystore' ? 'Key 由 Android 系统 Keystore 加密保存' : '浏览器版 Key 仅保留在当前标签页会话，关闭后需重新输入'}。置信度达阈值且分类账户齐全时自动入账，否则进收件箱待确认</p>
     </section>
 
     <section class="card" aria-label="关于">
       <h3 class="card-title">关于拾光</h3>
       <div class="field"><span>版本</span><span class="sub">v${APP_VERSION}</span></div>
       <p class="sub" style="padding:4px 0">拾光是一款极简暖调记账应用：记录每一笔收支与生活印记，让时间留下温度。</p>
-      <p class="tiny">数据仅保存本机（浏览器 IndexedDB），不注册、不上传；换设备请使用备份包迁移</p>
+      <p class="tiny">账本默认保存在本机；仅在你主动启用云备份或 AI 识别时，将必要数据发送到所配置的外部服务</p>
     </section>`;
+
+  // 固定信息架构：记账偏好 → 数据与备份 → 智能能力与通知 → 外观与安全 → 关于。
+  const order = ['记账偏好', '备份', '数据', 'AI 记账', '通知', '外观', '安全', '关于'];
+  for (const label of order) {
+    const section = el.querySelector<HTMLElement>(`section[aria-label="${label}"]`);
+    if (section) el.appendChild(section);
+  }
 }
 
 /* ── PIN 设置抽屉 ── */
@@ -349,7 +355,12 @@ export function initSettings(): void {
         const t = e.target as HTMLInputElement;
         if (t.id === 'ai-base') void setSetting('ai.baseUrl', t.value.trim());
         else if (t.id === 'ai-model') void setSetting('ai.model', t.value.trim());
-        else if (t.id === 'ai-key') void setSetting('ai.apiKey', t.value.trim());
+        else if (t.id === 'ai-key') {
+          const value = t.value.trim();
+          void (value ? secretStore.set('ai.apiKey', value) : secretStore.remove('ai.apiKey'))
+            .then(() => showToast(secretStore.kind === 'session' ? 'API Key 仅在当前会话有效' : 'API Key 已安全保存'))
+            .catch(() => showToast('API Key 保存失败，请重新输入'));
+        }
         else if (t.id === 'ai-thres') void setSetting('ai.autoConfirmThreshold', Number(t.value));
       });
       el.addEventListener('input', (e) => {

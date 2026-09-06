@@ -14,7 +14,7 @@
 
 /* ── 周期前后翻页（页头标签两侧） ── */
 .r-nav{display:flex;align-items:center;gap:2px;margin-top:2px;margin-left:-7px}
-.r-nav .nav-btn{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--faint);transition:background .15s}
+.r-nav .nav-btn{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--faint);transition:background .15s}
 .r-nav .nav-btn:active{background:color-mix(in oklab, var(--seed-fg) 8%, transparent)}
 .r-nav .nav-btn svg.ic{width:14px;height:14px}
 .r-nav .sub{min-width:96px;text-align:center;margin-top:0}

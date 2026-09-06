@@ -50,7 +50,7 @@ export function countDump(dump: TableDump): Record<string, number> {
 
 /**
  * 备份包脱敏：云凭证与 AI Key 不进 .skbak（未加密包会明文扩散到网盘/云端）。
- * 置空 'cloud.webdav'.password、'cloud.s3'.secretKey、'ai.apiKey'，其余设置原样；
+ * 置空旧版设置中的 WebDAV 密码、S3 Access/Secret Key 和 AI Key，其余设置原样；
  * 恢复后凭证为空，用户重填即可。仅供备份生成路径使用，本地快照不脱敏。
  * 不修改入参 dump（settings 行浅拷贝后替换 value）。
  */
@@ -59,7 +59,7 @@ export function sanitizeDumpForBackup(dump: TableDump): TableDump {
     const r = row as { key: string; value: unknown };
     if (r.key === 'ai.apiKey') return { ...r, value: '' };
     if (r.key === 'cloud.webdav') return { ...r, value: { ...(r.value as Record<string, unknown>), password: '' } };
-    if (r.key === 'cloud.s3') return { ...r, value: { ...(r.value as Record<string, unknown>), secretKey: '' } };
+    if (r.key === 'cloud.s3') return { ...r, value: { ...(r.value as Record<string, unknown>), accessKey: '', secretKey: '' } };
     return row;
   });
   return { ...dump, settings };

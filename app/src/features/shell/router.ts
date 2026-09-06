@@ -40,6 +40,26 @@ let appEl: HTMLElement | undefined;
 let activePage: PageId = 'page-home';
 let historyReady = false;
 let systemBackReady = false;
+const subpageOpeners = new WeakMap<HTMLElement, HTMLElement | null>();
+
+function syncNavigationState(): void {
+  if (!viewport || !appEl) return;
+  const hasSubpage = subStack.length > 0;
+  for (const pageEl of viewport.querySelectorAll<HTMLElement>('.page')) {
+    const exposed = pageEl.id === activePage && !hasSubpage;
+    pageEl.inert = !exposed;
+    pageEl.setAttribute('aria-hidden', String(!exposed));
+  }
+  subStack.forEach((subpage, index) => {
+    const exposed = index === subStack.length - 1;
+    subpage.inert = !exposed;
+    subpage.setAttribute('aria-hidden', String(!exposed));
+  });
+  for (const chrome of appEl.querySelectorAll<HTMLElement>('.tabbar, #fab-life')) {
+    chrome.inert = hasSubpage;
+    chrome.setAttribute('aria-hidden', String(hasSubpage));
+  }
+}
 
 /** 路由初始化（shell 挂载后调用一次） */
 export function initRouter(app: HTMLElement, vp: HTMLElement): void {
@@ -123,6 +143,7 @@ export function switchPage(id: PageId): void {
   for (const pageEl of viewport.querySelectorAll<HTMLElement>('.page')) {
     pageEl.classList.toggle('is-active', pageEl.id === id);
   }
+  syncNavigationState();
   const def = pages.get(id);
   const el = viewport.querySelector<HTMLElement>(`#${id}`);
   if (def && el && !rendered.has(id)) {
@@ -150,11 +171,14 @@ export function openSubpage(id: string): void {
     </header>
     <div class="sub-body"></div>`;
   sp.querySelector('[data-act="back"]')!.addEventListener('click', closeSubpage);
+  subpageOpeners.set(sp, document.activeElement instanceof HTMLElement ? document.activeElement : null);
   appEl.appendChild(sp);
   subStack.push(sp);
+  syncNavigationState();
   window.history.pushState({ ...(window.history.state ?? {}), [HISTORY_DEPTH_KEY]: subStack.length }, '');
   void def.render(sp.querySelector<HTMLElement>('.sub-body')!);
   requestAnimationFrame(() => sp.classList.add('open'));
+  requestAnimationFrame(() => sp.querySelector<HTMLElement>('[data-act="back"]')?.focus());
   def.onShow?.();
 }
 
@@ -173,9 +197,14 @@ export function closeSubpage(): void {
 function closeTopSubpage(): void {
   const sp = subStack.pop();
   if (!sp) return;
+  const opener = subpageOpeners.get(sp);
+  sp.inert = true;
+  sp.setAttribute('aria-hidden', 'true');
   sp.classList.remove('open');
   sp.addEventListener('transitionend', () => sp.remove(), { once: true });
   window.setTimeout(() => sp.remove(), 400); // transitionend 兜底
+  syncNavigationState();
+  requestAnimationFrame(() => opener?.isConnected && opener.focus());
 }
 
 /** 是否有子页开启 */

@@ -20,6 +20,7 @@ IndexedDB / Android WebView 存储
 - `features/entry` 是记账协调层；保存行为必须进入 `entryRepo`。
 - `features/search`、`features/report` 和账户详情共享同一查询条件，避免汇总与明细口径分叉。
 - `features/backup` 负责本地、WebDAV 和 S3 备份；云端实现不得直接读取未授权业务状态。
+- `core/secretStore.ts` 统一管理外部服务凭据：Android 委托系统 Keystore，PWA 使用会话存储。
 - `core/money.ts` 是金额解析与格式化的唯一入口。
 
 ## 核心不变量
@@ -30,6 +31,7 @@ IndexedDB / Android WebView 存储
 - 报销到账和原支出分别建模，避免覆盖历史事实。
 - 账单与生活记录先软删除，回收站到期后再物理清除。
 - 备份不包含云服务与 AI 的凭据。
+- 旧版明文凭据迁移后立即从 IndexedDB 清空，安全存储失败时要求用户重新输入。
 
 ## UI 状态
 

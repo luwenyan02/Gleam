@@ -1,12 +1,9 @@
 /**
  * 拾光 · 生活记录（features/life，PRD 4.14）
- * 一级页 page-life：日记（标题+正文+心情+标签+关联当日支出）、照片记录
- * （多图存 attachments Blob，object URL 统一回收）、习惯打卡（连续天数 + 近 7 天点阵）；
- * 按月浏览；页内「+」抽屉选类型；编辑/软删进回收站。
- * 入口：页头右上角 #lf-add 与 shell 挂载的右下角悬浮 #fab-life（.fab.mini，
- * 仅本页路由显示，手机拇指区盲操作友好），两者均打开同一类型选择抽屉。
+ * 一级页 page-life：日记、照片记录和习惯打卡统一按时间排序；照片 Blob 的 object URL
+ * 统一回收。按月浏览；非空态使用右下角 #fab-life，空态只保留一个主操作。
  * 打卡时 checkHabit + addLifeNote 双写：打卡记录同时进首页时间线混排；
- * 本页时间线跳过 kind='habit' 的记录（习惯卡已覆盖）。
+ * kind='habit' 的打卡记录用于重建连续天数，时间流由可操作的习惯卡呈现，避免重复展示。
  * 视觉结构与原型 index.html #page-life（L611-677）一致；数据一律经 lifeRepo。
  */
 import './life.css';
@@ -92,18 +89,15 @@ export function initLife(): void {
           <div style="display:flex;gap:8px">
             <button class="icon-btn" id="lf-prev" aria-label="查看上一月">${iconHtml('ic-left')}</button>
             <button class="icon-btn" id="lf-next" aria-label="查看下一月" hidden>${iconHtml('ic-right')}</button>
-            <button class="icon-btn" id="lf-add" aria-label="写一条生活记录">${iconHtml('ic-pen')}</button>
           </div>
         </header>
         <p class="sub" id="lf-today-sum" style="padding:0 4px 12px"></p>
-        <div id="lf-habits"></div>
         <div id="lf-feed"></div>`;
 
       el.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
         if (target.closest('#lf-prev')) { shiftMonth(-1); return; }
         if (target.closest('#lf-next')) { shiftMonth(1); return; }
-        if (target.closest('#lf-add')) { openTypeSheet(); return; }
         if (target.closest('#lf-empty')) { openTypeSheet(); return; }
         const check = target.closest<HTMLElement>('[data-check]');
         if (check) {
@@ -122,6 +116,13 @@ export function initLife(): void {
           const note = notes.find((n) => n.id === Number(noteCard.dataset.note));
           if (note) openNoteForm(note.kind === 'photo' ? 'photo' : 'diary', note);
         }
+      });
+      el.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const actionable = (event.target as HTMLElement).closest<HTMLElement>('[data-note], [data-habit], #lf-empty');
+        if (!actionable || event.target instanceof HTMLButtonElement) return;
+        event.preventDefault();
+        actionable.click();
       });
     },
     onShow() { void refresh(); },
@@ -155,8 +156,9 @@ async function refresh(): Promise<void> {
   /* 页头：月份 · 篇数 · 最长连续打卡 */
   const streaks = await Promise.all(habits.map((h) => habitStreak(h.id)));
   const maxStreak = streaks.length ? Math.max(...streaks) : 0;
+  const timelineCount = notes.length + (isCurrent ? habits.length : 0);
   el.querySelector('#lf-sub')!.textContent =
-    `${new Date(viewMonth).getMonth() + 1}月 · ${notes.length} 篇记录${maxStreak > 0 ? ` · 连续打卡 ${maxStreak} 天` : ''}`;
+    `${new Date(viewMonth).getMonth() + 1}月 · ${timelineCount} 项生活记录${maxStreak > 0 ? ` · 连续打卡 ${maxStreak} 天` : ''}`;
   el.querySelector<HTMLElement>('#lf-next')!.hidden = isCurrent;
 
   /* 今日支出摘要（仅当月视图） */
@@ -171,8 +173,8 @@ async function refresh(): Promise<void> {
     sumEl.hidden = true;
   }
 
-  /* 习惯卡（仅当月视图；近 7 天点阵由 kind='habit' 记录重建） */
-  const habitsEl = el.querySelector<HTMLElement>('#lf-habits')!;
+  /* 习惯、日记、照片统一进入同一个时间流。 */
+  const habitItems: { at: number; html: string }[] = [];
   if (isCurrent && habits.length) {
     const dotFrom = new Date(); dotFrom.setHours(0, 0, 0, 0);
     dotFrom.setDate(dotFrom.getDate() - 6);
@@ -185,7 +187,7 @@ async function refresh(): Promise<void> {
         const d = new Date(dotFrom.getTime()); d.setDate(d.getDate() + k);
         return `<span${checkedDays.has(dayKey(d.getTime())) ? ' class="done"' : ''}></span>`;
       }).join('');
-      return `
+      return { at: todayNote?.occurredAt ?? Date.now() - i, html: `
         <section class="card habit" data-habit="${h.id}" role="button" tabindex="0" aria-label="习惯：${esc(h.name)}">
           <span class="e-ic life">${iconHtml('ic-pulse')}</span>
           <div>
@@ -194,25 +196,16 @@ async function refresh(): Promise<void> {
           </div>
           <div class="streak" aria-label="近 7 天打卡">${dots}</div>
           <button class="lf-check${checked ? ' on' : ''}" data-check="${h.id}">${checked ? '已打卡' : '打卡'}</button>
-        </section>`;
+        </section>` };
     }));
-    habitsEl.innerHTML = cards.join('');
-  } else {
-    habitsEl.innerHTML = '';
+    habitItems.push(...cards);
   }
 
-  /* 时间线（日记 + 照片） */
+  /* 时间线（日记 + 照片 + 习惯） */
   for (const url of photoUrls) URL.revokeObjectURL(url);
   photoUrls = [];
   const feed = el.querySelector<HTMLElement>('#lf-feed')!;
-  if (!notes.length) {
-    // 当月空态引导右下角悬浮「+」且整段可点；非当月无操作入口仅提示；尾部留悬浮按钮占位
-    feed.innerHTML = isCurrent
-      ? `<p class="sub lf-empty" id="lf-empty" role="button" tabindex="0" style="padding:12px 4px">这个月还没有生活记录 · <span class="hint">点右下角 + 写一条</span></p><div class="lf-fab-space"></div>`
-      : `<p class="sub" style="padding:12px 4px">这个月没有生活记录</p><div class="lf-fab-space"></div>`;
-    return;
-  }
-  const cards = await Promise.all(notes.map(async (n) => {
+  const noteItems = await Promise.all(notes.map(async (n) => {
     if (n.kind === 'photo') {
       const photos = await Promise.all((n.photoRefs ?? []).map((id) => getAttachment(id)));
       const imgs = photos.filter((p) => !!p).map((p) => {
@@ -220,28 +213,38 @@ async function refresh(): Promise<void> {
         photoUrls.push(url);
         return `<img class="photo" src="${url}" alt="${esc(p.name ?? '照片')}">`;
       }).join('');
-      return `
+      return { at: n.occurredAt, html: `
         <article class="card" data-note="${n.id}" role="button" tabindex="0">
           <p class="ln-date">${lnDate(n.occurredAt)}</p>
           ${n.title ? `<h3 class="ln-title">${esc(n.title)}</h3>` : ''}
           <div class="photo-row">${imgs}</div>
           ${n.body ? `<p class="ln-body sm">${esc(n.body)}</p>` : ''}
-        </article>`;
+        </article>` };
     }
     const tags = [
       n.mood ? `<span class="chip tag">心情 · ${esc(n.mood)}</span>` : '',
       ...(n.tags ?? []).map((t) => `<span class="chip tag">${esc(t)}</span>`),
       n.linkedAmount ? `<span class="chip tag num">关联支出 ¥${formatFen(n.linkedAmount)}</span>` : '',
     ].join('');
-    return `
+    return { at: n.occurredAt, html: `
       <article class="card" data-note="${n.id}" role="button" tabindex="0">
         <p class="ln-date">${lnDate(n.occurredAt)}</p>
         ${n.title ? `<h3 class="ln-title">${esc(n.title)}</h3>` : ''}
         ${n.body ? `<p class="ln-body">${esc(n.body)}</p>` : ''}
         ${tags ? `<p class="ln-tags">${tags}</p>` : ''}
-      </article>`;
+      </article>` };
   }));
-  feed.innerHTML = cards.join('') + '<div class="lf-fab-space"></div>';
+  const timeline = [...habitItems, ...noteItems].sort((a, b) => b.at - a.at);
+  const fab = document.getElementById('fab-life');
+  if (!timeline.length) {
+    if (fab) fab.hidden = true;
+    feed.innerHTML = isCurrent
+      ? `<section class="card lf-empty-state"><span class="e-ic life">${iconHtml('ic-book', 20)}</span><h3>留住今天的一点光</h3><p class="sub">可以写日记、记照片，或从一个小习惯开始</p><button class="btn primary" id="lf-empty">写下第一条</button></section>`
+      : '<p class="sub" style="padding:12px 4px">这个月没有生活记录</p>';
+    return;
+  }
+  if (fab) fab.hidden = !el.classList.contains('is-active') || !isCurrent;
+  feed.innerHTML = timeline.map((item) => item.html).join('') + (isCurrent ? '<div class="lf-fab-space"></div>' : '');
 }
 
 /* ── 习惯打卡 ─────────────────── */
@@ -269,7 +272,7 @@ async function toggleCheck(habit: Habit): Promise<void> {
 
 /* ── 抽屉：类型选择 / 日记 / 照片 / 习惯 ── */
 
-/** 页内「+」：选择记录类型 */
+/** 生活页主操作：选择记录类型 */
 function openTypeSheet(): void {
   openSheet({
     ariaLabel: '写一条生活记录',

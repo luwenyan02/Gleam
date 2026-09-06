@@ -36,11 +36,13 @@ import { initTemplateManage } from './features/template/template';
 import { initShareListener } from './features/ai-inbox/shareListener';
 import { initAiInbox } from './features/ai-inbox/aiInbox';
 import { enforceAppLock } from './features/settings/lock';
+import { migrateLegacySecrets } from './core/secretStore';
 
 async function bootstrap(): Promise<void> {
   injectIcons();
   await db.open();
   await seedIfNeeded();
+  const secretMigration = await migrateLegacySecrets();
   // 主题模式：尽早按设置应用（冷启动闪白由 index.html 内联脚本先行处理）
   initTheme();
   // [M3] 应用锁：开启 PIN 时先解锁再补跑/挂载
@@ -73,6 +75,7 @@ async function bootstrap(): Promise<void> {
   initSearch();
   initTemplateManage();
   initAiInbox();
+  if (secretMigration.failed.length) showToast('部分旧凭据未能迁移，请在设置中重新输入', 3600);
   if (booked > 0) showToast(`周期账已自动入账 ${booked} 笔`);
   // [M3] 自动备份到期轻提醒（频率在设置/备份页配置）
   if (backupDue) showToast('该备份了：到「我的 → 备份与恢复」一键生成备份包');

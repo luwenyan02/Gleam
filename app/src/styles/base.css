@@ -17,8 +17,9 @@ body{
 }
 button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer}
 button:disabled{cursor:default}
-input:focus,input:focus-visible,textarea:focus,textarea:focus-visible,[contenteditable]:focus,[contenteditable]:focus-visible,select:focus,select:focus-visible{outline:none}
-button:focus-visible{outline:2px solid color-mix(in oklab,var(--seed-primary) 72%,var(--seed-fg));outline-offset:2px}
+input:focus,textarea:focus,[contenteditable]:focus,select:focus{outline:none}
+button:focus-visible,input:focus-visible,textarea:focus-visible,[contenteditable]:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid color-mix(in oklab,var(--seed-primary) 72%,var(--seed-fg));outline-offset:2px}
+:where(button,input,textarea,select,[contenteditable],[tabindex]):focus-visible{outline:2px solid color-mix(in oklab,var(--seed-primary) 72%,var(--seed-fg))!important;outline-offset:2px!important}
 svg.ic{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;width:20px;height:20px;display:block}
 .num{font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
 [hidden]{display:none!important}
@@ -30,9 +31,9 @@ svg.ic{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;strok
   box-shadow:var(--shadow);
 }
 main.viewport{position:absolute;top:var(--safe-top);bottom:calc(var(--tabbar-h) + var(--safe-bottom));left:0;right:0;overflow:hidden}
-.page{position:absolute;inset:0;overflow-y:auto;padding:calc(10px * var(--seed-density)) 18px 26px;opacity:0;pointer-events:none;transform:translateY(8px);transition:opacity .22s ease,transform .22s ease;scrollbar-width:none}
+.page{position:absolute;inset:0;overflow-y:auto;padding:calc(10px * var(--seed-density)) 18px 26px;opacity:0;visibility:hidden;pointer-events:none;transform:translateY(8px);transition:opacity .22s ease,transform .22s ease,visibility 0s .22s;scrollbar-width:none}
 .page::-webkit-scrollbar{display:none}
-.page.is-active{opacity:1;pointer-events:auto;transform:none}
+.page.is-active{opacity:1;visibility:visible;pointer-events:auto;transform:none;transition:opacity .22s ease,transform .22s ease,visibility 0s}
 
 /* ── 底部导航 ─────────────────────── */
 .tabbar{position:absolute;bottom:0;left:0;right:0;height:calc(var(--tabbar-h) + var(--safe-bottom));z-index:40;display:grid;grid-template-columns:repeat(5,1fr);align-items:start;padding:8px 10px var(--safe-bottom);
@@ -54,20 +55,22 @@ main.viewport{position:absolute;top:var(--safe-top);bottom:calc(var(--tabbar-h) 
 .sub{font-size:calc(11.5px * var(--seed-type));color:var(--muted);line-height:1.6}
 .tiny{font-size:10.5px;color:var(--faint);line-height:1.6}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:999px;border:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--muted);transition:all .18s;white-space:nowrap}
+button.chip,.tab,.fab,.icon-btn,.btn,button.row,.seg button,.qa,.lf-check{min-width:44px;min-height:44px}
 .chip:not(:disabled):active{transform:scale(.97)}
 .chip.active{background:var(--fg);border-color:var(--fg);color:var(--bg);font-weight:600}
 .chip.tag{background:var(--gold-soft);border-color:transparent;color:color-mix(in oklab, var(--seed-accent) 70%, var(--seed-fg));font-size:11px;padding:5px 11px}
 .chip.danger{color:var(--over);border-color:color-mix(in oklab, var(--over) 36%, var(--seed-bg))}
-.icon-btn{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--surface);border:1px solid var(--border);color:var(--muted);transition:all .18s}
+.icon-btn{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--surface);border:1px solid var(--border);color:var(--muted);transition:all .18s}
 .icon-btn:active{transform:scale(.92)}
 .btn{display:block;width:100%;padding:14px;border-radius:calc(var(--r) - 2px);font-size:calc(14px * var(--seed-type));font-weight:600;text-align:center;transition:all .18s;letter-spacing:.04em}
 .btn.primary{background:var(--primary);color:var(--on-accent);box-shadow:0 8px 18px color-mix(in oklab, var(--seed-primary) 32%, transparent)}
 .btn.primary:disabled{opacity:.45;box-shadow:none;cursor:default}
 .btn.primary:not(:disabled):active{transform:scale(.98)}
 .btn.ghost{border:1.5px solid var(--border);color:var(--fg);background:var(--surface)}
-.switch{width:44px;height:26px;flex:none;border-radius:13px;background:var(--border);position:relative;transition:background .2s}
-.switch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--surface);box-shadow:0 1px 4px rgba(0,0,0,.2);transition:transform .2s}
-.switch.on{background:var(--primary)}
+.switch{width:44px;height:44px;flex:none;position:relative;background:transparent}
+.switch::before{content:"";position:absolute;inset:9px 0;border-radius:13px;background:var(--border);transition:background .2s}
+.switch::after{content:"";position:absolute;top:12px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--surface);box-shadow:0 1px 4px rgba(0,0,0,.2);transition:transform .2s}
+.switch.on::before{background:var(--primary)}
 .switch.on::after{transform:translateX(18px)}
 
 /* ── 页头 ─────────────────────────── */
