@@ -13,6 +13,7 @@ import { dayKey } from './entryRepo';
 import { getNetWorth } from './accountRepo';
 import { getSetting } from './settingsRepo';
 import type { Entry } from '../types';
+import { summarizeLedgerEntries } from '../ledgerQuery';
 
 /** 收支汇总结果（分） */
 export interface Summary {
@@ -60,16 +61,8 @@ function expenseAmount(entry: Entry): number {
 export async function rangeSummary(from: number, to: number): Promise<Summary> {
   const countAsIncome = await getSetting('reimburse.countAsIncome');
   const rows = await entriesIn(from, to);
-  let expense = 0;
-  let income = 0;
-  for (const e of rows) {
-    if (e.type === 'expense') {
-      expense += expenseAmount(e);
-      if (!countAsIncome && e.reimburseStatus === 'done' && e.reimbursedAmount) expense -= e.reimbursedAmount;
-    } else if (e.type === 'income') {
-      income += e.amount;
-    }
-  }
+  let reimburseIncome = 0;
+  let reimburseIncomeCount = 0;
   if (countAsIncome) {
     // 已到账报销按 reimbursedAt 归属周期计入收入（原账单可能在其他周期）
     const done = await db.entries
@@ -77,9 +70,17 @@ export async function rangeSummary(from: number, to: number): Promise<Summary> {
       .equals('done')
       .filter((e) => e.deletedAt === 0 && e.reimbursedAt != null && e.reimbursedAt >= from && e.reimbursedAt < to)
       .toArray();
-    for (const e of done) income += e.reimbursedAmount ?? 0;
+    for (const e of done) {
+      reimburseIncome += e.reimbursedAmount ?? 0;
+      reimburseIncomeCount += 1;
+    }
   }
-  return { expense, income, balance: income - expense };
+  const summary = summarizeLedgerEntries(rows, {
+    reimburseMode: countAsIncome ? 'income' : 'offset',
+    reimburseIncome,
+    reimburseIncomeCount,
+  });
+  return { expense: summary.expense, income: summary.income, balance: summary.balance };
 }
 
 /** 月收支汇总。month 形如 '2026-08' */
@@ -118,11 +119,12 @@ export async function categoryBreakdown(from: number, to: number): Promise<{ cat
  * 账户支出排行（仅统计支出账单的 accountId），金额降序。
  */
 export async function accountRanking(from: number, to: number): Promise<{ accountId: number; amount: number }[]> {
-  const rows = await entriesIn(from, to);
+  const [rows, countAsIncome] = await Promise.all([entriesIn(from, to), getSetting('reimburse.countAsIncome')]);
   const acc = new Map<number, number>();
   for (const e of rows) {
     if (e.type !== 'expense' || e.accountId == null) continue;
-    acc.set(e.accountId, (acc.get(e.accountId) ?? 0) + expenseAmount(e));
+    const amount = expenseAmount(e) - (!countAsIncome && e.reimburseStatus === 'done' ? e.reimbursedAmount ?? 0 : 0);
+    acc.set(e.accountId, (acc.get(e.accountId) ?? 0) + amount);
   }
   return [...acc.entries()].map(([accountId, amount]) => ({ accountId, amount })).sort((a, b) => b.amount - a.amount);
 }
@@ -131,9 +133,13 @@ export async function accountRanking(from: number, to: number): Promise<{ accoun
  * 标签支出排行。仅统计打了标签的支出（口径须在 UI 注明），金额降序。
  */
 export async function tagRanking(from: number, to: number): Promise<{ tagId: number; amount: number }[]> {
-  const rows = await entriesIn(from, to);
+  const [rows, countAsIncome] = await Promise.all([entriesIn(from, to), getSetting('reimburse.countAsIncome')]);
   const expenseById = new Map<number, number>();
-  for (const e of rows) if (e.type === 'expense' && e.id != null) expenseById.set(e.id, expenseAmount(e));
+  for (const e of rows) {
+    if (e.type !== 'expense' || e.id == null) continue;
+    const amount = expenseAmount(e) - (!countAsIncome && e.reimburseStatus === 'done' ? e.reimbursedAmount ?? 0 : 0);
+    expenseById.set(e.id, amount);
+  }
   if (expenseById.size === 0) return [];
   const links = await db.entryTags.where('entryId').anyOf([...expenseById.keys()]).toArray();
   const acc = new Map<number, number>();

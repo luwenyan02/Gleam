@@ -17,6 +17,7 @@ import { netWorthTrend } from '../../core/repo/statsRepo';
 import { getEntry, listEntries } from '../../core/repo/entryRepo';
 import { listCategories } from '../../core/repo/categoryRepo';
 import { getSetting } from '../../core/repo/settingsRepo';
+import { filterLedgerEntries } from '../../core/ledgerQuery';
 import { registerPage, registerSubpage, openSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { openEntrySheet } from '../entry/entrySheet';
@@ -259,14 +260,16 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
   if (accountId == null) { body.innerHTML = '<p class="tiny">未指定账户</p>'; return; }
   const targetAccountId = accountId;
   let currentAccount: Account | undefined;
+  body.classList.add('account-detail-body');
 
   async function refreshDetail(): Promise<void> {
-    const [acct, expenseCats, incomeCats, groups, entries] = await Promise.all([
+    const [acct, expenseCats, incomeCats, groups, allEntries] = await Promise.all([
       getAccount(targetAccountId), listCategories('expense'), listCategories('income'),
-      listAccountsByGroup(), listEntries({ accountIds: [targetAccountId] }),
+      listAccountsByGroup(), listEntries({}),
     ]);
     if (!acct) { body.innerHTML = '<div class="placeholder"><p class="sub">账户不存在</p></div>'; return; }
     currentAccount = acct;
+    const entries = filterLedgerEntries(allEntries, { accountIds: [targetAccountId] });
     body.closest<HTMLElement>('.subpage')!.querySelector<HTMLElement>('.sub-head h2')!.textContent = acct.name;
     const catMap = new Map<number, { name: string; icon: string }>();
     for (const cat of [...expenseCats, ...incomeCats]) catMap.set(cat.id, { name: cat.name, icon: cat.icon });
@@ -302,7 +305,6 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
         <div class="account-flow-total"><span>总流入 <b class="num">${formatFenCny(totalIn)}</b></span><span>总流出 <b class="num">${formatFenCny(totalOut)}</b></span></div>
         ${sparkHtml(trend, '账户余额')}
         <div class="account-detail-actions">
-          <button data-account-action="entry">${iconHtml('ic-plus', 17)}记一笔</button>
           <button data-account-action="edit">${iconHtml('ic-pen', 17)}编辑</button>
           <button data-account-action="reconcile">${iconHtml('ic-swap', 17)}对账</button>
         </div>
@@ -322,7 +324,10 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
             </div>
           </section>`;
         }).join('')}
-      </div>`;
+      </div>
+      <button class="account-detail-entry" id="account-detail-entry" data-account-action="entry">
+        ${iconHtml('ic-plus', 18)}<span>从「${esc(acct.name)}」记一笔</span>
+      </button>`;
   }
 
   body.addEventListener('click', (event) => {

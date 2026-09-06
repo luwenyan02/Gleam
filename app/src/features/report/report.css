@@ -5,6 +5,8 @@
 
 /* ── 收支汇总卡 ── */
 .r-sum{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px;align-items:end}
+.r-sum>button{min-width:0;min-height:48px;padding:4px;border-radius:10px;text-align:left}
+.r-sum>button:active{background:var(--accent-soft)}
 .r-sum p:first-child{font-size:10.5px;letter-spacing:.12em;color:var(--faint);margin-bottom:4px}
 .r-sum .big{font-size:calc(22px * var(--seed-type));font-weight:700;color:var(--expense);white-space:nowrap}
 .r-sum .mid{font-size:calc(14px * var(--seed-type));font-weight:600}
@@ -16,11 +18,27 @@
 .r-nav .nav-btn:active{background:color-mix(in oklab, var(--seed-fg) 8%, transparent)}
 .r-nav .nav-btn svg.ic{width:14px;height:14px}
 .r-nav .sub{min-width:96px;text-align:center;margin-top:0}
+#r-seg button{padding-left:9px;padding-right:9px}
+.report-dim{display:grid;width:100%;grid-template-columns:repeat(4,1fr);margin:0 0 12px}
+.report-dim button{min-height:42px;padding-left:8px;padding-right:8px}
 
 /* ── 空数据状态 ── */
 .chart-empty{display:flex;align-items:center;justify-content:center;min-height:130px;font-size:12px;color:var(--faint);letter-spacing:.04em}
 .donut-empty{font-size:12px;color:var(--faint);padding:8px 0;line-height:1.7}
 .rank-empty{list-style:none;font-size:12px;color:var(--faint);padding:14px 2px}
+.rank-head .rank-more{min-height:40px;padding:5px 2px;color:var(--primary);font-size:11.5px;font-weight:600}
+.rank>li{list-style:none}
+.rank-link{width:100%;text-align:left}
+.rank-link:active{background:var(--accent-soft)}
+.donut-hit,.trend-hit{cursor:pointer}
+.donut-hit:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+#donut-legend li button{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;text-align:left;color:var(--muted);font-size:12px}
+#donut-legend li button b{margin-left:auto;color:var(--fg);font-size:11.5px}
+
+@media (max-width:390px){
+  #page-report .page-head{align-items:flex-start;gap:8px}
+  #r-seg button{padding-left:7px;padding-right:7px;font-size:11.5px}
+}
 
 /* ── 切换过渡（周期/排行维度切换后由 report.ts 重触发 .r-anim）──
  * 只用 transform/opacity，不引起布局跳动；

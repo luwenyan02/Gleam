@@ -26,6 +26,12 @@
 .sr-dates::-webkit-scrollbar{display:none}
 .sr-dates .chip{flex:none}
 
+/* 已启用筛选：可逐项移除，避免用户忘记隐藏条件。 */
+.sr-active-filters{display:flex;gap:7px;overflow-x:auto;padding:0 1px 10px;scrollbar-width:none}
+.sr-active-filters::-webkit-scrollbar{display:none}
+.sr-active-filters .sr-filter-chip{flex:none;padding:6px 10px;background:var(--accent-soft);border-color:transparent;color:var(--primary)}
+.sr-filter-chip span{font-size:15px;line-height:1;margin-left:1px}
+
 /* ── C. 搜索历史 ── */
 .sr-history{padding:8px 0}
 .sr-history-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
@@ -50,6 +56,13 @@
 /* ── E. 结果列表头 ── */
 .sr-list-head{display:flex;align-items:center;justify-content:space-between;padding:4px 2px 8px}
 .sr-list-head h3{font-size:13px;font-weight:600}
+.sr-day-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:5px 3px 7px}
+.sr-day-head h3{font-size:12.5px;font-weight:650}
+.sr-day-head span{font-size:10px;color:var(--faint)}
+.sr-day-card{margin-bottom:10px}
+.sr-state{display:inline-flex;align-items:center;margin-left:6px;padding:2px 5px;border-radius:999px;font-size:9px;font-weight:600;vertical-align:1px;color:var(--muted);background:color-mix(in oklab,var(--seed-fg) 7%,var(--surface))}
+.sr-state.refund,.sr-state.done{color:var(--income);background:color-mix(in oklab,var(--income) 10%,var(--surface))}
+.sr-state.pending{color:var(--primary);background:var(--accent-soft)}
 
 /* ── 左滑操作保持 ── */
 #sr-results .entry-swipe .row.entry-swipe-content{position:relative;z-index:2;background:var(--surface);border-bottom:0;transition:transform .24s cubic-bezier(.22,.78,.3,1)}
