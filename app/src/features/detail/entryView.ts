@@ -96,7 +96,7 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
     const refundLabel = !canRefund(entry) ? '不可退款' : remaining > 0 ? '退款' : '已退完';
     actionBar.innerHTML = `
       <button data-view-action="edit">${iconHtml('ic-pen', 17)}<span>编辑</span></button>
-      <button data-view-action="copy">${iconHtml('ic-file', 17)}<span>复制</span></button>
+      <button data-view-action="copy">${iconHtml('ic-repeat', 17)}<span>再记</span></button>
       <button class="danger" data-view-action="delete">${iconHtml('ic-trash', 17)}<span>删除</span></button>
       <button class="refund${remaining <= 0 || !canRefund(entry) ? ' disabled' : ''}" data-view-action="refund" aria-disabled="${remaining <= 0 || !canRefund(entry)}">${iconHtml('ic-swap', 17)}<span>${refundLabel}</span></button>`;
   }

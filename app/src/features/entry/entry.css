@@ -1,13 +1,23 @@
 /* 拾光 · 记一笔抽屉私有样式（通用 sheet/keypad/cat-grid 等已在 base.css） */
 
 #sheet::before{content:"";width:34px;height:4px;flex:none;align-self:center;border-radius:999px;background:var(--border);margin:-5px 0 8px}
+#sheet.entry-workspace{
+  top:0;height:100%;max-height:none;border-radius:0;
+  padding:calc(8px + var(--safe-top)) 16px calc(12px + var(--safe-bottom));
+  box-shadow:none;
+}
+#sheet.entry-workspace::before{display:none}
 #sheet .sheet-head{gap:8px}
 #sheet .sheet-head .seg{min-width:0;justify-content:space-between;gap:6px}
-#sheet .sheet-head .seg button{flex:1;white-space:nowrap}
+#sheet .sheet-head .seg button{flex:1;min-height:44px;white-space:nowrap}
+#sheet.entry-workspace .sheet-head{flex:none;margin-bottom:4px}
+#sheet.entry-workspace .sheet-head .icon-btn{width:44px;height:44px;flex:none}
 #sheet .pick-card{position:relative;overflow:hidden;background:linear-gradient(135deg,color-mix(in oklab,var(--seed-primary) 5%,var(--surface)),var(--bg));box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--seed-primary) 3%,transparent)}
+#sheet.entry-workspace .pick-card{flex:none;min-height:58px;padding:8px 12px}
 #sheet .pick-card::after{content:"";position:absolute;right:-22px;top:-34px;width:92px;height:92px;border-radius:50%;border:1px solid color-mix(in oklab,var(--seed-primary) 10%,transparent)}
 #sheet .pick-ic,#sheet .pick-name,#sheet .amt{position:relative;z-index:1}
 #sheet.note-editing #keypad{display:none}
+#sheet.entry-workspace .sheet-scroll{flex:1;min-height:0;margin:7px 0 5px;padding:0 1px 3px;overscroll-behavior:contain}
 #btn-voice.listening{color:var(--primary);border-color:color-mix(in oklab,var(--seed-primary) 36%,var(--border));animation:voice-pulse 1.1s infinite}
 @keyframes voice-pulse{50%{box-shadow:0 0 0 7px color-mix(in oklab,var(--seed-primary) 9%,transparent)}}
 
@@ -19,11 +29,16 @@
 }
 .cat-sec:first-child{padding-top:0}
 
-/* 记账/编辑抽屉分类宫格：一行 5 个，不影响退款页等其他 .cat-grid。 */
-#sheet #cat-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
-#sheet #cat-grid .cat{min-width:0;gap:4px;padding:8px 1px;font-size:10.5px}
-#sheet #cat-grid .cat-ic{width:36px;height:36px}
+/* 快速记账首屏为 7 个常用分类 + 1 个更多，两行四列。 */
+.entry-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:1px 2px 6px}
+.entry-section-head span{font-size:12px;font-weight:650}
+.entry-section-head small{font-size:9.5px;color:var(--faint);white-space:nowrap}
+#sheet #cat-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 6px}
+#sheet #cat-grid .cat{min-width:0;min-height:59px;gap:3px;padding:5px 1px;font-size:10.5px}
+#sheet #cat-grid .cat-ic{width:34px;height:34px}
 #sheet #cat-grid .cat>span:last-child{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#sheet #cat-grid .cat-more .cat-ic{background:transparent;border:1px dashed color-mix(in oklab,var(--seed-primary) 42%,var(--border));color:var(--primary)}
+#sheet.categories-expanded #cat-grid{padding-bottom:8px}
 
 /* 抽屉内选择浮层：主体已迁至 shared/pickList.css，仅保留「新建」输入行样式 */
 .picker-new{display:flex;gap:8px;margin-top:10px;flex:none}
@@ -46,14 +61,36 @@
 
 /* 键盘上方 meta chips：加大触控高度与字号（仅覆盖抽屉内这一行，不动全局 .chip）
    flex:none 防止分类宫格过高时 sheet 纵向 flex 把这一行压扁（滚动由 .sheet-scroll 吸收） */
-.meta-row{flex:none;gap:9px;padding:12px 0 13px}
-.meta-row .chip{flex:none;padding:11px 16px;font-size:13.5px;gap:7px;line-height:1.3}
+.meta-row{flex:none;gap:7px;padding:8px 0 3px}
+.meta-row .chip{flex:none;min-height:44px;padding:9px 13px;font-size:12px;gap:6px;line-height:1.25}
 .meta-row .toggle-chip input{width:16px;height:16px}
+.primary-meta{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) auto auto;overflow:visible}
+.primary-meta .chip{min-width:0;justify-content:center;padding-left:10px;padding-right:10px}
+.primary-meta .chip span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.primary-meta .advanced-toggle{color:var(--primary)}
+.advanced-fields{margin-top:7px;padding:10px 0 2px;border-top:1px dashed var(--border)}
+.advanced-fields .tpl-row{padding-bottom:6px}
+.advanced-meta{display:flex;flex-wrap:wrap;overflow:visible;padding-top:4px}
+#sheet.entry-workspace .note{min-height:44px;margin:8px 0 0;padding:10px 12px;background:var(--surface)}
+#sheet.entry-workspace .keypad{flex:none;gap:6px}
+#sheet.entry-workspace .keypad button{height:46px;min-width:44px}
+#sheet.entry-workspace .keypad .save{height:auto}
 
 @media (max-height:720px){
-  #sheet{max-height:96%;padding-top:10px}
-  #sheet::before{margin-bottom:4px}
+  #sheet:not(.entry-workspace){max-height:96%;padding-top:10px}
+  #sheet:not(.entry-workspace)::before{margin-bottom:4px}
   #sheet .pick-card{padding-top:9px;padding-bottom:9px}
   #sheet .sheet-scroll{margin-top:8px}
-  #sheet .keypad button{height:44px}
+  #sheet.entry-workspace .keypad button{height:42px}
+  #sheet.entry-workspace #cat-grid .cat{min-height:54px}
+  #sheet.entry-workspace #cat-grid .cat-ic{width:30px;height:30px}
+}
+
+@media (max-width:380px){
+  .primary-meta{grid-template-columns:1fr 1fr}
+  .primary-meta .chip{width:100%}
+}
+
+@media (min-width:700px){
+  #sheet.entry-workspace{padding-left:20px;padding-right:20px}
 }

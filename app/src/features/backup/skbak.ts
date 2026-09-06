@@ -17,8 +17,8 @@ async function loadJSZip(): Promise<typeof JSZipType> {
   return (await import('jszip')).default;
 }
 
-/** 应用版本（manifest 用，与 PWA 展示一致） */
-export const APP_VERSION = '1.0.8';
+/** 应用版本（构建时从 package.json 注入，也是 Android versionName 的唯一来源） */
+export const APP_VERSION = __APP_VERSION__;
 /** 备份包数据结构版本（对应 db.ts schema v1） */
 export const SKBAK_SCHEMA_VERSION = 1;
 /** 加密包头 magic（8 字节 ASCII） */

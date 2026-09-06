@@ -12,7 +12,7 @@ from pathlib import Path
 APP_ROOT = Path(__file__).parents[1]
 PROJECT_ROOT = APP_ROOT.parent
 URL = 'http://127.0.0.1:4601/'
-TESTS = ('test_acceptance.py', 'test_refund.py', 'test_m3.py')
+TESTS = ('test_acceptance.py', 'test_refund.py', 'test_m3.py', 'test_ux_m1.py')
 
 
 def server_ready() -> bool:
@@ -40,6 +40,7 @@ def main() -> int:
     screenshots = PROJECT_ROOT / '.tmp' / 'tests' / 'e2e' / 'screenshots'
     screenshots.mkdir(parents=True, exist_ok=True)
     env['GLEAM_E2E_SCREENSHOTS'] = str(screenshots)
+    env['GLEAM_E2E_URL'] = URL
 
     try:
         if not server_ready():

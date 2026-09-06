@@ -4,12 +4,9 @@
  * 操作条 HTML（编辑 / 复制 / 删除 / 退款）与统一的快捷动作执行。
  * 同时持有只读详情页 / 退款页的目标账单 id（openEntryDetail / openRefundPage）。
  */
-import { formatFen } from '../../core/money';
 import { type Entry } from '../../core/types';
 import {
-  addEntry, softDeleteEntry, getEntryTagIds,
-  listRefunds, refundableAmount,
-  type NewEntry,
+  softDeleteEntry, listRefunds, refundableAmount,
 } from '../../core/repo/entryRepo';
 import { openSubpage } from '../shell/router';
 import { showToast } from '../shell/toast';
@@ -127,26 +124,8 @@ export async function runEntryQuickAction(action: EntryQuickAction, entry: Entry
     return 'opened';
   }
   if (action === 'copy') {
-    const clone: NewEntry = {
-      type: entry.type,
-      amount: entry.amount,
-      occurredAt: Date.now(),
-      categoryId: entry.categoryId,
-      accountId: entry.accountId,
-      fromAccountId: entry.fromAccountId,
-      toAccountId: entry.toAccountId,
-      loanContactId: entry.loanContactId,
-      loanKind: entry.loanKind,
-      merchantId: entry.merchantId,
-      note: entry.note,
-      reimburseStatus: entry.reimburseStatus === 'none' ? 'none' : 'pending',
-      refundFlag: undefined,
-      refundOfEntryId: undefined,
-    };
-    const tagIds = await getEntryTagIds(entry.id);
-    await addEntry(clone, tagIds);
-    showToast(`已复制为今天的新账单：¥${formatFen(entry.amount)}`);
-    return 'done';
+    void openEntrySheet({ repeatFromEntryId: entry.id });
+    return 'opened';
   }
   if (action === 'delete') {
     const linked = !entry.refundFlag ? await listRefunds(entry.id) : [];

@@ -14,7 +14,10 @@ import {
   type Account, type Category, type Entry, type EntryType, type LoanKind,
   type LoanContact, type Merchant, type QuickTemplate, type Tag,
 } from '../../core/types';
-import { addEntry, updateEntry, getEntry, getEntryTagIds, dayKey, getNoteFrequencies, type NewEntry, type NoteFrequency } from '../../core/repo/entryRepo';
+import {
+  addEntry, updateEntry, getEntry, getEntryTagIds, dayKey, getNoteFrequencies, listEntries,
+  type NewEntry, type NoteFrequency,
+} from '../../core/repo/entryRepo';
 import { listExpenseTree, listCategories } from '../../core/repo/categoryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
 import { listTemplates } from '../../core/repo/templateRepo';
@@ -29,6 +32,7 @@ import { setFabAction } from '../shell/shell';
 import { showToast } from '../shell/toast';
 import { openDateTimeWheel } from '../../shared/dateTimeWheel';
 import { openPickList, type PickListItem } from '../../shared/pickList';
+import { createRepeatDraft, rankFrequentCategories, resolveInitialEntryType } from './entryWorkspace';
 import './entry.css';
 
 /**
@@ -52,6 +56,10 @@ export interface EntrySheetOptions {
    * 首页「速记」快捷入口使用；与 entryId 同时传入时忽略。
    */
   templateId?: number;
+  /** 预设记账类型；编辑模式始终以原账单类型为准。 */
+  presetType?: EntryType;
+  /** 从已有账单创建一笔新草稿；继承业务选择，但不继承金额与备注。 */
+  repeatFromEntryId?: number;
 }
 
 /* ── 抽屉内部状态 ─────────────────── */
@@ -98,7 +106,16 @@ interface SheetCtx {
   tags: Tag[];
   merchants: Merchant[];
   contacts: LoanContact[];
-  lastUsed: { expenseCategoryId: number | null; incomeCategoryId: number | null; accountId: number | null };
+  lastUsed: {
+    expenseCategoryId: number | null;
+    incomeCategoryId: number | null;
+    accountId: number | null;
+    type?: EntryType | null;
+  };
+  quickExpenseCats: Category[];
+  quickIncomeCats: Category[];
+  showAllCategories: boolean;
+  advancedOpen: boolean;
 }
 
 let ctx: SheetCtx | null = null;
@@ -125,14 +142,17 @@ export function initEntry(): void {
  * @param options 见 {@link EntrySheetOptions}
  */
 export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<void> {
-  const [tree, incomeCats, accounts, templates, tags, merchants, contacts, lastUsed, freqs] = await Promise.all([
+  const openedAt = Date.now();
+  const [tree, incomeCats, accounts, templates, tags, merchants, contacts, lastUsed, freqs, recentEntries] = await Promise.all([
     listExpenseTree(), listCategories('income'), listAccounts(false),
     listTemplates(), listTags(), listMerchants(), listLoanContacts(), getSetting('entry.lastUsed'),
     getNoteFrequencies(),
+    listEntries({ from: openedAt - 90 * 24 * 60 * 60 * 1000, to: openedAt + 1 }),
   ]);
   noteFreqs = freqs;
 
-  const firstExpense = tree[0]?.children[0] ?? tree[0]?.parent;
+  const expenseCats = tree.flatMap((group) => group.children.length ? group.children : [group.parent]);
+  const firstExpense = expenseCats[0];
   const expenseIds = new Set(tree.flatMap((group) => [group.parent.id, ...group.children.map((cat) => cat.id)]));
   const accountIds = new Set(accounts.map((account) => account.id));
   const preferredAccountId = options.presetAccountId != null && accountIds.has(options.presetAccountId)
@@ -140,12 +160,15 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     : lastUsed.accountId != null && accountIds.has(lastUsed.accountId)
       ? lastUsed.accountId
       : accounts[0]?.id;
+  const initialType = resolveInitialEntryType(options.presetType, lastUsed.type);
   const c: SheetCtx = {
-    type: 'expense',
+    type: initialType,
     amt: '', prev: null, op: null,
-    categoryId: lastUsed.expenseCategoryId != null && expenseIds.has(lastUsed.expenseCategoryId)
-      ? lastUsed.expenseCategoryId
-      : firstExpense?.id,
+    categoryId: initialType === 'income'
+      ? lastUsed.incomeCategoryId ?? incomeCats[0]?.id
+      : lastUsed.expenseCategoryId != null && expenseIds.has(lastUsed.expenseCategoryId)
+        ? lastUsed.expenseCategoryId
+        : firstExpense?.id,
     loanKind: 'borrow',
     accountId: preferredAccountId,
     fromId: preferredAccountId,
@@ -154,22 +177,43 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     date: options.presetDate ?? Date.now(),
     bx: false, tk: false,
     expenseTree: tree, incomeCats, accounts, templates, tags, merchants, contacts, lastUsed,
+    quickExpenseCats: rankFrequentCategories(
+      expenseCats,
+      recentEntries.filter((entry) => entry.type === 'expense'),
+      { now: openedAt },
+    ),
+    quickIncomeCats: rankFrequentCategories(
+      incomeCats,
+      recentEntries.filter((entry) => entry.type === 'income'),
+      { now: openedAt },
+    ),
+    showAllCategories: false,
+    advancedOpen: false,
   };
 
-  let editEntry: Entry | undefined;
-  if (options.entryId != null) {
-    editEntry = await getEntry(options.entryId);
-    if (!editEntry) { showToast('账单不存在或已删除'); return; }
+  const sourceId = options.entryId ?? options.repeatFromEntryId;
+  let sourceEntry: Entry | undefined;
+  let initialNote = '';
+  if (sourceId != null) {
+    sourceEntry = await getEntry(sourceId);
+    if (!sourceEntry) { showToast('账单不存在或已删除'); return; }
+    const tagIds = await getEntryTagIds(sourceEntry.id);
+    c.type = sourceEntry.type;
+    c.categoryId = sourceEntry.categoryId ?? c.categoryId;
+    c.accountId = sourceEntry.accountId ?? c.accountId;
+    c.fromId = sourceEntry.fromAccountId ?? c.fromId;
+    c.toId = sourceEntry.toAccountId ?? c.toId;
+    c.loanKind = sourceEntry.loanKind ?? 'borrow';
+    c.contactId = sourceEntry.loanContactId ?? c.contactId;
+    c.date = sourceEntry.occurredAt;
+    c.tagId = tagIds[0];
+    c.merchantId = sourceEntry.merchantId;
+  }
+
+  if (options.entryId != null && sourceEntry) {
+    const editEntry = sourceEntry;
     c.editingId = editEntry.id;
-    c.type = editEntry.type;
     c.amt = String(editEntry.amount / 100);
-    c.categoryId = editEntry.categoryId ?? c.categoryId;
-    c.accountId = editEntry.accountId ?? c.accountId;
-    c.fromId = editEntry.fromAccountId ?? c.fromId;
-    c.toId = editEntry.toAccountId ?? c.toId;
-    c.loanKind = editEntry.loanKind ?? 'borrow';
-    c.contactId = editEntry.loanContactId ?? c.contactId;
-    c.date = editEntry.occurredAt;
     c.bx = editEntry.reimburseStatus === 'pending';
     c.tk = !!editEntry.refundFlag;
     c.refundOfEntryId = editEntry.refundOfEntryId;
@@ -180,13 +224,13 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
         reimbursedAt: editEntry.reimbursedAt,
       };
     }
-    c.merchantId = editEntry.merchantId;
     c.origMerchantId = editEntry.merchantId;
-    const tagIds = await getEntryTagIds(editEntry.id);
-    c.tagId = tagIds[0];
+    c.advancedOpen = c.bx || c.tagId != null || c.merchantId != null || editEntry.lifeNoteId != null;
+    initialNote = editEntry.note ?? '';
   } else if (options.templateId != null) {
     const tpl = templates.find((t) => t.id === options.templateId);
     if (tpl) {
+      c.type = 'expense';
       c.categoryId = tpl.categoryId;
       c.amt = String(tpl.amount / 100);
     }
@@ -197,9 +241,13 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     ariaLabel: c.editingId ? '编辑账单' : '记一笔',
     render(el) {
       sheetEl = el;
-      renderSheet(el, editEntry?.note ?? '');
+      renderSheet(el, initialNote);
     },
-    onClose() { ctx = null; sheetEl = null; },
+    onClose() {
+      sheetEl?.classList.remove('entry-workspace', 'note-editing', 'categories-expanded');
+      ctx = null;
+      sheetEl = null;
+    },
   });
 }
 
@@ -207,6 +255,7 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
 
 function renderSheet(el: HTMLElement, note: string): void {
   const c = ctx!;
+  el.classList.add('entry-workspace');
   el.classList.remove('note-editing');
   el.innerHTML = `
     <header class="sheet-head">
@@ -225,10 +274,8 @@ function renderSheet(el: HTMLElement, note: string): void {
       <span class="amt num empty" id="amt">0.00</span>
     </div>
     <div class="sheet-scroll">
-      <div class="tpl-row" id="tpl-row" aria-label="速记模板">
-        <span class="tpl-lbl">速记</span>
-        ${c.templates.map((t) => `<button class="chip" type="button" data-tpl="${t.id}">${esc(t.name)} ¥${formatFen(t.amount)}</button>`).join('')}
-        <button class="chip" type="button" data-tpl-manage>${c.templates.length ? '管理' : '添加模板'}</button>
+      <div class="entry-section-head" id="category-head">
+        <span>常用分类</span><small>按近 90 天使用习惯排序</small>
       </div>
       <div id="cat-grid" class="cat-grid" role="listbox" aria-label="选择分类"></div>
       <div id="transfer-block" class="transfer" hidden>
@@ -243,17 +290,29 @@ function renderSheet(el: HTMLElement, note: string): void {
         </div>
         <p class="tiny" id="loan-hint" style="padding:2px 4px 0"></p>
       </div>
-    </div>
-    <input class="note" id="note" type="text" placeholder="输入备注…" aria-label="备注">
-    <div class="note-suggest" id="note-suggest" aria-label="备注历史建议"></div>
-    <div class="meta-row">
-      <button class="chip" id="date-chip">${iconHtml('ic-cal', 16)}<span id="date-txt"></span></button>
-      <button class="chip" id="acct-btn">${iconHtml('ic-wallet', 16)}<span id="acct-name"></span></button>
-      <button class="chip" type="button" id="mark-bx" aria-pressed="false">报销</button>
-      <button class="chip" type="button" id="mark-tk" aria-pressed="false">退款</button>
-      <button class="chip" type="button" id="chip-tag" aria-pressed="false">${iconHtml('ic-tag', 16)}<span id="tag-txt">标签</span></button>
-      <button class="chip" type="button" id="chip-shop" aria-pressed="false">${iconHtml('ic-shop', 16)}<span id="shop-txt">商家</span></button>
-      <button class="chip toggle-chip" id="life-toggle" type="button" role="switch" aria-checked="false">同时写生活记录</button>
+      <input class="note" id="note" type="text" placeholder="写点备注（可选）" aria-label="备注">
+      <div class="note-suggest" id="note-suggest" aria-label="备注历史建议"></div>
+      <div class="meta-row primary-meta">
+        <button class="chip" id="date-chip">${iconHtml('ic-cal', 16)}<span id="date-txt"></span></button>
+        <button class="chip" id="acct-btn">${iconHtml('ic-wallet', 16)}<span id="acct-name"></span></button>
+        <button class="chip" type="button" id="mark-bx" aria-pressed="false">报销</button>
+        <button class="chip advanced-toggle" type="button" data-act="toggle-advanced" aria-expanded="false" aria-controls="advanced-fields">
+          ${iconHtml('ic-set', 16)}<span id="advanced-label">更多</span>
+        </button>
+      </div>
+      <section class="advanced-fields" id="advanced-fields" aria-label="更多记账信息" hidden>
+        <div class="tpl-row" id="tpl-row" aria-label="速记模板">
+          <span class="tpl-lbl">速记</span>
+          ${c.templates.map((t) => `<button class="chip" type="button" data-tpl="${t.id}">${esc(t.name)} ¥${formatFen(t.amount)}</button>`).join('')}
+          <button class="chip" type="button" data-tpl-manage>${c.templates.length ? '管理' : '添加模板'}</button>
+        </div>
+        <div class="meta-row advanced-meta">
+          <button class="chip" type="button" id="mark-tk" aria-pressed="false">退款</button>
+          <button class="chip" type="button" id="chip-tag" aria-pressed="false">${iconHtml('ic-tag', 16)}<span id="tag-txt">标签</span></button>
+          <button class="chip" type="button" id="chip-shop" aria-pressed="false">${iconHtml('ic-shop', 16)}<span id="shop-txt">商家</span></button>
+          <button class="chip toggle-chip" id="life-toggle" type="button" role="switch" aria-checked="false">同时写生活记录</button>
+        </div>
+      </section>
     </div>
     <div class="keypad" id="keypad" aria-label="计算器键盘">
       <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button><button data-k="+" class="op" aria-label="加">+</button><button data-k="del" class="op" aria-label="删除一位">${iconHtml('ic-del')}</button>
@@ -309,6 +368,14 @@ function renderCats(): void {
   const c = ctx!;
   const isTransfer = c.type === 'transfer';
   const isLoan = c.type === 'loan';
+  const categoryHead = q('#category-head');
+  categoryHead.hidden = isTransfer;
+  categoryHead.querySelector('span')!.textContent = isLoan
+    ? '借贷类型'
+    : c.showAllCategories ? '全部分类' : '常用分类';
+  categoryHead.querySelector('small')!.textContent = isLoan
+    ? '选择这笔往来的资金方向'
+    : c.showAllCategories ? '选择后自动回到常用分类' : '按近 90 天使用习惯排序';
   q('#tpl-row').hidden = c.type !== 'expense';
   q('#cat-grid').hidden = isTransfer;
   q('#transfer-block').hidden = !isTransfer;
@@ -318,6 +385,7 @@ function renderCats(): void {
   q('#mark-tk').hidden = true;
   q('#chip-tag').hidden = q('#chip-shop').hidden = isTransfer || isLoan;
   q('#acct-btn').hidden = isTransfer || isLoan;
+  sheetEl?.classList.toggle('categories-expanded', c.showAllCategories && !isTransfer && !isLoan);
 
   const grid = q('#cat-grid');
   if (isLoan) {
@@ -332,18 +400,38 @@ function renderCats(): void {
     q('#loan-who b').textContent = c.contacts.find((p) => p.id === c.contactId)?.name ?? '选择对象';
     void updateLoanHint();
   } else if (c.type === 'expense') {
-    grid.innerHTML = c.expenseTree.map((g) =>
-      `<div class="cat-sec">${esc(g.parent.name)}</div>` +
-      g.children.map((cat) => catBtn(cat, cat.id === c.categoryId)).join(''),
-    ).join('');
+    if (c.showAllCategories) {
+      grid.innerHTML = c.expenseTree.map((group) => {
+        const choices = group.children.length ? group.children : [group.parent];
+        return `<div class="cat-sec">${esc(group.parent.name)}</div>` +
+          choices.map((cat) => catBtn(cat, cat.id === c.categoryId)).join('');
+      }).join('') + categoryMoreButton(true);
+    } else {
+      grid.innerHTML = quickCategories(c.quickExpenseCats, c.categoryId)
+        .map((cat) => catBtn(cat, cat.id === c.categoryId)).join('') + categoryMoreButton(false);
+    }
   } else if (c.type === 'income') {
-    grid.innerHTML = c.incomeCats.map((cat) => catBtn(cat, cat.id === c.categoryId)).join('');
+    const choices = c.showAllCategories ? c.incomeCats : quickCategories(c.quickIncomeCats, c.categoryId);
+    grid.innerHTML = choices.map((cat) => catBtn(cat, cat.id === c.categoryId)).join('') +
+      categoryMoreButton(c.showAllCategories);
   }
   if (isTransfer) {
     q('#t-from b').textContent = accountName(c.fromId);
     q('#t-to b').textContent = accountName(c.toId);
   }
   updatePick();
+}
+
+function quickCategories(categories: Category[], selectedId?: number): Category[] {
+  if (selectedId == null || categories.some((item) => item.id === selectedId)) return categories.slice(0, 7);
+  const selected = findCategory(selectedId);
+  return selected ? [selected, ...categories.filter((item) => item.id !== selectedId)].slice(0, 7) : categories.slice(0, 7);
+}
+
+function categoryMoreButton(expanded: boolean): string {
+  return `<button class="cat cat-more" data-cat-more type="button" aria-expanded="${expanded}">
+    <span class="cat-ic">${iconHtml(expanded ? 'ic-left' : 'ic-set')}</span><span>${expanded ? '收起' : '更多'}</span>
+  </button>`;
 }
 
 function catBtn(cat: Category, sel: boolean): string {
@@ -392,6 +480,15 @@ function refreshMeta(): void {
   const shop = c.merchants.find((m) => m.id === c.merchantId);
   q('#shop-txt').textContent = shop ? shop.name : '商家';
   q('#chip-shop').classList.toggle('active', !!shop);
+  const advanced = q<HTMLElement>('#advanced-fields');
+  const advancedToggle = q<HTMLButtonElement>('[data-act="toggle-advanced"]');
+  const activeAdvanced = Number(!!tag) + Number(!!shop) +
+    Number(q('#life-toggle').getAttribute('aria-checked') === 'true');
+  advanced.hidden = !c.advancedOpen;
+  advancedToggle.setAttribute('aria-expanded', String(c.advancedOpen));
+  q('#advanced-label').textContent = c.advancedOpen
+    ? '收起'
+    : activeAdvanced > 0 ? `更多 · ${activeAdvanced}` : '更多';
   const save = q('#keypad .save');
   save.textContent = c.editingId ? '更新' : '保存';
   q<HTMLElement>('#keypad .again').style.visibility = c.editingId ? 'hidden' : '';
@@ -467,6 +564,7 @@ function switchEntryType(type: EntryType): void {
     return;
   }
   c.type = type;
+  c.showAllCategories = false;
   for (const button of sheetEl.querySelectorAll<HTMLElement>('#seg button')) {
     const active = button.dataset.type === type;
     button.classList.toggle('active', active);
@@ -586,10 +684,19 @@ function bindEvents(el: HTMLElement): void {
 
   // 分类宫格 / 借贷四宫格
   el.querySelector('#cat-grid')!.addEventListener('click', (e) => {
+    const more = (e.target as HTMLElement).closest<HTMLElement>('[data-cat-more]');
+    if (more && ctx) {
+      ctx.showAllCategories = !ctx.showAllCategories;
+      renderCats();
+      return;
+    }
     const btn = (e.target as HTMLElement).closest<HTMLElement>('.cat');
     if (!btn || !ctx) return;
     if (btn.dataset.kind) ctx.loanKind = btn.dataset.kind as LoanKind;
-    else ctx.categoryId = Number(btn.dataset.id);
+    else {
+      ctx.categoryId = Number(btn.dataset.id);
+      ctx.showAllCategories = false;
+    }
     renderCats();
   });
 
@@ -618,6 +725,11 @@ function bindEvents(el: HTMLElement): void {
   el.querySelector('#loan-who')!.addEventListener('click', () => void pickContact());
   el.querySelector('#chip-tag')!.addEventListener('click', () => void pickTag());
   el.querySelector('#chip-shop')!.addEventListener('click', () => void pickMerchant());
+  el.querySelector('[data-act="toggle-advanced"]')!.addEventListener('click', () => {
+    if (!ctx) return;
+    ctx.advancedOpen = !ctx.advancedOpen;
+    refreshMeta();
+  });
 
   // 报销 / 退款标记（已报销账单锁定，不允许改回）
   el.querySelector('#mark-bx')!.addEventListener('click', () => {
@@ -633,6 +745,7 @@ function bindEvents(el: HTMLElement): void {
     const on = btn.getAttribute('aria-checked') === 'true';
     btn.setAttribute('aria-checked', String(!on));
     btn.classList.toggle('on', !on);
+    refreshMeta();
   });
 
   // 记账日期（滚轮选择日期+时间，默认当前时刻，可选历史日期补账，不可记未来日期）
@@ -852,6 +965,7 @@ let saving = false;
 async function rememberLastUsed(c: SheetCtx): Promise<void> {
   const next = {
     ...c.lastUsed,
+    type: c.type,
     accountId: c.accountId ?? c.lastUsed.accountId,
     expenseCategoryId: c.type === 'expense' && c.categoryId != null
       ? c.categoryId
@@ -999,15 +1113,31 @@ async function doSave(stay: boolean): Promise<void> {
 
   if (!stay) { closeSheet(); return; }
 
-  // 再记：保留抽屉，清空金额与随笔性字段（类型/分类/账户/日期保留）
-  c.amt = '';
+  // 再记：继承类型/分类/账户/标签/商家，清空金额与随笔性内容。
+  const repeat = createRepeatDraft({
+    type: c.type,
+    amount: fen,
+    categoryId: c.categoryId,
+    accountId: c.accountId,
+    fromId: c.fromId,
+    toId: c.toId,
+    contactId: c.contactId,
+    loanKind: c.loanKind,
+    tagId: c.tagId,
+    merchantId: c.merchantId,
+    occurredAt: c.date,
+    note,
+    reimbursePending: c.bx,
+    linkLife: lifeToggle.getAttribute('aria-checked') === 'true',
+  });
+  c.amt = repeat.amount;
   c.prev = null;
   c.op = null;
-  c.bx = false;
+  c.bx = repeat.reimbursePending;
   c.tk = false;
-  c.tagId = undefined;
-  c.merchantId = undefined;
-  noteInput.value = '';
+  c.tagId = repeat.tagId;
+  c.merchantId = repeat.merchantId;
+  noteInput.value = repeat.note;
   lifeToggle.classList.remove('on'); lifeToggle.setAttribute('aria-checked', 'false');
   refreshAmt();
   refreshMeta();
