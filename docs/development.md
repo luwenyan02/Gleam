@@ -7,6 +7,8 @@
 - Python 3.11+（仅端到端测试）
 - Android Studio / JDK 21（仅 Android）
 
+Android 命令行构建请通过 `JAVA_HOME` 选择 JDK 21；不要把 `org.gradle.java.home` 的机器绝对路径提交到 `gradle.properties`。
+
 ## 启动
 
 ```bash
