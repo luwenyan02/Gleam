@@ -9,6 +9,12 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(appVersion),
   },
   plugins: [
+    {
+      name: 'gleam-build-info',
+      generateBundle() {
+        this.emitFile({ type: 'asset', fileName: 'build-info.json', source: JSON.stringify({ version: appVersion }) });
+      },
+    },
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
@@ -17,8 +23,8 @@ export default defineConfig({
         short_name: '拾光',
         description: '本地优先的记账与生活记录应用',
         lang: 'zh-CN',
-        theme_color: '#D66A2C',
-        background_color: '#FAF3E9',
+        theme_color: '#F6F7F9',
+        background_color: '#F6F7F9',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',

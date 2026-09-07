@@ -8,6 +8,7 @@
  * 纯 DOM + CSS 实现，无第三方依赖；样式见 ./dw.css。
  */
 import './dw.css';
+import { manageOverlay } from './overlay';
 
 export interface DateWheelResult {
   year: number;
@@ -74,6 +75,9 @@ function createColumn(
 ): { getIndex(): number; setItems(newItems: string[], idx?: number): void; destroy(): void; el: HTMLElement } {
   const wrap = document.createElement('div');
   wrap.className = 'dw-col';
+  wrap.tabIndex = 0;
+  wrap.setAttribute('role','spinbutton');
+  wrap.setAttribute('aria-label',items[0]?.replace(/[\d\s]/g,'') || '日期');
   wrap.style.height = `${ITEM_HEIGHT * VISIBLE_COUNT}px`;
 
   const list = document.createElement('div');
@@ -109,6 +113,10 @@ function createColumn(
   }
 
   function applyTransform(): void {
+    wrap.setAttribute('aria-valuemin','0');
+    wrap.setAttribute('aria-valuemax',String(currentItems.length-1));
+    wrap.setAttribute('aria-valuenow',String(currentIdx));
+    wrap.setAttribute('aria-valuetext',currentItems[currentIdx] ?? '');
     list.style.transform = `translateY(${offset + HALF * ITEM_HEIGHT}px)`;
     // 视觉效果：离中心越远越淡越小
     for (let i = 0; i < list.children.length; i++) {
@@ -225,6 +233,12 @@ function createColumn(
   wrap.addEventListener('pointerup', onPointerUp);
   wrap.addEventListener('pointercancel', onPointerUp);
   wrap.addEventListener('wheel', onWheel, { passive: false });
+  wrap.addEventListener('keydown', event => {
+    if (!['ArrowUp','ArrowDown','Home','End'].includes(event.key)) return;
+    event.preventDefault();
+    const index = event.key === 'Home' ? 0 : event.key === 'End' ? currentItems.length-1 : currentIdx+(event.key === 'ArrowUp' ? -1 : 1);
+    snapToIndex(index, false); onChange?.(currentIdx);
+  });
 
   renderItems();
   offset = -currentIdx * ITEM_HEIGHT;
@@ -421,6 +435,7 @@ export function openDateTimeWheel(opts: DateTimeWheelOptions): HTMLElement {
   }
 
   function close(): void {
+    releaseOverlay();
     panel.classList.remove('dw-open');
     setTimeout(() => {
       yearCol.destroy();
@@ -432,6 +447,8 @@ export function openDateTimeWheel(opts: DateTimeWheelOptions): HTMLElement {
     }, 300);
   }
 
+  const releaseOverlay = manageOverlay(panel, () => { close(); opts.onCancel?.(); });
+  panel.setAttribute('aria-label','选择日期与时间');
   mask.addEventListener('click', () => {
     close();
     opts.onCancel?.();
@@ -559,6 +576,7 @@ export function openMonthWheel(opts: MonthWheelOptions): HTMLElement {
   }
 
   function close(): void {
+    releaseOverlay();
     panel.classList.remove('dw-open');
     setTimeout(() => {
       yearCol.destroy();
@@ -567,6 +585,8 @@ export function openMonthWheel(opts: MonthWheelOptions): HTMLElement {
     }, 300);
   }
 
+  const releaseOverlay = manageOverlay(panel, () => { close(); opts.onCancel?.(); });
+  panel.setAttribute('aria-label','选择年月');
   mask.addEventListener('click', () => { close(); opts.onCancel?.(); });
 
   confirmBtn.addEventListener('click', () => {

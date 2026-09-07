@@ -4,23 +4,29 @@
  */
 
 /* ── 收支汇总卡 ── */
-.r-sum{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px;align-items:end}
+.r-sum{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+.r-sum>button:first-child{grid-column:1/-1;border-bottom:1px solid var(--border);padding-bottom:14px;border-radius:0}
+.r-sum.is-wide{grid-template-columns:minmax(0,1fr)}
 .r-sum>button{min-width:0;min-height:48px;padding:4px;border-radius:10px;text-align:left}
 .r-sum>button:active{background:var(--accent-soft)}
 .r-sum p:first-child{font-size:10.5px;letter-spacing:.12em;color:var(--faint);margin-bottom:4px}
-.r-sum .big{font-size:calc(22px * var(--seed-type));font-weight:700;color:var(--expense);white-space:nowrap}
-.r-sum .mid{font-size:calc(14px * var(--seed-type));font-weight:600}
+.r-sum .big{font-size:clamp(24px,7vw,32px);font-weight:700;color:var(--expense);white-space:nowrap}
+.r-sum .mid{font-size:calc(16px * var(--seed-type));font-weight:600;white-space:nowrap}
 .r-sum .mid.in{color:var(--income)}
 
 /* ── 周期前后翻页（页头标签两侧） ── */
-.r-nav{display:flex;align-items:center;gap:2px;margin-top:2px;margin-left:-7px}
+.r-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0 12px}
 .r-nav .nav-btn{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--faint);transition:background .15s}
 .r-nav .nav-btn:active{background:color-mix(in oklab, var(--seed-fg) 8%, transparent)}
 .r-nav .nav-btn svg.ic{width:14px;height:14px}
-.r-nav .sub{min-width:96px;text-align:center;margin-top:0}
-#r-seg button{padding-left:9px;padding-right:9px}
-.report-dim{display:grid;width:100%;grid-template-columns:repeat(4,1fr);margin:0 0 12px}
-.report-dim button{min-height:42px;padding-left:8px;padding-right:8px}
+.r-nav .sub{min-width:0;min-height:44px;text-align:center;margin-top:0;font-size:14px;color:var(--fg);font-weight:600}
+#r-seg{display:grid;width:100%;grid-template-columns:repeat(4,minmax(0,1fr));border-radius:12px;background:var(--surface);border:1px solid var(--border)}
+#r-seg button{padding:8px 4px;white-space:nowrap;min-width:0;border-radius:9px}
+#r-seg button.active{background:var(--accent-soft);color:var(--primary);box-shadow:none}
+.report-dim{display:grid;width:100%;grid-template-columns:repeat(4,1fr);margin:0 0 12px;background:transparent;border-radius:0;border-bottom:1px solid var(--border)}
+.report-dim button{border-radius:0}
+.report-dim button.active{box-shadow:none;background:transparent;border-bottom:3px solid var(--primary);font-weight:700}
+.report-dim button{min-height:44px;padding-left:8px;padding-right:8px}
 
 /* ── 空数据状态 ── */
 .chart-empty{display:flex;align-items:center;justify-content:center;min-height:130px;font-size:12px;color:var(--faint);letter-spacing:.04em}
@@ -32,13 +38,10 @@
 .rank-link:active{background:var(--accent-soft)}
 .donut-hit,.trend-hit{cursor:pointer}
 .donut-hit:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
-#donut-legend li button{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;text-align:left;color:var(--muted);font-size:12px}
+#donut-legend li button{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;text-align:left;color:var(--muted);font-size:12px}
 #donut-legend li button b{margin-left:auto;color:var(--fg);font-size:11.5px}
 
-@media (max-width:390px){
-  #page-report .page-head{align-items:flex-start;gap:8px}
-  #r-seg button{padding-left:7px;padding-right:7px;font-size:11.5px}
-}
+.chart-cap{font-size:12px;line-height:1.6;color:var(--muted)}
 
 /* ── 切换过渡（周期/排行维度切换后由 report.ts 重触发 .r-anim）──
  * 只用 transform/opacity，不引起布局跳动；

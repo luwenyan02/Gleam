@@ -10,6 +10,7 @@ import { iconHtml } from '../../assets/icons';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { closeSheet, isSheetOpen } from './sheet';
+import { dismissTopOverlay } from '../../shared/overlay';
 
 /** 页面定义 */
 export interface PageDef {
@@ -92,6 +93,7 @@ export function initRouter(app: HTMLElement, vp: HTMLElement): void {
 
 /** Android 返回顺序：抽屉 → 最上层子页 → 首页 → 退出 App。 */
 function handleSystemBack(): void {
+  if (dismissTopOverlay()) return;
   if (isSheetOpen()) {
     closeSheet();
     return;

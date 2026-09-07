@@ -13,7 +13,8 @@ import { dayKey } from './entryRepo';
 import { getNetWorth } from './accountRepo';
 import { getSetting } from './settingsRepo';
 import type { Entry } from '../types';
-import { summarizeLedgerEntries } from '../ledgerQuery';
+import { filterLedgerEntries, summarizeLedgerEntries } from '../ledgerQuery';
+import { ledgerItems } from '../ledgerEvents';
 
 /** 收支汇总结果（分） */
 export interface Summary {
@@ -61,8 +62,6 @@ function expenseAmount(entry: Entry): number {
 export async function rangeSummary(from: number, to: number): Promise<Summary> {
   const countAsIncome = await getSetting('reimburse.countAsIncome');
   const rows = await entriesIn(from, to);
-  let reimburseIncome = 0;
-  let reimburseIncomeCount = 0;
   if (countAsIncome) {
     // 已到账报销按 reimbursedAt 归属周期计入收入（原账单可能在其他周期）
     const done = await db.entries
@@ -70,15 +69,12 @@ export async function rangeSummary(from: number, to: number): Promise<Summary> {
       .equals('done')
       .filter((e) => e.deletedAt === 0 && e.reimbursedAt != null && e.reimbursedAt >= from && e.reimbursedAt < to)
       .toArray();
-    for (const e of done) {
-      reimburseIncome += e.reimbursedAmount ?? 0;
-      reimburseIncomeCount += 1;
-    }
+    const ids = new Set(rows.map(e => e.id));
+    rows.push(...done.filter(e => !ids.has(e.id)));
   }
-  const summary = summarizeLedgerEntries(rows, {
+  const items = filterLedgerEntries(ledgerItems(rows, countAsIncome), { from, to });
+  const summary = summarizeLedgerEntries(items, {
     reimburseMode: countAsIncome ? 'income' : 'offset',
-    reimburseIncome,
-    reimburseIncomeCount,
   });
   return { expense: summary.expense, income: summary.income, balance: summary.balance };
 }

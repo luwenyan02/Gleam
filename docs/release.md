@@ -14,7 +14,6 @@ npm run check:secrets
 npm run test:unit
 npm run build
 npm run test:e2e
-npx cap sync android
 ```
 
 ## Android 签名
@@ -47,14 +46,24 @@ keyPassword=<由密码管理器生成>
 F9:79:D4:9C:E5:86:A7:43:8B:CA:F4:4B:CE:C4:B4:ED:AA:9E:80:CB:A1:70:A0:7F:8F:88:95:B7:57:38:00:12
 ```
 
-构建并验证：
+使用 JDK 21，设置 `ANDROID_HOME` 为本机 SDK 目录后，统一构建并验证：
 
 ```bash
-cd app/android
-./gradlew assembleRelease
+cd app
+npm run build:android
 ```
 
-发布前必须比较 APK 证书指纹，并在安装旧版本的设备上完成覆盖安装、启动和备份恢复验证。
+该命令依次执行网页生产构建、Capacitor 同步、Gradle 单元测试、release 打包和 `verify:apk`。不要只执行 `assembleRelease` 后直接发包，否则可能带入旧网页。
+
+`dist/build-info.json` 由构建读取源码版本自动生成。校验脚本比较 APK 原生版本与源码版本，并将 APK 内每个网页文件与本次 `dist/` 逐字节比较，同时验证原发布证书。旧包、遗漏资源和被替换的 JS 会使校验失败。
+
+也可单独验证一个候选包：
+
+```bash
+npm run verify:apk -- /absolute/path/to/Gleam-vX.Y.Z.apk
+```
+
+这只证明构建产物一致，不代表完成设备验收。发布前仍须在安装旧版本的设备上完成覆盖安装、输入法、返回手势、读屏、启动和备份恢复验证。没有设备时仅提供明确标记的候选包，不宣布正式验收通过。
 
 ## GitHub Release
 

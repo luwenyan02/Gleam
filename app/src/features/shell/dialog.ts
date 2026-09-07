@@ -4,7 +4,7 @@
  * DOM 节点由 shell 挂载（#dialog-scrim）。
  */
 import { esc } from '../../core/esc';
-import { isolateModal, trapModalFocus } from '../../shared/modalFocus';
+import { manageOverlay } from '../../shared/overlay';
 
 /** 对话框选项 */
 export interface ConfirmOptions {
@@ -27,7 +27,6 @@ export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
   const scrim = document.getElementById('dialog-scrim');
   if (!scrim) return Promise.resolve(false);
   return new Promise((resolve) => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     scrim.innerHTML = `
       <div class="dialog" role="alertdialog" aria-modal="true" aria-label="${esc(opts.title)}">
         <h3>${esc(opts.title)}</h3>
@@ -40,21 +39,18 @@ export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
     scrim.classList.add('show');
     scrim.setAttribute('aria-hidden', 'false');
     scrim.inert = false;
-    const toast = document.getElementById('toast');
-    const restoreBackground = isolateModal(toast ? [scrim, toast] : [scrim]);
     let releaseFocus: () => void = () => undefined;
+    let settled = false;
     const close = (result: boolean) => {
+      if (settled) return;
+      settled = true;
       scrim.classList.remove('show');
       scrim.setAttribute('aria-hidden', 'true');
       scrim.inert = true;
       releaseFocus();
-      restoreBackground();
-      requestAnimationFrame(() => opener?.isConnected && opener.focus());
       resolve(result);
     };
-    const dialog = scrim.querySelector<HTMLElement>('.dialog')!;
-    dialog.tabIndex = -1;
-    releaseFocus = trapModalFocus(dialog, () => close(false));
+    releaseFocus = manageOverlay(scrim, () => close(false));
     scrim.onclick = (e) => {
       const target = e.target as HTMLElement;
       const act = target.closest('[data-act]')?.getAttribute('data-act');

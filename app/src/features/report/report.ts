@@ -23,7 +23,7 @@ import {
   type ReportDimension, type ReportSelection,
 } from '../../core/ledgerQuery';
 import { openLedgerSearch } from '../search/search';
-import { openDateWheel } from '../../shared/dateTimeWheel';
+import { openDateWheel, openMonthWheel } from '../../shared/dateTimeWheel';
 import { showToast } from '../shell/toast';
 
 type Period = 'week' | 'month' | 'year' | 'custom';
@@ -230,8 +230,8 @@ function renderTrend(d: ReportData['trend']): void {
   }
   d.labels.forEach((lb, i) => {
     const cx = slot * i + slot / 2;
-    const eh = Math.max(3, (d.expense[i] / max) * maxH);
-    const ih = Math.max(3, (d.incomes[i] / max) * maxH);
+    const eh = d.expense[i] === 0 ? 0 : Math.max(3, (d.expense[i] / max) * maxH);
+    const ih = d.incomes[i] === 0 ? 0 : Math.max(3, (d.incomes[i] / max) * maxH);
     const range = d.ranges[i];
     s += `<g class="trend-hit" role="button" tabindex="0" data-drill-from="${range.from}" data-drill-to="${range.to}" aria-label="${esc(lb)}，支出 ${formatFenCny(d.expense[i])}，收入 ${formatFenCny(d.incomes[i])}，查看明细">`;
     s += `<rect x="${(cx - dw - 1).toFixed(1)}" y="${(base - eh).toFixed(1)}" width="${dw.toFixed(1)}" height="${eh.toFixed(1)}" rx="3" fill="var(--c1)"/>`;
@@ -242,7 +242,7 @@ function renderTrend(d: ReportData['trend']): void {
   const expenseTotal = d.expense.reduce((sum, amount) => sum + amount, 0);
   const incomeTotal = d.incomes.reduce((sum, amount) => sum + amount, 0);
   box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" aria-label="收支趋势柱状图，可选择柱形查看明细">${s}</svg>`;
-  cap.textContent = `深色为支出 · 浅色为收入 · 合计支出 ${formatFenCny(expenseTotal)}，收入 ${formatFenCny(incomeTotal)} · 点击柱形查看明细`;
+  cap.textContent = `橙色为支出 · 绿色为收入 · 合计支出 ${formatFenCny(expenseTotal)}，收入 ${formatFenCny(incomeTotal)} · 点击柱形查看明细`;
 }
 
 /** 支出构成环形图：直接展示前五项，其余合并为“其他”，各区段可下钻。 */
@@ -381,6 +381,8 @@ async function refresh(): Promise<void> {
   root.querySelector<HTMLElement>('#r-spend')!.textContent = `¥${formatFen(data.summary.expense)}`;
   root.querySelector<HTMLElement>('#r-income')!.textContent = `¥${formatFen(data.summary.income)}`;
   root.querySelector<HTMLElement>('#r-balance')!.textContent = formatFenCny(data.summary.balance);
+  root.querySelector('.r-sum')!.classList.toggle('is-wide',
+    [data.summary.income, data.summary.balance].some(value => formatFenCny(value).length > 11));
   renderTrend(data.trend);
   renderDonut(data.cats);
   renderRank(data);
@@ -392,22 +394,20 @@ async function refresh(): Promise<void> {
 function render(el: HTMLElement): void {
   root = el;
   el.innerHTML = `
-    <header class="page-head">
-      <div>
-        <h2 class="brand sm">报表</h2>
-        <div class="r-nav">
-          <button class="nav-btn" data-nav="-1" aria-label="上一周期">${iconHtml('ic-left')}</button>
-          <p class="sub" id="r-label"></p>
-          <button class="nav-btn" data-nav="1" aria-label="下一周期">${iconHtml('ic-right')}</button>
-        </div>
-      </div>
+    <header class="page-head report-head">
+      <h2 class="brand sm">报表</h2>
+    </header>
       <div class="seg" id="r-seg" role="tablist" aria-label="统计周期">
         <button data-p="week" role="tab">周</button>
         <button data-p="month" class="active" role="tab" aria-selected="true">月</button>
         <button data-p="year" role="tab">年</button>
         <button data-p="custom" role="tab">自定义</button>
       </div>
-    </header>
+    <div class="r-nav">
+      <button class="nav-btn" data-nav="-1" aria-label="上一周期">${iconHtml('ic-left')}</button>
+      <button class="sub" id="r-label" aria-label="选择报表日期"></button>
+      <button class="nav-btn" data-nav="1" aria-label="下一周期">${iconHtml('ic-right')}</button>
+    </div>
 
     <div class="seg report-dim" id="report-dim" role="tablist" aria-label="报表维度">
       <button class="active" data-dimension="trend" role="tab" aria-selected="true">趋势</button>
@@ -465,6 +465,16 @@ function render(el: HTMLElement): void {
   });
 
   // 周期前后翻页
+  el.querySelector('#r-label')!.addEventListener('click', () => {
+    if (period === 'custom') { pickCustomPeriod(() => setPeriodButtons(el)); return; }
+    const commit = (year: number, month: number, day = 1) => {
+      anchor = new Date(year, month - 1, day); rankExpanded = false; void refresh();
+    };
+    const picker = period === 'week'
+      ? openDateWheel({ initial:{year:anchor.getFullYear(),month:anchor.getMonth()+1,day:anchor.getDate()},onConfirm:r=>commit(r.year,r.month,r.day) })
+      : openMonthWheel({ initial:{year:anchor.getFullYear(),month:anchor.getMonth()+1},onConfirm:r=>commit(r.year,r.month) });
+    document.body.appendChild(picker);
+  });
   for (const btn of el.querySelectorAll<HTMLElement>('[data-nav]')) {
     btn.addEventListener('click', () => shiftPeriod(Number(btn.dataset.nav) as 1 | -1));
   }

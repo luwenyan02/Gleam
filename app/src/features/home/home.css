@@ -4,20 +4,25 @@
   border-radius:var(--r-l);
   padding:calc(15px * var(--seed-density)) calc(16px * var(--seed-density));
   margin-bottom:calc(10px * var(--seed-density));
-  color:var(--on-accent);
-  background:linear-gradient(140deg, var(--mc-a), var(--mc-b) 62%, var(--mc-c));
-  box-shadow:0 14px 30px color-mix(in oklab, var(--mc-b) 28%, transparent);
+  color:var(--fg);
+  background:var(--surface);
+  border:1px solid var(--border);
+  box-shadow:none;
 }
-.mc-label{font-size:10.5px;letter-spacing:.15em;opacity:.85}
+.mc-label{font-size:12px;letter-spacing:.04em;color:var(--muted)}
 .mc-amt{font-size:calc(33px * var(--seed-type));font-weight:700;margin:4px 0 10px;letter-spacing:-0.02em;line-height:1.08}
 .mc-amt small{font-size:.5em;font-weight:500;opacity:.8;margin-right:2px}
-.mc-row{display:flex;gap:20px}
+.mc-row{display:flex;gap:20px;flex-wrap:wrap}
 .mc-row p:first-child{font-size:10px;letter-spacing:.09em;opacity:.75;margin-bottom:2px}
 .mc-row .num{font-size:calc(13.5px * var(--seed-type));font-weight:600}
+.mc-amt{color:var(--expense);overflow-wrap:anywhere;line-height:1.3}
+.mc-row p:first-child{opacity:1;color:var(--muted);font-size:12px}
+#hm-quick .qa:nth-child(2) .qa-ic{color:var(--income);background:color-mix(in srgb,var(--income) 10%,var(--surface))}
+#hm-quick .qa:nth-child(4) .qa-ic{color:var(--c3);background:color-mix(in srgb,var(--c3) 10%,var(--surface))}
 
 /* 快捷区只保留一手可点的 30px 图标，将纵向空间让给今日流水。 */
 #hm-quick{padding:7px 4px;margin-bottom:12px}
-#hm-quick .qa{gap:3px;font-size:10px}
+#hm-quick .qa{gap:6px;font-size:12px;min-height:52px}
 #hm-quick .qa-ic{width:30px;height:30px;border-radius:10px}
 #hm-quick .qa-ic svg.ic{width:16px;height:16px}
 

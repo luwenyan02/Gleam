@@ -9,15 +9,17 @@ const FOCUSABLE = [
 
 function visibleFocusable(container: HTMLElement): HTMLElement[] {
   return [...container.querySelectorAll<HTMLElement>(FOCUSABLE)]
-    .filter((item) => !item.hidden && item.getClientRects().length > 0 && item.getAttribute('aria-hidden') !== 'true');
+    .filter((item) => !item.closest('[hidden],[inert],[aria-hidden="true"]') && item.getClientRects().length > 0 && getComputedStyle(item).visibility !== 'hidden');
 }
 
 /** 锁定 Tab 焦点并支持 Escape；返回清理函数。 */
 export function trapModalFocus(container: HTMLElement, onEscape: () => void): () => void {
   const controller = new AbortController();
   container.addEventListener('keydown', (event) => {
+    if (event.defaultPrevented) return;
     if (event.key === 'Escape') {
       event.preventDefault();
+      event.stopPropagation();
       onEscape();
       return;
     }
@@ -26,16 +28,16 @@ export function trapModalFocus(container: HTMLElement, onEscape: () => void): ()
     if (!focusable.length) { event.preventDefault(); container.focus(); return; }
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === container)) {
       event.preventDefault();
       last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
+    } else if (!event.shiftKey && (document.activeElement === last || !container.contains(document.activeElement))) {
       event.preventDefault();
       first.focus();
     }
   }, { signal: controller.signal });
-  requestAnimationFrame(() => (visibleFocusable(container)[0] ?? container).focus());
-  return () => controller.abort();
+  const frame = requestAnimationFrame(() => { if (container.isConnected && !controller.signal.aborted) (visibleFocusable(container)[0] ?? container).focus({preventScroll:true}); });
+  return () => { cancelAnimationFrame(frame); controller.abort(); };
 }
 
 interface ElementState {

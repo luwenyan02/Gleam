@@ -28,6 +28,8 @@ import {
 } from '../../core/ledgerQuery';
 import { openDateWheel, type DateWheelResult } from '../../shared/dateTimeWheel';
 import { createFilterPanel, emptyFilter, isFilterEmpty, type FilterState } from './filterPanel';
+import { ledgerItems, type LedgerItem } from '../../core/ledgerEvents';
+import { manageOverlay } from '../../shared/overlay';
 
 let body: HTMLElement | undefined;
 let searchToken = 0;
@@ -44,6 +46,9 @@ let filterState: FilterState = emptyFilter();
 let summaryFilter: 'all' | 'expense' | 'income' = 'all';
 let queryTypes: EntryType[] = [];
 let ledgerOnly = false;
+const PAGE_SIZE = 100;
+let shown = PAGE_SIZE;
+let lastQueryKey = '';
 
 interface PendingLedgerSearch {
   query: LedgerQuery;
@@ -118,7 +123,8 @@ function dateRangeClass(range: DateRange): string {
 }
 
 /* ── 账单标题 / 金额渲染 ── */
-function entryTitle(e: Entry, catNames: Map<number, string>): string {
+function entryTitle(e: LedgerItem, catNames: Map<number, string>): string {
+  if (e.kind === 'reimbursement') return '报销到账';
   if (e.type === 'transfer') return '转账';
   if (e.type === 'loan') return LOAN_KIND_META[e.loanKind ?? 'borrow'].name;
   const name = catNames.get(e.categoryId ?? -1) ?? '未分类';
@@ -249,53 +255,33 @@ async function doSearch(kw: string): Promise<void> {
     keyword: kw || undefined,
     field: fieldMode,
   };
-  const matchedEntries = filterLedgerEntries(entries, query, {
+  const queryKey = JSON.stringify([query, summaryFilter]);
+  if (queryKey !== lastQueryKey) { shown = PAGE_SIZE; lastQueryKey = queryKey; }
+  const countReimburseAsIncome = await getSetting('reimburse.countAsIncome');
+  if (token !== searchToken || !resultsEl.isConnected) return;
+  const matchedEntries = filterLedgerEntries(ledgerItems(entries, countReimburseAsIncome), query, {
     categoryNames: catNames,
     accountNames,
     tagIdsByEntry,
     tagNamesByEntry,
     merchantNames,
   });
-  const countReimburseAsIncome = await getSetting('reimburse.countAsIncome');
-  let reimburseIncome = 0;
-  let reimburseIncomeCount = 0;
-  if (countReimburseAsIncome && (!query.types?.length || query.types.includes('income'))) {
-    const nonDateQuery: LedgerQuery = { ...query, from: undefined, to: undefined, types: undefined };
-    const eligible = filterLedgerEntries(entries, nonDateQuery, {
-      categoryNames: catNames,
-      accountNames,
-      tagIdsByEntry,
-      tagNamesByEntry,
-      merchantNames,
-    });
-    const from = query.from ?? 0;
-    const to = query.to ?? Number.MAX_SAFE_INTEGER;
-    for (const entry of eligible) {
-      if (entry.reimburseStatus !== 'done' || entry.reimbursedAt == null) continue;
-      if (entry.reimbursedAt < from || entry.reimbursedAt >= to) continue;
-      reimburseIncome += entry.reimbursedAmount ?? 0;
-      reimburseIncomeCount += 1;
-    }
-  }
-  const summary = summarizeLedgerEntries(matchedEntries, {
-    reimburseMode: countReimburseAsIncome ? 'income' : 'offset',
-    reimburseIncome,
-    reimburseIncomeCount,
-  });
+  const summaryOptions = { reimburseMode: countReimburseAsIncome ? 'income' as const : 'offset' as const };
+  const summary = summarizeLedgerEntries(matchedEntries, summaryOptions);
   renderActiveFilters({ catNames, accountNames, tagNames, merchantNames });
 
   // 按汇总卡筛选显示
   let displayEntries = matchedEntries;
   if (summaryFilter === 'expense') displayEntries = matchedEntries.filter(e => e.type === 'expense');
   else if (summaryFilter === 'income') displayEntries = matchedEntries.filter(e => e.type === 'income');
-  const hitEntries = displayEntries.slice(0, 100);
+  const hitEntries = displayEntries.slice(0, shown);
 
   // 生活记录搜索（仅 all/note 模式下）
   const hitNotes = !ledgerOnly && !!kw && (fieldMode === 'all' || fieldMode === 'note')
     ? notes.filter(n => (!win || (n.occurredAt >= win.from && n.occurredAt < win.to)) && ((n.title ?? '').includes(kw) || (n.body ?? '').includes(kw))).slice(0, 50)
     : [];
 
-  const entryRow = (e: Entry) => {
+  const entryRow = (e: LedgerItem) => {
     const states = [
       e.refundFlag ? '<span class="sr-state refund">退款到账</span>' : '',
       e.reimburseStatus === 'pending' ? '<span class="sr-state pending">待报销</span>' : '',
@@ -304,11 +290,12 @@ async function doSearch(kw: string): Promise<void> {
       e.type === 'loan' ? '<span class="sr-state neutral">借贷</span>' : '',
     ].join('');
     return `
-      <div class="entry-swipe" data-eid="${e.id}">
-        ${entrySwipeActionsHtml(e)}
+      <div class="entry-swipe" data-eid="${e.id}"${e.kind === 'reimbursement' ? ' data-reimbursement' : ''}>
+        ${e.kind === 'reimbursement' ? '' : entrySwipeActionsHtml(e)}
         <button class="row entry-swipe-content">
           <div class="e-main"><p class="e-title">${esc(entryTitle(e, catNames))}${states}</p>
-            <p class="e-meta">${e.note ? esc(e.note.slice(0, 30)) : accountNames.get(e.accountId ?? e.fromAccountId ?? -1) ?? '无备注'}</p></div>
+            <p class="e-meta">${esc(e.note ? e.note.slice(0, 30) : accountNames.get(e.accountId ?? e.fromAccountId ?? -1) ?? '无备注')}</p>
+            ${e.kind === 'reimbursement' ? '<p class="e-meta">点击查看原支出</p>' : e.type === 'expense' && e.reimburseStatus === 'done' ? `<p class="sr-net">原额 ${formatFen(e.amount)} · 已报销 ${formatFen(e.reimbursedAmount ?? 0)}${!countReimburseAsIncome ? ` · 净支出 ${formatFen((e.refundFlag ? -e.amount : e.amount) - (e.reimbursedAmount ?? 0))}` : ''}</p>` : ''}</div>
           ${amountHtml(e)}
         </button>
       </div>`;
@@ -320,34 +307,31 @@ async function doSearch(kw: string): Promise<void> {
       <span class="chev">${iconHtml('ic-right', 15)}</span>
     </button>`;
 
-  if (!hitEntries.length && !hitNotes.length) {
-    resultsEl.innerHTML = `<p class="sr-empty">${kw ? `没有找到与「${esc(kw)}」相关的内容` : '当前筛选条件下没有账单'}</p>`;
-    return;
-  }
-
   const groupedEntries = groupLedgerEntries(hitEntries);
+  const fullGroups = new Map(groupLedgerEntries(displayEntries).map(g => [g.day, summarizeLedgerEntries(g.entries, summaryOptions)]));
 
   resultsEl.innerHTML = `
-    ${matchedEntries.length ? `
-    <div class="sr-summary-row">
-      <div class="sr-summary-card${summaryFilter === 'all' ? ' active' : ''}" data-sf="all">
+    <div class="sr-summary-row${[summary.balance,summary.expense,summary.income].some(v=>formatFen(v).length>10) ? ' is-wide' : ''}">
+      <button class="sr-summary-card${summaryFilter === 'all' ? ' active' : ''}" data-sf="all" aria-pressed="${summaryFilter === 'all'}">
         <div class="sc-label">结余</div>
         <div class="sc-amount">${summary.balance >= 0 ? '' : '-'}${formatFen(Math.abs(summary.balance))}</div>
-      </div>
-      <div class="sr-summary-card${summaryFilter === 'expense' ? ' active' : ''}" data-sf="expense">
+      </button>
+      <button class="sr-summary-card${summaryFilter === 'expense' ? ' active' : ''}" data-sf="expense" aria-pressed="${summaryFilter === 'expense'}">
         <div class="sc-label">支出(${summary.expenseCount})</div>
         <div class="sc-amount">${formatFen(summary.expense)}</div>
-      </div>
-      <div class="sr-summary-card${summaryFilter === 'income' ? ' active' : ''}" data-sf="income">
+      </button>
+      <button class="sr-summary-card${summaryFilter === 'income' ? ' active' : ''}" data-sf="income" aria-pressed="${summaryFilter === 'income'}">
         <div class="sc-label">收入(${summary.incomeCount})</div>
         <div class="sc-amount">${formatFen(summary.income)}</div>
-      </div>
-    </div>` : ''}
+      </button>
+    </div>
+    ${!hitEntries.length && !hitNotes.length ? `<p class="sr-empty">当前${summaryFilter === 'income' ? '收入' : summaryFilter === 'expense' ? '支出' : ''}筛选下没有记录，可切换上方类型或清除筛选条件</p>` : ''}
     ${groupedEntries.map((group) => {
-      const daySummary = summarizeLedgerEntries(group.entries);
+      const daySummary = fullGroups.get(group.day)!;
       return `<div class="sr-day-head"><h3>${group.day}</h3><span>支出 ${formatFen(daySummary.expense)} · 收入 ${formatFen(daySummary.income)}</span></div>
         <section class="card list sr-day-card" aria-label="${group.day}账单">${group.entries.map(entryRow).join('')}</section>`;
     }).join('')}
+    ${displayEntries.length > shown ? `<button class="btn ghost" id="sr-load-more">加载更多（已显示 ${hitEntries.length} / ${displayEntries.length} 笔）</button>` : displayEntries.length ? '<p class="tiny sr-list-end">已展示全部流水</p>' : ''}
     ${hitNotes.length ? `
     <section class="card list" aria-label="生活记录结果">
       <div class="sr-list-head"><h3>生活记录（${hitNotes.length}）</h3></div>
@@ -393,9 +377,12 @@ function openFieldSheet(onSelect: (mode: FieldMode) => void): void {
     </div>`;
 
   function close(): void {
+    releaseOverlay();
     sheet.classList.remove('open');
     setTimeout(() => sheet.remove(), 250);
   }
+  sheet.setAttribute('aria-label','选择匹配项');
+  const releaseOverlay = manageOverlay(sheet, close);
 
   sheet.querySelector('.fs-mask')!.addEventListener('click', close);
   sheet.querySelector('.fs-close')!.addEventListener('click', close);
@@ -441,6 +428,8 @@ export function initSearch(): void {
       summaryFilter = 'all';
       queryTypes = [];
       ledgerOnly = false;
+      shown = PAGE_SIZE;
+      lastQueryKey = '';
 
       if (preset) {
         const query = preset.query;
@@ -606,25 +595,31 @@ export function initSearch(): void {
 
       // 高级筛选
       el.querySelector('#sr-adv-filter')!.addEventListener('click', async () => {
+        let releasePanel: () => void = () => {};
         const panel = await createFilterPanel({
           initial: filterState,
           onConfirm(state) {
             filterState = state;
+            releasePanel();
             panel.remove();
             // 更新漏斗图标状态
             el.querySelector('#sr-adv-filter')!.classList.toggle('active', !isFilterEmpty(filterState));
             triggerSearch();
           },
           onCancel() {
+            releasePanel();
             panel.remove();
           },
         });
         document.body.appendChild(panel);
+        panel.setAttribute('aria-label','高级筛选');
+        releasePanel = manageOverlay(panel, () => { releasePanel(); panel.remove(); });
       });
 
       // 结果区点击事件代理
       el.addEventListener('click', (e) => {
         const t = e.target as HTMLElement;
+        if (t.closest('#sr-load-more')) { shown += PAGE_SIZE; void doSearch(input.value.trim()); return; }
 
         const removeFilter = t.closest<HTMLElement>('[data-remove-filter]');
         if (removeFilter) {
@@ -636,7 +631,7 @@ export function initSearch(): void {
               dateChip.classList.toggle('active', dateChip.dataset.range === 'all');
             }
           }
-          else if (kind === 'type') queryTypes = [];
+          else if (kind === 'type') { queryTypes = []; summaryFilter = 'all'; }
           else if (kind === 'category') filterState.categoryIds = filterState.categoryIds.filter((item) => item !== id);
           else if (kind === 'account') filterState.accountIds = filterState.accountIds.filter((item) => item !== id);
           else if (kind === 'tag') filterState.tagIds = filterState.tagIds.filter((item) => item !== id);

@@ -17,7 +17,7 @@ import { netWorthTrend } from '../../core/repo/statsRepo';
 import { getEntry, listEntries } from '../../core/repo/entryRepo';
 import { listCategories } from '../../core/repo/categoryRepo';
 import { getSetting } from '../../core/repo/settingsRepo';
-import { filterLedgerEntries } from '../../core/ledgerQuery';
+import { accountFlows, accountMonthRows, type LedgerItem } from '../../core/ledgerEvents';
 import { registerPage, registerSubpage, openSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { openEntrySheet } from '../entry/entrySheet';
@@ -116,8 +116,8 @@ function sparkHtml(trend: { month: string; net: number }[], metric = '净资产'
   const end = trend[trend.length - 1];
   return `
     <svg class="spark" viewBox="0 0 240 44" role="img" aria-label="近六个月${esc(metric)}走势">
-      <polyline points="${pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="color-mix(in srgb, var(--on-accent) 85%, transparent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="3" fill="var(--on-accent)"/>
+      <polyline points="${pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="var(--primary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="3" fill="var(--primary)"/>
     </svg>
     <p class="spark-cap">近 6 个月${esc(metric)} · ${mLabel(first.month)} ¥${fmtYuan0(first.net)} → ${mLabel(end.month)} ¥${fmtYuan0(end.net)}</p>`;
 }
@@ -203,7 +203,7 @@ function flowDelta(e: Entry, acctId: number): number {
 
 /** 流水条目 HTML（复用原型 .entry 结构 + .entry-swipe 左滑外壳，与首页/明细同一套操作） */
 function flowEntryHtml(
-  e: Entry,
+  e: LedgerItem,
   acctId: number,
   catMap: Map<number, { name: string; icon: string }>,
   acctNames: Map<number, string>,
@@ -211,7 +211,9 @@ function flowEntryHtml(
   let title = '';
   let icon = 'ic-coin';
   let cls = '';
-  if (e.type === 'transfer') {
+  if (e.kind === 'reimbursement') {
+    title = '报销到账'; icon = 'ic-file'; cls = ' neutral';
+  } else if (e.type === 'transfer') {
     title = e.note === '余额对账调整' ? '余额对账调整' : '转账';
     icon = 'ic-swap';
     cls = ' neutral';
@@ -233,9 +235,9 @@ function flowEntryHtml(
     : acctNames.get(e.accountId ?? -1) ?? '';
   const sub = e.note && e.note !== '余额对账调整' ? ` <span class="e-sub">· ${esc(e.note)}</span>` : '';
   const delta = flowDelta(e, acctId);
-  return `<div class="entry-swipe" data-eid="${e.id}">
-    ${entrySwipeActionsHtml(e)}
-    <article class="entry entry-swipe-content">
+  return `<div class="entry-swipe" data-eid="${e.id}"${e.kind === 'reimbursement' ? ' data-reimbursement' : ''}>
+    ${e.kind === 'reimbursement' ? '' : entrySwipeActionsHtml(e)}
+    <article class="entry entry-swipe-content" role="button" tabindex="0">
       <span class="e-ic${cls}">${iconHtml(icon, 18)}</span>
       <div class="e-main"><p class="e-title">${esc(title)}${sub}</p><p class="e-meta">${time}${metaTail ? ` · ${esc(metaTail)}` : ''}</p></div>
       <p class="e-amt num ${delta < 0 ? 'out' : 'in'}">${formatFen(delta, { sign: true })}</p>
@@ -260,42 +262,35 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
   if (accountId == null) { body.innerHTML = '<p class="tiny">未指定账户</p>'; return; }
   const targetAccountId = accountId;
   let currentAccount: Account | undefined;
+  let monthsShown = 8;
+  let detailToken = 0;
+  const expandedMonths = new Set([monthKey(Date.now())]);
   body.classList.add('account-detail-body');
 
   async function refreshDetail(): Promise<void> {
+    const token = ++detailToken;
+    const scroll = body.scrollTop;
     const [acct, expenseCats, incomeCats, groups, allEntries] = await Promise.all([
       getAccount(targetAccountId), listCategories('expense'), listCategories('income'),
       listAccountsByGroup(), listEntries({}),
     ]);
+    if (token !== detailToken || !body.isConnected) return;
     if (!acct) { body.innerHTML = '<div class="placeholder"><p class="sub">账户不存在</p></div>'; return; }
     currentAccount = acct;
-    const entries = filterLedgerEntries(allEntries, { accountIds: [targetAccountId] });
+    const flows = accountFlows(allEntries, targetAccountId);
     body.closest<HTMLElement>('.subpage')!.querySelector<HTMLElement>('.sub-head h2')!.textContent = acct.name;
     const catMap = new Map<number, { name: string; icon: string }>();
     for (const cat of [...expenseCats, ...incomeCats]) catMap.set(cat.id, { name: cat.name, icon: cat.icon });
     const acctNames = new Map<number, string>();
     for (const group of ACCOUNT_GROUPS) for (const account of groups[group]) acctNames.set(account.id, account.name);
 
-    const monthRows: { key: string; income: number; expense: number; closing: number; entries: Entry[] }[] = [];
-    let closing = acct.balance;
+    const monthRows = accountMonthRows(flows, acct.balance, Date.now(), monthsShown);
     const nowDate = new Date();
-    for (let offset = 0; offset < 8; offset += 1) {
-      const date = new Date(nowDate.getFullYear(), nowDate.getMonth() - offset, 1);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const rows = entries.filter((entry) => monthKey(entry.occurredAt) === key);
-      let income = 0;
-      let expense = 0;
-      for (const entry of rows) {
-        const delta = flowDelta(entry, targetAccountId);
-        if (delta >= 0) income += delta;
-        else expense += -delta;
-      }
-      monthRows.push({ key, income, expense, closing, entries: rows });
-      closing -= income - expense;
-    }
-    const totalIn = entries.reduce((sum, entry) => Math.max(0, flowDelta(entry, targetAccountId)) + sum, 0);
-    const totalOut = entries.reduce((sum, entry) => Math.max(0, -flowDelta(entry, targetAccountId)) + sum, 0);
-    const trend = [...monthRows].reverse().map((row) => ({ month: row.key, net: row.closing }));
+    const earliest = new Date(flows.reduce((at, flow) => Math.min(at, flow.at), Date.now()));
+    const availableMonths = (nowDate.getFullYear()-earliest.getFullYear())*12+nowDate.getMonth()-earliest.getMonth()+1;
+    const totalIn = flows.reduce((sum, flow) => Math.max(0, flow.delta) + sum, 0);
+    const totalOut = flows.reduce((sum, flow) => Math.max(0, -flow.delta) + sum, 0);
+    const trend = monthRows.slice(0,6).reverse().map((row) => ({ month: row.key, net: row.closing }));
 
     body.innerHTML = `
       <section class="account-detail-hero">
@@ -310,10 +305,10 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
         </div>
       </section>
       <div class="account-months" id="account-months">
-        ${monthRows.map((row, index) => {
+        ${monthRows.map((row) => {
           const [year, month] = row.key.split('-');
-          return `<section class="account-month${index === 0 ? ' expanded' : ''}" data-account-month="${row.key}">
-            <button class="account-month-head" aria-expanded="${index === 0}">
+          return `<section class="account-month${expandedMonths.has(row.key) ? ' expanded' : ''}" data-account-month="${row.key}">
+            <button class="account-month-head" aria-expanded="${expandedMonths.has(row.key)}">
               <span class="account-month-date"><b>${Number(month)}月</b><small>${year}</small></span>
               <span class="account-month-flow"><i>流入 ${formatFenCny(row.income)}</i><i>流出 ${formatFenCny(row.expense)}</i></span>
               <span class="account-month-balance"><b class="num">${formatFen(row.closing)}</b><small>余额</small></span>
@@ -325,9 +320,11 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
           </section>`;
         }).join('')}
       </div>
+      ${monthsShown < availableMonths ? '<button class="btn ghost" data-account-action="more-months">查看更早的流水</button>' : ''}
       <button class="account-detail-entry" id="account-detail-entry" data-account-action="entry">
         ${iconHtml('ic-plus', 18)}<span>从「${esc(acct.name)}」记一笔</span>
       </button>`;
+    body.scrollTop = scroll;
   }
 
   body.addEventListener('click', (event) => {
@@ -346,14 +343,22 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     const month = target.closest<HTMLElement>('[data-account-month]');
     if (month && target.closest('.account-month-head')) {
       month.classList.toggle('expanded');
+      const key = month.dataset.accountMonth!;
+      if (month.classList.contains('expanded')) expandedMonths.add(key); else expandedMonths.delete(key);
       month.querySelector('.account-month-head')!.setAttribute('aria-expanded', String(month.classList.contains('expanded')));
       return;
     }
     const action = target.closest<HTMLElement>('[data-account-action]')?.dataset.accountAction;
     if (!action || !currentAccount) return;
-    if (action === 'entry') void openEntrySheet({ presetAccountId: currentAccount.id });
+    if (action === 'more-months') { monthsShown += 8; void refreshDetail(); }
+    else if (action === 'entry') void openEntrySheet({ presetAccountId: currentAccount.id });
     else if (action === 'edit') void openAccountForm(currentAccount);
     else if (action === 'reconcile') openReconcileSheet(currentAccount);
+  });
+  body.addEventListener('keydown', event => {
+    if (event.target instanceof HTMLElement && event.target.matches('.entry-swipe-content') && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault(); event.target.click();
+    }
   });
   bindEntrySwipeActions(body);
   const offAccounts = on('accounts-changed', () => {
@@ -392,6 +397,7 @@ async function toggleHidden(acct: Account): Promise<void> {
 /** 添加（不传 acct）或编辑（传 acct）账户表单抽屉 */
 async function openAccountForm(acct?: Account): Promise<void> {
   let group: AccountGroup = acct?.group ?? 'cash';
+  let negative = group === 'credit';
   openSheet({
     ariaLabel: acct ? '编辑账户' : '添加账户',
     onClose: () => sheetAbort?.abort(),
@@ -408,7 +414,7 @@ async function openAccountForm(acct?: Account): Promise<void> {
             </div>
           </div>
           <div class="field"><span>名称</span><input class="note" id="af-name" maxlength="20" placeholder="如 招行储蓄卡 ·6688" value="${esc(acct?.name ?? '')}"></div>
-          ${acct ? '' : '<div class="field"><span>初始余额</span><input class="note num" id="af-balance" inputmode="text" placeholder="元，信用卡欠款填负数如 -4800" value=""></div>'}
+          ${acct ? '' : `<div class="field"><span>初始余额</span><div class="signed-amount"><button class="sign-toggle" type="button" id="af-sign" aria-label="切换余额正负" aria-pressed="${negative}">${negative ? '− 欠款' : '+ 余额'}</button><input class="note num" id="af-balance" aria-label="初始余额金额" inputmode="decimal" placeholder="0.00" value=""></div></div>`}
           <div class="field"><span>备注</span><input class="note" id="af-note" maxlength="30" placeholder="选填，如 工资卡" value="${esc(acct?.note ?? '')}"></div>
           <div class="field" id="af-repay-field"${group === 'credit' ? '' : ' hidden'}><span>还款日</span><input class="note num" id="af-repay" inputmode="numeric" placeholder="每月几号（1-31），选填" value="${acct?.repayDay ?? ''}"></div>
           <button class="btn primary" data-act="save" style="margin-top:10px">${acct ? '保存修改' : '添加账户'}</button>
@@ -416,9 +422,19 @@ async function openAccountForm(acct?: Account): Promise<void> {
         </div>`;
       el.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
+        if (target.closest('#af-sign')) {
+          negative = !negative;
+          const button = el.querySelector<HTMLButtonElement>('#af-sign')!;
+          button.textContent = negative ? '− 欠款' : '+ 余额';
+          button.setAttribute('aria-pressed', String(negative));
+          return;
+        }
         const chip = target.closest<HTMLElement>('[data-g]');
         if (chip && !acct) {
           group = chip.dataset.g as AccountGroup;
+          negative = group === 'credit';
+          const sign = el.querySelector<HTMLButtonElement>('#af-sign');
+          if (sign) { sign.textContent = negative ? '− 欠款' : '+ 余额'; sign.setAttribute('aria-pressed', String(negative)); }
           for (const c of el.querySelectorAll<HTMLElement>('[data-g]')) c.classList.toggle('active', c === chip);
           el.querySelector<HTMLElement>('#af-repay-field')!.hidden = group !== 'credit';
           return;
@@ -445,7 +461,8 @@ async function openAccountForm(acct?: Account): Promise<void> {
             showToast('账户已更新');
           } else {
             const balRaw = el.querySelector<HTMLInputElement>('#af-balance')!.value.trim();
-            const balance = balRaw ? parseSignedYuan(balRaw) : 0;
+            const parsed = balRaw ? parseSignedYuan(balRaw) : 0;
+            const balance = negative ? -Math.abs(parsed) : parsed;
             await addAccount({ name, group, balance, note, repayDay });
             closeSheet();
             showToast(`已添加「${name}」`);
@@ -462,6 +479,7 @@ async function openAccountForm(acct?: Account): Promise<void> {
 
 /** 对账抽屉：输入实际余额，生成「余额对账调整」记录而非直接改数 */
 function openReconcileSheet(acct: Account): void {
+  let negative = acct.balance < 0;
   openSheet({
     ariaLabel: `对账：${acct.name}`,
     onClose: () => sheetAbort?.abort(),
@@ -476,19 +494,26 @@ function openReconcileSheet(acct: Account): void {
             <p class="label">账内余额</p>
             <p class="big num${acct.balance < 0 ? ' neg' : ''}">${formatFenCny(acct.balance)}</p>
           </div>
-          <div class="field"><span>实际余额</span><input class="note num" id="rc-target" inputmode="text" placeholder="元，信用卡欠款填负数" value="${formatFen(acct.balance).replace(/,/g, '')}"></div>
+          <div class="field"><span>实际余额</span><div class="signed-amount"><button class="sign-toggle" type="button" data-act="sign" aria-label="切换余额正负" aria-pressed="${negative}">${negative ? '− 欠款' : '+ 余额'}</button><input class="note num" id="rc-target" aria-label="实际余额金额" inputmode="decimal" placeholder="0.00" value="${formatFen(Math.abs(acct.balance)).replace(/,/g, '')}"></div></div>
           <button class="btn primary" data-act="save" style="margin-top:10px">生成对账调整</button>
           <p class="tiny" style="text-align:center;margin-top:10px">差额会生成一笔「余额对账调整」记录（不计收支、可追溯），不会直接改数</p>
         </div>`;
       el.addEventListener('click', (e) => {
         const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
         if (act === 'close') closeSheet();
+        else if (act === 'sign') {
+          negative = !negative;
+          const button = el.querySelector<HTMLButtonElement>('[data-act="sign"]')!;
+          button.textContent = negative ? '− 欠款' : '+ 余额';
+          button.setAttribute('aria-pressed', String(negative));
+        }
         else if (act === 'save') void save();
       }, { signal: sheetSignal() });
 
       async function save(): Promise<void> {
         try {
-          const target = parseSignedYuan(el.querySelector<HTMLInputElement>('#rc-target')!.value);
+          const parsed = parseSignedYuan(el.querySelector<HTMLInputElement>('#rc-target')!.value);
+          const target = negative ? -Math.abs(parsed) : parsed;
           const entryId = await reconcileAccount(acct.id, target);
           closeSheet();
           showToast(entryId == null ? '余额一致，无需调整' : `已生成对账调整：${formatFen(target - acct.balance, { sign: true })} 元`);

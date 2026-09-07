@@ -10,9 +10,9 @@ import { getSetting } from './repo/settingsRepo';
 import { on } from './store';
 
 const STORAGE_KEY = 'gleam-theme';
-/** 状态栏/浏览器框架色：亮色用品牌主色，暗色用暗背景色 */
-const META_LIGHT = '#D66A2C';
-const META_DARK = '#1C1712';
+/** 浏览器框架与页面背景一致，避免冷启动残留旧主题。 */
+const META_LIGHT = '#F6F7F9';
+const META_DARK = '#12151B';
 
 const media = window.matchMedia('(prefers-color-scheme: dark)');
 

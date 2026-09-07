@@ -9,6 +9,7 @@
 import { iconHtml } from '../assets/icons';
 import { esc } from '../core/esc';
 import './pickList.css';
+import { manageOverlay } from './overlay';
 
 /* ── 公共类型 ─────────────────────── */
 
@@ -127,9 +128,13 @@ export function openPickList(opts: PickListOptions): void {
 
   /* ── 关闭：panel 滑出 → 200ms 后移除 DOM（参照 dateTimeWheel 的 close 模式） ── */
   function close(): void {
+    releaseOverlay();
     panel.classList.remove('open');
     setTimeout(() => mask.remove(), 200);
   }
+
+  mask.setAttribute('aria-label',opts.title ?? '选择一项');
+  const releaseOverlay = manageOverlay(mask, () => { close(); onCancel?.(); });
 
   /* ── 事件绑定 ── */
   mask.addEventListener('click', (e) => {

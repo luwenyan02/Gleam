@@ -114,7 +114,10 @@ export function initLife(): void {
         const noteCard = target.closest<HTMLElement>('[data-note]');
         if (noteCard) {
           const note = notes.find((n) => n.id === Number(noteCard.dataset.note));
-          if (note) openNoteForm(note.kind === 'photo' ? 'photo' : 'diary', note);
+          if (note?.kind === 'habit') {
+            const habit = habits.find(h => h.id === note.habitId);
+            if (habit) openHabitEdit(habit);
+          } else if (note) openNoteForm(note.kind === 'photo' ? 'photo' : 'diary', note);
         }
       });
       el.addEventListener('keydown', (event) => {
@@ -150,8 +153,9 @@ async function refresh(): Promise<void> {
 
   const [monthNotes, habitList] = await Promise.all([listLifeNotes({ from, to }), listHabits()]);
   if (!el.isConnected) return;
-  notes = monthNotes.filter((n) => n.kind !== 'habit');
   habits = habitList;
+  notes = monthNotes.filter(n => n.kind !== 'habit' || !isCurrent
+    || dayKey(n.occurredAt) !== dayKey(Date.now()) || !habits.some(h => h.id === n.habitId));
 
   /* 页头：月份 · 篇数 · 最长连续打卡 */
   const streaks = await Promise.all(habits.map((h) => habitStreak(h.id)));
@@ -166,7 +170,7 @@ async function refresh(): Promise<void> {
   if (isCurrent) {
     const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
     const todays = await listEntries({ type: 'expense', from: dayStart.getTime() });
-    const total = todays.reduce((s, e) => s + e.amount, 0);
+    const total = todays.reduce((s, e) => s + (e.refundFlag ? -e.amount : e.amount), 0);
     sumEl.hidden = false;
     sumEl.textContent = todays.length ? `今天共花了 ¥${formatFen(total)} · ${todays.length} 笔` : '今天还没有支出 · 记一笔会显示在这里';
   } else {
@@ -206,6 +210,12 @@ async function refresh(): Promise<void> {
   photoUrls = [];
   const feed = el.querySelector<HTMLElement>('#lf-feed')!;
   const noteItems = await Promise.all(notes.map(async (n) => {
+    if (n.kind === 'habit') {
+      const exists = habits.some(h => h.id === n.habitId);
+      return {at:n.occurredAt, html:`<article class="card habit-history" data-note="${n.id}"${exists ? ' role="button" tabindex="0"' : ''}>
+        <p class="ln-date">${lnDate(n.occurredAt)} · ${hm(n.occurredAt)}</p>
+        <h3 class="ln-title">${esc(n.title ?? '习惯打卡')}</h3><p class="sub">已完成打卡</p></article>`};
+    }
     if (n.kind === 'photo') {
       const photos = await Promise.all((n.photoRefs ?? []).map((id) => getAttachment(id)));
       const imgs = photos.filter((p) => !!p).map((p) => {

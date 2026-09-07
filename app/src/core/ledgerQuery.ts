@@ -91,11 +91,11 @@ function matchesKeyword(entry: Entry, query: LedgerQuery, lookup: LedgerLookup):
 }
 
 /** 对已经载入内存的账单应用统一筛选；结果按发生时间倒序。 */
-export function filterLedgerEntries(
-  entries: readonly Entry[],
+export function filterLedgerEntries<T extends Entry>(
+  entries: readonly T[],
   query: LedgerQuery = {},
   lookup: LedgerLookup = {},
-): Entry[] {
+): T[] {
   const typeSet = query.types?.length ? new Set(query.types) : null;
   const categorySet = query.categoryIds?.length ? new Set(query.categoryIds) : null;
   const accountSet = query.accountIds?.length ? new Set(query.accountIds) : null;
@@ -154,8 +154,8 @@ function localDayKey(timestamp: number): string {
 }
 
 /** 将统一结果集按本地自然日分组，组和组内均为倒序。 */
-export function groupLedgerEntries(entries: readonly Entry[]): { day: string; entries: Entry[] }[] {
-  const groups = new Map<string, Entry[]>();
+export function groupLedgerEntries<T extends Entry>(entries: readonly T[]): { day: string; entries: T[] }[] {
+  const groups = new Map<string, T[]>();
   for (const entry of [...entries].sort((a, b) => b.occurredAt - a.occurredAt || b.id - a.id)) {
     const day = localDayKey(entry.occurredAt);
     const rows = groups.get(day);

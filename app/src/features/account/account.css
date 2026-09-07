@@ -75,8 +75,27 @@
 .account-detail-entry{position:sticky;z-index:6;bottom:calc(4px + var(--safe-bottom));display:flex;align-items:center;justify-content:center;gap:7px;width:100%;min-height:50px;margin-top:12px;border-radius:14px;background:var(--primary);color:var(--on-accent);font-size:13px;font-weight:650;box-shadow:0 10px 24px color-mix(in oklab,var(--seed-primary) 28%,transparent)}
 .account-detail-entry:active{transform:scale(.98)}
 
+/* 挖财式清晰分组：白卡、深字、细分隔，金额不再置于浑浊渐变上。 */
+.acct-hero,.account-detail-hero{background:var(--surface);color:var(--fg);border:1px solid var(--border);box-shadow:none}
+.account-detail-hero::after{display:none}
+.acct-hero .label,.acct-hero .asset-row{color:var(--muted)}
+.acct-hero .asset-row .num{color:var(--fg)}
+.account-detail-hero>p,.account-flow-total,.spark-cap,.account-detail-top small{opacity:1;color:var(--muted)}
+.account-detail-hero>h3.neg{color:var(--expense)}
+.account-detail-actions{border-color:var(--border)}
+.account-detail-actions button{background:var(--bg);font-size:12px;min-height:44px}
+.account-month-flow i,.account-month-date small,.account-month-balance small{font-size:11px}
+.account-detail-entry{box-shadow:none}
+.acct-form .field{align-items:flex-start;flex-direction:column;gap:8px}
+.acct-form .field>span{width:auto;font-size:13px;color:var(--fg)}
+.acct-form input.note,.acct-type-grid{width:100%;min-width:0}
+.acct-form input.note{min-height:44px;background:var(--surface)}
+.signed-amount{display:flex;align-items:center;width:100%;gap:8px}
+.signed-amount .note{min-width:0;flex:1}
+.signed-amount .sign-toggle{flex:none;min-width:64px;min-height:44px;border:1px solid var(--border);border-radius:10px;color:var(--primary)}
+
 @media (max-width:360px){
   .account-detail-hero{padding-left:15px;padding-right:15px}
   .account-month-head{grid-template-columns:43px 1fr auto auto;padding-left:11px;padding-right:11px;gap:7px}
-  .account-month-flow i{font-size:8.8px}
+  .account-month-flow i{font-size:11px}
 }

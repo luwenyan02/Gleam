@@ -12,9 +12,8 @@
 #sheet .sheet-head .seg button{flex:1;min-height:44px;white-space:nowrap}
 #sheet.entry-workspace .sheet-head{flex:none;margin-bottom:4px}
 #sheet.entry-workspace .sheet-head .icon-btn{width:44px;height:44px;flex:none}
-#sheet .pick-card{position:relative;overflow:hidden;background:linear-gradient(135deg,color-mix(in oklab,var(--seed-primary) 5%,var(--surface)),var(--bg));box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--seed-primary) 3%,transparent)}
+#sheet .pick-card{position:relative;overflow:hidden;background:var(--bg);box-shadow:none}
 #sheet.entry-workspace .pick-card{flex:none;min-height:58px;padding:8px 12px}
-#sheet .pick-card::after{content:"";position:absolute;right:-22px;top:-34px;width:92px;height:92px;border-radius:50%;border:1px solid color-mix(in oklab,var(--seed-primary) 10%,transparent)}
 #sheet .pick-ic,#sheet .pick-name,#sheet .amt{position:relative;z-index:1}
 #sheet.note-editing #keypad{display:none}
 #sheet.entry-workspace .sheet-scroll{flex:1;min-height:0;margin:7px 0 5px;padding:0 1px 3px;overscroll-behavior:contain}
