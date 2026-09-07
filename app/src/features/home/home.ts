@@ -77,8 +77,8 @@ function renderSkeleton(el: HTMLElement): void {
     </header>
 
     <section class="month-card" id="hm-month" aria-label="本月收支总览" hidden>
-      <p class="mc-label"></p>
-      <p class="mc-amt num"><small>¥</small><span id="m-spend">0.00</span></p>
+      <div class="mc-heading"><p class="mc-label"></p><span class="mc-unit">单位：元</span></div>
+      <p class="mc-amt num"><span id="m-spend">0.00</span></p>
       <div class="mc-row">
         <div><p>收入</p><p class="num" id="m-income"></p></div>
         <div><p>结余</p><p class="num" id="m-balance"></p></div>
@@ -173,14 +173,16 @@ async function refreshMonthCard(el: HTMLElement): Promise<void> {
   const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'];
   el.querySelector('.mc-label')!.textContent = `${CN[d.getMonth()]}月 · 本月支出`;
   el.querySelector('#m-spend')!.textContent = formatFen(sum.expense);
-  el.querySelector('#m-income')!.textContent = formatFenCny(sum.income);
-  el.querySelector('#m-balance')!.textContent = formatFenCny(sum.balance);
+  el.querySelector('#m-income')!.textContent = formatFen(sum.income);
+  el.querySelector('#m-balance')!.textContent = formatFen(sum.balance);
   if (budget && budget.totalLimit > 0) {
     const remain = budget.totalLimit - usage.totalUsed;
-    el.querySelector('#m-remain')!.textContent = formatFenCny(Math.max(0, remain));
+    el.querySelector('#m-remain')!.textContent = formatFen(Math.max(0, remain));
   } else {
-    el.querySelector('#m-remain')!.textContent = '—';
+    el.querySelector('#m-remain')!.textContent = '未设置';
   }
+  const values = [...el.querySelectorAll<HTMLElement>('.mc-row .num')];
+  el.querySelector('.mc-row')!.classList.toggle('is-wide', values.some(value => (value.textContent?.length ?? 0) > 11));
 }
 
 /* ── 时间线 ───────────────────────── */

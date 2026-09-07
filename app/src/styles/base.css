@@ -321,6 +321,9 @@ button.chip,.tab,.fab,.icon-btn,.btn,button.row,.seg button,.qa,.lf-check{min-wi
 .t-row b{grid-row:2;grid-column:1/-1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .t-row .chev{grid-row:1;grid-column:2;color:var(--faint)}
 .t-arrow{align-self:center;flex:none;color:var(--muted)}
+.t-swap{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;border-radius:50%;color:var(--primary);background:var(--accent-soft)}
+.t-swap:active{background:var(--border)}
+.loan-arrow{display:flex;align-items:center;justify-content:center;width:28px}
 .meta-row{display:flex;gap:8px;padding:10px 0;overflow-x:auto;scrollbar-width:none}
 .meta-row::-webkit-scrollbar{display:none}
 .toggle-chip.on{background:var(--primary);color:var(--on-accent);border-color:var(--primary)}

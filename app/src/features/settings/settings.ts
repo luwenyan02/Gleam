@@ -10,7 +10,7 @@ import { esc } from '../../core/esc';
 import { on } from '../../core/store';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
 import { testAiConnection, listAiModels } from '../../core/repo/aiRepo';
-import { AI_PROVIDERS, matchProviderId } from './providers';
+import { AI_PROVIDERS, MODEL_CATALOG_CHECKED_ON, buildModelChoices, matchProviderId, modelPreset, recentModels } from './providers';
 import { ensurePermission } from '../../core/notify';
 import { registerSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
@@ -70,6 +70,7 @@ async function refresh(): Promise<void> {
     ? (AI_PROVIDERS.find((p) => p.id === providerId)?.name ?? '自定义')
     : '自定义';
   const modelLabel = aiModel || '选择模型';
+  const selectedModel = modelPreset(aiBase, aiModel);
 
   el.innerHTML = `
     <section class="card" aria-label="安全">
@@ -130,7 +131,9 @@ async function refresh(): Promise<void> {
         <label>选择模型
           <button id="ai-model-pick" class="ai-pick-btn" type="button">${esc(modelLabel)}</button>
         </label>
-        <label>模型名（可修改）<input id="ai-model" type="text" value="${esc(aiModel)}" placeholder="如 gpt-4o-mini / qwen-vl-plus（需支持图片）" autocomplete="off"></label>
+        <label>模型名（可修改）<input id="ai-model" type="text" value="${esc(aiModel)}" placeholder="如 qwen3.8-flash / kimi-k3" autocomplete="off"></label>
+        <p class="tiny" id="ai-model-capability">${selectedModel ? selectedModel.vision ? '当前预设支持图片与文本记账' : '当前预设仅支持文本；识别截图请切换图片模型' : '自定义模型：图片识别能力以接口实际支持为准'}</p>
+        <p class="tiny">预设核对于 ${MODEL_CATALOG_CHECKED_ON} · 近期按最近三个月筛选，候选最多 10 个；离线目录不会自动联网更新。“获取模型列表”结果另行标注，日期与能力未核验。</p>
         <label>API Key<input id="ai-key" type="password" value="${esc(aiKey ?? '')}" placeholder="sk-..." autocomplete="off"></label>
         <label>静默入账置信度阈值
           <div class="ai-thres"><input id="ai-thres" type="range" min="50" max="100" step="5" value="${aiThreshold}"><span class="num" id="ai-thres-val">${aiThreshold}%</span></div>
@@ -251,7 +254,8 @@ export function initSettings(): void {
           if (btn.disabled) return;
           btn.disabled = true;
           btn.textContent = '获取中…';
-          void listAiModels(AI_PROVIDERS.flatMap((p) => p.models))
+          const currentBase = el.querySelector<HTMLInputElement>('#ai-base')?.value ?? '';
+          void listAiModels(recentModels(matchProviderId(currentBase)).map(model => model.id))
            .then((ms) => showToast(ms.length ? `已获取 ${ms.length} 个模型，请点击「选择模型」查看` : '该平台未返回可用模型，请手动填写模型名'))
             .catch((err) => showToast(err instanceof Error ? err.message : String(err)))
             .finally(() => void refresh());
@@ -281,18 +285,16 @@ export function initSettings(): void {
         } else if (t.closest('#ai-model-pick')) {
           // [AI] 模型 pickList：选模型 → 填 model → dispatchEvent change；选"自定义"→ 聚焦手输
           void (async () => {
-            const [curBase, curModel, recentRaw] = await Promise.all([
-              getSetting('ai.baseUrl'), getSetting('ai.model'), getSetting('ai.recentModels'),
+            const [curBase, curModel, cache] = await Promise.all([
+              getSetting('ai.baseUrl'), getSetting('ai.model'), getSetting('ai.modelCatalogCache'),
             ]);
-            const recent = recentRaw ?? [];
-            const pid = matchProviderId(curBase);
-            const opts = [...new Set([...(AI_PROVIDERS.find((p) => p.id === pid)?.models ?? []), ...recent])];
+            const opts = buildModelChoices(curBase, curModel, cache);
             openPickList({
               container: el,
               title: '选择模型',
               items: [
                 { value: '__custom__', label: '自定义输入…' },
-                ...opts.map((m) => ({ value: m, label: m })),
+                ...opts,
               ],
               selected: curModel || undefined,
               searchable: true,

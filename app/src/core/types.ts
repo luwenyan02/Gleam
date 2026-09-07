@@ -332,14 +332,16 @@ export const SETTING_DEFAULTS = {
   /* ── [AI] 记账收件箱设置键 ── */
   /** OpenAI 兼容 API 根地址（如 https://api.openai.com 或 https://xx.com/v1） */
   'ai.baseUrl': '' as string,
-  /** Vision/文本模型名（如 gpt-4o-mini） */
+  /** 图片／文本模型名，必须与平台的调用 ID 一致。 */
   'ai.model': '' as string,
   /** 旧版迁移占位；正式 API Key 由 SecretStore 保存。 */
   'ai.apiKey': '' as string,
   /** 静默入账置信度阈值（0-100）；有效置信度 ≥ 阈值且分类/账户映射成功时自动入账 */
   'ai.autoConfirmThreshold': 80,
-  /** 「获取模型列表」最近拉取成功的模型名（去重、最近优先，最多 10 个），与平台静态预设合并展示 */
+  /** 旧版无来源的模型列表，保留兼容但不再用于选择器。 */
   'ai.recentModels': [] as string[],
+  /** 带接口来源的模型缓存；旧版无来源 recentModels 仅保留兼容，不混入其他平台。 */
+  'ai.modelCatalogCache': null as { baseUrl: string; ids: string[] } | null,
   /** AI 收件箱待确认队列持久化（与 recurring.pendingConfirms 同模式，确认/忽略后移除） */
   'ai.pendingItems': [] as AiPendingItem[],
   /* ── [R06] 云备份设置键 ── */

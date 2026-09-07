@@ -14,6 +14,7 @@ import { getSetting, setSetting } from './settingsRepo';
 import { listCategories } from './categoryRepo';
 import { listAccounts } from './accountRepo';
 import { secretStore } from '../secretStore';
+import { assertImageModel, chatOptions } from '../aiChatOptions';
 
 /* ── 识别结果与错误 ─────────────────── */
 
@@ -80,8 +81,8 @@ async function loadConfig(): Promise<{ baseUrl: string; model: string; apiKey: s
 }
 
 /**
- * 发起一次 chat/completions 请求（temperature 0，30s 超时），返回首条回复文本。
- * 消息体为严格 OpenAI 兼容格式；不同厂商差异后续在此函数内做 adapter。
+ * 发起一次 chat/completions 请求（30s 超时），返回首条回复文本。
+ * 新模型参数由 aiChatOptions 适配，自定义接口保留原采样行为。
  */
 async function callChat(messages: unknown[]): Promise<string> {
   const { baseUrl, model, apiKey } = await loadConfig();
@@ -91,7 +92,7 @@ async function callChat(messages: unknown[]): Promise<string> {
     const res = await fetch(chatEndpoint(baseUrl), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, temperature: 0, messages }),
+      body: JSON.stringify({ model, ...chatOptions(baseUrl, model), messages }),
       signal: ctrl.signal,
     });
     if (!res.ok) {
@@ -133,7 +134,7 @@ const MODELS_LIMIT = 10;
 /**
  * 拉取平台 /models 模型列表：GET + Bearer Key，30s 超时；
  * 过滤非视觉/对话模型后按「静态预设命中 → 视觉关键词 → 其余」排序，去重截取 10 个，
- * 结果持久化到 'ai.recentModels'（与旧值合并、新的在前）。
+ * 结果存入带接口来源的 'ai.modelCatalogCache'，不合并其他平台或旧版无来源缓存。
  * @param preferred 静态预设清单（UI 传入，命中者排序最前）；aiRepo 不反向依赖 features 层
  * @throws 未配置地址/Key、Key 无效（401/403）、平台不支持拉取或网络失败的引导文案
  */
@@ -165,19 +166,17 @@ export async function listAiModels(preferred: string[] = []): Promise<string[]> 
     window.clearTimeout(timer);
   }
 
-  const pref = new Set(preferred.map((m) => m.toLowerCase()));
+  const pref = new Map(preferred.map((m, index) => [m.toLowerCase(), index]));
   const rank = (id: string): number => {
-    if (pref.has(id.toLowerCase())) return 0;
-    if (MODEL_VISION_RE.test(id)) return 1;
-    return 2;
+    if (pref.has(id.toLowerCase())) return pref.get(id.toLowerCase())!;
+    if (MODEL_VISION_RE.test(id)) return preferred.length;
+    return preferred.length + 1;
   };
   const top = [...new Set(ids.filter((id) => !MODEL_EXCLUDE_RE.test(id)))]
     .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
     .slice(0, MODELS_LIMIT);
 
-  // 旧值行可能 value=null（外部写入/异常旧值，getSetting 原样返回）：合并前兑底，避免 [...null] 抛错
-  const prev = (await getSetting('ai.recentModels')) ?? [];
-  await setSetting('ai.recentModels', [...new Set([...top, ...prev])].slice(0, MODELS_LIMIT));
+  await setSetting('ai.modelCatalogCache', { baseUrl, ids: top });
   return top;
 }
 
@@ -403,6 +402,8 @@ export async function recognizeText(text: string): Promise<AiParsedBill[]> {
  * @throws AiConfigError API 未配置；其他网络/解析错误按 Error 抛出
  */
 export async function recognizeImage(blob: Blob): Promise<AiParsedBill[]> {
+  const { baseUrl, model } = await loadConfig();
+  assertImageModel(baseUrl, model);
   const [system, dataUrl, expenseCats, incomeCats, accounts] = await Promise.all([
     buildSystemPrompt(), compressImageToDataUrl(blob),
     listCategories('expense'), listCategories('income'), listAccounts(),

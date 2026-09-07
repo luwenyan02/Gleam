@@ -38,7 +38,7 @@ import {
   type CalculatorOperator, type CalculatorState,
 } from './entryCalculator';
 import { renderAdvancedFields } from './entryAdvancedFields';
-import { renderTypeForms } from './entryTypeForms';
+import { orderLoanFlow, renderTypeForms } from './entryTypeForms';
 import {
   renderCategoryButton, renderCategoryToggle, selectQuickCategories,
 } from './entryCategoryPicker';
@@ -380,6 +380,7 @@ function renderCats(): void {
         <span class="cat-ic">${iconHtml(meta.icon)}</span><span>${meta.name}</span></button>`;
     }).join('');
     q('#loan-acct-lbl').textContent = c.loanKind === 'borrow' || c.loanKind === 'collect' ? '转入账户' : '转出账户';
+    orderLoanFlow(q('#loan-flow'), c.loanKind === 'lend' || c.loanKind === 'repay');
     q('#loan-acct b').textContent = accountName(c.accountId);
     q('#loan-who b').textContent = c.contacts.find((p) => p.id === c.contactId)?.name ?? '选择对象';
     void updateLoanHint();
@@ -687,6 +688,11 @@ function bindEvents(el: HTMLElement): void {
   el.querySelector('#loan-acct')!.addEventListener('click', () => void pickAccount('accountId', '选择资金账户'));
   el.querySelector('#t-from')!.addEventListener('click', () => void pickAccount('fromId', '选择转出账户'));
   el.querySelector('#t-to')!.addEventListener('click', () => void pickAccount('toId', '选择转入账户'));
+  el.querySelector('#t-swap')!.addEventListener('click', () => {
+    if (!ctx || saving) return;
+    [ctx.fromId, ctx.toId] = [ctx.toId, ctx.fromId];
+    renderCats();
+  });
   el.querySelector('#loan-who')!.addEventListener('click', () => void pickContact());
   el.querySelector('#chip-tag')!.addEventListener('click', () => void pickTag());
   el.querySelector('#chip-shop')!.addEventListener('click', () => void pickMerchant());

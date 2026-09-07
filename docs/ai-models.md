@@ -1,0 +1,32 @@
+# AI 模型预设维护
+
+核对日期：2026-09-07。当前近期窗口为 2026-06-07 至 2026-09-07；运行时按最近三个日历月筛选。仅收录适用于本应用 Chat Completions 调用的对话模型，不为凑满数量加入生图、语音或嵌入模型。
+
+## 平台目录与来源
+
+| 平台 | 预设模型 | 官方日期依据 |
+| --- | --- | --- |
+| 阿里百炼 | qwen3.8-max-0902、qwen3.8-flash、kimi-k3、deepseek-v4-pro-0813、deepseek-v4-flash-0731、qwen3.7-flash | 分别于 09-02、08-26、08-19、08-14、08-01、07-21 上架，见[上下架记录](https://help.aliyun.com/zh/model-studio/newly-released-models) |
+| OpenAI | gpt-6-astra、gpt-5.6-sol、gpt-5.6-terra、gpt-5.6-luna | Astra 09-03 发布，5.6 系列 07-09 发布，见[API Changelog](https://developers.openai.com/api/docs/changelog) |
+| DeepSeek | deepseek-v4-flash-vision-exp、deepseek-v4-pro、deepseek-v4-flash | 08-21 视觉实验版、08-13 Pro 正式版、07-31 Flash 正式版，见[更新日志](https://api-docs.deepseek.com/zh-cn/updates/)。官方调用 ID 不套用百炼的快照后缀 |
+| 硅基流动 | zai-org/GLM-5.3、deepseek-ai/DeepSeek-V4-Flash、meituan-longcat/LongCat-2.0、zai-org/GLM-5.2、moonshotai/Kimi-K2.7-Code | [模型中心](https://siliconflow.cn/models)提供平台 ID 和日期；Flash 采用页面明确描述的 0731 正式版本，其他日期为 08-14、06-30、06-17、06-12 |
+| Moonshot Kimi | kimi-k3 | 07-16 发布，见[技术博客](https://www.kimi.ai/blog/kimi-k3)与[平台接入文档](https://platform.kimi.com/docs/guide/kimi-k3-quickstart) |
+| 智谱 GLM | glm-5.2 | 06-16 发布，见[新品发布](https://docs.bigmodel.cn/cn/update/new-releases)。不把其他供应商的 ID 或未核验的平台版本直接搬入 |
+
+用户指定的 `qwen3.7-plus` 在百炼于 06-01 上架，超出当前三个月窗口。仍保留可选项，但单列为“指定保留 · 非近期预设”，不伪造新发布日期；能力与快照见[模型页](https://help.aliyun.com/zh/model-studio/qwen3-7-plus)。
+
+## 展示与兼容约定
+
+- 候选去重、最多 10 个（不含“自定义输入”操作），标明日期与“图片／文本”或“仅文本”。不自动覆盖已保存的模型。
+- “获取模型列表”仅在用户点击后请求当前接口，缓存按接口地址隔离。API 列表不保证包含真实发布日期或视觉能力，明确标为未核验。
+- 这是离线维护目录，不自动联网更新。后续需再次核对官方日期、平台调用 ID、模态与参数，不能把网页更新时间当作模型发布时间。
+- 目录不保证用户账号、地域或套餐拥有所有模型权限，需使用自己的 API Key 测试。
+
+## 请求兼容与测试边界
+
+- GPT-6 Astra 不发送不支持的 `temperature`；GPT-5.6 使用默认采样和低推理强度，见 [OpenAI 模型指导](https://developers.openai.com/api/docs/guides/latest-model)。
+- Kimi K3 使用低推理强度，不发送固定采样参数，见[平台重要限制](https://platform.kimi.com/docs/guide/kimi-k3-quickstart)。
+- Kimi K2.7 Code 同样不发送固定采样参数，见[官方参数限制](https://platform.kimi.com/docs/guide/kimi-k2-7-code-quickstart)；DeepSeek、GLM 等其余模型保留原有 `temperature: 0`。
+- 百炼 Qwen3.7/3.8 记账请求显式关闭思考，降低同步等待，见[深度思考文档](https://help.aliyun.com/zh/model-studio/deep-thinking)。
+- 已知仅文本模型在发送截图前给出明确提示；不凭自定义模型名称猜测能力。
+- 自动测试拦截模拟 AI 响应，只验证选择、持久化和请求参数。本轮未读取真实 Key、调用付费模型或验证所有供应商实际连通性。
