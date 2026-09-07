@@ -51,3 +51,4 @@ python3 -m playwright install chromium
 3. 运行相关回归及生产构建。
 4. 在真实浏览器检查手机和桌面状态。
 5. 更新说明文档和 `CHANGELOG.md`。
+6. 保存本地 Git 提交与验收记录。按 [AGENTS.md](../AGENTS.md) 的本地维护约定交付，不推送远端或创建 GitHub PR。

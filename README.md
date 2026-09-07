@@ -2,13 +2,12 @@
 
 > 本地优先的记账与生活记录应用。
 
-[![CI](https://github.com/luwenyan02/Gleam/actions/workflows/ci.yml/badge.svg)](https://github.com/luwenyan02/Gleam/actions/workflows/ci.yml)
 [![Android](https://img.shields.io/badge/Android-Capacitor-3DDC84)](https://capacitorjs.com/)
 [![PWA](https://img.shields.io/badge/PWA-offline--ready-D66A2C)](https://developer.mozilla.org/docs/Web/Progressive_web_apps)
 
 拾光把日常账目、账户变化、生活随记和习惯记录放在同一个本地应用中。数据默认保存在设备内；云备份与 AI 识别均为用户主动配置的可选能力。
 
-> 当前仓库为私人维护项目，暂未开源。公开发布前将另行确定许可证。
+> 当前为仅在本地维护的私人项目，暂未开源。代码、文档与安装包不再推送 GitHub；已有远端内容仅保留历史。
 
 ## 为什么是拾光
 
@@ -64,8 +63,8 @@
 
 ## 安装与使用
 
-- Android 安装包从 [GitHub Releases](https://github.com/luwenyan02/Gleam/releases) 获取。
-- PWA 可通过本地构建或受信任的静态站点安装。
+- Android 安装包及校验文件在本地 `.tmp/artifacts/releases/` 交付，构建方法见[发布指南](docs/release.md)。
+- PWA 通过本地构建和预览使用。
 - 升级 Android 版本前建议先在“我的 → 数据与备份”生成一份加密备份。
 
 ## 本地开发
@@ -95,11 +94,11 @@ npm run test:e2e
 - `v1.2`：明细查询、报表下钻和账户趋势（已实现，持续对账验收）
 - `v1.3`：生活时间流、设置分组、安全存储和可访问性（已实现，持续设备验收）
 - `v1.3.1`：清晰配色与交互整改（候选版，待真机综合验收；详见[更新记录](CHANGELOG.md)）
-- 后续：导入适配扩展、性能优化与公开发布准备
+- 后续：导入适配扩展、性能优化与本地设备验收
 
 ## 参与维护
 
-当前仅接受仓库协作者提交。请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，所有 UI 变更需附真实浏览器截图和验证结果。
+维护时保留本地 Git 版本记录。请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，所有 UI 变更需附真实浏览器截图和验证结果；不再以 GitHub PR 或远端 CI 作为交付前提。
 
 ## 常见问题
 
@@ -110,4 +109,4 @@ npm run test:e2e
 在旧设备生成加密 `.skbak` 文件，在新设备选择恢复；恢复前请妥善保存原文件和口令。
 
 **为什么仓库没有 APK？**  
-二进制安装包通过 Releases 发布，避免污染源码历史。
+二进制安装包单独保存在本地交付目录，不进入 Git 历史。该目录被 Git 忽略，需要由维护者另行保存重要版本。

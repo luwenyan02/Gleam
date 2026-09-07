@@ -41,9 +41,10 @@ npm run test:e2e
 
 涉及 Android 时还要执行 Capacitor 同步、Gradle 测试和安装升级验证。任何失败都必须如实报告，不得以生成文件存在代替运行验收。
 
-## Git 与发布
+## 本地维护与交付
 
-- 从短分支提交 Pull Request，不直接在 `main` 上开发。
-- `main` 只接收通过构建、测试、视觉验收和敏感信息扫描的变更。
-- Android release 签名从本机安全属性文件或 CI 密钥读取；签名证书不得更换。
-- APK/AAB 通过 GitHub Releases 分发，不进入 Git 历史。
+- 代码、应用和说明文档只在本地维护；Git 仅用于本地分支、提交、标签与回退。
+- 除非用户明确恢复 GitHub 维护，不执行远端推送、创建或更新 PR、Issue、Release，也不上传源码或安装包。历史 GitHub 计划不再是待办；已有远端仓库保持原样。
+- 使用本地短分支开发，合入本地 `main` 前完成构建、测试、视觉验收和敏感信息扫描；无需远端 CI 或 PR。
+- Android release 签名从本机安全属性文件或环境变量读取；签名证书不得更换。
+- APK/AAB 和校验文件在本地 `.tmp/artifacts/releases/` 交付，不进入 Git 历史；真机验收仍须执行。
