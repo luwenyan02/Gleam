@@ -1,19 +1,21 @@
 /**
  * 拾光 · 账单仓库（entryRepo）
- * 所有账单读写的唯一入口。写操作在 Dexie 事务内完成账单 + 账户余额 + 借贷对象余额的
+ * 所有账单读写的唯一入口。写操作在 Dexie 事务内完成账单 + 双边账户余额的
  * 一致性联动（PRD「数据一致性硬规则」），成功后 emit 'entries-changed' 与 'accounts-changed'。
  *
  * 余额联动规则：
  * - 支出：accountId 余额 −amount；收入：+amount；
  * - 转账：fromAccountId −amount，toAccountId +amount（不计收支）；
- * - 借贷（不计收支）：借出 lend → 账户−、对象余额+；借入 borrow → 账户+、对象余额−；
- *   还款 repay 同借出方向（账户−、对象余额+）；收款 collect 同借入方向（账户+、对象余额−）；
+ * - 借贷（不计收支）：借出 lend → 资金账户−、应收应付账户+；借入 borrow 反向；
+ *   还款 repay 同借出方向；收款 collect 同借入方向；
  * - 报销到账：reimburseAccountId 余额 +reimbursedAmount（随账单一起回滚/重放）。
  * 编辑 = 回滚旧账单影响 + 重放新账单影响；软删除回滚影响，恢复重放影响。
  */
 import { db, now, stamp } from '../db';
 import { emit, on } from '../store';
-import type { Entry, EntryType, ImportBatch, ReimburseStatus } from '../types';
+import { accountEffects } from '../entryEffects';
+import { validateLoanAccounts } from '../loanLedger';
+import type { Entry, EntryType, ImportBatch, LoanKind, ReimburseStatus } from '../types';
 
 /** 新建账单输入（id/时间戳/软删除字段由仓库补齐） */
 export type NewEntry = Omit<Entry, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'reimburseStatus'> & {
@@ -34,60 +36,18 @@ export interface EntryFilter {
   limit?: number;
 }
 
-interface AccountEffect {
-  accountId: number;
-  delta: number;
-}
-
-/** 计算一条账单对各账户余额的影响（分） */
-function accountEffects(e: Entry): AccountEffect[] {
-  const fx: AccountEffect[] = [];
-  switch (e.type) {
-    case 'expense':
-      if (e.accountId != null) fx.push({ accountId: e.accountId, delta: e.refundFlag ? e.amount : -e.amount });
-      break;
-    case 'income':
-      if (e.accountId != null) fx.push({ accountId: e.accountId, delta: e.amount });
-      break;
-    case 'transfer':
-      if (e.fromAccountId != null) fx.push({ accountId: e.fromAccountId, delta: -e.amount });
-      if (e.toAccountId != null) fx.push({ accountId: e.toAccountId, delta: e.amount });
-      break;
-    case 'loan': {
-      const dir = e.loanKind === 'borrow' || e.loanKind === 'collect' ? 1 : -1;
-      if (e.accountId != null) fx.push({ accountId: e.accountId, delta: dir * e.amount });
-      break;
-    }
-  }
-  // 报销到账随原账单一起回滚/重放
-  if (e.type === 'expense' && e.reimburseStatus === 'done' && e.reimburseAccountId != null && e.reimbursedAmount) {
-    fx.push({ accountId: e.reimburseAccountId, delta: e.reimbursedAmount });
-  }
-  return fx;
-}
-
-/** 计算一条账单对借贷对象余额的影响（正 = TA 欠你增加） */
-function contactEffect(e: Entry): number {
-  if (e.type !== 'loan' || e.loanContactId == null) return 0;
-  return e.loanKind === 'lend' || e.loanKind === 'repay' ? e.amount : -e.amount;
-}
-
 /** 在事务内按 sign（+1 重放 / −1 回滚）应用余额影响 */
 async function applyEffects(e: Entry, sign: 1 | -1): Promise<void> {
   for (const { accountId, delta } of accountEffects(e)) {
     const acct = await db.accounts.get(accountId);
+    if (!acct && e.type === 'loan') throw new Error('借贷关联账户不存在');
     if (acct) await db.accounts.update(accountId, { balance: acct.balance + sign * delta, updatedAt: now() });
-  }
-  const cd = contactEffect(e);
-  if (cd !== 0 && e.loanContactId != null) {
-    const contact = await db.loanContacts.get(e.loanContactId);
-    if (contact) await db.loanContacts.update(e.loanContactId, { balance: contact.balance + sign * cd, updatedAt: now() });
   }
 }
 
 /** 字段合法性校验，非法时抛错 */
 function validate(e: NewEntry | Entry): void {
-  if (!Number.isInteger(e.amount) || e.amount <= 0) throw new Error('金额须为正整数（分）');
+  if (!Number.isSafeInteger(e.amount) || e.amount <= 0) throw new Error('金额须为正整数（分）');
   if (!Number.isFinite(e.occurredAt)) throw new Error('occurredAt 非法');
   if (e.refundFlag && e.type !== 'expense') throw new Error('退款记录必须归属支出类型');
   switch (e.type) {
@@ -102,21 +62,30 @@ function validate(e: NewEntry | Entry): void {
       break;
     case 'loan':
       if (!e.loanKind) throw new Error('借贷必须指定 loanKind');
-      if (e.loanContactId == null) throw new Error('借贷必须指定往来对象');
-      if (e.accountId == null) throw new Error('借贷必须指定资金账户');
+      if (e.fromAccountId == null || e.toAccountId == null) throw new Error('请选择资金账户和应收应付账户');
+      if (e.accountId != null || e.loanContactId != null) throw new Error('借贷请重新选择双账户，不再使用独立对象');
       break;
   }
 }
 
+/** 在写事务内读取两侧账户，账户错误时不得写入半笔流水。 */
+async function validateAccountReferences(entry: NewEntry | Entry): Promise<void> {
+  if (entry.type !== 'loan') return;
+  const accounts = await db.accounts.bulkGet([entry.fromAccountId!, entry.toAccountId!]);
+  const present = accounts.filter((account): account is NonNullable<typeof account> => account != null);
+  validateLoanAccounts(entry, new Map(present.map(account => [account.id, account])));
+}
+
 /**
- * 新增账单，事务内联动账户/借贷对象余额。
+ * 新增账单，事务内联动双边账户余额。
  * @param input 账单字段（金额单位分）
  * @param tagIds 关联标签 id 列表（可选）
  * @returns 新账单 id
  */
 export async function addEntry(input: NewEntry, tagIds: number[] = []): Promise<number> {
   validate(input);
-  const id = await db.transaction('rw', [db.entries, db.accounts, db.loanContacts, db.entryTags], async () => {
+  const id = await db.transaction('rw', [db.entries, db.accounts, db.entryTags], async () => {
+    await validateAccountReferences(input);
     const entry = stamp({ reimburseStatus: 'none' as ReimburseStatus, ...input, deletedAt: 0 }) as Entry;
     const newId = await db.entries.add(entry);
     await applyEffects({ ...entry, id: newId }, 1);
@@ -135,11 +104,12 @@ export async function addEntry(input: NewEntry, tagIds: number[] = []): Promise<
  * @param tagIds 传入时整体替换标签关联；不传保持不变
  */
 export async function updateEntry(id: number, patch: Partial<NewEntry>, tagIds?: number[]): Promise<void> {
-  await db.transaction('rw', [db.entries, db.accounts, db.loanContacts, db.entryTags], async () => {
+  await db.transaction('rw', [db.entries, db.accounts, db.entryTags], async () => {
     const old = await db.entries.get(id);
     if (!old) throw new Error(`账单不存在：${id}`);
     const next = { ...old, ...patch, updatedAt: now() } as Entry;
     validate(next);
+    await validateAccountReferences(next);
     if (next.refundFlag && next.refundOfEntryId != null) {
       const original = await db.entries.get(next.refundOfEntryId);
       if (!original || original.deletedAt !== 0 || original.type !== 'expense' || original.refundFlag) {
@@ -176,7 +146,7 @@ export async function updateEntry(id: number, patch: Partial<NewEntry>, tagIds?:
  * 软删除账单（进回收站）：回滚余额影响，deletedAt 置为当前时间。
  */
 export async function softDeleteEntry(id: number): Promise<void> {
-  await db.transaction('rw', [db.entries, db.accounts, db.loanContacts], async () => {
+  await db.transaction('rw', [db.entries, db.accounts], async () => {
     const e = await db.entries.get(id);
     if (!e || e.deletedAt !== 0) return;
     const deletedAt = now();
@@ -200,7 +170,7 @@ export async function softDeleteEntry(id: number): Promise<void> {
  * 从回收站恢复账单：deletedAt 归零并重放余额影响，回到原日期流水并重新计入统计。
  */
 export async function restoreEntry(id: number): Promise<void> {
-  await db.transaction('rw', [db.entries, db.accounts, db.loanContacts], async () => {
+  await db.transaction('rw', [db.entries, db.accounts], async () => {
     const e = await db.entries.get(id);
     if (!e || e.deletedAt === 0) return;
     // 退款不允许单独恢复：原支出必须先恢复，否则产生孤儿退款
@@ -210,6 +180,7 @@ export async function restoreEntry(id: number): Promise<void> {
         throw new Error('请先恢复原支出账单');
       }
     }
+    await validateAccountReferences(e);
     const deletedAt = e.deletedAt;
     await db.entries.update(id, { deletedAt: 0, updatedAt: now() });
     await applyEffects({ ...e, deletedAt: 0 }, 1);
@@ -291,7 +262,7 @@ export interface CreateRefundInput {
  */
 export async function createRefund(input: CreateRefundInput): Promise<number> {
   if (!Number.isInteger(input.amount) || input.amount <= 0) throw new Error('退款金额须大于 0');
-  const id = await db.transaction('rw', [db.entries, db.accounts, db.loanContacts, db.entryTags], async () => {
+  const id = await db.transaction('rw', [db.entries, db.accounts, db.entryTags], async () => {
     const original = await db.entries.get(input.originalEntryId);
     if (!original || original.deletedAt !== 0 || original.type !== 'expense' || original.refundFlag) {
       throw new Error('仅支出账单可以发起退款');
@@ -416,6 +387,17 @@ export async function findTransferDuplicates(
     && e.fromAccountId === fromAccountId && e.toAccountId === toAccountId);
 }
 
+/** 同秒同额但不同应收应付账户或借贷种类，不视为重复。 */
+export async function findLoanDuplicates(
+  occurredAt: number, amount: number, loanKind: LoanKind,
+  fromAccountId: number | undefined, toAccountId: number | undefined,
+): Promise<Entry[]> {
+  const rows = await db.entries.where('occurredAt').equals(occurredAt).toArray();
+  return rows.filter(entry => entry.deletedAt === 0 && entry.type === 'loan'
+    && entry.loanKind === loanKind && entry.amount === amount
+    && entry.fromAccountId === fromAccountId && entry.toAccountId === toAccountId);
+}
+
 /** [M3] 批量导入的单项：账单字段 + 预先 ensure 好的标签 id 列表 */
 export interface ImportEntryItem {
   input: NewEntry;
@@ -437,11 +419,12 @@ export async function importEntriesBatch(
   for (const it of items) validate(it.input);
   const result = await db.transaction(
     'rw',
-    [db.entries, db.accounts, db.loanContacts, db.entryTags, db.importBatches],
+    [db.entries, db.accounts, db.entryTags, db.importBatches],
     async () => {
       const batchId = await db.importBatches.add(stamp({ ...batch }) as ImportBatch);
       const entryIds: number[] = [];
       for (const { input, tagIds = [] } of items) {
+        await validateAccountReferences(input);
         const entry = stamp({
           reimburseStatus: 'none' as ReimburseStatus, ...input, deletedAt: 0, importBatchId: batchId,
         }) as Entry;
@@ -470,7 +453,7 @@ export async function settleReimbursement(
   reimburseAccountId: number,
   amountById?: Map<number, number>,
 ): Promise<void> {
-  await db.transaction('rw', [db.entries, db.accounts, db.loanContacts], async () => {
+  await db.transaction('rw', [db.entries, db.accounts], async () => {
     for (const id of ids) {
       const e = await db.entries.get(id);
       if (!e || e.deletedAt !== 0 || e.type !== 'expense' || e.reimburseStatus !== 'pending') continue;

@@ -108,13 +108,17 @@ export async function listAccountsByGroup(): Promise<Record<AccountGroup, Accoun
  * 隐藏账户按「设置 + 账户级 countInNetWorth」双重口径过滤：
  * 设置关闭时，隐藏且 countInNetWorth=false 的账户不计入。
  */
-export async function getNetWorth(): Promise<{ assets: number; debts: number; net: number }> {
+export async function listNetWorthAccounts(): Promise<Account[]> {
   const includeHidden = await getSetting('netWorth.includeHidden');
   const rows = await db.accounts.toArray();
+  return rows.filter(account => !(account.hidden && !includeHidden && !account.countInNetWorth));
+}
+
+export async function getNetWorth(): Promise<{ assets: number; debts: number; net: number }> {
+  const rows = await listNetWorthAccounts();
   let assets = 0;
   let debts = 0;
   for (const a of rows) {
-    if (a.hidden && !includeHidden && !a.countInNetWorth) continue;
     if (a.balance >= 0) assets += a.balance;
     else debts += -a.balance;
   }

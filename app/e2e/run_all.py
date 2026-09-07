@@ -12,7 +12,7 @@ from pathlib import Path
 APP_ROOT = Path(__file__).parents[1]
 PROJECT_ROOT = APP_ROOT.parent
 URL = 'http://127.0.0.1:4601/'
-TESTS = ('test_acceptance.py', 'test_refund.py', 'test_m3.py', 'test_ux_m1.py', 'test_ux_m2.py', 'test_ux_m3.py', 'test_acceptance_fixes.py', 'test_requested_refinements.py')
+TESTS = ('test_acceptance.py', 'test_refund.py', 'test_m3.py', 'test_ux_m1.py', 'test_ux_m2.py', 'test_ux_m3.py', 'test_acceptance_fixes.py', 'test_requested_refinements.py', 'test_loan_accounts.py')
 
 
 def server_ready() -> bool:

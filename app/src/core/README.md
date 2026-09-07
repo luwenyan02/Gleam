@@ -20,7 +20,7 @@
 ## 数据一致性硬规则（entryRepo 事务内保证）
 
 - 支出保存 → 账户余额 −；收入 → +；转账 → from − / to +；
-- 借贷按 `loanKind`：借出 lend / 还款 repay → 账户 −、对象余额 +；借入 borrow / 收款 collect → 账户 +、对象余额 −；
+- 借贷按 `loanKind`：借出 lend / 还款 repay → 资金账户 −、应收应付账户 +；借入 borrow / 收款 collect 反向。余额使用 from/to 双账户，不再使用独立对象；
 - 转账 / 借贷**不计收支统计**（statsRepo 已按此口径过滤）；
 - 编辑 = 回滚旧账单余额影响 + 重放新账单；软删除 = 回滚；恢复 = 重放；物理删除仅允许回收站内账单；
 - 报销到账效果（`reimburseAccountId` + `reimbursedAmount`）随原账单一起回滚/重放；
@@ -49,7 +49,7 @@
 ### tagRepo / merchantRepo / loanRepo
 `listTags` · `ensureTag(name)` · `renameTag` · `deleteTag`（连带清 entryTags）
 `listMerchants`（useCount 降序） · `ensureMerchant` · `touchMerchant` · `deleteMerchant`
-`listLoanContacts` · `getLoanContact` · `ensureLoanContact` · `renameLoanContact` · `deleteLoanContact`（有往来抛错） · `listContactEntries`
+`listLoanAccounts` · `getLoanAccount` · `ensureLoanAccount` · `renameLoanAccount` · `deleteLoanAccount` · `listLoanAccountEntries`（均操作 accounts 中的应收应付分组，不操作旧对象表）
 
 ### budgetRepo / recurringRepo / templateRepo
 `getBudget(month)` · `setBudget` · `ensureMonthBudget(month)`（按上月 autoRenew 延续） · `listCategoryBudgets` · `setCategoryBudget`
@@ -77,7 +77,7 @@
 
 ## 已知遗留事项
 
-1. `[occurredAt+type+amount+accountId]` 复合索引对 `accountId === undefined` 的账单（转账）不生效，M3 挖财导入的**转账查重**需按 `fromAccountId/toAccountId` 另行查询；
+1. 无单侧 accountId 的转账和借贷分别经 `findTransferDuplicates`、`findLoanDuplicates` 按双账户查询；借贷另包含 loanKind；
 2. Dexie 不能索引布尔值，`recurringRules` 的 `[enabled+nextRunAt]` 索引实际失效，`runDueRules` 已用全表 filter 兜底（规则量小，无性能问题）；
 3. 周期账 amountConfirm「待确认」仅有数据接口（`onPendingConfirm`），通知 UI 由 M2-C 实现；
 4. 自动备份到期检测在 `scheduler.catchUp` 中留有 TODO(M3)。

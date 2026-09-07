@@ -9,9 +9,9 @@ def fixture(page):
     seed(page, amount=4865025)
     page.evaluate('''async()=>{
       const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)});
-      const tx=db.transaction(['accounts','loanContacts'],'readwrite');
+      const tx=db.transaction(['accounts'],'readwrite');
       tx.objectStore('accounts').put({id:2,name:'演示银行卡',group:'debit',balance:100000,hidden:false,countInNetWorth:true,sortOrder:2,createdAt:1,updatedAt:1});
-      tx.objectStore('loanContacts').put({id:1,name:'演示小林',netBalance:0,createdAt:1,updatedAt:1});
+      tx.objectStore('accounts').put({id:3,name:'演示小林',group:'receivable',balance:0,hidden:false,countInNetWorth:true,sortOrder:3,createdAt:1,updatedAt:1});
       await new Promise(r=>tx.oncomplete=r);db.close();
     }''')
 

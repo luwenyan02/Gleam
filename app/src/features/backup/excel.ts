@@ -4,7 +4,7 @@
  * 日期时间 / 类型 / 类别 / 金额 / 币种 / 收付款人 / 收付账户 / 参与人 / 标签 / 商家 / 属性 / 备注。
  * 与 features/import 的挖财解析互逆：
  * - 转账「收付账户」输出「A:-x.xx, B:+x.xx」；
- * - 借贷「收付款人」输出方向格式（借出/还款 = 自己:-x, 对方:+x；借入/收款 = 对方:-x, 自己:+x）；
+ * - 借贷「收付账户」按真实 from/to 输出「A:-x, B:+x」，可原样导入为资金与应收应付双账户；
  * - 已报销支出输出属性「已报销」；退款记录（refundFlag）输出属性「退款」
  *   （createRefund 强制 reimburseStatus='none' 且编辑抽屉对退款隐藏报销开关，两者不会并存）。
  * 文件名：拾光账单_YYYY-MM.xlsx（落地走 download.saveBlobFile：Web 浏览器下载 / Android 写 Documents+分享）。
@@ -15,10 +15,10 @@ import { formatFen } from '../../core/money';
 import { listEntries } from '../../core/repo/entryRepo';
 import { listCategories } from '../../core/repo/categoryRepo';
 import { listAccountsByGroup } from '../../core/repo/accountRepo';
-import { listLoanContacts } from '../../core/repo/loanRepo';
 import { listMerchants } from '../../core/repo/merchantRepo';
 import { listTags, listEntryIdsByTag } from '../../core/repo/tagRepo';
 import { ACCOUNT_GROUPS, LOAN_KIND_META, type Entry } from '../../core/types';
+import { formatWacaiPair } from '../import/wacai';
 
 /** 挖财 12 列表头（导入解析校验的同一份约定） */
 export const WACAI_HEADERS = [
@@ -41,6 +41,20 @@ function dateText(ts: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+/** 借贷双账户按实际资金流向输出，供导出/导入往返保真。 */
+export function wacaiLoanAccountText(
+  entry: Pick<Entry, 'type' | 'loanKind' | 'fromAccountId' | 'toAccountId'>,
+  accountNames: ReadonlyMap<number, string>,
+  amountYuan: string,
+): string {
+  const fromName = entry.fromAccountId == null ? undefined : accountNames.get(entry.fromAccountId);
+  const toName = entry.toAccountId == null ? undefined : accountNames.get(entry.toAccountId);
+  if (entry.type !== 'loan' || !entry.loanKind || !fromName || !toName) {
+    throw new Error('借贷账单缺少完整的双账户信息');
+  }
+  return `${formatWacaiPair(fromName, `-${amountYuan}`)}, ${formatWacaiPair(toName, `+${amountYuan}`)}`;
+}
+
 /**
  * 导出某月账单为 Excel 并落地为文件。
  * @param month 'YYYY-MM'
@@ -51,15 +65,14 @@ export async function exportMonthExcel(month: string): Promise<number> {
   const [y, m] = month.split('-').map(Number);
   const from = new Date(y, m - 1, 1).getTime();
   const to = new Date(y, m, 1).getTime();
-  const [entries, expCats, incCats, groups, contacts, merchants, tags] = await Promise.all([
+  const [entries, expCats, incCats, groups, merchants, tags] = await Promise.all([
     listEntries({ from, to }), listCategories('expense'), listCategories('income'),
-    listAccountsByGroup(), listLoanContacts(), listMerchants(), listTags(),
+    listAccountsByGroup(), listMerchants(), listTags(),
   ]);
 
   const catById = new Map(expCats.concat(incCats).map((c) => [c.id, c]));
   const acctName = new Map<number, string>();
   for (const g of ACCOUNT_GROUPS) for (const a of groups[g]) acctName.set(a.id, a.name);
-  const contactName = new Map(contacts.map((c) => [c.id, c.name]));
   const merchantName = new Map(merchants.map((mm) => [mm.id, mm.name]));
   // 标签：tagId→name 与 entryId→names（经 tagRepo 反查，避免直查 db）
   const tagNamesByEntry = new Map<number, string[]>();
@@ -89,19 +102,14 @@ export async function exportMonthExcel(month: string): Promise<number> {
     .sort((a, b) => a.occurredAt - b.occurredAt)
     .map((e) => {
       const amt = yuanText(e.amount);
-      let payee = '';
+      const payee = '';
       let account = '';
       if (e.type === 'transfer') {
-        account = `${acctName.get(e.fromAccountId ?? -1) ?? ''}:-${amt}, ${acctName.get(e.toAccountId ?? -1) ?? ''}:+${amt}`;
+        account = `${formatWacaiPair(acctName.get(e.fromAccountId ?? -1) ?? '', `-${amt}`)}, ${formatWacaiPair(acctName.get(e.toAccountId ?? -1) ?? '', `+${amt}`)}`;
+      } else if (e.type === 'loan') {
+        account = wacaiLoanAccountText(e, acctName, amt);
       } else {
         account = acctName.get(e.accountId ?? -1) ?? '';
-      }
-      if (e.type === 'loan') {
-        const other = contactName.get(e.loanContactId ?? -1) ?? '未指明对象';
-        // 借出/还款 = 资金流出（自己:-）；借入/收款 = 资金流入（自己:+）
-        payee = e.loanKind === 'lend' || e.loanKind === 'repay'
-          ? `自己:-${amt}, ${other}:+${amt}`
-          : `${other}:-${amt}, 自己:+${amt}`;
       }
       return [
         dateText(e.occurredAt),

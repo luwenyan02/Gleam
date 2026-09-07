@@ -3,7 +3,7 @@
  * 五步：①选文件（备份页触发）→ ②解析预检 → ③映射确认（支持整批自动处理）→
  * ④事务化导入（前置自动快照 + importBatch，失败全回滚）→ ⑤完成报告。
  * 解析规则见 wacai.ts；导入经 entryRepo.importEntriesBatch 复用硬规则驱动余额。
- * 查重：「时间+类型+金额+账户」，转账按 from/to 走 findTransferDuplicates（README 遗留事项 1）。
+ * 查重：普通账单按「时间+类型+金额+账户」，转账/借贷额外比对双账户。
  */
 import './import.css';
 import { esc } from '../../core/esc';
@@ -13,14 +13,15 @@ import { createSnapshot } from '../../core/repo/backupRepo';
 import { listCategories, addCategory } from '../../core/repo/categoryRepo';
 import { listAccounts, addAccount } from '../../core/repo/accountRepo';
 import { ensureTag } from '../../core/repo/tagRepo';
-import { ensureLoanContact } from '../../core/repo/loanRepo';
 import { ensureMerchant, touchMerchant } from '../../core/repo/merchantRepo';
 import {
-  findDuplicates, findTransferDuplicates, importEntriesBatch,
+  findDuplicates, findLoanDuplicates, findTransferDuplicates, importEntriesBatch,
   type ImportEntryItem, type NewEntry,
 } from '../../core/repo/entryRepo';
-import { ACCOUNT_GROUP_NAMES, type Account, type AccountGroup, type Category } from '../../core/types';
+import { loanDirection } from '../../core/loanLedger';
+import { ACCOUNT_GROUP_NAMES, type Account, type Category } from '../../core/types';
 import { parseWacaiFile, type WacaiParseResult, type WacaiRow } from './wacai';
+import { accountUsageKey, buildAccountPlans, type AccountPlan } from './accountMapping';
 import { openPickList, type PickListItem } from '../../shared/pickList';
 
 /* ── 向导状态 ── */
@@ -34,22 +35,13 @@ interface CatPlan {
   choice: number | 'auto';
 }
 
-/** 账户映射计划 */
-interface AcctPlan {
-  name: string;
-  matchedId?: number;
-  choice: number | 'auto';
-  /** 新建时的分组（按名称启发式猜测） */
-  group: AccountGroup;
-}
-
 interface ImportReport {
   imported: number;
   skipped: number;
   skippedRows: number[];
   byType: WacaiParseResult['counts'];
   reimburse: number;
-  loanContacts: string[];
+  loanAccounts: string[];
   fx: number;
   createdCats: number;
   createdAccts: number;
@@ -59,7 +51,7 @@ interface WizardState {
   file: File;
   result: WacaiParseResult;
   cats: CatPlan[];
-  accts: AcctPlan[];
+  accts: AccountPlan[];
   expenseCats: Category[];
   incomeCats: Category[];
   accounts: Account[];
@@ -74,20 +66,8 @@ let body: HTMLElement | undefined;
 /* 映射页 pickList 共享 items（mappingHtml 构建，click 委托引用） */
 let mapExpenseItems: PickListItem[] = [];
 let mapIncomeItems: PickListItem[] = [];
-let mapAcctItems: PickListItem[] = [];
 
 /* ── 匹配与新建 ── */
-
-/** 账户分组启发式（仅新建时用；用户可导入后在账户页改） */
-function guessGroup(name: string): AccountGroup {
-  if (/信用|贷记|花呗|白条/.test(name)) return 'credit';
-  if (/证券|基金|股票|投资|理财/.test(name)) return 'investment';
-  if (/应收|应付|欠款/.test(name)) return 'receivable';
-  if (/储值|预付|购物卡|公交卡|饭卡|校园卡/.test(name)) return 'stored';
-  if (/微信|支付宝|钱包|余额|零钱|网商|云闪付/.test(name)) return 'online';
-  if (/银行|储蓄|借记|存折|卡/.test(name)) return 'debit';
-  return 'other';
-}
 
 /** 分类精确匹配：两级键先配大类+小类，退化配同名小类；单级先小类再大类 */
 function matchCategory(type: 'expense' | 'income', name: string, expense: Category[], income: Category[]): number | undefined {
@@ -146,10 +126,7 @@ async function buildPlans(result: WacaiParseResult): Promise<Pick<WizardState, '
     const matchedId = matchCategory(type, name, expenseCats, incomeCats);
     return { key: full, type, name, matchedId, choice: matchedId ?? 'auto' };
   });
-  const accts: AcctPlan[] = result.accountNames.map((name) => {
-    const matchedId = accounts.find((a) => a.name === name)?.id;
-    return { name, matchedId, choice: matchedId ?? 'auto', group: guessGroup(name) };
-  });
+  const accts = buildAccountPlans(result.rows, accounts);
   return { cats, accts, expenseCats, incomeCats, accounts };
 }
 
@@ -174,21 +151,22 @@ async function runImport(): Promise<void> {
     }
     const acctIds = new Map<string, number>();
     for (const p of st.accts) {
-      if (typeof p.choice === 'number') acctIds.set(p.name, p.choice);
-      else if (p.matchedId != null) acctIds.set(p.name, p.matchedId);
-      else acctIds.set(p.name, await addAccount({ name: p.name, group: p.group, balance: 0 }));
+      let accountId: number;
+      if (typeof p.choice === 'number') accountId = p.choice;
+      else if (p.matchedId != null) accountId = p.matchedId;
+      else if (p.choice === 'auto') accountId = await addAccount({ name: p.name, group: p.group, balance: 0 });
+      else throw new Error(`请先选择账户「${p.name}」的同名匹配项`);
+      for (const usage of p.usages) acctIds.set(accountUsageKey(usage, p.name), accountId);
     }
     const createdCats = st.cats.filter((p) => p.choice === 'auto' && p.matchedId == null).length;
     const createdAccts = st.accts.filter((p) => p.choice === 'auto' && p.matchedId == null).length;
 
-    // 标签 / 商家 / 往来对象（事务外 ensure，导入事务内只引用 id）
+    // 标签 / 商家（事务外 ensure，导入事务内只引用 id）
     const tagIds = new Map<string, number>();
     const merchantIds = new Map<string, number>();
-    const contactIds = new Map<string, number>();
     for (const row of st.result.rows) {
       for (const t of row.tags) if (!tagIds.has(t)) tagIds.set(t, await ensureTag(t));
       if (row.merchant && !merchantIds.has(row.merchant)) merchantIds.set(row.merchant, await ensureMerchant(row.merchant));
-      if (row.contactName && !contactIds.has(row.contactName)) contactIds.set(row.contactName, await ensureLoanContact(row.contactName));
     }
 
     // 查重（时间+类型+金额+账户；转账按 from/to）→ 命中默认跳过
@@ -196,14 +174,30 @@ async function runImport(): Promise<void> {
     const importedRows: WacaiRow[] = [];
     const skippedRows: number[] = [];
     for (const row of st.result.rows) {
-      const dup = row.type === 'transfer'
-        ? await findTransferDuplicates(
+      let dup;
+      if (row.type === 'transfer') {
+        dup = await findTransferDuplicates(
           row.occurredAt, row.amountFen,
-          acctIds.get(row.fromAccountName!), acctIds.get(row.toAccountName!),
-        )
-        : await findDuplicates(row.occurredAt, row.type, row.amountFen, acctIds.get(row.accountName!));
+          acctIds.get(accountUsageKey('general', row.fromAccountName!)),
+          acctIds.get(accountUsageKey('general', row.toAccountName!)),
+        );
+      } else if (row.type === 'loan') {
+        const direction = loanDirection(
+          row.loanKind!,
+          acctIds.get(accountUsageKey('fund', row.accountName!))!,
+          acctIds.get(accountUsageKey('loan', row.loanAccountName!))!,
+        );
+        dup = await findLoanDuplicates(
+          row.occurredAt, row.amountFen, row.loanKind!, direction.fromAccountId, direction.toAccountId,
+        );
+      } else {
+        dup = await findDuplicates(
+          row.occurredAt, row.type, row.amountFen,
+          acctIds.get(accountUsageKey('general', row.accountName!)),
+        );
+      }
       if (dup.length) { skippedRows.push(row.rowNo); continue; }
-      items.push({ input: rowToEntry(row, catIds, acctIds, contactIds, merchantIds), tagIds: row.tags.map((t) => tagIds.get(t)!) });
+      items.push({ input: rowToEntry(row, catIds, acctIds, merchantIds), tagIds: row.tags.map((t) => tagIds.get(t)!) });
       importedRows.push(row);
     }
 
@@ -226,7 +220,7 @@ async function runImport(): Promise<void> {
       skippedRows,
       byType: st.result.counts,
       reimburse: importedRows.filter((r) => r.reimburseDone).length,
-      loanContacts: [...new Set(importedRows.filter((r) => r.contactName).map((r) => r.contactName!))],
+      loanAccounts: [...new Set(importedRows.filter((r) => r.loanAccountName).map((r) => r.loanAccountName!))],
       fx: importedRows.filter((r) => r.note.includes('按导入时参考汇率')).length,
       createdCats,
       createdAccts,
@@ -246,7 +240,6 @@ function rowToEntry(
   row: WacaiRow,
   catIds: Map<string, number>,
   acctIds: Map<string, number>,
-  contactIds: Map<string, number>,
   merchantIds: Map<string, number>,
 ): NewEntry {
   const base = {
@@ -255,15 +248,24 @@ function rowToEntry(
     merchantId: row.merchant ? merchantIds.get(row.merchant) : undefined,
   };
   if (row.type === 'transfer') {
-    return { ...base, fromAccountId: acctIds.get(row.fromAccountName!), toAccountId: acctIds.get(row.toAccountName!) };
+    return {
+      ...base,
+      fromAccountId: acctIds.get(accountUsageKey('general', row.fromAccountName!)),
+      toAccountId: acctIds.get(accountUsageKey('general', row.toAccountName!)),
+    };
   }
   if (row.type === 'loan') {
-    return { ...base, loanKind: row.loanKind, loanContactId: contactIds.get(row.contactName!), accountId: acctIds.get(row.accountName!) };
+    const direction = loanDirection(
+      row.loanKind!,
+      acctIds.get(accountUsageKey('fund', row.accountName!))!,
+      acctIds.get(accountUsageKey('loan', row.loanAccountName!))!,
+    );
+    return { ...base, loanKind: row.loanKind, ...direction };
   }
   return {
     ...base,
     categoryId: catIds.get(`${row.type}:${row.categoryKey!}`),
-    accountId: acctIds.get(row.accountName!),
+    accountId: acctIds.get(accountUsageKey('general', row.accountName!)),
     // 属性「已报销」仅为状态标记：挖财导出不含到账账户与到账金额，故不写
     // reimburseAccountId/reimbursedAmount，不产生报销到账的余额效果；
     // 余额与「报销计收入」统计口径均按未到账处理，属预期行为。
@@ -322,36 +324,36 @@ function mappingHtml(st: WizardState): string {
     label: `${st.expenseCats.find((b) => b.id === c.parentId)?.name ?? ''}/${c.name}`,
   }));
   mapIncomeItems = st.incomeCats.map((c) => ({ value: c.id, label: c.name }));
-  mapAcctItems = st.accounts.map((a) => ({ value: a.id, label: a.name }));
   const catLabel = (p: CatPlan): string => {
     if (p.choice === 'auto') return `自动新建「${esc(p.name)}」`;
     const items = p.type === 'income' ? mapIncomeItems : mapExpenseItems;
     return esc(items.find((it) => it.value === p.choice)?.label ?? '未知');
   };
-  const acctLabel = (p: AcctPlan): string => {
+  const acctLabel = (p: AccountPlan): string => {
+    if (p.choice == null) return '请选择同名账户';
     if (p.choice === 'auto') return `自动新建（${ACCOUNT_GROUP_NAMES[p.group]}）`;
-    return esc(mapAcctItems.find((it) => it.value === p.choice)?.label ?? '未知');
+    return esc(st.accounts.find((a) => a.id === p.choice)?.name ?? '未知');
   };
   return `
     <section class="card imp-map">
       <h3 class="card-title">映射确认</h3>
       ${unCats.length || unAccts.length ? `
-      <p class="sub">以下项目在拾光中不存在，可逐项指定现有项，或保持「自动新建」</p>
+      <p class="sub">以下项目需确认映射；未匹配项可自动新建，多个同名候选须手动选择</p>
       ${unCats.length ? `
       <table class="map-table"><thead><tr><th>挖财分类</th><th>拾光处理</th></tr></thead><tbody>
         ${unCats.map((p) => `<tr><td>${esc(p.name)}${p.type === 'income' ? '（收入）' : ''}</td><td><button class="pick-btn" data-cat="${esc(p.key)}">${catLabel(p)}</button></td></tr>`).join('')}
       </tbody></table>` : ''}
       ${unAccts.length ? `
       <table class="map-table" style="margin-top:10px"><thead><tr><th>挖财账户</th><th>拾光处理</th></tr></thead><tbody>
-        ${unAccts.map((p) => `<tr><td>${esc(p.name)}</td><td><button class="pick-btn" data-acct="${esc(p.name)}">${acctLabel(p)}</button></td></tr>`).join('')}
+        ${unAccts.map((p) => `<tr><td>${esc(p.name)}${p.role === 'loan' ? '（应收/应付）' : p.role === 'fund' ? '（借贷资金账户）' : '（普通账户）'}</td><td><button class="pick-btn" data-acct="${esc(p.key)}">${acctLabel(p)}</button></td></tr>`).join('')}
       </tbody></table>` : ''}
       <div class="btn-row" style="margin-top:12px">
         <button class="btn ghost" data-act="auto-all">按建议自动处理</button>
       </div>` : '<p class="sub">全部分类与账户均已精确匹配，无需处理 ✓</p>'}
-      <p class="tiny" style="margin-top:10px">导入前会自动创建本地快照（7 天内可撤销）；重复账单（时间+类型+金额+账户一致）将自动跳过</p>
+      <p class="tiny" style="margin-top:10px">导入前会自动创建本地快照（7 天内可撤销）；借贷须类型、金额和双账户均一致才会判为重复</p>
       <div class="btn-row" style="margin-top:8px">
         <button class="btn ghost" data-act="to-pre">上一步</button>
-        <button class="btn primary" data-act="run">开始导入</button>
+        <button class="btn primary" data-act="run"${st.accts.some((p) => p.choice == null) ? ' disabled' : ''}>开始导入</button>
       </div>
     </section>`;
 }
@@ -365,7 +367,7 @@ function reportHtml(st: WizardState): string {
       <p>支出 ${r.byType.expense} · 收入 ${r.byType.income} · 转账 ${r.byType.transfer} · 借贷 ${r.byType.loan}（解析计数）</p>
       <p>跳过重复 ${r.skipped} 条${r.skippedRows.length ? `（行号 ${r.skippedRows.join('、')}）` : ''} · 格式异常跳过 ${st.result.issues.length} 条</p>
       ${r.reimburse ? `<p>报销：${r.reimburse} 条已标记「已报销」（无到账账户信息，仅记状态）</p>` : ''}
-      ${r.loanContacts.length ? `<p>借贷往来：已建立/更新往来对象 ${esc(r.loanContacts.join('、'))}，余额随账单联动</p>` : ''}
+      ${r.loanAccounts.length ? `<p>借贷往来：已映射应收/应付账户 ${esc(r.loanAccounts.join('、'))}，两侧余额随账单联动</p>` : ''}
       ${r.fx ? `<p>外币折算：${r.fx} 条按导入时参考汇率折算为人民币，原币种金额在备注中保留</p>` : ''}
       ${r.createdCats || r.createdAccts ? `<p>自动新建：分类 ${r.createdCats} 项 · 账户 ${r.createdAccts} 项</p>` : ''}
       <p class="tiny" style="margin-top:6px">导入前的数据快照可在「备份与恢复」页一键撤销（保留 7 天）</p>
@@ -423,17 +425,23 @@ export function initImport(): void {
         /* pick-btn：账户映射 */
         const acctBtn = target.closest<HTMLElement>('[data-acct]');
         if (acctBtn) {
-          const p = st.accts.find((a) => a.name === acctBtn.dataset.acct);
+          const p = st.accts.find((a) => a.key === acctBtn.dataset.acct);
           if (!p) return;
           const autoItem: PickListItem = { value: 'auto', label: `自动新建（${ACCOUNT_GROUP_NAMES[p.group]}）` };
+          const allowedItems = st.accounts
+            .filter((a) => p.role === 'loan' ? a.group === 'receivable' : p.role === 'fund' ? a.group !== 'receivable' : true)
+            .map((a) => ({ value: a.id, label: a.name, note: `${ACCOUNT_GROUP_NAMES[a.group]}${a.hidden ? ' · 已隐藏' : ''} · #${a.id}` }));
           openPickList({
             container: el,
             title: '选择账户',
-            items: [autoItem, ...mapAcctItems],
+            items: [...(p.ambiguous ? [] : [autoItem]), ...allowedItems],
             selected: p.choice,
             onPick(value, label) {
               p.choice = value === 'auto' ? 'auto' : Number(value);
-              acctBtn.textContent = label;
+              const selected = st.accounts.find(account => account.id === p.choice);
+              acctBtn.textContent = selected ? `${label}（${ACCOUNT_GROUP_NAMES[selected.group]}）` : label;
+              const runBtn = el.querySelector<HTMLButtonElement>('[data-act="run"]');
+              if (runBtn) runBtn.disabled = st.accts.some((plan) => plan.choice == null);
             },
           });
           return;
@@ -445,7 +453,7 @@ export function initImport(): void {
         else if (act === 'to-pre') { st.step = 2; renderStep(); }
         else if (act === 'auto-all') {
           for (const p of st.cats) if (p.matchedId == null) p.choice = 'auto';
-          for (const p of st.accts) if (p.matchedId == null) p.choice = 'auto';
+          for (const p of st.accts) if (p.matchedId == null && !p.ambiguous) p.choice = 'auto';
           renderStep();
           showToast('已全部设为按建议自动处理');
         } else if (act === 'run') void runImport();

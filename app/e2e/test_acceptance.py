@@ -144,12 +144,12 @@ def get_loan_contacts(page):
         r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
       });
       const rows = await new Promise((res, rej) => {
-        const req = db.transaction('loanContacts').objectStore('loanContacts').getAll();
+        const req = db.transaction('accounts').objectStore('accounts').getAll();
         req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error);
       });
       db.close();
       const result = {};
-      for (const c of rows) result[c.name] = c.balance;
+      for (const c of rows.filter(a => a.group === 'receivable')) result[c.name] = c.balance;
       return result;
     }''')
 

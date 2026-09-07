@@ -1,3 +1,4 @@
+import { loanAccountId } from '../../core/loanLedger';
 /**
  * 拾光 · 首页流水时间线（PRD 4.2）
  * 页头（日期与节气）、月度总览卡（与预算中心同源 budgetUsage）、快捷五宫格、
@@ -10,12 +11,12 @@ import { formatFen, formatFenCny } from '../../core/money';
 import { on } from '../../core/store';
 import {
   LOAN_KIND_META,
-  type Account, type Category, type Entry, type LifeNote, type LoanContact,
+  type Account, type Category, type Entry, type LifeNote,
 } from '../../core/types';
 import { listEntries, getEntry, dayKey } from '../../core/repo/entryRepo';
 import { listCategories, listExpenseTree } from '../../core/repo/categoryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
-import { listLoanContacts } from '../../core/repo/loanRepo';
+import { listLoanAccounts } from '../../core/repo/loanRepo';
 import { listLifeNotes } from '../../core/repo/lifeRepo';
 import { listTemplates } from '../../core/repo/templateRepo';
 import { getSetting } from '../../core/repo/settingsRepo';
@@ -194,7 +195,7 @@ type TimelineItem =
 async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: boolean): Promise<void> {
   const [entries, cats, tree, accounts, contacts] = await Promise.all([
     listEntries({ limit }),
-    listCategories('income'), listExpenseTree(), listAccounts(true), listLoanContacts(),
+    listCategories('income'), listExpenseTree(), listAccounts(true), listLoanAccounts(),
   ]);
   exhausted = entries.length < limit;
 
@@ -205,7 +206,7 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
     for (const ch of g.children) catMap.set(ch.id, ch);
   }
   const acctMap = new Map<number, Account>(accounts.map((a) => [a.id, a]));
-  const contactMap = new Map<number, LoanContact>(contacts.map((p) => [p.id, p]));
+  const contactMap = new Map<number, Account>(contacts.map((p) => [p.id, p]));
 
   // 生活记录混排：仅取已加载账单覆盖的日期范围
   const oldestTs = entries.length ? entries[entries.length - 1].occurredAt : 0;
@@ -294,7 +295,7 @@ function entryHtml(
   entry: Entry,
   catMap: Map<number, Category>,
   acctMap: Map<number, Account>,
-  contactMap: Map<number, LoanContact>,
+  contactMap: Map<number, Account>,
 ): string {
   const sub = (text?: string) => (text ? ` <span class="e-sub">· ${esc(text)}</span>` : '');
   if (entry.type === 'transfer') {
@@ -306,8 +307,10 @@ function entryHtml(
   }
   if (entry.type === 'loan') {
     const meta = LOAN_KIND_META[entry.loanKind ?? 'borrow'];
-    const who = contactMap.get(entry.loanContactId ?? -1)?.name ?? '往来对象';
-    const acct = acctMap.get(entry.accountId ?? -1)?.name ?? '账户';
+    const who = contactMap.get(loanAccountId(entry) ?? -1)?.name ?? '未选择应收应付账户';
+    const from = acctMap.get(entry.fromAccountId ?? -1)?.name ?? '账户';
+    const to = acctMap.get(entry.toAccountId ?? -1)?.name ?? '账户';
+    const acct = `${from} → ${to}`;
     const inflow = entry.loanKind === 'borrow' || entry.loanKind === 'collect';
     return swipeEntry(entry, `<span class="e-ic neutral">${iconHtml(meta.icon)}</span>
       <div class="e-main"><p class="e-title">${meta.name} · ${esc(who)}${sub(entry.note)}</p><p class="e-meta">借贷 · ${esc(acct)}</p></div>

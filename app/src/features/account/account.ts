@@ -18,6 +18,7 @@ import { getEntry, listEntries } from '../../core/repo/entryRepo';
 import { listCategories } from '../../core/repo/categoryRepo';
 import { getSetting } from '../../core/repo/settingsRepo';
 import { accountFlows, accountMonthRows, type LedgerItem } from '../../core/ledgerEvents';
+import { accountEffects } from '../../core/entryEffects';
 import { registerPage, registerSubpage, openSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { openEntrySheet } from '../entry/entrySheet';
@@ -193,12 +194,8 @@ async function refresh(): Promise<void> {
 
 /** 单账户视角的金额增减（分；正 = 流入该账户） */
 function flowDelta(e: Entry, acctId: number): number {
-  switch (e.type) {
-    case 'expense': return e.refundFlag ? e.amount : -e.amount;
-    case 'income': return e.amount;
-    case 'transfer': return e.toAccountId === acctId ? e.amount : -e.amount;
-    case 'loan': return e.loanKind === 'borrow' || e.loanKind === 'collect' ? e.amount : -e.amount;
-  }
+  return accountEffects({ ...e, reimbursedAmount: undefined })
+    .filter(effect => effect.accountId === acctId).reduce((sum, effect) => sum + effect.delta, 0);
 }
 
 /** 流水条目 HTML（复用原型 .entry 结构 + .entry-swipe 左滑外壳，与首页/明细同一套操作） */
@@ -230,7 +227,7 @@ function flowEntryHtml(
   }
   const d = new Date(e.occurredAt);
   const time = `${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  const metaTail = e.type === 'transfer'
+  const metaTail = e.type === 'transfer' || e.type === 'loan'
     ? `${acctNames.get(e.fromAccountId ?? -1) ?? '—'} → ${acctNames.get(e.toAccountId ?? -1) ?? '—'}`
     : acctNames.get(e.accountId ?? -1) ?? '';
   const sub = e.note && e.note !== '余额对账调整' ? ` <span class="e-sub">· ${esc(e.note)}</span>` : '';
@@ -246,7 +243,7 @@ function flowEntryHtml(
 }
 
 /** 从账户一级页进入账户详情子页。 */
-function openAccountDetail(id: number): void {
+export function openAccountDetail(id: number): void {
   detailAccountId = id;
   openSubpage('sp-account-detail');
 }
@@ -395,8 +392,8 @@ async function toggleHidden(acct: Account): Promise<void> {
 /* ── 添加 / 编辑账户表单 ── */
 
 /** 添加（不传 acct）或编辑（传 acct）账户表单抽屉 */
-async function openAccountForm(acct?: Account): Promise<void> {
-  let group: AccountGroup = acct?.group ?? 'cash';
+export async function openAccountForm(acct?: Account, presetGroup: AccountGroup = 'cash'): Promise<void> {
+  let group: AccountGroup = acct?.group ?? presetGroup;
   let negative = group === 'credit';
   openSheet({
     ariaLabel: acct ? '编辑账户' : '添加账户',

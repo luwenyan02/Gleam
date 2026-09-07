@@ -70,7 +70,7 @@ export interface Timestamps {
  * 账单。四种类型字段使用约定：
  * - expense/income：categoryId + accountId 必填；
  * - transfer：fromAccountId + toAccountId 必填，不计收支；
- * - loan：loanKind + loanContactId + accountId 必填，不计收支。
+ * - loan：loanKind + fromAccountId + toAccountId 必填，其中一侧为应收应付账户，不计收支。
  */
 export interface Entry extends Timestamps {
   id: number;
@@ -83,6 +83,7 @@ export interface Entry extends Timestamps {
   accountId?: number;
   fromAccountId?: number;
   toAccountId?: number;
+  /** 旧测试格式残留；新借贷不读写独立对象，只使用 from/to 账户。 */
   loanContactId?: number;
   loanKind?: LoanKind;
   merchantId?: number;
@@ -141,7 +142,7 @@ export interface Category extends Timestamps {
   sortOrder: number;
 }
 
-/** 借贷对象。balance 正 = TA 欠你，负 = 你欠 TA，单位分 */
+/** 旧测试表类型，仅供原数据库/备份读取；不再参与业务或余额计算。 */
 export interface LoanContact extends Timestamps {
   id: number;
   name: string;

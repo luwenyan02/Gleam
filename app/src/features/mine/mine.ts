@@ -14,7 +14,7 @@ import { formatFenCny } from '../../core/money';
 import { listEntries, dayKey } from '../../core/repo/entryRepo';
 import { getBudget } from '../../core/repo/budgetRepo';
 import { budgetUsage } from '../../core/repo/statsRepo';
-import { listLoanContacts } from '../../core/repo/loanRepo';
+import { listLoanAccounts } from '../../core/repo/loanRepo';
 import { registerPage, openSubpage } from '../shell/router';
 import { showToast } from '../shell/toast';
 
@@ -52,7 +52,7 @@ async function refresh(): Promise<void> {
   const token = ++refreshToken;
   const month = curMonth();
   const [entries, budget, usage, contacts] = await Promise.all([
-    listEntries(), getBudget(month), budgetUsage(month), listLoanContacts(),
+    listEntries(), getBudget(month), budgetUsage(month), listLoanAccounts(),
   ]);
   if (token !== refreshToken || !el.isConnected) return;
 
@@ -67,7 +67,7 @@ async function refresh(): Promise<void> {
   const loanNote = contacts.length
     ? (owedToMe > 0 || iOwe > 0
       ? [owedToMe > 0 ? `待收 ${formatFenCny(owedToMe)}` : '', iOwe > 0 ? `待还 ${formatFenCny(iOwe)}` : ''].filter(Boolean).join(' · ')
-      : `${contacts.length} 位对象 · 已结清`)
+      : `${contacts.length} 个账户 · 已结清`)
     : '借入借出与还款收款';
   const pendingBx = entries.filter((e) => e.type === 'expense' && e.reimburseStatus === 'pending');
   const bxNote = pendingBx.length
@@ -85,7 +85,7 @@ async function refresh(): Promise<void> {
     ${groupHtml('记账偏好', `
       ${rowHtml('sp-reimburse', 'ic-file', '报销管理', bxNote)}
       ${rowHtml('sp-budget', 'ic-coin', '预算中心', budgetNote)}
-      ${rowHtml('sp-loan', 'ic-loan-in', '借贷往来', loanNote)}
+      ${rowHtml('sp-loan', 'ic-loan-in', '应收应付', loanNote)}
       ${rowHtml('sp-recurring', 'ic-repeat', '周期账', '固定支出自动入账')}
       ${rowHtml('sp-categories', 'ic-set', '分类管理', '支出两级 · 收入单级')}
       ${rowHtml('sp-template-manage', 'ic-bolt', '速记模板', '分类加金额 · 一键记账')}

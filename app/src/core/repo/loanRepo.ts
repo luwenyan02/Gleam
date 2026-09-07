@@ -1,63 +1,50 @@
-/**
- * 拾光 · 借贷往来仓库（loanRepo）
- * 借贷对象（往来人）管理。对象余额（正 = TA 欠你）随借贷账单由 entryRepo 自动增减，
- * 本仓库不直接改 balance。写操作后 emit 'entries-changed'。
- */
-import { db, now, stamp } from '../db';
+/** 应收应付账户仓库：全部余额与流水来自 accounts/entries，不使用独立对象。 */
+import { db, stamp } from '../db';
 import { emit } from '../store';
-import type { Entry, LoanContact } from '../types';
+import type { Account, Entry } from '../types';
+import { deleteAccount, updateAccount } from './accountRepo';
 
-/** 全部借贷对象，按名称排序 */
-export async function listLoanContacts(): Promise<LoanContact[]> {
-  const rows = await db.loanContacts.toArray();
-  return rows.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+export async function listLoanAccounts(includeHidden = true): Promise<Account[]> {
+  const rows = await db.accounts.where('group').equals('receivable').toArray();
+  return rows.filter(account => includeHidden || !account.hidden).sort((a,b) => a.name.localeCompare(b.name,'zh-CN'));
 }
 
-/** 单个对象 */
-export async function getLoanContact(id: number): Promise<LoanContact | undefined> {
-  return db.loanContacts.get(id);
+export async function getLoanAccount(id: number): Promise<Account | undefined> {
+  const account = await db.accounts.get(id);
+  return account?.group === 'receivable' ? account : undefined;
 }
 
-/**
- * 按名称取对象，不存在则创建（挖财导入按收付款人自动建立/合并时使用）。
- * @returns 对象 id
- */
-export async function ensureLoanContact(name: string): Promise<number> {
+/** 同名普通账户不是往来账户；只在应收应付分组内去重。 */
+export async function ensureLoanAccount(name: string): Promise<number> {
   const trimmed = name.trim();
-  if (!trimmed) throw new Error('对象名不能为空');
-  const existing = await db.loanContacts.where('name').equals(trimmed).first();
-  if (existing) return existing.id!;
-  const id = await db.loanContacts.add(stamp({ name: trimmed, balance: 0 }) as LoanContact);
-  emit('entries-changed');
+  if (!trimmed) throw new Error('应收应付账户名不能为空');
+  const id = await db.transaction('rw', db.accounts, async () => {
+    const matches = await db.accounts.where('group').equals('receivable').filter(account => account.name === trimmed).toArray();
+    if (matches.length > 1) throw new Error('存在多个同名应收应付账户，请直接选择具体账户');
+    if (matches.length === 1) {
+      if (matches[0].hidden) throw new Error('同名应收应付账户已隐藏，请到账户页恢复显示');
+      return matches[0].id;
+    }
+    const sortOrder = ((await db.accounts.orderBy('sortOrder').last())?.sortOrder ?? 0) + 1;
+    return db.accounts.add(stamp({name:trimmed,group:'receivable',balance:0,hidden:false,countInNetWorth:true,sortOrder}) as Account);
+  });
+  emit('accounts-changed', {id});
   return id;
 }
 
-/** 对象改名 */
-export async function renameLoanContact(id: number, name: string): Promise<void> {
-  await db.loanContacts.update(id, { name: name.trim(), updatedAt: now() });
-  emit('entries-changed');
+export async function renameLoanAccount(id: number, name: string): Promise<void> {
+  if (!await getLoanAccount(id)) throw new Error('应收应付账户不存在');
+  if (!name.trim()) throw new Error('账户名不能为空');
+  await updateAccount(id, {name:name.trim()});
 }
 
-/**
- * 删除对象。存在未删除关联借贷账单时抛错（须先处理账单）。
- */
-export async function deleteLoanContact(id: number): Promise<void> {
-  const used = await db.entries
-    .where('loanContactId')
-    .equals(id)
-    .filter((e) => e.deletedAt === 0)
-    .count();
-  if (used > 0) throw new Error(`该对象仍有 ${used} 笔借贷账单，请先处理`);
-  await db.loanContacts.delete(id);
-  emit('entries-changed');
+export async function deleteLoanAccount(id: number): Promise<void> {
+  if (!await getLoanAccount(id)) throw new Error('应收应付账户不存在');
+  await deleteAccount(id);
 }
 
-/** 对象往来流水（未删除借贷账单，occurredAt 倒序） */
-export async function listContactEntries(contactId: number): Promise<Entry[]> {
-  const rows = await db.entries
-    .where('loanContactId')
-    .equals(contactId)
-    .filter((e) => e.deletedAt === 0)
-    .toArray();
-  return rows.sort((a, b) => b.occurredAt - a.occurredAt);
+export async function listLoanAccountEntries(accountId: number): Promise<Entry[]> {
+  const rows = await db.entries.filter(entry => entry.deletedAt === 0
+    && [entry.accountId, entry.fromAccountId, entry.toAccountId, entry.reimburseAccountId].includes(accountId)).toArray();
+  return rows.sort((a,b)=>b.occurredAt-a.occurredAt);
 }

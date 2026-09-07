@@ -1,4 +1,5 @@
 import type { Entry } from './types';
+import { accountEffects } from './entryEffects';
 
 /** 展示层事件，不写入 IndexedDB；id 始终指向原账单。 */
 export interface LedgerItem extends Entry { kind: 'entry' | 'reimbursement' }
@@ -25,14 +26,9 @@ export interface AccountFlow { entry: LedgerItem; at: number; delta: number }
 /** 现金流始终包含到账事件，与报表计收入口径无关。 */
 export function accountFlows(entries: readonly Entry[], accountId: number): AccountFlow[] {
   return ledgerItems(entries,true).flatMap(entry=>{
-    let delta=0;
-    if(entry.type==='transfer') {
-      if(entry.fromAccountId===accountId) delta-=entry.amount;
-      if(entry.toAccountId===accountId) delta+=entry.amount;
-    } else if(entry.accountId===accountId) {
-      const incoming=entry.type==='income'||entry.refundFlag||entry.loanKind==='borrow'||entry.loanKind==='collect';
-      delta=incoming ? entry.amount : -entry.amount;
-    }
+    // 报销已展开为独立事件，原记录只计算本金，避免重复到账。
+    const base = entry.kind === 'entry' ? { ...entry, reimbursedAmount: undefined } : entry;
+    const delta = accountEffects(base).filter(effect => effect.accountId === accountId).reduce((sum, effect) => sum + effect.delta, 0);
     return delta ? [{entry,at:entry.occurredAt,delta}] : [];
   });
 }

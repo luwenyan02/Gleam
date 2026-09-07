@@ -10,11 +10,12 @@
  */
 import { db } from '../db';
 import { dayKey } from './entryRepo';
-import { getNetWorth } from './accountRepo';
+import { listNetWorthAccounts } from './accountRepo';
 import { getSetting } from './settingsRepo';
 import type { Entry } from '../types';
 import { filterLedgerEntries, summarizeLedgerEntries } from '../ledgerQuery';
 import { ledgerItems } from '../ledgerEvents';
+import { accountEffects } from '../entryEffects';
 
 /** 收支汇总结果（分） */
 export interface Summary {
@@ -169,17 +170,10 @@ export async function dailyAggregates(month: string): Promise<Map<string, { expe
 }
 
 /** 一条账单对「账户总余额」的净影响（分；转账双边抵消为 0，对账调整为单边） */
-function netDelta(e: Entry): number {
-  switch (e.type) {
-    case 'expense':
-      return e.refundFlag ? e.amount : -e.amount;
-    case 'income':
-      return e.amount;
-    case 'transfer':
-      return (e.toAccountId != null ? e.amount : 0) + (e.fromAccountId != null ? -e.amount : 0);
-    case 'loan':
-      return e.loanKind === 'borrow' || e.loanKind === 'collect' ? e.amount : -e.amount;
-  }
+function netDelta(e: Entry, includedAccounts: ReadonlySet<number>): number {
+  // 报销以到账日期单独加入事件，此处只计算原账单本金。
+  return accountEffects({ ...e, reimbursedAmount: undefined })
+    .filter(effect => includedAccounts.has(effect.accountId)).reduce((sum, effect) => sum + effect.delta, 0);
 }
 
 /**
@@ -188,7 +182,9 @@ function netDelta(e: Entry): number {
  * @returns 时间升序 [{ month: 'YYYY-MM', net }]
  */
 export async function netWorthTrend(months = 6): Promise<{ month: string; net: number }[]> {
-  const { net: currentNet } = await getNetWorth();
+  const accounts = await listNetWorthAccounts();
+  const includedAccounts = new Set(accounts.map(account => account.id));
+  const currentNet = accounts.reduce((sum, account) => sum + account.balance, 0);
   const nowD = new Date();
   // 各月末边界（最早月在前）；最后一项为当前时点
   const bounds: { month: string; end: number }[] = [];
@@ -206,13 +202,17 @@ export async function netWorthTrend(months = 6): Promise<{ month: string; net: n
   // 最早边界之后的所有账单（含报销到账事件），按时间构造净影响事件
   const rows = await entriesIn(earliest, Infinity);
   const events: { at: number; delta: number }[] = [];
-  for (const e of rows) events.push({ at: e.occurredAt, delta: netDelta(e) });
+  for (const e of rows) events.push({ at: e.occurredAt, delta: netDelta(e, includedAccounts) });
   const reimbursed = await db.entries
     .where('reimburseStatus')
     .equals('done')
     .filter((e) => e.deletedAt === 0 && e.reimbursedAt != null && e.reimbursedAt >= earliest)
     .toArray();
-  for (const e of reimbursed) events.push({ at: e.reimbursedAt!, delta: e.reimbursedAmount ?? 0 });
+  for (const e of reimbursed) {
+    if (e.reimburseAccountId != null && includedAccounts.has(e.reimburseAccountId)) {
+      events.push({ at: e.reimbursedAt!, delta: e.reimbursedAmount ?? 0 });
+    }
+  }
 
   // 从当前净资产往回减：某月末净资产 = 当前 − (月末之后所有事件的净影响)
   return bounds.map(({ month, end }) => {

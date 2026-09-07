@@ -58,7 +58,7 @@ export interface RepeatDraftInput {
   accountId?: number;
   fromId?: number;
   toId?: number;
-  contactId?: number;
+  loanAccountId?: number;
   loanKind?: 'borrow' | 'lend' | 'repay' | 'collect';
   tagId?: number;
   merchantId?: number;
@@ -84,7 +84,7 @@ export function createRepeatDraft(input: RepeatDraftInput): RepeatDraft {
     accountId: input.accountId,
     fromId: input.fromId,
     toId: input.toId,
-    contactId: input.contactId,
+    loanAccountId: input.loanAccountId,
     loanKind: input.loanKind,
     tagId: input.tagId,
     merchantId: input.merchantId,

@@ -294,7 +294,7 @@ async function doSearch(kw: string): Promise<void> {
         ${e.kind === 'reimbursement' ? '' : entrySwipeActionsHtml(e)}
         <button class="row entry-swipe-content">
           <div class="e-main"><p class="e-title">${esc(entryTitle(e, catNames))}${states}</p>
-            <p class="e-meta">${esc(e.note ? e.note.slice(0, 30) : accountNames.get(e.accountId ?? e.fromAccountId ?? -1) ?? '无备注')}</p>
+            <p class="e-meta">${esc(e.type === 'loan' || e.type === 'transfer' ? `${accountNames.get(e.fromAccountId ?? -1) ?? '账户'} → ${accountNames.get(e.toAccountId ?? -1) ?? '账户'}${e.note ? ` · ${e.note.slice(0, 30)}` : ''}` : e.note ? e.note.slice(0, 30) : accountNames.get(e.accountId ?? -1) ?? '无备注')}</p>
             ${e.kind === 'reimbursement' ? '<p class="e-meta">点击查看原支出</p>' : e.type === 'expense' && e.reimburseStatus === 'done' ? `<p class="sr-net">原额 ${formatFen(e.amount)} · 已报销 ${formatFen(e.reimbursedAmount ?? 0)}${!countReimburseAsIncome ? ` · 净支出 ${formatFen((e.refundFlag ? -e.amount : e.amount) - (e.reimbursedAmount ?? 0))}` : ''}</p>` : ''}</div>
           ${amountHtml(e)}
         </button>

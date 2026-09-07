@@ -1,3 +1,4 @@
+import { loanAccountId } from '../../core/loanLedger';
 /**
  * 拾光 · 账单明细子页（PRD 4.3）：全量账单列表（分块渲染 + 滚动加载）、
  * 分类 / 账户两组 chip 筛选可叠加、顶部实时汇总；批量改分类 / 改账户 / 删除。
@@ -10,7 +11,7 @@ import { formatFen, formatFenCny } from '../../core/money';
 import { on } from '../../core/store';
 import {
   LOAN_KIND_META,
-  type Account, type Category, type Entry, type LoanContact,
+  type Account, type Category, type Entry,
 } from '../../core/types';
 import {
   listEntries, updateEntry, softDeleteEntry,
@@ -18,7 +19,7 @@ import {
 } from '../../core/repo/entryRepo';
 import { listCategories, listExpenseTree } from '../../core/repo/categoryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
-import { listLoanContacts } from '../../core/repo/loanRepo';
+import { listLoanAccounts } from '../../core/repo/loanRepo';
 import { registerSubpage } from '../shell/router';
 import { showToast } from '../shell/toast';
 import { confirmDialog } from '../shell/dialog';
@@ -56,7 +57,7 @@ export function initDetail(): void {
 
 async function renderDetail(body: HTMLElement): Promise<void> {
   const [tree, incomeCats, accounts, contacts] = await Promise.all([
-    listExpenseTree(), listCategories('income'), listAccounts(true), listLoanContacts(),
+    listExpenseTree(), listCategories('income'), listAccounts(true), listLoanAccounts(),
   ]);
   const catMap = new Map<number, Category>();
   for (const g of tree) {
@@ -65,7 +66,7 @@ async function renderDetail(body: HTMLElement): Promise<void> {
   }
   for (const cat of incomeCats) catMap.set(cat.id, cat);
   const acctMap = new Map<number, Account>(accounts.map((a) => [a.id, a]));
-  const contactMap = new Map<number, LoanContact>(contacts.map((p) => [p.id, p]));
+  const contactMap = new Map<number, Account>(contacts.map((p) => [p.id, p]));
 
   // 筛选状态：catSel = 支出大类 id | 'income' | null（全部）；acctSel = 账户 id | null
   let catSel: number | 'income' | null = null;
@@ -177,8 +178,10 @@ async function renderDetail(body: HTMLElement): Promise<void> {
     }
     if (entry.type === 'loan') {
       const kind = LOAN_KIND_META[entry.loanKind ?? 'borrow'];
-      const who = contactMap.get(entry.loanContactId ?? -1)?.name ?? '往来对象';
-      const acct = acctMap.get(entry.accountId ?? -1)?.name ?? '账户';
+      const who = contactMap.get(loanAccountId(entry) ?? -1)?.name ?? '未选择应收应付账户';
+      const from = acctMap.get(entry.fromAccountId ?? -1)?.name ?? '账户';
+      const to = acctMap.get(entry.toAccountId ?? -1)?.name ?? '账户';
+      const acct = `${from} → ${to}`;
       return { title: `${kind.name} · ${esc(who)}${note}`, meta: `${day} · 借贷 · ${esc(acct)}` };
     }
     const cat = catMap.get(entry.categoryId ?? -1);

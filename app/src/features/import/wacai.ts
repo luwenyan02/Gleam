@@ -6,7 +6,7 @@
  * - 类型列分派四分支（支出/收入/转账/借贷）；
  * - 类别「大类/小类」斜杠拆分；借贷行类别即借入/借出/还款/收款；
  * - 外币按内置参考汇率折算人民币，备注追加原币种金额说明；
- * - 收付款人（借贷）「张三:+100.00」解析往来对象；全角冒号/逗号一律兼容；
+ * - 借贷支持「资金账户单值 + 收付款人双边」或「收付账户双边」，解析为资金/应收应付两个账户；
  * - 收付账户（转账）「现金:-1.00, 微信钱包:+1.00」正负拆转出/转入并与金额互校；
  * - 参与人多人分摊只按「自己」份额入账，完整明细追加备注；
  * - 标签逗号拆分；属性「已报销」→ 报销状态；属性「退款」按普通支出入账并在备注保留标注；
@@ -43,10 +43,10 @@ export interface WacaiRow {
   /** 类别键：支出「大类/小类」或单级名；收入为名称；转账/借贷为空 */
   categoryKey?: string;
   loanKind?: LoanKind;
-  /** 借贷往来对象名（缺失时兜底「未指明对象」） */
-  contactName?: string;
-  /** 支出/收入/借贷的账户名 */
+  /** 支出/收入的账户名，或借贷的资金侧账户名 */
   accountName?: string;
+  /** 借贷的应收/应付侧账户名 */
+  loanAccountName?: string;
   /** 转账转出/转入账户名 */
   fromAccountName?: string;
   toAccountName?: string;
@@ -106,12 +106,72 @@ function cellToFen(v: unknown): number {
   return parseYuanToFen(n.toFixed(2));
 }
 
-/** 「名字:±金额」清单解析（兼容全角冒号/逗号），如「自己:-100.00，张三:+100.00」 */
+/** 含分隔符或引号的名称按 JSON 字符串编码；普通名称保留旧格式的可读性。 */
+export function formatWacaiPair(name: string, signedAmount: string): string {
+  const encoded = /[,，:："\\\u0000-\u001f]/.test(name) || name.trim() !== name ? JSON.stringify(name) : name;
+  return `${encoded}:${signedAmount}`;
+}
+
+/** 按引号外的逗号分段，保留 JSON 字符串内的逗号与转义引号。 */
+function splitPairSegments(text: string): string[] {
+  const segments: string[] = [];
+  let start = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') quoted = false;
+    } else if (char === '"') {
+      quoted = true;
+    } else if (char === ',' || char === '，') {
+      segments.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  segments.push(text.slice(start));
+  return segments.map((segment) => segment.trim()).filter(Boolean);
+}
+
+/** 返回最后一个引号外冒号，兼容未引用且名称自带中文冒号的旧数据。 */
+function lastPairSeparator(segment: string): number {
+  let separator = -1;
+  let quoted = false;
+  let escaped = false;
+  for (let i = 0; i < segment.length; i++) {
+    const char = segment[i];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') quoted = false;
+    } else if (char === '"') {
+      quoted = true;
+    } else if (char === ':' || char === '：') {
+      separator = i;
+    }
+  }
+  return separator;
+}
+
+function decodePairName(raw: string): string | undefined {
+  const text = raw.trim();
+  if (!text.startsWith('"')) return text;
+  try {
+    const decoded: unknown = JSON.parse(text);
+    return typeof decoded === 'string' ? decoded : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** 「名字:±金额」清单解析，支持 JSON 引用名称与旧未引用格式。 */
 function parsePairs(text: string): { name: string; signedFen: number }[] {
-  return text.split(/[,，]/).map((seg) => seg.trim()).filter(Boolean).map((seg) => {
-    const idx = seg.search(/[:：]/);
-    if (idx < 0) return { name: seg, signedFen: NaN };
-    const name = seg.slice(0, idx).trim();
+  return splitPairSegments(text).map((seg) => {
+    const idx = lastPairSeparator(seg);
+    if (idx < 0) return { name: decodePairName(seg) ?? '', signedFen: NaN };
+    const name = decodePairName(seg.slice(0, idx)) ?? '';
     const amtText = seg.slice(idx + 1).trim();
     const sign = amtText.startsWith('-') ? -1 : 1;
     const numText = amtText.replace(/^[+-]/, '');
@@ -121,9 +181,34 @@ function parsePairs(text: string): { name: string; signedFen: number }[] {
   });
 }
 
+/** 只有两段以上且每段都能解出金额时，才视为收付账户多腿表示。 */
+function isMultiLegAccount(text: string): boolean {
+  const segments = splitPairSegments(text);
+  if (segments.length < 2) return false;
+  const pairs = parsePairs(text);
+  return pairs.length === segments.length && pairs.every((pair) => Number.isFinite(pair.signedFen));
+}
+
 function cellText(v: unknown): string {
   if (v == null) return '';
   return String(v).trim();
+}
+
+function parseBalancedSides(text: string, amountFen: number, fieldName: string): { negative: string; positive: string } {
+  const pairs = parsePairs(text);
+  if (pairs.length !== 2 || pairs.some((p) => !p.name || !Number.isFinite(p.signedFen))) {
+    throw new Error(`借贷${fieldName}须明确包含一个转出方和一个转入方：${text || '空'}`);
+  }
+  const negative = pairs.filter((p) => p.signedFen < 0);
+  const positive = pairs.filter((p) => p.signedFen > 0);
+  if (negative.length !== 1 || positive.length !== 1) {
+    throw new Error(`借贷${fieldName}方向无法解析：${text}`);
+  }
+  if (negative[0].name === positive[0].name) throw new Error(`借贷${fieldName}两侧账户不能相同`);
+  if (Math.abs(negative[0].signedFen) !== amountFen || positive[0].signedFen !== amountFen) {
+    throw new Error(`借贷${fieldName}双腿金额必须与金额列一致`);
+  }
+  return { negative: negative[0].name, positive: positive[0].name };
 }
 
 /* ── 主解析 ── */
@@ -176,6 +261,7 @@ export async function parseWacaiFile(file: File): Promise<WacaiParseResult> {
 
       // 金额 + 币种：外币按参考汇率折算，备注保留原币种金额
       let amountFen = cellToFen(cAmt);
+      const originalAmountFen = amountFen;
       const currency = cellText(cCur);
       if (currency && currency !== '人民币' && currency !== 'CNY') {
         const rate = FX_RATES[currency];
@@ -218,16 +304,34 @@ export async function parseWacaiFile(file: File): Promise<WacaiParseResult> {
         if (catText && catText !== '转账') noteParts.push(`类别：${catText}`);
         if (payeeText) noteParts.push(`收付款人：${payeeText}`);
       } else if (type === 'loan') {
-        // 借贷：类别列即借入/借出/还款/收款；收付款人解析往来对象
+        // 借贷：类别列即借入/借出/还款/收款，并严格解析资金侧与应收应付侧。
         const kind = LOAN_KIND_BY_NAME[catText];
         if (!kind) throw new Error(`借贷类别无法识别：${catText || '空'}`);
         row.loanKind = kind;
         if (!acctText) throw new Error('借贷行缺少收付账户');
-        row.accountName = acctText;
-        accountNames.add(acctText);
-        const other = parsePairs(payeeText).find((p) => p.name && p.name !== '自己');
-        row.contactName = other?.name ?? '未指明对象';
-        if (!other && payeeText) noteParts.push(`收付款人：${payeeText}`);
+        const fundIsNegative = kind === 'lend' || kind === 'repay';
+        let fundName: string;
+        let loanName: string;
+        if (isMultiLegAccount(acctText)) {
+          const sides = parseBalancedSides(acctText, originalAmountFen, '收付账户');
+          fundName = fundIsNegative ? sides.negative : sides.positive;
+          loanName = fundIsNegative ? sides.positive : sides.negative;
+          if (payeeText) noteParts.push(`收付款人：${payeeText}`);
+        } else {
+          const sides = parseBalancedSides(payeeText, originalAmountFen, '收付款人');
+          const expectedSelf = fundIsNegative ? sides.negative : sides.positive;
+          if (expectedSelf !== '自己') throw new Error(`借贷类别「${catText}」与收付款人方向不符`);
+          const other = fundIsNegative ? sides.positive : sides.negative;
+          if (other === '自己') throw new Error('借贷收付款人缺少明确对方');
+          fundName = acctText;
+          loanName = other;
+        }
+        row.accountName = fundName;
+        row.loanAccountName = loanName;
+        row.fromAccountName = fundIsNegative ? fundName : loanName;
+        row.toAccountName = fundIsNegative ? loanName : fundName;
+        accountNames.add(fundName);
+        accountNames.add(loanName);
       } else {
         // 支出 / 收入
         if (!acctText) throw new Error(`${typeName}行缺少收付账户`);

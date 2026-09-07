@@ -59,7 +59,7 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
         : cat?.icon ?? 'ic-coin';
     const inflow = entry.type === 'income' || entry.refundFlag
       || entry.loanKind === 'borrow' || entry.loanKind === 'collect';
-    const accountText = entry.type === 'transfer'
+    const accountText = entry.type === 'transfer' || entry.type === 'loan'
       ? `${accountMap.get(entry.fromAccountId ?? -1)?.name ?? '账户'} → ${accountMap.get(entry.toAccountId ?? -1)?.name ?? '账户'}`
       : account?.name ?? '未选择账户';
     const categoryText = entry.type === 'loan'

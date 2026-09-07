@@ -12,18 +12,18 @@ import { parseYuanToFen, formatFen } from '../../core/money';
 import {
   LOAN_KINDS, LOAN_KIND_META,
   type Account, type Category, type Entry, type EntryType, type LoanKind,
-  type LoanContact, type Merchant, type QuickTemplate, type Tag,
+  type Merchant, type QuickTemplate, type Tag,
 } from '../../core/types';
 import {
   getEntry, getEntryTagIds, dayKey, getNoteFrequencies, listEntries,
   type NewEntry, type NoteFrequency,
 } from '../../core/repo/entryRepo';
 import { listExpenseTree, listCategories } from '../../core/repo/categoryRepo';
-import { listAccounts } from '../../core/repo/accountRepo';
+import { getAccount, listAccounts } from '../../core/repo/accountRepo';
 import { listTemplates } from '../../core/repo/templateRepo';
 import { listTags, ensureTag } from '../../core/repo/tagRepo';
 import { listMerchants, ensureMerchant } from '../../core/repo/merchantRepo';
-import { listLoanContacts, getLoanContact, ensureLoanContact } from '../../core/repo/loanRepo';
+import { listLoanAccounts, getLoanAccount, ensureLoanAccount } from '../../core/repo/loanRepo';
 import { addLifeNote } from '../../core/repo/lifeRepo';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
 import { openSheet, closeSheet } from '../shell/sheet';
@@ -43,6 +43,7 @@ import {
   renderCategoryButton, renderCategoryToggle, selectQuickCategories,
 } from './entryCategoryPicker';
 import { persistEntry } from './entrySaveService';
+import { loanDirection, loanAccountId as relatedLoanAccountId, loanFundAccountId } from '../../core/loanLedger';
 import './entry.css';
 
 /**
@@ -87,7 +88,7 @@ interface SheetCtx {
   accountId?: number;
   fromId?: number;
   toId?: number;
-  contactId?: number;
+  loanAccountId?: number;
   /** 记账日期（毫秒时间戳） */
   date: number;
   bx: boolean;
@@ -112,7 +113,7 @@ interface SheetCtx {
   templates: QuickTemplate[];
   tags: Tag[];
   merchants: Merchant[];
-  contacts: LoanContact[];
+  loanAccounts: Account[];
   lastUsed: {
     expenseCategoryId: number | null;
     incomeCategoryId: number | null;
@@ -150,12 +151,21 @@ export function initEntry(): void {
  */
 export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<void> {
   const openedAt = Date.now();
-  const [tree, incomeCats, accounts, templates, tags, merchants, contacts, lastUsed, freqs, recentEntries] = await Promise.all([
+  const [tree, incomeCats, accounts, templates, tags, merchants, loanAccounts, lastUsed, freqs, recentEntries] = await Promise.all([
     listExpenseTree(), listCategories('income'), listAccounts(false),
-    listTemplates(), listTags(), listMerchants(), listLoanContacts(), getSetting('entry.lastUsed'),
+    listTemplates(), listTags(), listMerchants(), listLoanAccounts(false), getSetting('entry.lastUsed'),
     getNoteFrequencies(),
     listEntries({ from: openedAt - 90 * 24 * 60 * 60 * 1000, to: openedAt + 1 }),
   ]);
+  // 隐藏账户不进入默认列表，但显式入口与历史账单的已选账户必须可见还原。
+  async function includeSelectedAccount(id: number | undefined): Promise<void> {
+    if (id == null || accounts.some(account => account.id === id)) return;
+    const account = await getAccount(id);
+    if (!account) return;
+    accounts.push(account);
+    if (account.group === 'receivable') loanAccounts.push(account);
+  }
+  await includeSelectedAccount(options.presetAccountId);
   noteFreqs = freqs;
 
   const expenseCats = tree.flatMap((group) => group.children.length ? group.children : [group.parent]);
@@ -167,7 +177,8 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     : lastUsed.accountId != null && accountIds.has(lastUsed.accountId)
       ? lastUsed.accountId
       : accounts[0]?.id;
-  const initialType = resolveInitialEntryType(options.presetType, lastUsed.type);
+  const presetLoan = accounts.find(account => account.id === options.presetAccountId)?.group === 'receivable';
+  const initialType = presetLoan ? 'loan' : resolveInitialEntryType(options.presetType, lastUsed.type);
   const c: SheetCtx = {
     type: initialType,
     amt: '', prev: null, op: null,
@@ -177,13 +188,14 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
         ? lastUsed.expenseCategoryId
         : firstExpense?.id,
     loanKind: 'borrow',
-    accountId: preferredAccountId,
+    accountId: initialType === 'loan' && accounts.find(account => account.id === preferredAccountId)?.group === 'receivable'
+      ? accounts.find(account => account.group !== 'receivable')?.id : preferredAccountId,
     fromId: preferredAccountId,
     toId: accounts.find((account) => account.id !== preferredAccountId)?.id ?? preferredAccountId,
-    contactId: contacts[0]?.id,
+    loanAccountId: presetLoan ? options.presetAccountId : loanAccounts[0]?.id,
     date: options.presetDate ?? Date.now(),
     bx: false, tk: false,
-    expenseTree: tree, incomeCats, accounts, templates, tags, merchants, contacts, lastUsed,
+    expenseTree: tree, incomeCats, accounts, templates, tags, merchants, loanAccounts, lastUsed,
     quickExpenseCats: rankFrequentCategories(
       expenseCats,
       recentEntries.filter((entry) => entry.type === 'expense'),
@@ -204,14 +216,15 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
   if (sourceId != null) {
     sourceEntry = await getEntry(sourceId);
     if (!sourceEntry) { showToast('账单不存在或已删除'); return; }
+    await Promise.all([...new Set([sourceEntry.accountId, sourceEntry.fromAccountId, sourceEntry.toAccountId])].map(includeSelectedAccount));
     const tagIds = await getEntryTagIds(sourceEntry.id);
     c.type = sourceEntry.type;
     c.categoryId = sourceEntry.categoryId ?? c.categoryId;
-    c.accountId = sourceEntry.accountId ?? c.accountId;
+    c.accountId = (sourceEntry.type === 'loan' ? loanFundAccountId(sourceEntry) ?? sourceEntry.accountId : sourceEntry.accountId) ?? c.accountId;
     c.fromId = sourceEntry.fromAccountId ?? c.fromId;
     c.toId = sourceEntry.toAccountId ?? c.toId;
     c.loanKind = sourceEntry.loanKind ?? 'borrow';
-    c.contactId = sourceEntry.loanContactId ?? c.contactId;
+    c.loanAccountId = sourceEntry.type === 'loan' ? relatedLoanAccountId(sourceEntry) : c.loanAccountId;
     c.date = sourceEntry.occurredAt;
     c.tagId = tagIds[0];
     c.merchantId = sourceEntry.merchantId;
@@ -373,6 +386,7 @@ function renderCats(): void {
 
   const grid = q('#cat-grid');
   if (isLoan) {
+    if (c.accounts.find(account => account.id === c.accountId)?.group === 'receivable') c.accountId = c.accounts.find(account => account.group !== 'receivable')?.id;
     grid.innerHTML = LOAN_KINDS.map((k) => {
       const meta = LOAN_KIND_META[k];
       const sel = k === c.loanKind;
@@ -382,7 +396,7 @@ function renderCats(): void {
     q('#loan-acct-lbl').textContent = c.loanKind === 'borrow' || c.loanKind === 'collect' ? '转入账户' : '转出账户';
     orderLoanFlow(q('#loan-flow'), c.loanKind === 'lend' || c.loanKind === 'repay');
     q('#loan-acct b').textContent = accountName(c.accountId);
-    q('#loan-who b').textContent = c.contacts.find((p) => p.id === c.contactId)?.name ?? '选择对象';
+    q('#loan-who b').textContent = c.loanAccounts.find((p) => p.id === c.loanAccountId)?.name ?? '选择应收应付账户';
     void updateLoanHint();
   } else if (c.type === 'expense') {
     if (c.showAllCategories) {
@@ -415,14 +429,14 @@ async function updateLoanHint(): Promise<void> {
   if (!c || !sheetEl) return;
   const hint = sheetEl.querySelector('#loan-hint');
   if (!hint) return;
-  if (c.contactId == null) { hint.textContent = '请选择往来对象'; return; }
-  const contact = await getLoanContact(c.contactId);
+  if (c.loanAccountId == null) { hint.textContent = '请选择应收应付账户'; return; }
+  const contact = await getLoanAccount(c.loanAccountId);
   const bal = contact?.balance ?? 0;
   hint.textContent = bal > 0
-    ? `与 TA 的往来：TA 欠你 ¥${formatFen(bal)}`
+    ? `应收余额：对方欠我 ¥${formatFen(bal)}`
     : bal < 0
-      ? `与 TA 的往来：你欠 TA ¥${formatFen(-bal)}`
-      : '与 TA 的往来：暂无未结清款项';
+      ? `应付余额：我欠对方 ¥${formatFen(-bal)}`
+      : '应收应付账户已结清';
 }
 
 /** 日期/账户/标记/标签/商家 chip 文案同步 */
@@ -693,7 +707,7 @@ function bindEvents(el: HTMLElement): void {
     [ctx.fromId, ctx.toId] = [ctx.toId, ctx.fromId];
     renderCats();
   });
-  el.querySelector('#loan-who')!.addEventListener('click', () => void pickContact());
+  el.querySelector('#loan-who')!.addEventListener('click', () => void pickLoanAccount());
   el.querySelector('#chip-tag')!.addEventListener('click', () => void pickTag());
   el.querySelector('#chip-shop')!.addEventListener('click', () => void pickMerchant());
   el.querySelector('[data-act="toggle-advanced"]')!.addEventListener('click', () => {
@@ -862,8 +876,9 @@ async function pickAccount(field: 'accountId' | 'fromId' | 'toId', title: string
   const c = ctx;
   if (!c) return;
   if (!c.accounts.length) { showToast('请先到「账户」页添加账户'); return; }
-  const id = await pickList(title, c.accounts.map((a) => ({
-    id: a.id, label: a.name, icon: 'ic-wallet', note: formatFen(a.balance),
+  const choices = c.type === 'loan' ? c.accounts.filter(account => account.group !== 'receivable') : c.accounts;
+  const id = await pickList(title, choices.map((a) => ({
+    id: a.id, label: a.name, icon: 'ic-wallet', note: `${a.hidden ? '已隐藏 · ' : ''}${formatFen(a.balance)}`,
   })), { activeId: c[field] });
   if (id == null) return;
   if (field === 'fromId' && id === c.toId) { showToast('转出与转入账户不能相同'); return; }
@@ -873,23 +888,24 @@ async function pickAccount(field: 'accountId' | 'fromId' | 'toId', title: string
   refreshMeta();
 }
 
-async function pickContact(): Promise<void> {
+async function pickLoanAccount(): Promise<void> {
   const c = ctx;
   if (!c) return;
-  const id = await pickList('选择往来对象', c.contacts.map((p) => ({
+  const id = await pickList('选择应收应付账户', c.loanAccounts.map((p) => ({
     id: p.id, label: p.name, icon: 'ic-user',
-    note: p.balance > 0 ? `TA 欠你 ${formatFen(p.balance)}` : p.balance < 0 ? `你欠 TA ${formatFen(-p.balance)}` : '已结清',
+    note: `${p.hidden ? '已隐藏 · ' : ''}${p.balance > 0 ? `TA 欠你 ${formatFen(p.balance)}` : p.balance < 0 ? `你欠 TA ${formatFen(-p.balance)}` : '已结清'}`,
   })), {
-    activeId: c.contactId,
-    createPlaceholder: '新对象名称，如「室友小林」',
+    activeId: c.loanAccountId,
+    createPlaceholder: '新应收应付账户名称，如「室友小林」',
     onCreate: async (name) => {
-      const nid = await ensureLoanContact(name);
-      c.contacts = await listLoanContacts();
+      const nid = await ensureLoanAccount(name);
+      c.accounts = (await listAccounts(true)).filter(account => !account.hidden || [c.accountId, c.loanAccountId, c.fromId, c.toId].includes(account.id));
+      c.loanAccounts = c.accounts.filter(account => account.group === 'receivable');
       return nid;
     },
   });
   if (id == null) return;
-  c.contactId = id;
+  c.loanAccountId = id;
   renderCats();
 }
 
@@ -1012,12 +1028,11 @@ async function doSave(stay: boolean): Promise<void> {
     base.toAccountId = c.toId;
     toastMsg = `转账已记录：${accountName(c.fromId)} → ${accountName(c.toId)} ¥${formatFen(fen)}`;
   } else if (c.type === 'loan') {
-    if (c.contactId == null) { showToast('请选择往来对象'); return; }
+    if (c.loanAccountId == null) { showToast('请选择应收应付账户'); return; }
     if (c.accountId == null) { showToast('请选择资金账户'); return; }
     base.loanKind = c.loanKind;
-    base.loanContactId = c.contactId;
-    base.accountId = c.accountId;
-    const who = c.contacts.find((p) => p.id === c.contactId)?.name ?? '';
+    Object.assign(base, loanDirection(c.loanKind, c.accountId, c.loanAccountId));
+    const who = c.loanAccounts.find((p) => p.id === c.loanAccountId)?.name ?? '';
     toastMsg = `已记借贷：${LOAN_KIND_META[c.loanKind].name} ${who} ¥${formatFen(fen)}`;
   } else {
     if (c.categoryId == null) { showToast('请选择分类'); return; }
@@ -1093,7 +1108,7 @@ async function doSave(stay: boolean): Promise<void> {
     accountId: c.accountId,
     fromId: c.fromId,
     toId: c.toId,
-    contactId: c.contactId,
+    loanAccountId: c.loanAccountId,
     loanKind: c.loanKind,
     tagId: c.tagId,
     merchantId: c.merchantId,
