@@ -215,29 +215,38 @@ async function loadData(): Promise<ReportData> {
 function renderTrend(d: ReportData['trend']): void {
   const box = root!.querySelector<HTMLElement>('#trend')!;
   const cap = root!.querySelector<HTMLElement>('#trend-cap')!;
-  if (!d.expense.some((v) => v > 0) && !d.incomes.some((v) => v > 0)) {
+  const values = [...d.expense, ...d.incomes];
+  if (!values.some((value) => value !== 0)) {
     box.innerHTML = '<div class="chart-empty">该周期暂无收支记录</div>';
     cap.textContent = '';
     return;
   }
-  const W = 336, H = 168, base = 134, maxH = 100;
-  const max = Math.max(...d.expense, ...d.incomes);
+  const W = 336, H = 168, plotTop = 34, plotBottom = 134, plotHeight = plotBottom - plotTop;
+  const positiveMax = Math.max(0, ...values);
+  const negativeMax = Math.max(0, ...values.map((value) => -value));
+  const span = positiveMax + negativeMax;
+  const zeroY = plotTop + (positiveMax / span) * plotHeight;
+  const barBox = (value: number): { y: number; height: number } => {
+    if (value === 0) return { y: zeroY, height: 0 };
+    const height = Math.max(3, (Math.abs(value) / span) * plotHeight);
+    return { y: value > 0 ? zeroY - height : zeroY, height };
+  };
   const n = d.labels.length, slot = W / n;
   const dw = Math.min(12, slot / 2 - 2);   // 双柱单根宽
   let s = '';
-  for (const k of [0, 0.5, 1]) {
-    s += `<line x1="0" y1="${base - maxH * k}" x2="${W}" y2="${base - maxH * k}" stroke="var(--border)" stroke-width="1"${k ? ' stroke-dasharray="3 4"' : ''}/>`;
+  for (const y of [...new Set([plotTop, zeroY, plotBottom])]) {
+    s += `<line x1="0" y1="${y.toFixed(1)}" x2="${W}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-width="1"${y === zeroY ? '' : ' stroke-dasharray="3 4"'}/>`;
   }
   d.labels.forEach((lb, i) => {
     const cx = slot * i + slot / 2;
-    const eh = d.expense[i] === 0 ? 0 : Math.max(3, (d.expense[i] / max) * maxH);
-    const ih = d.incomes[i] === 0 ? 0 : Math.max(3, (d.incomes[i] / max) * maxH);
+    const expense = barBox(d.expense[i]);
+    const income = barBox(d.incomes[i]);
     const range = d.ranges[i];
     s += `<g class="trend-hit" role="button" tabindex="0" data-drill-from="${range.from}" data-drill-to="${range.to}" aria-label="${esc(lb)}，支出 ${formatFenCny(d.expense[i])}，收入 ${formatFenCny(d.incomes[i])}，查看明细">`;
-    s += `<rect x="${(cx - dw - 1).toFixed(1)}" y="${(base - eh).toFixed(1)}" width="${dw.toFixed(1)}" height="${eh.toFixed(1)}" rx="3" fill="var(--c1)"/>`;
-    s += `<rect x="${(cx + 1).toFixed(1)}" y="${(base - ih).toFixed(1)}" width="${dw.toFixed(1)}" height="${ih.toFixed(1)}" rx="3" fill="var(--c4)"/>`;
-    s += `<rect x="${Math.max(0, cx - slot / 2).toFixed(1)}" y="22" width="${slot.toFixed(1)}" height="${base - 20}" fill="transparent"/></g>`;
-    s += `<text x="${cx.toFixed(1)}" y="${base + 18}" text-anchor="middle" font-size="${n > 8 ? 8.5 : 10}" fill="var(--muted)">${lb}</text>`;
+    s += `<rect data-series="expense" data-value="${d.expense[i]}" data-zero-y="${zeroY.toFixed(1)}" x="${(cx - dw - 1).toFixed(1)}" y="${expense.y.toFixed(1)}" width="${dw.toFixed(1)}" height="${expense.height.toFixed(1)}" rx="3" fill="var(--c1)"/>`;
+    s += `<rect data-series="income" data-value="${d.incomes[i]}" data-zero-y="${zeroY.toFixed(1)}" x="${(cx + 1).toFixed(1)}" y="${income.y.toFixed(1)}" width="${dw.toFixed(1)}" height="${income.height.toFixed(1)}" rx="3" fill="var(--c4)"/>`;
+    s += `<rect x="${Math.max(0, cx - slot / 2).toFixed(1)}" y="22" width="${slot.toFixed(1)}" height="${plotBottom - 20}" fill="transparent"/></g>`;
+    s += `<text x="${cx.toFixed(1)}" y="${plotBottom + 18}" text-anchor="middle" font-size="${n > 8 ? 8.5 : 10}" fill="var(--muted)">${lb}</text>`;
   });
   const expenseTotal = d.expense.reduce((sum, amount) => sum + amount, 0);
   const incomeTotal = d.incomes.reduce((sum, amount) => sum + amount, 0);
@@ -378,7 +387,7 @@ async function refresh(): Promise<void> {
   const data = await loadData();
   if (token !== refreshToken || !root) return;
   root.querySelector<HTMLElement>('#r-label')!.textContent = data.label;
-  root.querySelector<HTMLElement>('#r-spend')!.textContent = `¥${formatFen(data.summary.expense)}`;
+  root.querySelector<HTMLElement>('#r-spend')!.textContent = formatFenCny(data.summary.expense);
   root.querySelector<HTMLElement>('#r-income')!.textContent = `¥${formatFen(data.summary.income)}`;
   root.querySelector<HTMLElement>('#r-balance')!.textContent = formatFenCny(data.summary.balance);
   root.querySelector('.r-sum')!.classList.toggle('is-wide',

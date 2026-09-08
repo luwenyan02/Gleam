@@ -18,8 +18,8 @@
   --primary:var(--seed-primary);
   --accent:var(--seed-accent);
   --surface:var(--seed-surface);
-  --muted:#535862;
-  --faint:#68707C;
+  --muted:#424852;
+  --faint:#535862;
   --border:#E6E9EE;
   --accent-soft:color-mix(in oklab, var(--seed-primary) 12%, var(--seed-surface));
   --gold-soft:color-mix(in oklab, var(--seed-accent) 14%, var(--seed-surface));
@@ -38,8 +38,13 @@
   --r-s:calc(var(--seed-radius) * 0.62);
   --r-l:calc(var(--seed-radius) * 1.4);
   --font-display:var(--font-body);
-  --font-body:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;
-  --font-mono:ui-monospace,'SF Mono','JetBrains Mono',Menlo,monospace;
+  --font-body:system-ui,-apple-system,BlinkMacSystemFont,'PingFang SC','Noto Sans CJK SC','Microsoft YaHei',sans-serif;
+  --font-numeric:var(--font-body);
+  /* 兼容既有数值样式，不再为金额和键盘加载代码风格字形。 */
+  --font-mono:var(--font-numeric);
+  --text-body:calc(15px * var(--seed-type));
+  --text-meta:calc(13px * var(--seed-type));
+  --text-small:calc(12px * var(--seed-type));
   --c1:var(--seed-primary);
   --c2:#F79332;
   --c3:#725BE8;
@@ -66,8 +71,8 @@
   --seed-primary:#FF926E;
   --seed-accent:#FFB35C;
   --seed-surface:#1E232C;
-  --muted:#C1C7D0;
-  --faint:#A1ABB9;
+  --muted:#CFD5DF;
+  --faint:#B4BDCB;
   --border:#353E4A;
   --expense:#FF967F;
   --income:#60D1BB;

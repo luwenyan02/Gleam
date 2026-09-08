@@ -11,7 +11,10 @@ import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
 import { on } from '../../core/store';
 import { formatFen, parseYuanToFen } from '../../core/money';
-import { dayKey, listEntries } from '../../core/repo/entryRepo';
+import { dayKey } from '../../core/repo/entryRepo';
+import { ledgerEntriesInRange } from '../../core/repo/statsRepo';
+import { getSetting } from '../../core/repo/settingsRepo';
+import { summarizeLedgerEntries } from '../../core/ledgerQuery';
 import {
   addAttachment, addHabit, addLifeNote, checkHabit, deleteHabit, getAttachment,
   habitStreak, isCheckedToday, listHabits, listLifeNotes, renameHabit,
@@ -169,8 +172,13 @@ async function refresh(): Promise<void> {
   const sumEl = el.querySelector<HTMLElement>('#lf-today-sum')!;
   if (isCurrent) {
     const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
-    const todays = await listEntries({ type: 'expense', from: dayStart.getTime() });
-    const total = todays.reduce((s, e) => s + (e.refundFlag ? -e.amount : e.amount), 0);
+    const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1);
+    const countAsIncome = await getSetting('reimburse.countAsIncome');
+    const todays = (await ledgerEntriesInRange(dayStart.getTime(), dayEnd.getTime(), countAsIncome))
+      .filter((entry) => entry.type === 'expense');
+    const total = summarizeLedgerEntries(todays, {
+      reimburseMode: countAsIncome ? 'income' : 'offset',
+    }).expense;
     sumEl.hidden = false;
     sumEl.textContent = todays.length ? `今天共花了 ¥${formatFen(total)} · ${todays.length} 笔` : '今天还没有支出 · 记一笔会显示在这里';
   } else {

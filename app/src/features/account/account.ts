@@ -17,7 +17,7 @@ import { netWorthTrend } from '../../core/repo/statsRepo';
 import { getEntry, listEntries } from '../../core/repo/entryRepo';
 import { listCategories } from '../../core/repo/categoryRepo';
 import { getSetting } from '../../core/repo/settingsRepo';
-import { accountFlows, accountMonthRows, type LedgerItem } from '../../core/ledgerEvents';
+import { accountFlows, accountMonthRows, accountStatement, type LedgerItem } from '../../core/ledgerEvents';
 import { accountEffects } from '../../core/entryEffects';
 import { registerPage, registerSubpage, openSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
@@ -28,8 +28,9 @@ import {
 } from '../detail/entrySwipe';
 import { showToast } from '../shell/toast';
 import { confirmDialog } from '../shell/dialog';
+import { entryRowText } from '../detail/entryRowText';
 import {
-  ACCOUNT_GROUPS, ACCOUNT_GROUP_NAMES, LOAN_KIND_META,
+  ACCOUNT_GROUPS, ACCOUNT_GROUP_NAMES,
   type Account, type AccountGroup, type Entry,
 } from '../../core/types';
 
@@ -204,40 +205,20 @@ function flowEntryHtml(
   acctId: number,
   catMap: Map<number, { name: string; icon: string }>,
   acctNames: Map<number, string>,
+  balanceAfter: number,
 ): string {
-  let title = '';
-  let icon = 'ic-coin';
-  let cls = '';
-  if (e.kind === 'reimbursement') {
-    title = '报销到账'; icon = 'ic-file'; cls = ' neutral';
-  } else if (e.type === 'transfer') {
-    title = e.note === '余额对账调整' ? '余额对账调整' : '转账';
-    icon = 'ic-swap';
-    cls = ' neutral';
-  } else if (e.type === 'loan') {
-    const meta = LOAN_KIND_META[e.loanKind!];
-    title = meta.name;
-    icon = meta.icon;
-    cls = ' neutral';
-  } else {
-    const cat = e.categoryId != null ? catMap.get(e.categoryId) : undefined;
-    title = e.refundFlag ? `${cat?.name ?? '支出'}退款` : cat?.name ?? (e.type === 'income' ? '收入' : '支出');
-    icon = cat?.icon ?? 'ic-coin';
-    if (e.type === 'income' || e.refundFlag) cls = ' neutral';
-  }
-  const d = new Date(e.occurredAt);
-  const time = `${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  const metaTail = e.type === 'transfer' || e.type === 'loan'
-    ? `${acctNames.get(e.fromAccountId ?? -1) ?? '—'} → ${acctNames.get(e.toAccountId ?? -1) ?? '—'}`
-    : acctNames.get(e.accountId ?? -1) ?? '';
-  const sub = e.note && e.note !== '余额对账调整' ? ` <span class="e-sub">· ${esc(e.note)}</span>` : '';
+  const text = entryRowText(e, catMap, acctNames);
+  const sub = text.note ? ` <span class="e-sub">· ${esc(text.note)}</span>` : '';
   const delta = flowDelta(e, acctId);
   return `<div class="entry-swipe" data-eid="${e.id}"${e.kind === 'reimbursement' ? ' data-reimbursement' : ''}>
     ${e.kind === 'reimbursement' ? '' : entrySwipeActionsHtml(e)}
     <article class="entry entry-swipe-content" role="button" tabindex="0">
-      <span class="e-ic${cls}">${iconHtml(icon, 18)}</span>
-      <div class="e-main"><p class="e-title">${esc(title)}${sub}</p><p class="e-meta">${time}${metaTail ? ` · ${esc(metaTail)}` : ''}</p></div>
-      <p class="e-amt num ${delta < 0 ? 'out' : 'in'}">${formatFen(delta, { sign: true })}</p>
+      <span class="e-ic${text.neutral ? ' neutral' : ''}">${iconHtml(text.icon, 18)}</span>
+      <div class="e-main"><p class="e-title">${esc(text.title)}${sub}</p><p class="e-meta">${esc(text.meta)}</p></div>
+      <div class="account-entry-amounts">
+        <p class="e-amt num ${delta < 0 ? 'out' : 'in'}">${formatFen(delta, { sign: true })}</p>
+        <p class="account-entry-balance num" aria-label="本笔后余额 ${formatFenCny(balanceAfter)}">余额 ${formatFen(balanceAfter)}</p>
+      </div>
     </article>
   </div>`;
 }
@@ -274,7 +255,8 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     if (token !== detailToken || !body.isConnected) return;
     if (!acct) { body.innerHTML = '<div class="placeholder"><p class="sub">账户不存在</p></div>'; return; }
     currentAccount = acct;
-    const flows = accountFlows(allEntries, targetAccountId);
+    const flows = accountStatement(accountFlows(allEntries, targetAccountId), acct.balance);
+    const balances = new Map(flows.map(flow => [flow.entry, flow.balanceAfter]));
     body.closest<HTMLElement>('.subpage')!.querySelector<HTMLElement>('.sub-head h2')!.textContent = acct.name;
     const catMap = new Map<number, { name: string; icon: string }>();
     for (const cat of [...expenseCats, ...incomeCats]) catMap.set(cat.id, { name: cat.name, icon: cat.icon });
@@ -312,7 +294,7 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
               <span class="chev">${iconHtml('ic-right', 15)}</span>
             </button>
             <div class="account-month-entries">
-              ${row.entries.length ? row.entries.map((entry) => flowEntryHtml(entry, targetAccountId, catMap, acctNames)).join('') : '<p class="acct-flow-empty">本月暂无流水</p>'}
+              ${row.entries.length ? row.entries.map((entry) => flowEntryHtml(entry, targetAccountId, catMap, acctNames, balances.get(entry)!)).join('') : '<p class="acct-flow-empty">本月暂无流水</p>'}
             </div>
           </section>`;
         }).join('')}

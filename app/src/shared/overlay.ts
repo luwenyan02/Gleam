@@ -1,4 +1,5 @@
 import { trapModalFocus } from './modalFocus';
+import { trackHistoryLayer } from './layerHistory';
 
 const overlays: { root: HTMLElement; cancel: () => void }[] = [];
 
@@ -18,6 +19,7 @@ export function manageOverlay(root: HTMLElement, cancel: () => void): () => void
   let releaseFocus: () => void = () => {};
   const states: {element:HTMLElement;inert:boolean;hidden:string|null}[] = [];
   overlays.push(item);
+  const releaseHistory = trackHistoryLayer(cancel);
   const frame = requestAnimationFrame(() => {
     if (released || !root.isConnected) return;
     root.setAttribute('role', root.getAttribute('role') ?? 'dialog');
@@ -40,6 +42,7 @@ export function manageOverlay(root: HTMLElement, cancel: () => void): () => void
     released = true; cancelAnimationFrame(frame); releaseFocus();
     const index = overlays.indexOf(item);
     if (index >= 0) overlays.splice(index,1);
+    releaseHistory();
     for (const state of states.reverse()) {
       state.element.inert = state.inert;
       if (state.hidden == null) state.element.removeAttribute('aria-hidden');

@@ -1,4 +1,3 @@
-import { loanAccountId } from '../../core/loanLedger';
 /**
  * 拾光 · 首页流水时间线（PRD 4.2）
  * 页头（日期与节气）、月度总览卡（与预算中心同源 budgetUsage）、快捷五宫格、
@@ -9,18 +8,16 @@ import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
 import { formatFen, formatFenCny } from '../../core/money';
 import { on } from '../../core/store';
-import {
-  LOAN_KIND_META,
-  type Account, type Category, type Entry, type LifeNote,
-} from '../../core/types';
+import { type Category, type LifeNote } from '../../core/types';
+import type { LedgerItem } from '../../core/ledgerEvents';
+import { summarizeLedgerEntries } from '../../core/ledgerQuery';
 import { listEntries, getEntry, dayKey } from '../../core/repo/entryRepo';
 import { listCategories, listExpenseTree } from '../../core/repo/categoryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
-import { listLoanAccounts } from '../../core/repo/loanRepo';
 import { listLifeNotes } from '../../core/repo/lifeRepo';
 import { listTemplates } from '../../core/repo/templateRepo';
 import { getSetting } from '../../core/repo/settingsRepo';
-import { monthSummary, budgetUsage } from '../../core/repo/statsRepo';
+import { monthSummary, budgetUsage, ledgerEntriesInRange } from '../../core/repo/statsRepo';
 import { getBudget } from '../../core/repo/budgetRepo';
 import { registerPage, openSubpage } from '../shell/router';
 import { showToast } from '../shell/toast';
@@ -30,6 +27,7 @@ import {
   type EntryQuickAction,
 } from '../detail/detail';
 import './home.css';
+import { entryRowText } from '../detail/entryRowText';
 
 const PAGE = 40;
 
@@ -189,15 +187,22 @@ async function refreshMonthCard(el: HTMLElement): Promise<void> {
 /* ── 时间线 ───────────────────────── */
 
 type TimelineItem =
-  | { kind: 'entry'; ts: number; entry: Entry }
+  | { kind: 'entry'; ts: number; entry: LedgerItem }
   | { kind: 'life'; ts: number; note: LifeNote };
 
 async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: boolean): Promise<void> {
-  const [entries, cats, tree, accounts, contacts] = await Promise.all([
+  const [entries, cats, tree, accounts, countAsIncome] = await Promise.all([
     listEntries({ limit }),
-    listCategories('income'), listExpenseTree(), listAccounts(true), listLoanAccounts(),
+    listCategories('income'), listExpenseTree(), listAccounts(true),
+    getSetting('reimburse.countAsIncome'),
   ]);
-  exhausted = entries.length < limit;
+  const oldestTs = entries.length ? entries[entries.length - 1].occurredAt : 0;
+  const boundaryFrom = oldestTs ? startOfDay(oldestTs) : 0;
+  // 事件查询会补齐边界日的全部实体；只有边界日前仍有账单时才需要继续分页。
+  const hasEarlierEntries = entries.length >= limit && boundaryFrom > 0
+    ? (await listEntries({ to: boundaryFrom, limit: 1 })).length > 0
+    : false;
+  exhausted = !hasEarlierEntries;
 
   const catMap = new Map<number, Category>();
   for (const cat of cats) catMap.set(cat.id, cat);
@@ -205,23 +210,19 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
     catMap.set(g.parent.id, g.parent);
     for (const ch of g.children) catMap.set(ch.id, ch);
   }
-  const acctMap = new Map<number, Account>(accounts.map((a) => [a.id, a]));
-  const contactMap = new Map<number, Account>(contacts.map((p) => [p.id, p]));
+  const acctNames = new Map(accounts.map((a) => [a.id, a.name]));
 
-  // 生活记录混排：仅取已加载账单覆盖的日期范围
-  const oldestTs = entries.length ? entries[entries.length - 1].occurredAt : 0;
-  const from = exhausted ? 0 : startOfDay(oldestTs);
-  const notes = await listLifeNotes({ from });
+  // 生活记录与统计事件混排：边界日完整载入，存在更早实体时再向前分页。
+  const from = hasEarlierEntries ? boundaryFrom : 0;
+  const [notes, ledgerEntries] = await Promise.all([
+    listLifeNotes({ from }),
+    ledgerEntriesInRange(from, Infinity, countAsIncome),
+  ]);
 
   let items: TimelineItem[] = [
-    ...entries.map((entry): TimelineItem => ({ kind: 'entry', ts: entry.occurredAt, entry })),
+    ...ledgerEntries.map((entry): TimelineItem => ({ kind: 'entry', ts: entry.occurredAt, entry })),
     ...notes.map((note): TimelineItem => ({ kind: 'life', ts: note.occurredAt, note })),
   ];
-  // 最早一天可能只加载了一部分账单，先隐藏整天，加载更多时再补全
-  if (!exhausted && entries.length) {
-    const partialDay = dayKey(oldestTs);
-    items = items.filter((it) => dayKey(it.ts) !== partialDay);
-  }
   items.sort((a, b) => b.ts - a.ts);
 
   // 按日分组（补账账单按 occurredAt 归组，不进「今天」）
@@ -240,20 +241,19 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
     const isToday = key === todayKey;
     if (isToday ? !showToday : !showPast) return '';
     const list = groups.get(key)!;
-    let expense = 0;
-    let income = 0;
-    for (const it of list) {
-      if (it.kind !== 'entry') continue;
-      if (it.entry.type === 'expense') expense += it.entry.refundFlag ? -it.entry.amount : it.entry.amount;
-      else if (it.entry.type === 'income') income += it.entry.amount;
-    }
+    const summary = summarizeLedgerEntries(
+      list.filter((it): it is Extract<TimelineItem, { kind: 'entry' }> => it.kind === 'entry')
+        .map((it) => it.entry),
+      { reimburseMode: countAsIncome ? 'income' : 'offset' },
+    );
+    const { expense, income } = summary;
     const sums: string[] = [];
     if (expense) sums.push(`支出 ${formatFenCny(expense)}`);
     if (income) sums.push(`收入 ${formatFenCny(income)}`);
     const body = list.length
       ? `<div class="card list">${list.map((it) =>
           it.kind === 'entry'
-            ? entryHtml(it.entry, catMap, acctMap, contactMap)
+            ? entryHtml(it.entry, catMap, acctNames)
             : lifeHtml(it.note)).join('')}</div>`
       : `<div class="card list home-empty">
           <span class="e-ic">${iconHtml('ic-pen', 18)}</span>
@@ -292,45 +292,25 @@ function dayTitle(key: string): string {
 /* ── 条目渲染 ─────────────────────── */
 
 function entryHtml(
-  entry: Entry,
+  entry: LedgerItem,
   catMap: Map<number, Category>,
-  acctMap: Map<number, Account>,
-  contactMap: Map<number, Account>,
+  acctNames: Map<number, string>,
 ): string {
-  const sub = (text?: string) => (text ? ` <span class="e-sub">· ${esc(text)}</span>` : '');
-  if (entry.type === 'transfer') {
-    const from = acctMap.get(entry.fromAccountId ?? -1)?.name ?? '账户';
-    const to = acctMap.get(entry.toAccountId ?? -1)?.name ?? '账户';
-    return swipeEntry(entry, `<span class="e-ic neutral">${iconHtml('ic-swap')}</span>
-      <div class="e-main"><p class="e-title">转账${sub(entry.note)}</p><p class="e-meta">${esc(from)} → ${esc(to)}</p></div>
-      <p class="e-amt num">${formatFen(entry.amount)}</p>`);
-  }
-  if (entry.type === 'loan') {
-    const meta = LOAN_KIND_META[entry.loanKind ?? 'borrow'];
-    const who = contactMap.get(loanAccountId(entry) ?? -1)?.name ?? '未选择应收应付账户';
-    const from = acctMap.get(entry.fromAccountId ?? -1)?.name ?? '账户';
-    const to = acctMap.get(entry.toAccountId ?? -1)?.name ?? '账户';
-    const acct = `${from} → ${to}`;
-    const inflow = entry.loanKind === 'borrow' || entry.loanKind === 'collect';
-    return swipeEntry(entry, `<span class="e-ic neutral">${iconHtml(meta.icon)}</span>
-      <div class="e-main"><p class="e-title">${meta.name} · ${esc(who)}${sub(entry.note)}</p><p class="e-meta">借贷 · ${esc(acct)}</p></div>
-      <p class="e-amt num ${inflow ? 'in' : 'out'}">${inflow ? '+' : '-'}${formatFen(entry.amount)}</p>`);
-  }
-  const cat = catMap.get(entry.categoryId ?? -1);
-  const acct = acctMap.get(entry.accountId ?? -1)?.name ?? '账户';
-  const isOut = entry.type === 'expense';
-  const marks = [
-    entry.reimburseStatus === 'pending' ? '待报销' : '',
-    entry.reimburseStatus === 'done' ? '已报销' : '',
-    entry.refundFlag ? '退款到账' : '',
-  ].filter(Boolean).map((m) => ` · ${m}`).join('');
-  const inflow = !isOut || entry.refundFlag;
-  return swipeEntry(entry, `<span class="e-ic${isOut && !entry.refundFlag ? '' : ' neutral'}">${iconHtml(cat?.icon ?? 'ic-coin')}</span>
-    <div class="e-main"><p class="e-title">${esc(cat?.name ?? '未分类')}${sub(entry.note)}</p><p class="e-meta">${esc(cat?.name ?? '未分类')} · ${esc(acct)}${marks}</p></div>
-    <p class="e-amt num ${inflow ? 'in' : 'out'}">${inflow ? '+' : '-'}${formatFen(entry.amount)}</p>`);
+  const text = entryRowText(entry, catMap, acctNames);
+  const note = text.note ? ` <span class="e-sub">· ${esc(text.note)}</span>` : '';
+  const inflow = entry.type === 'income' || entry.refundFlag || entry.loanKind === 'borrow' || entry.loanKind === 'collect';
+  const transfer = entry.type === 'transfer';
+  return swipeEntry(entry, `<span class="e-ic${text.neutral ? ' neutral' : ''}">${iconHtml(text.icon)}</span>
+    <div class="e-main"><p class="e-title">${esc(text.title)}${note}</p><p class="e-meta">${esc(text.meta)}</p></div>
+    <p class="e-amt num${transfer ? '' : inflow ? ' in' : ' out'}">${transfer ? '' : inflow ? '+' : '-'}${formatFen(entry.amount)}</p>`);
 }
 
-function swipeEntry(entry: Entry, content: string): string {
+function swipeEntry(entry: LedgerItem, content: string): string {
+  if (entry.kind === 'reimbursement') {
+    return `<div data-entry-row="${entry.id}" data-reimbursement>
+      <article class="entry entry-swipe-content" data-entry="${entry.id}" role="button" tabindex="0">${content}</article>
+    </div>`;
+  }
   return `<div class="entry-swipe" data-entry-row="${entry.id}">
     ${entrySwipeActionsHtml(entry)}
     <article class="entry entry-swipe-content" data-entry="${entry.id}">${content}</article>

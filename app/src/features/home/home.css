@@ -10,8 +10,8 @@
   box-shadow:none;
 }
 .mc-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.mc-label{font-size:12px;color:var(--muted)}
-.mc-unit{font-size:11px;color:var(--faint);white-space:nowrap}
+.mc-label{font-size:var(--text-meta);color:var(--muted)}
+.mc-unit{font-size:var(--text-small);color:var(--faint);white-space:nowrap}
 .month-card .num{font-family:var(--font-body);font-variant-numeric:tabular-nums lining-nums;letter-spacing:0}
 .mc-amt{font-size:calc(34px * var(--seed-type));font-weight:650;margin:8px 0 18px;color:var(--expense);overflow-wrap:anywhere;line-height:1.2}
 .mc-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding-top:12px;border-top:1px solid var(--border)}
@@ -25,7 +25,7 @@
 
 /* 快捷区只保留一手可点的 30px 图标，将纵向空间让给今日流水。 */
 #hm-quick{padding:7px 4px;margin-bottom:12px}
-#hm-quick .qa{gap:6px;font-size:12px;min-height:52px}
+#hm-quick .qa{gap:6px;font-size:13px;min-height:52px}
 #hm-quick .qa-ic{width:30px;height:30px;border-radius:10px}
 #hm-quick .qa-ic svg.ic{width:16px;height:16px}
 

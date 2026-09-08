@@ -71,6 +71,10 @@
 .account-month-head .chev svg{transform:rotate(90deg);transition:transform .2s}.account-month.expanded .account-month-head .chev svg{transform:rotate(-90deg)}
 .account-month-entries{display:none;padding:0 14px 5px;border-top:1px solid var(--border)}.account-month.expanded .account-month-entries{display:block}
 .account-month-entries .entry{padding-top:11px;padding-bottom:11px}
+.account-entry-amounts{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:none;text-align:right}
+.account-entry-amounts .e-amt,.account-entry-balance{white-space:nowrap}
+.account-entry-balance{font-size:var(--text-meta);line-height:1.5;color:var(--muted);font-weight:400}
+.account-month-entries .e-meta{overflow-wrap:anywhere}
 .account-detail-body{padding-bottom:calc(18px + var(--safe-bottom))}
 .account-detail-entry{position:sticky;z-index:6;bottom:calc(4px + var(--safe-bottom));display:flex;align-items:center;justify-content:center;gap:7px;width:100%;min-height:50px;margin-top:12px;border-radius:14px;background:var(--primary);color:var(--on-accent);font-size:13px;font-weight:650;box-shadow:0 10px 24px color-mix(in oklab,var(--seed-primary) 28%,transparent)}
 .account-detail-entry:active{transform:scale(.98)}
@@ -84,7 +88,9 @@
 .account-detail-hero>h3.neg{color:var(--expense)}
 .account-detail-actions{border-color:var(--border)}
 .account-detail-actions button{background:var(--bg);font-size:12px;min-height:44px}
-.account-month-flow i,.account-month-date small,.account-month-balance small{font-size:11px}
+.account-month-flow i,.account-month-date small,.account-month-balance small{font-size:var(--text-small)}
+.account-detail-top,.account-detail-hero>p,.account-flow-total,.spark-cap{font-size:var(--text-small)}
+.account-month-balance b{font-size:var(--text-body)}
 .account-detail-entry{box-shadow:none}
 .acct-form .field{align-items:flex-start;flex-direction:column;gap:8px}
 .acct-form .field>span{width:auto;font-size:13px;color:var(--fg)}
@@ -97,5 +103,5 @@
 @media (max-width:360px){
   .account-detail-hero{padding-left:15px;padding-right:15px}
   .account-month-head{grid-template-columns:43px 1fr auto auto;padding-left:11px;padding-right:11px;gap:7px}
-  .account-month-flow i{font-size:11px}
+  .account-month-flow i{font-size:12px}
 }

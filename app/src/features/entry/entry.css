@@ -30,10 +30,10 @@
 
 /* 快速记账首屏为 7 个常用分类 + 1 个更多，两行四列。 */
 .entry-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:1px 2px 6px}
-.entry-section-head span{font-size:12px;font-weight:650}
-.entry-section-head small{font-size:9.5px;color:var(--faint);white-space:nowrap}
+.entry-section-head span{font-size:14px;font-weight:650}
+.entry-section-head small{font-size:11px;color:var(--faint);white-space:nowrap}
 #sheet #cat-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 6px}
-#sheet #cat-grid .cat{min-width:0;min-height:59px;gap:3px;padding:5px 1px;font-size:10.5px}
+#sheet #cat-grid .cat{min-width:0;min-height:59px;gap:3px;padding:5px 1px;font-size:12px}
 #sheet #cat-grid .cat-ic{width:34px;height:34px}
 #sheet #cat-grid .cat>span:last-child{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #sheet #cat-grid .cat-more .cat-ic{background:transparent;border:1px dashed color-mix(in oklab,var(--seed-primary) 42%,var(--border));color:var(--primary)}
@@ -61,7 +61,7 @@
 /* 键盘上方 meta chips：加大触控高度与字号（仅覆盖抽屉内这一行，不动全局 .chip）
    flex:none 防止分类宫格过高时 sheet 纵向 flex 把这一行压扁（滚动由 .sheet-scroll 吸收） */
 .meta-row{flex:none;gap:7px;padding:8px 0 3px}
-.meta-row .chip{flex:none;min-height:44px;padding:9px 13px;font-size:12px;gap:6px;line-height:1.25}
+.meta-row .chip{flex:none;min-height:44px;padding:9px 13px;font-size:13px;gap:6px;line-height:1.25}
 .meta-row .toggle-chip input{width:16px;height:16px}
 .primary-meta{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) auto auto;overflow:visible}
 .primary-meta .chip{min-width:0;justify-content:center;padding-left:10px;padding-right:10px}

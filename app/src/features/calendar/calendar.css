@@ -14,3 +14,6 @@
 /* 标准模式的金额/收入金点同步淡入 */
 .cal-grid.anim-mode .cd-amt,.cal-grid.anim-mode .cd-in{animation:cal-el-in .2s ease-out}
 @keyframes cal-el-in{from{opacity:0}}
+
+/* 退款使当日净支出为负时，标准视图用收入色标示退款方向。 */
+.cd-amt.refund{color:var(--income);font-weight:600}

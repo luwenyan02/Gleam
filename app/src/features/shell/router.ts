@@ -11,6 +11,7 @@ import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { closeSheet, isSheetOpen } from './sheet';
 import { dismissTopOverlay } from '../../shared/overlay';
+import { handleLayerHistory, pushPageHistory, withoutLayerHistory } from '../../shared/layerHistory';
 
 /** 页面定义 */
 export interface PageDef {
@@ -42,6 +43,7 @@ let activePage: PageId = 'page-home';
 let historyReady = false;
 let systemBackReady = false;
 const subpageOpeners = new WeakMap<HTMLElement, HTMLElement | null>();
+const cancelHistoryWrites = new WeakMap<HTMLElement, () => void>();
 
 function syncNavigationState(): void {
   if (!viewport || !appEl) return;
@@ -68,9 +70,10 @@ export function initRouter(app: HTMLElement, vp: HTMLElement): void {
   viewport = vp;
   if (!historyReady) {
     historyReady = true;
-    window.history.replaceState({ ...(window.history.state ?? {}), [HISTORY_DEPTH_KEY]: 0 }, '');
+    window.history.replaceState({ ...withoutLayerHistory(window.history.state), [HISTORY_DEPTH_KEY]: 0 }, '');
     window.addEventListener('popstate', (event) => {
       const state = event.state as Record<string, unknown> | null;
+      if (handleLayerHistory(state)) return;
       const requested = Number(state?.[HISTORY_DEPTH_KEY] ?? 0);
       const targetDepth = Number.isInteger(requested) && requested >= 0 ? requested : 0;
       while (subStack.length > targetDepth) closeTopSubpage();
@@ -177,7 +180,7 @@ export function openSubpage(id: string): void {
   appEl.appendChild(sp);
   subStack.push(sp);
   syncNavigationState();
-  window.history.pushState({ ...(window.history.state ?? {}), [HISTORY_DEPTH_KEY]: subStack.length }, '');
+  cancelHistoryWrites.set(sp, pushPageHistory({ [HISTORY_DEPTH_KEY]: subStack.length }));
   void def.render(sp.querySelector<HTMLElement>('.sub-body')!);
   requestAnimationFrame(() => sp.classList.add('open'));
   requestAnimationFrame(() => sp.querySelector<HTMLElement>('[data-act="back"]')?.focus());
@@ -199,6 +202,7 @@ export function closeSubpage(): void {
 function closeTopSubpage(): void {
   const sp = subStack.pop();
   if (!sp) return;
+  cancelHistoryWrites.get(sp)?.();
   const opener = subpageOpeners.get(sp);
   sp.inert = true;
   sp.setAttribute('aria-hidden', 'true');

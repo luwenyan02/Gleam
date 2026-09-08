@@ -9,8 +9,9 @@
 import './calendar.css';
 import { iconHtml } from '../../assets/icons';
 import { on } from '../../core/store';
-import { formatFen } from '../../core/money';
+import { formatFen, formatFenCny } from '../../core/money';
 import { dailyAggregates } from '../../core/repo/statsRepo';
+import { manageOverlay } from '../../shared/overlay';
 import { openEntrySheet } from '../entry/entrySheet';
 import { registerSubpage } from '../shell/router';
 import { showToast } from '../shell/toast';
@@ -33,7 +34,7 @@ let pendingAnim: '' | 'anim-month' | 'anim-mode' = '';
 
 const WD = ['日', '一', '二', '三', '四', '五', '六'];
 const TIPS: Record<CalMode, string> = {
-  std: '金点 = 当日有收入 · 点选日期查看当日收支，空缺日期可补账',
+  std: '金点 = 当日有收入 · 绿色 +金额 = 当日退款净流入 · 点选日期查看当日收支',
   heat: '颜色越深 = 当日支出越多 · 按当月最高单日支出定色阶',
   net: '绿色 = 当日结余为正（收入大于支出）· 主色 = 当日净支出',
 };
@@ -48,12 +49,12 @@ function fmtYuan0(fen: number): string { return formatFen(fen).split('.')[0]; }
 function cellStyle(rec: DayAgg | undefined, maxOut: number): string {
   if (!rec || mode === 'std') return '';
   if (mode === 'heat') {
-    const k = Math.min(1, rec.expense / maxOut);
+    const k = Math.max(0, Math.min(1, rec.expense / maxOut));
     return ` style="background:color-mix(in oklab, var(--seed-primary) ${(k * 38 + 4).toFixed(1)}%, transparent)"`;
   }
   const net = rec.income - rec.expense;
   if (net > 0) return ' style="background:color-mix(in oklab, #3E8E5A 26%, transparent)"';
-  const k = Math.min(1, rec.expense / maxOut);
+  const k = Math.max(0, Math.min(1, rec.expense / maxOut));
   return ` style="background:color-mix(in oklab, var(--seed-primary) ${(k * 30 + 4).toFixed(1)}%, transparent)"`;
 }
 
@@ -86,7 +87,11 @@ async function refresh(): Promise<void> {
     const future = isCurMonth && d > today.getDate();
     const sel = key === selKey;
     const cls = 'cal-day' + (isCurMonth && d === today.getDate() ? ' today' : '') + (sel ? ' sel' : '');
-    const amt = rec && rec.expense > 0 && mode === 'std' ? `<span class="cd-amt">-${fmtYuan0(rec.expense)}</span>` : '';
+    const amt = rec && rec.expense !== 0 && mode === 'std'
+      ? rec.expense > 0
+        ? `<span class="cd-amt">-${fmtYuan0(rec.expense)}</span>`
+        : `<span class="cd-amt refund" aria-label="退款净流入 ${formatFenCny(-rec.expense)}">+${fmtYuan0(-rec.expense)}</span>`
+      : '';
     const dot = rec && rec.income > 0 && mode === 'std' ? '<span class="cd-in"></span>' : '';
     // 选中日不套热力底色（沿用原型 L1598）
     cells.push(`<button class="${cls}" data-d="${d}" type="button" role="option" aria-selected="${sel}"${future ? ' disabled' : ''}${sel ? '' : cellStyle(rec, maxOut)}><span class="d-num">${d}</span>${amt}${dot}</button>`);
@@ -101,8 +106,11 @@ async function refresh(): Promise<void> {
     const isToday = isCurMonth && d === today.getDate();
     const wd = WD[new Date(viewY, viewM, d).getDay()];
     const addChip = `<button class="chip" data-act="add" style="margin-top:10px">给 ${viewM + 1}月${d}日 补一笔</button>`;
+    const expenseText = rec?.expense != null
+      ? rec.expense < 0 ? formatFenCny(rec.expense) : `-¥${formatFen(rec.expense)}`
+      : '';
     const bodyHtml = rec
-      ? `<div class="cd-sum"><span>支出<b>-¥${formatFen(rec.expense)}</b></span>${rec.income > 0 ? `<span>收入<b class="in">+¥${formatFen(rec.income)}</b></span>` : ''}<span>共 ${rec.count} 笔</span></div>
+      ? `<div class="cd-sum"><span>${rec.expense < 0 ? '净支出' : '支出'}<b${rec.expense < 0 ? ' class="in"' : ''}>${expenseText}</b></span>${rec.income > 0 ? `<span>收入<b class="in">+¥${formatFen(rec.income)}</b></span>` : ''}<span>共 ${rec.count} 笔</span></div>
          ${isToday ? '' : addChip}`
       : `<p class="sub" style="margin-top:6px">这一天还没有记录</p>${addChip}`;
     detailHtml = `<h3 class="card-title">${viewM + 1}月${d}日 · 周${wd}${isToday ? ' <span class="tiny">今天</span>' : ''}</h3>${bodyHtml}`;
@@ -159,6 +167,11 @@ function openYmPicker(host: HTMLElement): void {
 
   const mask = document.createElement('div');
   mask.className = 'ym-mask';
+  let releaseOverlay: () => void = () => {};
+  const close = (): void => {
+    releaseOverlay();
+    mask.remove();
+  };
   const renderPop = (): void => {
     mask.innerHTML = `
       <div class="ym-pop" role="dialog" aria-label="选择年月">
@@ -189,15 +202,16 @@ function openYmPicker(host: HTMLElement): void {
       viewM = Number(moBtn.dataset.mo);
       const isCur = viewY === today.getFullYear() && viewM === today.getMonth();
       selKey = keyOf(viewY, viewM, isCur ? today.getDate() : 1);
-      mask.remove();
+      close();
       pendingAnim = 'anim-month';
       void refresh();
       return;
     }
-    if (t === mask) mask.remove();
+    if (t === mask) close();
   });
   renderPop();
   mount.appendChild(mask);
+  releaseOverlay = manageOverlay(mask, close);
 }
 
 /* ── 装配 ── */

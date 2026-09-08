@@ -4,6 +4,7 @@
  * 内容由调用方 render 到容器（结构参考原型 .sheet-head/.sheet-scroll）。
  */
 import { isolateModal, trapModalFocus } from '../../shared/modalFocus';
+import { trackHistoryLayer } from '../../shared/layerHistory';
 
 /** 打开抽屉的选项 */
 export interface SheetOptions {
@@ -19,6 +20,7 @@ let current: SheetOptions | undefined;
 let restoreFocus: HTMLElement | null = null;
 let releaseFocusTrap: (() => void) | undefined;
 let restoreBackground: (() => void) | undefined;
+let releaseHistory: (() => void) | undefined;
 
 /**
  * 打开底部抽屉（已开启时先关闭旧的）。
@@ -31,6 +33,7 @@ export function openSheet(opts: SheetOptions): void {
     restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const toast = document.getElementById('toast');
     restoreBackground = isolateModal(toast ? [sheet, scrim, toast] : [sheet, scrim]);
+    releaseHistory = trackHistoryLayer(closeSheet);
   } else {
     current.onClose?.();
     releaseFocusTrap?.();
@@ -60,6 +63,8 @@ export function closeSheet(): void {
   releaseFocusTrap = undefined;
   current?.onClose?.();
   current = undefined;
+  releaseHistory?.();
+  releaseHistory = undefined;
   restoreBackground?.();
   restoreBackground = undefined;
   const target = restoreFocus;

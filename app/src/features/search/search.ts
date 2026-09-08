@@ -21,7 +21,7 @@ import { openEntryDetail } from '../detail/detail';
 import {
   bindEntrySwipeActions, entrySwipeActionsHtml, runEntryQuickAction, type EntryQuickAction,
 } from '../detail/entrySwipe';
-import { LOAN_KIND_META, type Entry, type EntryType, type LifeNote } from '../../core/types';
+import { type Entry, type EntryType, type LifeNote } from '../../core/types';
 import {
   filterLedgerEntries, groupLedgerEntries, summarizeLedgerEntries,
   type LedgerQuery,
@@ -30,6 +30,7 @@ import { openDateWheel, type DateWheelResult } from '../../shared/dateTimeWheel'
 import { createFilterPanel, emptyFilter, isFilterEmpty, type FilterState } from './filterPanel';
 import { ledgerItems, type LedgerItem } from '../../core/ledgerEvents';
 import { manageOverlay } from '../../shared/overlay';
+import { entryRowText } from '../detail/entryRowText';
 
 let body: HTMLElement | undefined;
 let searchToken = 0;
@@ -123,14 +124,6 @@ function dateRangeClass(range: DateRange): string {
 }
 
 /* ── 账单标题 / 金额渲染 ── */
-function entryTitle(e: LedgerItem, catNames: Map<number, string>): string {
-  if (e.kind === 'reimbursement') return '报销到账';
-  if (e.type === 'transfer') return '转账';
-  if (e.type === 'loan') return LOAN_KIND_META[e.loanKind ?? 'borrow'].name;
-  const name = catNames.get(e.categoryId ?? -1) ?? '未分类';
-  return e.refundFlag ? `${name}退款` : name;
-}
-
 function amountHtml(e: Entry): string {
   if (e.type === 'expense') return e.refundFlag
     ? `<span class="num" style="color:var(--income)">+${formatFen(e.amount)}</span>`
@@ -217,6 +210,7 @@ async function doSearch(kw: string): Promise<void> {
   if (token !== searchToken || !resultsEl.isConnected) return;
 
   const catNames = new Map<number, string>();
+  const catMap = new Map([...expenseCats, ...incomeCats].map(category => [category.id, category]));
   for (const c of [...expenseCats, ...incomeCats]) catNames.set(c.id, c.name);
   const accountNames = new Map<number, string>();
   for (const a of accounts) accountNames.set(a.id, a.name);
@@ -282,19 +276,15 @@ async function doSearch(kw: string): Promise<void> {
     : [];
 
   const entryRow = (e: LedgerItem) => {
-    const states = [
-      e.refundFlag ? '<span class="sr-state refund">退款到账</span>' : '',
-      e.reimburseStatus === 'pending' ? '<span class="sr-state pending">待报销</span>' : '',
-      e.reimburseStatus === 'done' ? '<span class="sr-state done">已报销</span>' : '',
-      e.type === 'transfer' ? '<span class="sr-state neutral">转账</span>' : '',
-      e.type === 'loan' ? '<span class="sr-state neutral">借贷</span>' : '',
-    ].join('');
+    const text = entryRowText(e, catMap, accountNames);
+    const note = text.note ? ` <span class="e-sub">· ${esc(text.note)}</span>` : '';
     return `
       <div class="entry-swipe" data-eid="${e.id}"${e.kind === 'reimbursement' ? ' data-reimbursement' : ''}>
         ${e.kind === 'reimbursement' ? '' : entrySwipeActionsHtml(e)}
         <button class="row entry-swipe-content">
-          <div class="e-main"><p class="e-title">${esc(entryTitle(e, catNames))}${states}</p>
-            <p class="e-meta">${esc(e.type === 'loan' || e.type === 'transfer' ? `${accountNames.get(e.fromAccountId ?? -1) ?? '账户'} → ${accountNames.get(e.toAccountId ?? -1) ?? '账户'}${e.note ? ` · ${e.note.slice(0, 30)}` : ''}` : e.note ? e.note.slice(0, 30) : accountNames.get(e.accountId ?? -1) ?? '无备注')}</p>
+          <span class="e-ic${text.neutral ? ' neutral' : ''}">${iconHtml(text.icon, 18)}</span>
+          <div class="e-main"><p class="e-title">${esc(text.title)}${note}</p>
+            <p class="e-meta">${esc(text.meta)}</p>
             ${e.kind === 'reimbursement' ? '<p class="e-meta">点击查看原支出</p>' : e.type === 'expense' && e.reimburseStatus === 'done' ? `<p class="sr-net">原额 ${formatFen(e.amount)} · 已报销 ${formatFen(e.reimbursedAmount ?? 0)}${!countReimburseAsIncome ? ` · 净支出 ${formatFen((e.refundFlag ? -e.amount : e.amount) - (e.reimbursedAmount ?? 0))}` : ''}</p>` : ''}</div>
           ${amountHtml(e)}
         </button>

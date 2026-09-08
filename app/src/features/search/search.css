@@ -51,7 +51,7 @@
 .sr-list-end{text-align:center;padding:12px}
 .sr-input-wrap:focus-within{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--primary)}
 .sr-input-wrap #sr-input:focus{box-shadow:none;outline:none;border:0}
-.sr-summary-card .sc-label{font-size:11px;color:var(--faint);margin-bottom:4px}
+.sr-summary-card .sc-label{font-size:var(--text-small);color:var(--faint);margin-bottom:4px}
 .sr-summary-card .sc-amount{white-space:nowrap;font-size:15px;font-weight:700;font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 .sr-summary-card .sc-count{font-size:10.5px;color:var(--muted);margin-top:2px}
 .sr-summary-card:nth-child(1) .sc-amount{color:var(--fg)}
@@ -63,7 +63,8 @@
 .sr-list-head h3{font-size:13px;font-weight:600}
 .sr-day-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:5px 3px 7px}
 .sr-day-head h3{font-size:12.5px;font-weight:650}
-.sr-day-head span{font-size:10px;color:var(--faint)}
+.sr-day-head span{font-size:12px;color:var(--faint)}
+.sr-day-head{flex-wrap:wrap}
 .sr-day-card{margin-bottom:10px}
 .sr-state{display:inline-flex;align-items:center;margin-left:6px;padding:2px 5px;border-radius:999px;font-size:9px;font-weight:600;vertical-align:1px;color:var(--muted);background:color-mix(in oklab,var(--seed-fg) 7%,var(--surface))}
 .sr-state.refund,.sr-state.done{color:var(--income);background:color-mix(in oklab,var(--income) 10%,var(--surface))}
@@ -71,6 +72,8 @@
 
 /* ── 左滑操作保持 ── */
 #sr-results .entry-swipe .row.entry-swipe-content{position:relative;z-index:2;background:var(--surface);border-bottom:0;transition:transform .24s cubic-bezier(.22,.78,.3,1)}
+#sr-results .entry-swipe .e-main{text-align:left}
+#sr-results .entry-swipe .e-meta{overflow-wrap:anywhere}
 
 /* ── 字段选择器底部弹出 ── */
 .sr-field-sheet{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;justify-content:flex-end;opacity:0;pointer-events:none;transition:opacity .22s}
