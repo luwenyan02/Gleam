@@ -22,6 +22,20 @@ export function ledgerItems(entries: readonly Entry[], countAsIncome: boolean): 
 }
 
 export interface AccountFlow { entry: LedgerItem; at: number; delta: number }
+export interface AccountStatementRow extends AccountFlow { balanceAfter: number }
+
+/** 从当前余额反推每笔后的余额；先处理全部流水再按月展示，保留期初余额。 */
+export function accountStatement(flows: readonly AccountFlow[], currentBalance: number): AccountStatementRow[] {
+  const ordered = [...flows].sort((a, b) => b.at - a.at || b.entry.id - a.entry.id
+    // 同时点的原支出和报销共用 id，到账在时间线上晚于原支出。
+    || Number(b.entry.kind === 'reimbursement') - Number(a.entry.kind === 'reimbursement'));
+  let balance = currentBalance;
+  return ordered.map(flow => {
+    const row = { ...flow, balanceAfter: balance };
+    balance -= flow.delta;
+    return row;
+  });
+}
 
 /** 现金流始终包含到账事件，与报表计收入口径无关。 */
 export function accountFlows(entries: readonly Entry[], accountId: number): AccountFlow[] {

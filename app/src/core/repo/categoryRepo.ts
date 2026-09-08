@@ -3,8 +3,8 @@
  * 支出两级（parentId 指向大类）、收入单级。写操作后 emit 'categories-changed'。
  */
 import { db, now, stamp } from '../db';
-import { emit } from '../store';
 import type { Category, CategoryKind } from '../types';
+import { emitAfterCommit as emit } from './transactionEvents';
 
 /** 新建分类输入 */
 export type NewCategory = Omit<Category, 'id' | 'createdAt' | 'updatedAt' | 'sortOrder'> & { sortOrder?: number };

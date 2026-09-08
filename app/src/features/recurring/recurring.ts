@@ -12,13 +12,12 @@ import { esc } from '../../core/esc';
 import { on } from '../../core/store';
 import { formatFen, formatFenCny, parseYuanToFen } from '../../core/money';
 import {
-  addRule, updateRule, setRuleEnabled, deleteRule, listRules, ruleSummary,
+  addRule, updateRule, setRuleEnabled, deleteRule, listRules, ruleSummary, confirmPendingOccurrence,
   type NewRecurringRule, type PendingConfirm,
 } from '../../core/repo/recurringRepo';
-import { addEntry } from '../../core/repo/entryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
 import { listExpenseTree } from '../../core/repo/categoryRepo';
-import { onPendingConfirm, savePendingConfirms } from '../../core/scheduler';
+import { onPendingConfirm } from '../../core/scheduler';
 import { registerSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { showToast } from '../shell/toast';
@@ -345,6 +344,7 @@ async function openPendingSheet(): Promise<void> {
     ariaLabel: '待确认入账',
     onClose: () => sheetAbort?.abort(),
     render(el) {
+      let booking = false;
       const draw = (): void => {
         el.innerHTML = `
           <div class="sheet-head">
@@ -364,19 +364,31 @@ async function openPendingSheet(): Promise<void> {
       };
       draw();
 
+      const setBooking = (value: boolean): void => {
+        booking = value;
+        for (const button of el.querySelectorAll<HTMLButtonElement>('[data-book], [data-act="book-all"]')) {
+          button.disabled = value;
+        }
+      };
+
+      const runBooking = async (task: () => Promise<void>): Promise<void> => {
+        if (booking) return;
+        setBooking(true);
+        try {
+          await task();
+        } finally {
+          setBooking(false);
+        }
+      };
+
       /** 按队列下标入账一笔；金额取输入框当前值 */
       async function book(i: number): Promise<boolean> {
         const p = pendingQueue[i];
         try {
           const amount = parseYuanToFen(el.querySelector<HTMLInputElement>(`[data-amt="${i}"]`)!.value.trim());
           if (amount <= 0) throw new Error(`「${p.name}」金额需大于 0`);
-          await addEntry({
-            type: 'expense', amount, occurredAt: p.dueAt,
-            categoryId: p.categoryId, accountId: p.accountId,
-            note: `周期账 · ${p.name}`,
-          });
-          pendingQueue.splice(i, 1);
-          await savePendingConfirms(pendingQueue); // [M3 修复] 入账后同步持久化队列
+          const result = await confirmPendingOccurrence(p.ruleId, p.dueAt, amount);
+          pendingQueue.splice(0, pendingQueue.length, ...result.pending);
           return true;
         } catch (err) {
           showToast(err instanceof Error ? err.message : String(err));
@@ -398,17 +410,20 @@ async function openPendingSheet(): Promise<void> {
         const target = e.target as HTMLElement;
         const bookBtn = target.closest<HTMLElement>('[data-book]');
         if (bookBtn) {
-          void book(Number(bookBtn.dataset.book)).then((ok) => { if (ok) finishIfEmpty(); });
+          void runBooking(async () => {
+            const ok = await book(Number(bookBtn.dataset.book));
+            if (ok) finishIfEmpty();
+          });
           return;
         }
         const act = target.closest<HTMLElement>('[data-act]')?.dataset.act;
         if (act === 'close') closeSheet();
         else if (act === 'book-all') {
-          void (async () => {
+          void runBooking(async () => {
             // 倒序入账，避免 splice 造成下标位移
             for (let i = pendingQueue.length - 1; i >= 0; i--) await book(i);
             finishIfEmpty();
-          })();
+          });
         }
       }, { signal: sheetSignal() });
     },

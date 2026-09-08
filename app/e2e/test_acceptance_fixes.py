@@ -63,9 +63,10 @@ def reimburse(page):
     assert '60.00' in page.locator('.account-flow-total').inner_text()
     assert '0.00' in page.locator('.account-month').nth(1).locator('.account-month-balance').inner_text()
     page.reload();page.wait_for_selector('#fab');seed(page,received=6000,income=True);report(page)
-    page.locator('[data-summary-type="income"]').click();page.locator('[data-reimbursement]').wait_for()
+    # 首页时间线也会展示只读到账行；此处验收搜索下钻结果，需限定在搜索结果内。
+    page.locator('[data-summary-type="income"]').click();page.locator('#sr-results [data-reimbursement]').wait_for()
     assert '60.00' in page.locator('[data-sf="income"]').inner_text()
-    page.locator('[data-reimbursement] .entry-swipe-content').click();page.locator('#sp-entry-view.open').wait_for()
+    page.locator('#sr-results [data-reimbursement] .entry-swipe-content').click();page.locator('#sp-entry-view.open').wait_for()
 
 def overlays(page):
     page.locator('#fab').click();page.locator('#keypad [data-k="8"]').click();page.locator('#date-chip').click();page.locator('.dw-panel.dw-open').wait_for()

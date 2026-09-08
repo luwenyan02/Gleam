@@ -5,7 +5,7 @@
  * 写操作后 emit 'life-changed'。
  */
 import { db, now, stamp } from '../db';
-import { emit } from '../store';
+import { emitAfterCommit as emit } from './transactionEvents';
 import type { Attachment, Habit, HabitCheck, LifeNote } from '../types';
 import { dayKey } from './entryRepo';
 

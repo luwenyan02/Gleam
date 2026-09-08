@@ -93,8 +93,14 @@ function parseDateTime(v: unknown): number | undefined {
     const s = v.trim().replace(/\//g, '-');
     const m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2}))?/.exec(s);
     if (!m) return undefined;
-    const d = new Date(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0), 0, 0);
-    return Number.isFinite(d.getTime()) ? d.getTime() : undefined;
+    const [year, month, day, hour, minute] = [
+      +m[1], +m[2], +m[3], +(m[4] ?? 0), +(m[5] ?? 0),
+    ];
+    const d = new Date(year, month - 1, day, hour, minute, 0, 0);
+    if (!Number.isFinite(d.getTime())
+      || d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day
+      || d.getHours() !== hour || d.getMinutes() !== minute) return undefined;
+    return d.getTime();
   }
   return undefined;
 }
@@ -263,9 +269,11 @@ export async function parseWacaiFile(file: File): Promise<WacaiParseResult> {
       let amountFen = cellToFen(cAmt);
       const originalAmountFen = amountFen;
       const currency = cellText(cCur);
+      let currencyRate = 1;
       if (currency && currency !== '人民币' && currency !== 'CNY') {
         const rate = FX_RATES[currency];
         if (!rate) throw new Error(`不支持的币种：${currency}`);
+        currencyRate = rate;
         const originYuan = (amountFen / 100).toFixed(2);
         amountFen = Math.round(amountFen * rate);
         noteParts.push(`原币种 ${currency} ${originYuan}，按导入时参考汇率 ${rate} 折算`);
@@ -286,9 +294,15 @@ export async function parseWacaiFile(file: File): Promise<WacaiParseResult> {
       if (type === 'transfer') {
         // 转账：收付账户「A:-1.00, B:+1.00」正负拆转出/转入
         const pairs = parsePairs(acctText);
-        const fromP = pairs.find((p) => p.signedFen < 0);
-        const toP = pairs.find((p) => p.signedFen > 0);
-        if (!fromP || !toP) throw new Error(`转账收付账户无法解析：${acctText}`);
+        const from = pairs.filter((p) => p.signedFen < 0);
+        const to = pairs.filter((p) => p.signedFen > 0);
+        if (pairs.length !== 2 || pairs.some((p) => !p.name || !Number.isFinite(p.signedFen))
+          || from.length !== 1 || to.length !== 1) {
+          throw new Error(`转账收付账户须明确包含一个转出方和一个转入方：${acctText || '空'}`);
+        }
+        const [fromP] = from;
+        const [toP] = to;
+        if (fromP.name === toP.name) throw new Error('转账两侧账户不能相同');
         row.fromAccountName = fromP.name;
         row.toAccountName = toP.name;
         accountNames.add(fromP.name);
@@ -350,8 +364,8 @@ export async function parseWacaiFile(file: File): Promise<WacaiParseResult> {
             const self = shares.find((p) => p.name === '自己');
             const selfFen = self && Number.isFinite(self.signedFen) ? Math.abs(self.signedFen) : 0;
             if (selfFen <= 0) throw new Error(`分摊中「自己」份额无法解析：${partText}`);
-            noteParts.push(`分摊明细：${partText}（原总额 ${(amountFen / 100).toFixed(2)}）`);
-            row.amountFen = selfFen;
+            noteParts.push(`分摊明细：${partText}（原总额 ${(originalAmountFen / 100).toFixed(2)}）`);
+            row.amountFen = Math.round(selfFen * currencyRate);
           }
         }
         // 非借贷行收付款人无对应字段 → 备注

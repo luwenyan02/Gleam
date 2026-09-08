@@ -10,7 +10,7 @@ import { emit } from './store';
 import { runDueRules, type PendingConfirm } from './repo/recurringRepo';
 import { purgeExpired } from './repo/trashRepo';
 import { purgeSnapshots } from './repo/backupRepo';
-import { getSetting, setSetting } from './repo/settingsRepo';
+import { getSetting } from './repo/settingsRepo';
 
 /** 一次补跑的结果汇总 */
 export interface CatchUpResult {
@@ -37,17 +37,11 @@ const pendingListeners: PendingListener[] = [];
 let bufferedPending: PendingConfirm[] = [];
 
 /**
- * [M3 修复] 待确认项持久化（M2 遗留：仅存内存，刷新丢失）：
- * runDueRules 产生新项时合并写入 settings kv 'recurring.pendingConfirms'（按
- * ruleId@dueAt 去重）；首次 catchUp 把已存项一并回放给监听者，后续只分发新增；
- * 确认/入账后由周期账 UI 调 savePendingConfirms 同步移除。
+ * 待确认项由 runDueRules 在“推进规则”的同一事务内持久化。
+ * scheduler 只从最新数据库队列回放本上下文尚未分发的 ruleId@dueAt，
+ * 不再做第二次合并写入。
  */
-let replayedSaved = false;
-
-/** [M3 修复] 周期账 UI 确认/移除待确认项后，回写剩余队列 */
-export async function savePendingConfirms(queue: PendingConfirm[]): Promise<void> {
-  await setSetting('recurring.pendingConfirms', queue);
-}
+const dispatchedPendingKeys = new Set<string>();
 
 /**
  * 注册「待确认入账」监听（接口预留：M2 周期账 UI 注册后，
@@ -76,19 +70,19 @@ export async function catchUp(): Promise<CatchUpResult> {
   if (running) return { booked: 0, pending: [], purged: 0, backupDue: false };
   running = true;
   try {
-    const { booked, pending } = await runDueRules();
+    const { booked } = await runDueRules();
     const purged = await purgeExpired();
     await purgeSnapshots(); // [M3] 清理超 7 天的恢复/导入前快照
     if (booked > 0) emit('entries-changed');
 
-    // [M3 修复] 新产生的待确认项合并持久化；首次补跑连同已存项一并回放
+    // runDueRules 已原子持久化；此处仅从最新队列按稳定身份回放一次。
     const saved = await getSetting('recurring.pendingConfirms');
-    const seen = new Set(saved.map((p) => `${p.ruleId}@${p.dueAt}`));
-    const fresh = pending.filter((p) => !seen.has(`${p.ruleId}@${p.dueAt}`));
-    const merged = [...saved, ...fresh];
-    if (fresh.length) await setSetting('recurring.pendingConfirms', merged);
-    const dispatch = replayedSaved ? fresh : merged;
-    replayedSaved = true;
+    const dispatch = saved.filter((item) => {
+      const key = `${item.ruleId}@${item.dueAt}`;
+      if (dispatchedPendingKeys.has(key)) return false;
+      dispatchedPendingKeys.add(key);
+      return true;
+    });
     if (dispatch.length) {
       if (pendingListeners.length) for (const cb of pendingListeners) cb(dispatch);
       else bufferedPending.push(...dispatch); // 见上方 M2-C 最小修复说明

@@ -12,7 +12,8 @@
  * 编辑 = 回滚旧账单影响 + 重放新账单影响；软删除回滚影响，恢复重放影响。
  */
 import { db, now, stamp } from '../db';
-import { emit, on } from '../store';
+import { on } from '../store';
+import { emitAfterCommit as emit } from './transactionEvents';
 import { accountEffects } from '../entryEffects';
 import { validateLoanAccounts } from '../loanLedger';
 import type { Entry, EntryType, ImportBatch, LoanKind, ReimburseStatus } from '../types';
@@ -40,8 +41,10 @@ export interface EntryFilter {
 async function applyEffects(e: Entry, sign: 1 | -1): Promise<void> {
   for (const { accountId, delta } of accountEffects(e)) {
     const acct = await db.accounts.get(accountId);
-    if (!acct && e.type === 'loan') throw new Error('借贷关联账户不存在');
-    if (acct) await db.accounts.update(accountId, { balance: acct.balance + sign * delta, updatedAt: now() });
+    if (!acct) throw new Error(e.type === 'loan' ? '借贷关联账户不存在' : '账单关联账户不存在');
+    const balance = acct.balance + sign * delta;
+    if (!Number.isSafeInteger(balance)) throw new Error('账户余额必须为安全整数（分）');
+    await db.accounts.update(accountId, { balance, updatedAt: now() });
   }
 }
 
@@ -50,13 +53,25 @@ function validate(e: NewEntry | Entry): void {
   if (!Number.isSafeInteger(e.amount) || e.amount <= 0) throw new Error('金额须为正整数（分）');
   if (!Number.isFinite(e.occurredAt)) throw new Error('occurredAt 非法');
   if (e.refundFlag && e.type !== 'expense') throw new Error('退款记录必须归属支出类型');
+  if (e.refundFlag && ((e.reimburseStatus != null && e.reimburseStatus !== 'none')
+    || e.reimbursedAmount != null || e.reimburseAccountId != null || e.reimbursedAt != null)) {
+    throw new Error('退款记录不能同时报销');
+  }
+  if (e.reimbursedAmount != null) {
+    if (e.type !== 'expense' || e.reimburseStatus !== 'done'
+      || !Number.isSafeInteger(e.reimbursedAmount) || e.reimbursedAmount <= 0 || e.reimbursedAmount > e.amount) {
+      throw new Error('报销到账金额须为正整数（分），且不能超过原支出');
+    }
+    if (e.reimburseAccountId == null || !Number.isFinite(e.reimbursedAt)) throw new Error('报销到账缺少有效账户或日期');
+  }
   switch (e.type) {
     case 'expense':
     case 'income':
       if (e.accountId == null) throw new Error(`${e.type} 账单必须指定 accountId`);
       break;
     case 'transfer':
-      if (e.note === '余额对账调整') break; // 对账调整允许单边
+      // 对账调整仅豁免恰有一侧的情况，备注不能放行无账户/同账户转账。
+      if (e.note === '余额对账调整' && (e.fromAccountId == null) !== (e.toAccountId == null)) break;
       if (e.fromAccountId == null || e.toAccountId == null) throw new Error('转账必须指定 from/to 账户');
       if (e.fromAccountId === e.toAccountId) throw new Error('转出与转入账户不能相同');
       break;
@@ -70,10 +85,27 @@ function validate(e: NewEntry | Entry): void {
 
 /** 在写事务内读取两侧账户，账户错误时不得写入半笔流水。 */
 async function validateAccountReferences(entry: NewEntry | Entry): Promise<void> {
+  const ids = [...new Set(accountEffects(entry).map(effect => effect.accountId))];
+  if (ids.some(id => !Number.isSafeInteger(id) || id <= 0)) throw new Error('账单关联账户无效');
+  const accounts = await db.accounts.bulkGet(ids);
+  if (accounts.some(account => account == null)) throw new Error('账单关联账户不存在');
   if (entry.type !== 'loan') return;
-  const accounts = await db.accounts.bulkGet([entry.fromAccountId!, entry.toAccountId!]);
   const present = accounts.filter((account): account is NonNullable<typeof account> => account != null);
   validateLoanAccounts(entry, new Map(present.map(account => [account.id, account])));
+}
+
+/** 通用新增、编辑、恢复和导入都不能绕过原支出/可退额校验。 */
+async function validateRefundReference(entry: NewEntry | Entry, id?: number): Promise<void> {
+  if (!entry.refundFlag) return;
+  const original = entry.refundOfEntryId != null ? await db.entries.get(entry.refundOfEntryId) : undefined;
+  if (!original || original.deletedAt !== 0 || original.type !== 'expense' || original.refundFlag) {
+    throw new Error('关联的原支出账单不存在');
+  }
+  const siblings = await db.entries.filter(row => row.deletedAt === 0 && row.refundFlag === true
+    && row.refundOfEntryId === original.id && row.id !== id).toArray();
+  if (siblings.reduce((sum, row) => sum + row.amount, 0) + entry.amount > original.amount) {
+    throw new Error('退款总额不能超过原支出金额');
+  }
 }
 
 /**
@@ -86,6 +118,7 @@ export async function addEntry(input: NewEntry, tagIds: number[] = []): Promise<
   validate(input);
   const id = await db.transaction('rw', [db.entries, db.accounts, db.entryTags], async () => {
     await validateAccountReferences(input);
+    await validateRefundReference(input);
     const entry = stamp({ reimburseStatus: 'none' as ReimburseStatus, ...input, deletedAt: 0 }) as Entry;
     const newId = await db.entries.add(entry);
     await applyEffects({ ...entry, id: newId }, 1);
@@ -110,19 +143,8 @@ export async function updateEntry(id: number, patch: Partial<NewEntry>, tagIds?:
     const next = { ...old, ...patch, updatedAt: now() } as Entry;
     validate(next);
     await validateAccountReferences(next);
-    if (next.refundFlag && next.refundOfEntryId != null) {
-      const original = await db.entries.get(next.refundOfEntryId);
-      if (!original || original.deletedAt !== 0 || original.type !== 'expense' || original.refundFlag) {
-        throw new Error('关联的原支出账单不存在');
-      }
-      const siblings = await db.entries
-        .filter((entry) => entry.deletedAt === 0 && entry.refundFlag === true
-          && entry.refundOfEntryId === original.id && entry.id !== id)
-        .toArray();
-      if (siblings.reduce((sum, entry) => sum + entry.amount, 0) + next.amount > original.amount) {
-        throw new Error('退款总额不能超过原支出金额');
-      }
-    } else if (!next.refundFlag) {
+    await validateRefundReference(next, id);
+    if (!next.refundFlag) {
       const refunds = await db.entries
         .filter((entry) => entry.deletedAt === 0 && entry.refundFlag === true && entry.refundOfEntryId === id)
         .toArray();
@@ -181,6 +203,8 @@ export async function restoreEntry(id: number): Promise<void> {
       }
     }
     await validateAccountReferences(e);
+    validate(e);
+    await validateRefundReference(e, id);
     const deletedAt = e.deletedAt;
     await db.entries.update(id, { deletedAt: 0, updatedAt: now() });
     await applyEffects({ ...e, deletedAt: 0 }, 1);
@@ -189,6 +213,9 @@ export async function restoreEntry(id: number): Promise<void> {
         .filter((entry) => entry.refundFlag === true && entry.refundOfEntryId === id && entry.deletedAt === deletedAt)
         .toArray();
       for (const refund of refunds) {
+        validate(refund);
+        await validateAccountReferences(refund);
+        await validateRefundReference(refund, refund.id);
         await db.entries.update(refund.id, { deletedAt: 0, updatedAt: now() });
         await applyEffects({ ...refund, deletedAt: 0 }, 1);
       }
@@ -287,6 +314,7 @@ export async function createRefund(input: CreateRefundInput): Promise<number> {
       deletedAt: 0,
     }) as Entry;
     validate(entry);
+    await validateAccountReferences(entry);
     const refundId = await db.entries.add(entry);
     await applyEffects({ ...entry, id: refundId }, 1);
     const tags = await db.entryTags.where('entryId').equals(original.id).toArray();
@@ -425,6 +453,7 @@ export async function importEntriesBatch(
       const entryIds: number[] = [];
       for (const { input, tagIds = [] } of items) {
         await validateAccountReferences(input);
+        await validateRefundReference(input);
         const entry = stamp({
           reimburseStatus: 'none' as ReimburseStatus, ...input, deletedAt: 0, importBatchId: batchId,
         }) as Entry;
@@ -454,10 +483,15 @@ export async function settleReimbursement(
   amountById?: Map<number, number>,
 ): Promise<void> {
   await db.transaction('rw', [db.entries, db.accounts], async () => {
+    if (!Number.isSafeInteger(reimburseAccountId) || !(await db.accounts.get(reimburseAccountId))) {
+      throw new Error('报销到账账户不存在');
+    }
     for (const id of ids) {
       const e = await db.entries.get(id);
       if (!e || e.deletedAt !== 0 || e.type !== 'expense' || e.reimburseStatus !== 'pending') continue;
-      const amt = Math.min(amountById?.get(id) ?? e.amount, e.amount);
+      if (e.refundFlag) throw new Error('退款记录不能同时报销');
+      const amt = amountById?.get(id) ?? e.amount;
+      if (!Number.isSafeInteger(amt) || amt <= 0 || amt > e.amount) throw new Error('报销到账金额须为正整数（分），且不能超过原支出');
       await db.entries.update(id, {
         reimburseStatus: 'done',
         reimbursedAt: now(),
@@ -466,7 +500,9 @@ export async function settleReimbursement(
         updatedAt: now(),
       });
       const acct = await db.accounts.get(reimburseAccountId);
-      if (acct) await db.accounts.update(reimburseAccountId, { balance: acct.balance + amt, updatedAt: now() });
+      const balance = acct!.balance + amt;
+      if (!Number.isSafeInteger(balance)) throw new Error('账户余额必须为安全整数（分）');
+      await db.accounts.update(reimburseAccountId, { balance, updatedAt: now() });
     }
   });
   emit('entries-changed');

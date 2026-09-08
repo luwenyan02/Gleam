@@ -3,8 +3,8 @@
  * 常用商家按使用频次（useCount）排前；导入时自动并入（ensureMerchant）。
  */
 import { db, now, stamp } from '../db';
-import { emit } from '../store';
 import type { Merchant } from '../types';
+import { emitAfterCommit as emit } from './transactionEvents';
 
 /** 商家列表，useCount 降序（常用在前） */
 export async function listMerchants(): Promise<Merchant[]> {

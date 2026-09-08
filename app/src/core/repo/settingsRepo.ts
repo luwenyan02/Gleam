@@ -4,8 +4,8 @@
  * 写入成功后 emit 'settings-changed'。
  */
 import { db, now } from '../db';
-import { emit } from '../store';
 import { SETTING_DEFAULTS, type SettingKey } from '../types';
+import { emitAfterCommit as emit } from './transactionEvents';
 
 /**
  * 读取设置项；库中未写入时返回 SETTING_DEFAULTS 中的默认值。

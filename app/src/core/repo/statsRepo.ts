@@ -14,7 +14,7 @@ import { listNetWorthAccounts } from './accountRepo';
 import { getSetting } from './settingsRepo';
 import type { Entry } from '../types';
 import { filterLedgerEntries, summarizeLedgerEntries } from '../ledgerQuery';
-import { ledgerItems } from '../ledgerEvents';
+import { ledgerItems, type LedgerItem } from '../ledgerEvents';
 import { accountEffects } from '../entryEffects';
 
 /** 收支汇总结果（分） */
@@ -50,6 +50,30 @@ async function entriesIn(from: number, to: number): Promise<Entry[]> {
   return db.entries.where('[deletedAt+occurredAt]').between([0, from], [0, to], true, false).toArray();
 }
 
+/**
+ * 统一统计事件集：普通账单按 occurredAt 入选；计收入口径额外按 reimbursedAt
+ * 载入报销来源并展开为到账事件。来源账单可早于查询范围。
+ */
+export async function ledgerEntriesInRange(
+  from: number,
+  to: number,
+  countAsIncome?: boolean,
+): Promise<LedgerItem[]> {
+  const asIncome = countAsIncome ?? await getSetting('reimburse.countAsIncome');
+  const rows = await entriesIn(from, to);
+  if (asIncome) {
+    const reimbursedSources = await db.entries
+      .where('reimburseStatus')
+      .equals('done')
+      .filter((entry) => entry.deletedAt === 0 && entry.reimbursedAt != null
+        && entry.reimbursedAt >= from && entry.reimbursedAt < to)
+      .toArray();
+    const ids = new Set(rows.map((entry) => entry.id));
+    rows.push(...reimbursedSources.filter((entry) => !ids.has(entry.id)));
+  }
+  return filterLedgerEntries(ledgerItems(rows, asIncome), { from, to });
+}
+
 /** 支出统计方向：普通支出为正，退款记录为负。 */
 function expenseAmount(entry: Entry): number {
   return entry.refundFlag ? -entry.amount : entry.amount;
@@ -62,18 +86,7 @@ function expenseAmount(entry: Entry): number {
  */
 export async function rangeSummary(from: number, to: number): Promise<Summary> {
   const countAsIncome = await getSetting('reimburse.countAsIncome');
-  const rows = await entriesIn(from, to);
-  if (countAsIncome) {
-    // 已到账报销按 reimbursedAt 归属周期计入收入（原账单可能在其他周期）
-    const done = await db.entries
-      .where('reimburseStatus')
-      .equals('done')
-      .filter((e) => e.deletedAt === 0 && e.reimbursedAt != null && e.reimbursedAt >= from && e.reimbursedAt < to)
-      .toArray();
-    const ids = new Set(rows.map(e => e.id));
-    rows.push(...done.filter(e => !ids.has(e.id)));
-  }
-  const items = filterLedgerEntries(ledgerItems(rows, countAsIncome), { from, to });
+  const items = await ledgerEntriesInRange(from, to, countAsIncome);
   const summary = summarizeLedgerEntries(items, {
     reimburseMode: countAsIncome ? 'income' : 'offset',
   });
@@ -153,7 +166,8 @@ export async function tagRanking(from: number, to: number): Promise<{ tagId: num
  */
 export async function dailyAggregates(month: string): Promise<Map<string, { expense: number; income: number; count: number }>> {
   const { from, to } = monthRange(month);
-  const rows = await entriesIn(from, to);
+  const countAsIncome = await getSetting('reimburse.countAsIncome');
+  const rows = await ledgerEntriesInRange(from, to, countAsIncome);
   const map = new Map<string, { expense: number; income: number; count: number }>();
   for (const e of rows) {
     const key = dayKey(e.occurredAt);
@@ -163,8 +177,11 @@ export async function dailyAggregates(month: string): Promise<Map<string, { expe
       map.set(key, d);
     }
     d.count += 1;
-    if (e.type === 'expense') d.expense += expenseAmount(e);
-    else if (e.type === 'income') d.income += e.amount;
+    const summary = summarizeLedgerEntries([e], {
+      reimburseMode: countAsIncome ? 'income' : 'offset',
+    });
+    d.expense += summary.expense;
+    d.income += summary.income;
   }
   return map;
 }

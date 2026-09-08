@@ -4,8 +4,8 @@
  * 写操作后 emit 'entries-changed'（标签仅依附账单展示，无独立事件）。
  */
 import { db, now, stamp } from '../db';
-import { emit } from '../store';
 import type { Tag } from '../types';
+import { emitAfterCommit as emit } from './transactionEvents';
 
 /** 全部标签，按名称排序 */
 export async function listTags(): Promise<Tag[]> {

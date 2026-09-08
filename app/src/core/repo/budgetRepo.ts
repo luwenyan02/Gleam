@@ -36,22 +36,30 @@ export async function setBudget(month: string, totalLimit: number, autoRenew?: b
  * @returns 该月预算（可能仍为 undefined，表示上月未设或未开启延续）
  */
 export async function ensureMonthBudget(month: string): Promise<Budget | undefined> {
-  const existing = await getBudget(month);
-  if (existing) return existing;
   const [y, m] = month.split('-').map(Number);
   const prev = new Date(y, m - 2, 1);
   const prevMonth = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
-  const prevBudget = await getBudget(prevMonth);
-  if (!prevBudget || !prevBudget.autoRenew) return undefined;
-  await db.transaction('rw', [db.budgets, db.categoryBudgets], async () => {
-    await db.budgets.add(stamp({ month, totalLimit: prevBudget.totalLimit, autoRenew: prevBudget.autoRenew }) as Budget);
+  let created = false;
+  const budget = await db.transaction('rw', [db.budgets, db.categoryBudgets], async () => {
+    const existing = await getBudget(month);
+    if (existing) return existing;
+    const prevBudget = await getBudget(prevMonth);
+    if (!prevBudget || !prevBudget.autoRenew) return undefined;
+    const next = stamp({
+      month,
+      totalLimit: prevBudget.totalLimit,
+      autoRenew: prevBudget.autoRenew,
+    }) as Budget;
+    const id = await db.budgets.add(next);
     const prevCats = await db.categoryBudgets.where('month').equals(prevMonth).toArray();
     for (const cb of prevCats) {
       await db.categoryBudgets.add(stamp({ month, categoryId: cb.categoryId, limit: cb.limit }) as CategoryBudget);
     }
+    created = true;
+    return { ...next, id };
   });
-  emit('budgets-changed', { month });
-  return getBudget(month);
+  if (created) emit('budgets-changed', { month });
+  return budget;
 }
 
 /** 某月全部分类子预算 */

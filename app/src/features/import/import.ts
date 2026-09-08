@@ -14,11 +14,13 @@ import { listCategories, addCategory } from '../../core/repo/categoryRepo';
 import { listAccounts, addAccount } from '../../core/repo/accountRepo';
 import { ensureTag } from '../../core/repo/tagRepo';
 import { ensureMerchant, touchMerchant } from '../../core/repo/merchantRepo';
+import { saveImportAtomically } from '../../core/repo/importSaveRepo';
 import {
   findDuplicates, findLoanDuplicates, findTransferDuplicates, importEntriesBatch,
   type ImportEntryItem, type NewEntry,
 } from '../../core/repo/entryRepo';
 import { loanDirection } from '../../core/loanLedger';
+import { entryIdentity } from '../../core/entryIdentity';
 import { ACCOUNT_GROUP_NAMES, type Account, type Category } from '../../core/types';
 import { parseWacaiFile, type WacaiParseResult, type WacaiRow } from './wacai';
 import { accountUsageKey, buildAccountPlans, type AccountPlan } from './accountMapping';
@@ -142,77 +144,91 @@ async function runImport(): Promise<void> {
     // 前置自动快照（7 天内可在备份页撤销）
     await createSnapshot('import', `导入「${st.file.name}」前`);
 
-    // 解析映射计划：分类 / 账户（choice=数字即用户指定；'auto' 按建议匹配或新建）
-    const catIds = new Map<string, number>();
-    for (const p of st.cats) {
-      if (typeof p.choice === 'number') catIds.set(p.key, p.choice);
-      else if (p.matchedId != null) catIds.set(p.key, p.matchedId);
-      else catIds.set(p.key, await createCategory(p, st.expenseCats, st.incomeCats));
-    }
-    const acctIds = new Map<string, number>();
-    for (const p of st.accts) {
-      let accountId: number;
-      if (typeof p.choice === 'number') accountId = p.choice;
-      else if (p.matchedId != null) accountId = p.matchedId;
-      else if (p.choice === 'auto') accountId = await addAccount({ name: p.name, group: p.group, balance: 0 });
-      else throw new Error(`请先选择账户「${p.name}」的同名匹配项`);
-      for (const usage of p.usages) acctIds.set(accountUsageKey(usage, p.name), accountId);
-    }
     const createdCats = st.cats.filter((p) => p.choice === 'auto' && p.matchedId == null).length;
     const createdAccts = st.accts.filter((p) => p.choice === 'auto' && p.matchedId == null).length;
-
-    // 标签 / 商家（事务外 ensure，导入事务内只引用 id）
-    const tagIds = new Map<string, number>();
-    const merchantIds = new Map<string, number>();
-    for (const row of st.result.rows) {
-      for (const t of row.tags) if (!tagIds.has(t)) tagIds.set(t, await ensureTag(t));
-      if (row.merchant && !merchantIds.has(row.merchant)) merchantIds.set(row.merchant, await ensureMerchant(row.merchant));
-    }
-
-    // 查重（时间+类型+金额+账户；转账按 from/to）→ 命中默认跳过
-    const items: ImportEntryItem[] = [];
-    const importedRows: WacaiRow[] = [];
-    const skippedRows: number[] = [];
-    for (const row of st.result.rows) {
-      let dup;
-      if (row.type === 'transfer') {
-        dup = await findTransferDuplicates(
-          row.occurredAt, row.amountFen,
-          acctIds.get(accountUsageKey('general', row.fromAccountName!)),
-          acctIds.get(accountUsageKey('general', row.toAccountName!)),
-        );
-      } else if (row.type === 'loan') {
-        const direction = loanDirection(
-          row.loanKind!,
-          acctIds.get(accountUsageKey('fund', row.accountName!))!,
-          acctIds.get(accountUsageKey('loan', row.loanAccountName!))!,
-        );
-        dup = await findLoanDuplicates(
-          row.occurredAt, row.amountFen, row.loanKind!, direction.fromAccountId, direction.toAccountId,
-        );
-      } else {
-        dup = await findDuplicates(
-          row.occurredAt, row.type, row.amountFen,
-          acctIds.get(accountUsageKey('general', row.accountName!)),
-        );
+    const saved = await saveImportAtomically(async () => {
+      // 映射数组只在事务内使用副本，回滚时不把无效 id 留在向导状态中。
+      const expenseCats = st.expenseCats.slice();
+      const incomeCats = st.incomeCats.slice();
+      const catIds = new Map<string, number>();
+      for (const p of st.cats) {
+        if (typeof p.choice === 'number') catIds.set(p.key, p.choice);
+        else if (p.matchedId != null) catIds.set(p.key, p.matchedId);
+        else catIds.set(p.key, await createCategory(p, expenseCats, incomeCats));
       }
-      if (dup.length) { skippedRows.push(row.rowNo); continue; }
-      items.push({ input: rowToEntry(row, catIds, acctIds, merchantIds), tagIds: row.tags.map((t) => tagIds.get(t)!) });
-      importedRows.push(row);
-    }
-
-    // 单事务写入（含 importBatch），任一笔失败全回滚
-    if (items.length) {
-      await importEntriesBatch(items, {
-        source: 'wacai',
-        fileName: st.file.name,
-        counts: { ...st.result.counts, skipped: skippedRows.length },
-        snapshotRef: `导入「${st.file.name}」前`,
-      });
-      for (const row of importedRows) {
-        if (row.merchant) await touchMerchant(merchantIds.get(row.merchant)!);
+      const acctIds = new Map<string, number>();
+      for (const p of st.accts) {
+        let accountId: number;
+        if (typeof p.choice === 'number') accountId = p.choice;
+        else if (p.matchedId != null) accountId = p.matchedId;
+        else if (p.choice === 'auto') accountId = await addAccount({ name: p.name, group: p.group, balance: 0 });
+        else throw new Error(`请先选择账户「${p.name}」的同名匹配项`);
+        for (const usage of p.usages) acctIds.set(accountUsageKey(usage, p.name), accountId);
       }
-    }
+
+      const tagIds = new Map<string, number>();
+      const merchantIds = new Map<string, number>();
+      for (const row of st.result.rows) {
+        for (const tag of row.tags) if (!tagIds.has(tag)) tagIds.set(tag, await ensureTag(tag));
+        if (row.merchant && !merchantIds.has(row.merchant)) {
+          merchantIds.set(row.merchant, await ensureMerchant(row.merchant));
+        }
+      }
+
+      // 查重（时间+类型+金额+账户；转账按 from/to）→ 命中默认跳过
+      const items: ImportEntryItem[] = [];
+      const importedRows: WacaiRow[] = [];
+      const skippedRows: number[] = [];
+      const batchKeys = new Set<string>();
+      for (const row of st.result.rows) {
+        const input = rowToEntry(row, catIds, acctIds, merchantIds);
+        let dup;
+        if (row.type === 'transfer') {
+          dup = await findTransferDuplicates(
+            row.occurredAt, row.amountFen,
+            acctIds.get(accountUsageKey('general', row.fromAccountName!)),
+            acctIds.get(accountUsageKey('general', row.toAccountName!)),
+          );
+        } else if (row.type === 'loan') {
+          const direction = loanDirection(
+            row.loanKind!,
+            acctIds.get(accountUsageKey('fund', row.accountName!))!,
+            acctIds.get(accountUsageKey('loan', row.loanAccountName!))!,
+          );
+          dup = await findLoanDuplicates(
+            row.occurredAt, row.amountFen, row.loanKind!, direction.fromAccountId, direction.toAccountId,
+          );
+        } else {
+          dup = await findDuplicates(
+            row.occurredAt, row.type, row.amountFen,
+            acctIds.get(accountUsageKey('general', row.accountName!)),
+          );
+        }
+        const key = entryIdentity(input);
+        if (dup.length || batchKeys.has(key)) { skippedRows.push(row.rowNo); continue; }
+        batchKeys.add(key);
+        items.push({ input, tagIds: row.tags.map((tag) => tagIds.get(tag)!) });
+        importedRows.push(row);
+      }
+
+      if (items.length) {
+        await importEntriesBatch(items, {
+          source: 'wacai',
+          fileName: st.file.name,
+          counts: { ...st.result.counts, skipped: skippedRows.length },
+          snapshotRef: `导入「${st.file.name}」前`,
+        });
+        for (const row of importedRows) {
+          if (row.merchant) await touchMerchant(merchantIds.get(row.merchant)!);
+        }
+      }
+      return { expenseCats, incomeCats, items, importedRows, skippedRows };
+    });
+
+    // 只有事务成功后才接纳新分类 id；失败时保留原映射，可安全重试。
+    st.expenseCats = saved.expenseCats;
+    st.incomeCats = saved.incomeCats;
+    const { items, importedRows, skippedRows } = saved;
 
     st.report = {
       imported: items.length,

@@ -134,45 +134,99 @@ export interface PendingConfirm {
 }
 
 /**
+ * 领取并入账一期待确认周期账。
+ * `ruleId + dueAt` 是稳定身份；队列移除、写账和余额变更同事务提交。
+ * 若另一调用已领取该项，返回 booked=false，不重复入账。
+ */
+export async function confirmPendingOccurrence(
+  ruleId: number,
+  dueAt: number,
+  amount: number,
+): Promise<{ booked: boolean; pending: PendingConfirm[] }> {
+  return db.transaction(
+    'rw',
+    [db.entries, db.accounts, db.entryTags, db.recurringRules, db.settings],
+    async () => {
+      const row = await db.settings.get('recurring.pendingConfirms');
+      const saved = Array.isArray(row?.value) ? row.value as PendingConfirm[] : [];
+      const index = saved.findIndex((item) => item.ruleId === ruleId && item.dueAt === dueAt);
+      if (index < 0) return { booked: false, pending: saved };
+
+      const item = saved[index];
+      const pending = saved.filter((_, current) => current !== index);
+      await db.settings.put({ key: 'recurring.pendingConfirms', value: pending, updatedAt: now() });
+      await addEntry({
+        type: 'expense',
+        amount,
+        occurredAt: item.dueAt,
+        categoryId: item.categoryId,
+        accountId: item.accountId,
+        note: `周期账 · ${item.name}`,
+      });
+      return { booked: true, pending };
+    },
+  );
+}
+
+/**
  * 补跑到期规则（nextRunAt <= asOf 的启用规则，逐期推进直至追平）：
  * - 普通规则：每期生成一笔支出账单（occurredAt = 原定入账时间）；
  * - amountConfirm 规则：不入账，收集为 PendingConfirm 返回（通知接口预留）。
  * @returns 本次自动入账笔数与待确认列表
  */
 export async function runDueRules(asOf = now()): Promise<{ booked: number; pending: PendingConfirm[] }> {
-  const due = await db.recurringRules.where('[enabled+nextRunAt]').between([1, 0], [1, asOf], true, true).toArray();
-  // Dexie 布尔不可索引，enabled 以 filter 兜底（索引项按数字写入时生效）
-  const rules = due.length ? due : (await db.recurringRules.toArray()).filter((r) => r.enabled && r.nextRunAt <= asOf);
-  let booked = 0;
-  const pending: PendingConfirm[] = [];
-  for (const rule of rules) {
-    let cursor = rule.nextRunAt;
-    let guard = 0;
-    while (cursor <= asOf && guard < 400) {
-      guard++;
-      if (rule.amountConfirm) {
-        pending.push({
-          ruleId: rule.id!,
-          name: rule.name,
-          amount: rule.amount,
-          dueAt: cursor,
-          accountId: rule.accountId,
-          categoryId: rule.categoryId,
-        });
-      } else {
-        await addEntry({
-          type: 'expense',
-          amount: rule.amount,
-          occurredAt: cursor,
-          categoryId: rule.categoryId,
-          accountId: rule.accountId,
-          note: `周期账 · ${rule.name}`,
-        });
-        booked++;
+  return db.transaction(
+    'rw',
+    [db.entries, db.accounts, db.entryTags, db.recurringRules, db.settings],
+    async () => {
+      const due = await db.recurringRules.where('[enabled+nextRunAt]').between([1, 0], [1, asOf], true, true).toArray();
+      // Dexie 布尔不可索引，enabled 以 filter 兜底（索引项按数字写入时生效）
+      const rules = due.length ? due : (await db.recurringRules.toArray()).filter((r) => r.enabled && r.nextRunAt <= asOf);
+      let booked = 0;
+      const pending: PendingConfirm[] = [];
+      for (const rule of rules) {
+        let cursor = rule.nextRunAt;
+        let guard = 0;
+        while (cursor <= asOf && guard < 400) {
+          guard++;
+          if (rule.amountConfirm) {
+            pending.push({
+              ruleId: rule.id!,
+              name: rule.name,
+              amount: rule.amount,
+              dueAt: cursor,
+              accountId: rule.accountId,
+              categoryId: rule.categoryId,
+            });
+          } else {
+            await addEntry({
+              type: 'expense',
+              amount: rule.amount,
+              occurredAt: cursor,
+              categoryId: rule.categoryId,
+              accountId: rule.accountId,
+              note: `周期账 · ${rule.name}`,
+            });
+            booked++;
+          }
+          cursor = computeNextRunAt(rule, cursor);
+        }
+        await db.recurringRules.update(rule.id!, { nextRunAt: cursor, updatedAt: now() });
       }
-      cursor = computeNextRunAt(rule, cursor);
-    }
-    await db.recurringRules.update(rule.id!, { nextRunAt: cursor, updatedAt: now() });
-  }
-  return { booked, pending };
+      if (!pending.length) return { booked, pending };
+
+      const savedRow = await db.settings.get('recurring.pendingConfirms');
+      const saved = Array.isArray(savedRow?.value) ? savedRow.value as PendingConfirm[] : [];
+      const seen = new Set(saved.map((item) => `${item.ruleId}@${item.dueAt}`));
+      const fresh = pending.filter((item) => !seen.has(`${item.ruleId}@${item.dueAt}`));
+      if (fresh.length) {
+        await db.settings.put({
+          key: 'recurring.pendingConfirms',
+          value: [...saved, ...fresh],
+          updatedAt: now(),
+        });
+      }
+      return { booked, pending: fresh };
+    },
+  );
 }

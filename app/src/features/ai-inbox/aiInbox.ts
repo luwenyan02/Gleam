@@ -11,6 +11,7 @@ import './aiInbox.css';
 import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
 import { formatFen, formatFenCny, parseYuanToFen } from '../../core/money';
+import { entryIdentity } from '../../core/entryIdentity';
 import type { AiPendingItem, Account, Category } from '../../core/types';
 import { on } from '../../core/store';
 import { getSetting } from '../../core/repo/settingsRepo';
@@ -18,6 +19,7 @@ import { secretStore } from '../../core/secretStore';
 import { listCategories } from '../../core/repo/categoryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
 import { ensureMerchant, touchMerchant } from '../../core/repo/merchantRepo';
+import { saveImportAtomically } from '../../core/repo/importSaveRepo';
 import {
   findDuplicates, importEntriesBatch, listEntries, softDeleteEntry,
   type ImportEntryItem, type NewEntry,
@@ -152,59 +154,77 @@ interface ConfirmResult {
   skippedDup: number;
   /** 分类/账户未映射或金额非法跳过数 */
   skippedInvalid: number;
+  /** 事务开始时已不在待确认队列的过期条目数 */
+  skippedStale: number;
   /** 首个入账账单 id（「编辑更多」用） */
   firstEntryId?: number;
 }
 
 /**
- * 确认入账核心：分类/账户名映射为 id → 查重（同批内按 occurredAt+amount 去重）→
+ * 确认入账核心：分类/账户名映射为 id → 查重（同批内按已入库查重口径去重）→
  * importEntriesBatch(source:'ai') 单事务写入 → 从 KV 队列移除并清理附件。
  * @param items 待入账条目（须为 ready 状态）
  * @param allowDup 允许入账命中查重的条目（用户已二次确认「仍要入账」）
  */
 async function confirmItems(items: AiPendingItem[], allowDup = false): Promise<ConfirmResult> {
-  const [expenseCats, incomeCats, accounts] = await Promise.all([
-    listCategories('expense'), listCategories('income'), listAccounts(),
-  ]);
-  const result: ConfirmResult = { imported: 0, skippedDup: 0, skippedInvalid: 0 };
-  const entryItems: ImportEntryItem[] = [];
-  const confirmedIds: string[] = [];
-  const merchantIds: number[] = [];
-  const batchKeys = new Set<string>();
-  const counts: Record<string, number> = { expense: 0, income: 0 };
-
-  for (const item of items) {
-    const type = item.type;
-    const amount = item.amount ?? 0;
-    const occurredAt = item.occurredAt ?? Date.now();
-    const categoryId = mapCategoryNameToId(type ?? 'expense', item.categoryName ?? '', expenseCats, incomeCats);
-    const accountId = mapAccountNameToId(item.accountName ?? '', accounts);
-    if (!type || amount <= 0 || !Number.isSafeInteger(amount) || categoryId == null || accountId == null) {
-      result.skippedInvalid++;
-      continue;
+  return saveImportAtomically(async () => {
+    const result: ConfirmResult = { imported: 0, skippedDup: 0, skippedInvalid: 0, skippedStale: 0 };
+    // 写事务获得锁后重读队列；双击或旧界面不能再次消费已入账 tempId。
+    const liveById = new Map(
+      (await listAiPendingItems())
+        .filter((item) => item.status === 'ready')
+        .map((item) => [item.tempId, item]),
+    );
+    const liveItems: AiPendingItem[] = [];
+    for (const requested of items) {
+      const live = liveById.get(requested.tempId);
+      if (live) liveItems.push(live);
+      else result.skippedStale++;
     }
-    // 同批内按 occurredAt+amount 去重 + 库内「时间+类型+金额+账户」查重
-    const key = `${occurredAt}:${amount}`;
-    if (batchKeys.has(key)) { result.skippedDup++; continue; }
-    const dup = await findDuplicates(occurredAt, type, amount, accountId);
-    if (dup.length && !allowDup) { result.skippedDup++; continue; }
-    batchKeys.add(key);
-    const merchantId = item.merchantName ? await ensureMerchant(item.merchantName) : undefined;
-    if (merchantId != null) merchantIds.push(merchantId);
-    const input: NewEntry = { type, amount, occurredAt, categoryId, accountId, merchantId, note: item.note || undefined };
-    entryItems.push({ input });
-    confirmedIds.push(item.tempId);
-    counts[type] = (counts[type] ?? 0) + 1;
-  }
+    if (!liveItems.length) return result;
 
-  if (entryItems.length) {
-    const { entryIds } = await importEntriesBatch(entryItems, { source: 'ai', fileName: 'AI识别', counts });
-    for (const id of merchantIds) await touchMerchant(id);
-    await removeAiPendingItems(confirmedIds);
-    result.imported = entryItems.length;
-    result.firstEntryId = entryIds[0];
-  }
-  return result;
+    const [expenseCats, incomeCats, accounts] = await Promise.all([
+      listCategories('expense'), listCategories('income'), listAccounts(),
+    ]);
+    const entryItems: ImportEntryItem[] = [];
+    const confirmedIds: string[] = [];
+    const merchantIds: number[] = [];
+    const batchKeys = new Set<string>();
+    const counts: Record<string, number> = { expense: 0, income: 0 };
+
+    for (const item of liveItems) {
+      const type = item.type;
+      const amount = item.amount ?? 0;
+      const occurredAt = item.occurredAt ?? Date.now();
+      const categoryId = mapCategoryNameToId(type ?? 'expense', item.categoryName ?? '', expenseCats, incomeCats);
+      const accountId = mapAccountNameToId(item.accountName ?? '', accounts);
+      if (!type || amount <= 0 || !Number.isSafeInteger(amount) || categoryId == null || accountId == null) {
+        result.skippedInvalid++;
+        continue;
+      }
+      // 同批内与库内均按「时间+类型+金额+账户」口径查重
+      const key = entryIdentity({ type, amount, occurredAt, accountId });
+      if (batchKeys.has(key)) { result.skippedDup++; continue; }
+      const dup = await findDuplicates(occurredAt, type, amount, accountId);
+      if (dup.length && !allowDup) { result.skippedDup++; continue; }
+      batchKeys.add(key);
+      const merchantId = item.merchantName ? await ensureMerchant(item.merchantName) : undefined;
+      if (merchantId != null) merchantIds.push(merchantId);
+      const input: NewEntry = { type, amount, occurredAt, categoryId, accountId, merchantId, note: item.note || undefined };
+      entryItems.push({ input });
+      confirmedIds.push(item.tempId);
+      counts[type] = (counts[type] ?? 0) + 1;
+    }
+
+    if (entryItems.length) {
+      const { entryIds } = await importEntriesBatch(entryItems, { source: 'ai', fileName: 'AI识别', counts });
+      for (const id of merchantIds) await touchMerchant(id);
+      await removeAiPendingItems(confirmedIds);
+      result.imported = entryItems.length;
+      result.firstEntryId = entryIds[0];
+    }
+    return result;
+  });
 }
 
 /**
@@ -304,6 +324,7 @@ async function confirmOne(tempId: string, editAfter: boolean): Promise<void> {
     void refresh();
     return;
   }
+  if (r.skippedStale > 0) return;
   showToast('请先补全类型、金额、分类与账户');
 }
 

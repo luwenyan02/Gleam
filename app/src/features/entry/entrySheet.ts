@@ -24,7 +24,7 @@ import { listTemplates } from '../../core/repo/templateRepo';
 import { listTags, ensureTag } from '../../core/repo/tagRepo';
 import { listMerchants, ensureMerchant } from '../../core/repo/merchantRepo';
 import { listLoanAccounts, getLoanAccount, ensureLoanAccount } from '../../core/repo/loanRepo';
-import { addLifeNote } from '../../core/repo/lifeRepo';
+import type { NewLifeNote } from '../../core/repo/lifeRepo';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { openSubpage } from '../shell/router';
@@ -80,6 +80,8 @@ interface SheetCtx {
   /** 当前操作数（元，字符串） */
   amt: string;
   prev: number | null;
+  /** 连续运算的精确左操作数，仅存在于当前抽屉内存。 */
+  prevAmount: string | null;
   op: CalculatorOperator | null;
   /** 支出/收入选中分类 id */
   categoryId?: number;
@@ -181,7 +183,7 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
   const initialType = presetLoan ? 'loan' : resolveInitialEntryType(options.presetType, lastUsed.type);
   const c: SheetCtx = {
     type: initialType,
-    amt: '', prev: null, op: null,
+    amt: '', prev: null, prevAmount: null, op: null,
     categoryId: initialType === 'income'
       ? lastUsed.incomeCategoryId ?? incomeCats[0]?.id
       : lastUsed.expenseCategoryId != null && expenseIds.has(lastUsed.expenseCategoryId)
@@ -496,7 +498,7 @@ function refreshAmt(): void {
   const c = ctx!;
   const el = q('#amt');
   if (c.op != null) {
-    el.textContent = String(c.prev) + OPERATOR_SYMBOL[c.op] + (c.amt || '');
+    el.textContent = (c.prevAmount ?? String(c.prev)) + OPERATOR_SYMBOL[c.op] + (c.amt || '');
     el.classList.remove('empty');
   } else {
     el.textContent = c.amt || '0.00';
@@ -507,26 +509,48 @@ function refreshAmt(): void {
 
 function calculatorState(): CalculatorState {
   const c = ctx!;
-  return { amount: c.amt, previous: c.prev, operator: c.op };
+  return {
+    amount: c.amt,
+    previous: c.prev,
+    previousAmount: c.prevAmount ?? undefined,
+    operator: c.op,
+  };
 }
 
 function syncCalculator(state: CalculatorState): void {
   const c = ctx!;
   c.amt = state.amount;
   c.prev = state.previous;
+  c.prevAmount = state.previousAmount ?? null;
   c.op = state.operator;
 }
 
-function calcApply(): void {
-  const state = calculatorState();
-  applyCalculation(state);
-  syncCalculator(state);
+function showCalculationError(err: unknown): void {
+  showToast(err instanceof Error ? err.message : '计算失败');
 }
 
-function setOp(operator: CalculatorOperator): void {
+function calcApply(): boolean {
   const state = calculatorState();
-  chooseOperator(state, operator);
+  try {
+    applyCalculation(state);
+  } catch (err) {
+    showCalculationError(err);
+    return false;
+  }
   syncCalculator(state);
+  return true;
+}
+
+function setOp(operator: CalculatorOperator): boolean {
+  const state = calculatorState();
+  try {
+    chooseOperator(state, operator);
+  } catch (err) {
+    showCalculationError(err);
+    return false;
+  }
+  syncCalculator(state);
+  return true;
 }
 
 /** 追加一位数字：整数+小数合计最多 8 位、小数最多 2 位 */
@@ -691,6 +715,7 @@ function bindEvents(el: HTMLElement): void {
     ctx.categoryId = tpl.categoryId;
     ctx.amt = String(tpl.amount / 100);
     ctx.prev = null;
+    ctx.prevAmount = null;
     ctx.op = null;
     renderCats();
     refreshAmt();
@@ -988,7 +1013,10 @@ async function save(stay: boolean): Promise<void> {
 async function doSave(stay: boolean): Promise<void> {
   const c = ctx;
   if (!c || !sheetEl) return;
-  if (c.op != null) { calcApply(); refreshAmt(); }
+  if (c.op != null) {
+    if (!calcApply()) return;
+    refreshAmt();
+  }
 
   let fen: number;
   try {
@@ -1066,16 +1094,17 @@ async function doSave(stay: boolean): Promise<void> {
   const lifeToggle = q<HTMLElement>('#life-toggle');
 
   try {
-    // 「同时写生活记录」：生成随手记并与账单关联
+    // 仅组装日记草稿；仓库与账单一起提交，不提前落下孤立记录。
+    let lifeNote: NewLifeNote | undefined;
     if (lifeToggle.getAttribute('aria-checked') === 'true') {
       const catName = findCategory(c.categoryId)?.name;
-      base.lifeNoteId = await addLifeNote({
+      lifeNote = {
         kind: 'diary',
         title: '随手记',
         body: note ?? (catName ? `记了一笔${catName}` : '记一笔时留下的一句话'),
         linkedAmount: c.type === 'expense' ? fen : undefined,
         occurredAt: c.date,
-      });
+      };
     }
 
     const persisted = await persistEntry({
@@ -1083,6 +1112,7 @@ async function doSave(stay: boolean): Promise<void> {
       entry: base,
       tagIds,
       originalMerchantId: c.origMerchantId,
+      lifeNote,
     });
     await rememberLastUsed(c).catch(() => undefined);
     if (persisted === 'updated') {
@@ -1119,6 +1149,7 @@ async function doSave(stay: boolean): Promise<void> {
   });
   c.amt = repeat.amount;
   c.prev = null;
+  c.prevAmount = null;
   c.op = null;
   c.bx = repeat.reimbursePending;
   c.tk = false;

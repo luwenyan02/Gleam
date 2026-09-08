@@ -14,7 +14,7 @@ import traceback
 from pathlib import Path
 from playwright.sync_api import sync_playwright, Page
 
-URL = 'http://localhost:4601/'
+URL = os.environ.get('GLEAM_E2E_URL','http://127.0.0.1:4601/')
 RESULTS = []
 SCREENSHOTS = Path(os.environ.get(
     'GLEAM_E2E_SCREENSHOTS',

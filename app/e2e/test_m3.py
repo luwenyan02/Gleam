@@ -7,11 +7,12 @@
 import re
 import sys
 import tempfile
+import os
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-URL = 'http://localhost:4601/'
+URL = os.environ.get('GLEAM_E2E_URL','http://127.0.0.1:4601/')
 WACAI = str(Path(__file__).parent / 'fixtures' / 'wacai-demo.xlsx')
 TMP = Path(tempfile.mkdtemp(prefix='gleam_e2e_'))
 

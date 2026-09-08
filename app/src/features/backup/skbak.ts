@@ -109,6 +109,55 @@ export async function buildSkbak(dump: TableDump, password?: string): Promise<Bl
 
 /* ── 解析 ── */
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseManifest(text: string): SkbakManifest {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Error('manifest.json 结构损坏');
+  }
+  if (
+    !isRecord(value)
+    || typeof value.app !== 'string' || value.app.length === 0
+    || typeof value.appVersion !== 'string' || value.appVersion.length === 0
+    || typeof value.schemaVersion !== 'number' || !Number.isSafeInteger(value.schemaVersion)
+    || typeof value.generatedAt !== 'number' || !Number.isSafeInteger(value.generatedAt) || value.generatedAt < 0
+    || !isRecord(value.counts)
+    || typeof value.checksum !== 'string' || !/^[0-9a-f]{64}$/i.test(value.checksum)
+  ) {
+    throw new Error('manifest.json 结构损坏');
+  }
+  for (const name of TABLE_NAMES) {
+    const count = value.counts[name];
+    if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
+      throw new Error(`manifest.json 结构损坏：数据表 ${name} 计数无效`);
+    }
+  }
+  return value as unknown as SkbakManifest;
+}
+
+function parseTableDump(text: string, manifest: SkbakManifest): TableDump {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Error('data.json 结构损坏');
+  }
+  if (!isRecord(value)) throw new Error('data.json 结构损坏');
+  for (const name of TABLE_NAMES) {
+    const rows = value[name];
+    if (!Array.isArray(rows)) throw new Error(`data.json 数据表 ${name} 缺失或不是数组`);
+    if (manifest.counts[name] !== rows.length) {
+      throw new Error(`manifest 计数与数据表 ${name} 实际条数不一致`);
+    }
+  }
+  return value as TableDump;
+}
+
 /** 是否为加密包（前 8 字节 magic） */
 export function sniffEncrypted(buf: ArrayBuffer): boolean {
   if (buf.byteLength < 8 + 16 + 12) return false;
@@ -145,22 +194,39 @@ export async function parseSkbak(
   const manifestFile = zip.file('manifest.json');
   const dataFile = zip.file('data.json');
   if (!manifestFile || !dataFile) throw new Error('备份包缺少 manifest.json / data.json');
-  const manifest = JSON.parse(await manifestFile.async('text')) as SkbakManifest;
+  const manifest = parseManifest(await manifestFile.async('text'));
   if (manifest.schemaVersion > SKBAK_SCHEMA_VERSION) {
     throw new Error(`备份包来自更新的数据版本（v${manifest.schemaVersion}），请先升级应用`);
+  }
+  if (manifest.schemaVersion !== SKBAK_SCHEMA_VERSION) {
+    throw new Error(`备份包使用不支持的数据版本（v${manifest.schemaVersion}）`);
   }
   const dataJson = await dataFile.async('text');
   if ((await sha256Hex(dataJson)) !== manifest.checksum) {
     throw new Error('校验值不符，备份包可能已损坏，已中止恢复');
   }
 
-  const dump = JSON.parse(dataJson) as TableDump;
+  const dump = parseTableDump(dataJson, manifest);
   // 还原附件 Blob（按 id 对应 attachments/ 下文件）
   const atts = (dump.attachments ?? []) as Attachment[];
+  const restored: Array<{ attachment: Attachment; blob: Blob }> = [];
   for (const a of atts) {
+    if (
+      !isRecord(a)
+      || typeof a.id !== 'number' || !Number.isSafeInteger(a.id) || a.id < 0
+      || typeof a.mime !== 'string'
+      || typeof a.size !== 'number' || !Number.isSafeInteger(a.size) || a.size < 0
+    ) {
+      throw new Error('备份包附件记录结构损坏');
+    }
     const f = zip.file(`attachments/${a.id}`);
-    if (f) a.blob = new Blob([await f.async('arraybuffer')], { type: a.mime });
-    else a.blob = new Blob([], { type: a.mime });
+    if (!f) throw new Error(`备份包附件 ${a.id} 文件缺失`);
+    const bytes = await f.async('arraybuffer');
+    if (bytes.byteLength !== a.size) {
+      throw new Error(`备份包附件 ${a.id} 大小与声明不一致`);
+    }
+    restored.push({ attachment: a, blob: new Blob([bytes], { type: a.mime }) });
   }
+  for (const item of restored) item.attachment.blob = item.blob;
   return { manifest, dump };
 }

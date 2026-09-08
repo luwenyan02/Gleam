@@ -11,11 +11,12 @@
   g. 搜索结果左滑退款冒烟
 """
 import sys
+import os
 import time
 import traceback
 from playwright.sync_api import sync_playwright, Page
 
-URL = 'http://localhost:4601/'
+URL = os.environ.get('GLEAM_E2E_URL','http://127.0.0.1:4601/')
 RESULTS = []
 
 

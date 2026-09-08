@@ -5,10 +5,10 @@
  * 写操作成功后 emit 'accounts-changed'。
  */
 import { db, now, stamp } from '../db';
-import { emit } from '../store';
 import { ACCOUNT_GROUPS, type Account, type AccountGroup } from '../types';
 import { addEntry } from './entryRepo';
 import { getSetting } from './settingsRepo';
+import { emitAfterCommit as emit } from './transactionEvents';
 
 /** 新建账户输入 */
 export type NewAccount = Omit<Account, 'id' | 'createdAt' | 'updatedAt' | 'hidden' | 'countInNetWorth' | 'sortOrder'> &
