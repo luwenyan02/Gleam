@@ -10,7 +10,7 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type {
   Account, Attachment, BackupRecord, Budget, Category, CategoryBudget, Entry, EntryTag,
-  Habit, HabitCheck, ImportBatch, LifeNote, LoanContact, Merchant, QuickTemplate,
+  CreditPayment, CreditStatement, Habit, HabitCheck, ImportBatch, LifeNote, LoanContact, Merchant, QuickTemplate,
   RecurringRule, Setting, Tag,
 } from './types';
 
@@ -33,6 +33,8 @@ export const db = new Dexie('GleamDB') as Dexie & {
   importBatches: EntityTable<ImportBatch, 'id'>;
   attachments: EntityTable<Attachment, 'id'>;
   settings: EntityTable<Setting, 'key'>;
+  creditStatements: EntityTable<CreditStatement, 'id'>;
+  creditPayments: EntityTable<CreditPayment, 'id'>;
 };
 
 db.version(1).stores({
@@ -57,6 +59,25 @@ db.version(1).stores({
   importBatches: '++id, createdAt',
   attachments: '++id',
   settings: 'key',
+});
+
+/**
+ * v2：信用卡手工账单与还款分配。
+ * 旧版「隐藏账户计入净资产」是全局开关；迁移时把它展开到账户字段，保留升级前的
+ * 实际统计范围。之后 hidden 与 countInNetWorth 完全独立。
+ */
+db.version(2).stores({
+  recurringRules: '++id, enabled, nextRunAt, [enabled+nextRunAt], accountId',
+  creditStatements: '++id, accountId, dueAt, [accountId+periodStart], [accountId+periodEnd]',
+  creditPayments: '++id, statementId, &entryId',
+}).upgrade(async transaction => {
+  const setting = await transaction.table('settings').get('netWorth.includeHidden') as Setting | undefined;
+  const legacyIncludedHidden = setting?.value === true;
+  await transaction.table('accounts').toCollection().modify((account: Account) => {
+    if (typeof account.countInNetWorth !== 'boolean') account.countInNetWorth = true;
+    if (account.hidden && legacyIncludedHidden) account.countInNetWorth = true;
+    if (typeof account.creditReminderEnabled !== 'boolean') account.creditReminderEnabled = true;
+  });
 });
 
 /** 当前时间戳（毫秒），统一出口便于测试替换 */

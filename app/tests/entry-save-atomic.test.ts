@@ -34,7 +34,7 @@ describe('复合记账保存原子性',()=>{
     expect(await db.lifeNotes.count()).toBe(0);
     expect((await db.accounts.get(accountId))?.balance).toBe(10000);
     expect(events).toEqual([]);
-    await expect(persistEntry(request())).resolves.toBe('created');
+    await expect(persistEntry(request())).resolves.toMatchObject({ result: 'created' });
     const saved=await db.entries.toArray();
     expect(saved).toHaveLength(1);
     expect(saved[0].lifeNoteId).toBe((await db.lifeNotes.toArray())[0]?.id);

@@ -60,6 +60,11 @@ function errText(err: unknown): string {
   return '云端操作失败，请稍后重试';
 }
 
+function isJianguoyunWebdav(server: string): boolean {
+  try { return new URL(server).hostname.toLowerCase() === 'dav.jianguoyun.com'; }
+  catch { return false; }
+}
+
 /* ── 渲染 ── */
 
 /** 表单字段描述：label + 设置对象内的字段名 */
@@ -109,7 +114,9 @@ export function mountCloudBackup(host: HTMLElement, hooks: CloudBackupHooks): vo
     const chip = (val: 'none' | 'webdav' | 's3', label: string) =>
       `<button class="chip${provKind === val ? ' active' : ''}" data-cb-prov="${val}">${label}</button>`;
     const webHint = !Capacitor.isNativePlatform()
-      ? '<p class="tiny cb-hint">浏览器版直连云端可能受 CORS 限制（视服务端配置而定），建议在 Android 端使用</p>'
+      ? `<p class="tiny cb-hint">${isJianguoyunWebdav(webdavCfg.server)
+        ? '坚果云不允许浏览器跨域直连，请在 Android 端使用'
+        : '浏览器版直连需要 WebDAV 服务器允许 CORS；如服务不支持，请在 Android 端使用'}</p>`
       : '';
     const form = provKind === 'webdav'
       ? fieldRows(WEBDAV_FIELDS, { ...webdavCfg, password: webdavPassword ?? '' } as unknown as Record<string, string>)
@@ -147,11 +154,11 @@ async function saveFormAndBuild(host: HTMLElement): Promise<BackupProvider | und
     host.querySelector<HTMLInputElement>(`[data-cb-field="${key}"]`)?.value.trim() ?? '';
   if (kind === 'webdav') {
     const cfg = { server: read('server'), username: read('username'), password: read('password'), path: read('path') };
+    if (!cfg.server || !cfg.username || !cfg.password) { showToast('请先填写服务器地址、用户名与应用密码'); return undefined; }
     await Promise.all([
       setSetting('cloud.webdav', { ...cfg, password: '' }),
       cfg.password ? secretStore.set('cloud.webdav.password', cfg.password) : secretStore.remove('cloud.webdav.password'),
     ]);
-    if (!cfg.server || !cfg.username) { showToast('请先填写服务器地址与用户名'); return undefined; }
     return createWebdavProvider(cfg);
   }
   if (kind === 's3') {
@@ -248,9 +255,15 @@ async function runTest(host: HTMLElement): Promise<void> {
   try {
     const provider = await saveFormAndBuild(host);
     if (!provider) return;
-    await provider.test();
-    showToast('连接成功，配置已保存');
-    void loadList(host, mountToken);
+    const result = await provider.test();
+    if (result?.directoryReady === false) {
+      showToast('连接成功，备份目录将在首次上传时创建');
+      const box = host.querySelector<HTMLElement>('#cb-list');
+      if (box) box.innerHTML = '<p class="sub cb-list-state">连接成功，首次上传时将创建备份目录</p>';
+    } else {
+      showToast('连接成功，配置已保存');
+      void loadList(host, mountToken);
+    }
   } catch (err) {
     showToast(errText(err), 3200);
   } finally {
@@ -305,6 +318,12 @@ function openUploadSheet(provider: BackupProvider, hooks: CloudBackupHooks): voi
               const dump = sanitizeDumpForBackup(await exportAll());
               const blob = await buildSkbak(dump, password);
               if (blob.size > UPLOAD_WARN_BYTES) {
+                if (provider.kind === 'webdav' && Capacitor.getPlatform() === 'android') {
+                  btn.disabled = false;
+                  btn.textContent = '生成并上传';
+                  showToast('Android WebDAV 单个备份包最大支持 50 MB，请改用本地备份或减少照片附件', 3600);
+                  return;
+                }
                 const go = await confirmDialog({
                   title: '备份包较大',
                   message: `备份包 ${fmtSize(blob.size)}（超过 50MB），上传可能耗时较长且占用较多内存，建议清理照片附件后再备份。仍要继续上传吗？`,

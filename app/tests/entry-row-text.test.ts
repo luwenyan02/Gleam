@@ -18,7 +18,7 @@ describe('首页/搜索/账户共用的明细文案', () => {
     const input={...entry,note:'公交',reimburseStatus:'pending' as const};
     expect(entryRowText(input,categories,accounts)).toMatchObject({note:'',meta:'9月7日 15:50 · 演示现金 · 待报销'});
     expect(input.note).toBe('公交');
-    expect(entryRowText({...entry,note:'虚构行程',reimburseStatus:'done'},categories,accounts)).toMatchObject({note:'虚构行程',meta:'9月7日 15:50 · 演示现金 · 已报销'});
+    expect(entryRowText({...entry,note:'虚构行程',reimburseStatus:'done'},categories,accounts)).toMatchObject({note:'虚构行程',meta:'9月7日 15:50 · 演示现金 · 已报销（到账资料缺失）'});
   });
   it('转账和借贷标题只保留种类，方向在副行', () => {
     const pair={...entry,fromAccountId:1,toAccountId:2};
@@ -28,5 +28,11 @@ describe('首页/搜索/账户共用的明细文案', () => {
   it('报销到账使用到账事件的账户与日期，余额调整标题不被备注重复', () => {
     expect(entryRowText({...entry,kind:'reimbursement',type:'income',accountId:2},categories,accounts)).toMatchObject({title:'报销到账',meta:'9月7日 15:50 · 演示小林'});
     expect(entryRowText({...entry,type:'transfer',toAccountId:1,note:'余额对账调整'},categories,accounts)).toMatchObject({title:'余额对账调整',note:''});
+  });
+
+  it('历史已报销记录缺少到账资料时明确提示资料缺失', () => {
+    expect(entryRowText({...entry,reimburseStatus:'done'},categories,accounts)).toMatchObject({
+      meta:'9月7日 15:50 · 演示现金 · 已报销（到账资料缺失）',
+    });
   });
 });

@@ -33,6 +33,19 @@ export async function updateCategory(
   emit('categories-changed', { id });
 }
 
+/** 同级分类排序一次提交，避免中间刷新丢失后续顺序。 */
+export async function reorderCategories(ids: number[]): Promise<void> {
+  if (!ids.length || new Set(ids).size !== ids.length) throw new Error('排序项不能为空或重复');
+  await db.transaction('rw', db.categories, async () => {
+    const rows = await db.categories.bulkGet(ids);
+    const first = rows[0];
+    if (!first || rows.some(row => !row || row.kind !== first.kind || row.parentId !== first.parentId)) throw new Error('只能调整同级分类');
+    const slots = rows.map(row => row!.sortOrder).sort((a, b) => a - b);
+    for (let i = 0; i < ids.length; i++) await db.categories.update(ids[i], { sortOrder: slots[i], updatedAt: now() });
+    emit('categories-changed');
+  });
+}
+
 /**
  * 移动小类到其他大类（targetParentId 传 undefined 即升为大类）。
  */

@@ -78,28 +78,32 @@ async function collectRecurring(now: number): Promise<LocalNotificationSchema[]>
 }
 
 /**
- * 收集信用卡还款提醒：credit 组且设置了 repayDay（1-31）的账户，
- * 未来 7 天内命中还款日（超出当月天数顺延到月底）的当天 10:00。
+ * 收集信用卡账单提醒：未还清且开启提醒的账单，到期前 3 天与到期当天 10:00 各一条；
+ * 还清或修改到期日后由重排自动更新。
  */
 async function collectCreditCard(now: number): Promise<LocalNotificationSchema[]> {
+  const { listCreditStatementSummaries } = await import('./repo/creditRepo');
   const accounts = await listAccounts();
-  const cards = accounts.filter((a) => a.group === 'credit' && a.repayDay != null && a.repayDay >= 1 && a.repayDay <= 31);
+  const cards = accounts.filter((a) => a.group === 'credit' && a.creditReminderEnabled !== false);
   const out: LocalNotificationSchema[] = [];
-  for (let offset = 0; offset < 7; offset++) {
-    const day = new Date(now + offset * 86400000);
-    const lastDay = new Date(day.getFullYear(), day.getMonth() + 1, 0).getDate();
-    for (const card of cards) {
-      if (day.getDate() !== Math.min(card.repayDay!, lastDay)) continue;
-      const fireAt = atHour(day.getTime(), 10);
-      if (fireAt <= now) continue; // 只排未来时刻
-      out.push({
-        id: ID_GROUPS.creditCard.base + (out.length % 1000),
-        title: '信用卡还款提醒',
-        body: `「${card.name}」今天是还款日，记得按时还款`,
-        schedule: { at: new Date(fireAt), allowWhileIdle: true },
-        extra: { route: 'page-acct' },
-        isExactNotification: false,
-      });
+  for (const card of cards) {
+    const summaries = await listCreditStatementSummaries(card.id!);
+    for (const summary of summaries) {
+      if (summary.remaining <= 0 || summary.statement.reminderEnabled === false) continue;
+      for (const offset of [3, 0]) {
+        const fireAt = atHour(summary.statement.dueAt - offset * 86400000, 10);
+        if (fireAt <= now || fireAt > now + WINDOW_MS) continue;
+        out.push({
+          id: ID_GROUPS.creditCard.base + (out.length % 1000),
+          title: '信用卡还款提醒',
+          body: offset === 0
+            ? `「${card.name}」今天是还款日，剩余应还 ¥${formatFen(summary.remaining)}`
+            : `「${card.name}」${offset} 天后到期，剩余应还 ¥${formatFen(summary.remaining)}`,
+          schedule: { at: new Date(fireAt), allowWhileIdle: true },
+          extra: { route: 'sp-credit' },
+          isExactNotification: false,
+        });
+      }
     }
   }
   return out;

@@ -40,9 +40,9 @@ async function refresh(): Promise<void> {
   const el = body;
   if (!el?.isConnected) return;
   const isNative = Capacitor.isNativePlatform();
-  const [pin, webauthn, bioOk, countAsIncome, includeHidden, autoRenew, backupAuto, retention, themeMode] = await Promise.all([
+  const [pin, webauthn, bioOk, countAsIncome, autoRenew, backupAuto, retention, themeMode] = await Promise.all([
     getSetting('security.pin'), getSetting('security.webauthn'), biometricAvailable(),
-    getSetting('reimburse.countAsIncome'), getSetting('netWorth.includeHidden'),
+    getSetting('reimburse.countAsIncome'),
     getSetting('budget.autoRenew'), getSetting('backup.auto'), getSetting('trash.retentionDays'),
     getSetting('theme.mode'),
   ]);
@@ -103,13 +103,12 @@ async function refresh(): Promise<void> {
       <h3 class="card-title">记账偏好</h3>
       <div class="field"><span>报销到账记为收入</span>${switchHtml('reimburse', countAsIncome as boolean, '报销到账记为收入')}</div>
       <p class="tiny">开＝到账记一笔「报销」收入；关＝冲抵原支出。与报销页开关同步</p>
-      <div class="field"><span>隐藏账户计入净资产</span>${switchHtml('hidden', includeHidden as boolean, '隐藏账户计入净资产')}</div>
       <div class="field"><span>预算自动延续到下月</span>${switchHtml('budget', autoRenew as boolean, '预算自动延续')}</div>
     </section>
 
     <section class="card" aria-label="备份">
       <h3 class="card-title">备份</h3>
-      <div class="field"><span>自动备份提醒</span>
+      <div class="field"><span>备份提醒</span>
         <div class="chip-group">${freqChip('off', '关')}${freqChip('daily', '每日')}${freqChip('weekly', '每周')}</div>
       </div>
       <p class="tiny">网页版到期时在首页与备份页提醒「该备份了」；生成与恢复在「我的 → 备份与恢复」</p>
@@ -343,8 +342,8 @@ export function initSettings(): void {
             await setSetting(key, !cur);
             void refresh();
           })();
-        } else if (sw === 'reimburse' || sw === 'hidden' || sw === 'budget') {
-          const key = ({ reimburse: 'reimburse.countAsIncome', hidden: 'netWorth.includeHidden', budget: 'budget.autoRenew' } as const)[sw];
+        } else if (sw === 'reimburse' || sw === 'budget') {
+          const key = ({ reimburse: 'reimburse.countAsIncome', budget: 'budget.autoRenew' } as const)[sw];
           void (async () => {
             const cur = await getSetting(key);
             await setSetting(key, !cur);

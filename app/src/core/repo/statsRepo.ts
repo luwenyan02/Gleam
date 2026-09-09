@@ -128,6 +128,32 @@ export async function categoryBreakdown(from: number, to: number): Promise<{ cat
 /**
  * 账户支出排行（仅统计支出账单的 accountId），金额降序。
  */
+/** 收入分类构成（收入单级分类），金额降序。 */
+export async function incomeCategoryBreakdown(from: number, to: number): Promise<{ categoryId: number; amount: number }[]> {
+  const rows = await entriesIn(from, to);
+  const acc = new Map<number, number>();
+  for (const e of rows) {
+    if (e.type !== 'income' || e.categoryId == null) continue;
+    acc.set(e.categoryId, (acc.get(e.categoryId) ?? 0) + e.amount);
+  }
+  return [...acc.entries()].map(([categoryId, amount]) => ({ categoryId, amount })).sort((a, b) => b.amount - a.amount);
+}
+
+/** 商家支出排行（按 merchantId 聚合，冲抵口径同分类构成），金额降序。 */
+export async function merchantRanking(from: number, to: number): Promise<{ merchantId: number; amount: number }[]> {
+  const [rows, countAsIncome] = await Promise.all([entriesIn(from, to), getSetting('reimburse.countAsIncome')]);
+  const acc = new Map<number, number>();
+  for (const e of rows) {
+    if (e.type !== 'expense' || e.merchantId == null) continue;
+    const amount = expenseAmount(e) - (!countAsIncome && e.reimburseStatus === 'done' ? e.reimbursedAmount ?? 0 : 0);
+    acc.set(e.merchantId, (acc.get(e.merchantId) ?? 0) + amount);
+  }
+  return [...acc.entries()].map(([merchantId, amount]) => ({ merchantId, amount })).sort((a, b) => b.amount - a.amount);
+}
+
+/**
+ * 账户支出排行（仅统计支出账单的 accountId），金额降序。
+ */
 export async function accountRanking(from: number, to: number): Promise<{ accountId: number; amount: number }[]> {
   const [rows, countAsIncome] = await Promise.all([entriesIn(from, to), getSetting('reimburse.countAsIncome')]);
   const acc = new Map<number, number>();
@@ -198,11 +224,16 @@ function netDelta(e: Entry, includedAccounts: ReadonlySet<number>): number {
  * @param months 月数，默认 6（含当前月，当前月取「现在」时点）
  * @returns 时间升序 [{ month: 'YYYY-MM', net }]
  */
-export async function netWorthTrend(months = 6): Promise<{ month: string; net: number }[]> {
+export async function netWorthTrend(months = 6, endingMonth?: string): Promise<{ month: string; net: number }[]> {
   const accounts = await listNetWorthAccounts();
   const includedAccounts = new Set(accounts.map(account => account.id));
   const currentNet = accounts.reduce((sum, account) => sum + account.balance, 0);
-  const nowD = new Date();
+  const current = new Date();
+  const currentKey = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
+  if (endingMonth && (!/^\d{4}-(0[1-9]|1[0-2])$/.test(endingMonth) || endingMonth > currentKey)) {
+    throw new Error('请选择当前或更早的月份');
+  }
+  const nowD = endingMonth ? new Date(`${endingMonth}-01T12:00:00`) : current;
   // 各月末边界（最早月在前）；最后一项为当前时点
   const bounds: { month: string; end: number }[] = [];
   for (let i = months - 1; i >= 1; i--) {
@@ -212,7 +243,8 @@ export async function netWorthTrend(months = 6): Promise<{ month: string; net: n
   }
   bounds.push({
     month: `${nowD.getFullYear()}-${String(nowD.getMonth() + 1).padStart(2, '0')}`,
-    end: Date.now(),
+    end: endingMonth && endingMonth < currentKey
+      ? new Date(nowD.getFullYear(), nowD.getMonth() + 1, 1).getTime() : Date.now(),
   });
 
   const earliest = bounds[0].end;

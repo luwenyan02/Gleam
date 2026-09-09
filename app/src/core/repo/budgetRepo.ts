@@ -5,9 +5,47 @@
  * 写操作后 emit 'budgets-changed'。
  */
 import { db, now, stamp } from '../db';
-import { emit } from '../store';
+import { emitAfterCommit as emit } from './transactionEvents';
 import type { Budget, CategoryBudget } from '../types';
 import { getSetting } from './settingsRepo';
+
+function validateLimit(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error('预算额度必须是非负整数分');
+}
+
+export async function saveMonthlyBudget(month: string, total: number, categories: { id: number; fen: number }[], autoRenew: boolean): Promise<void> {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('月份无效');
+  validateLimit(total);
+  categories.forEach(c => validateLimit(c.fen));
+  await db.transaction('rw', [db.budgets, db.categoryBudgets], async () => {
+    await setBudget(month, total, autoRenew);
+    await db.categoryBudgets.where('month').equals(month).delete();
+    for (const c of categories) await setCategoryBudget(month, c.id, c.fen);
+  });
+}
+
+export async function copyPreviousBudget(month: string): Promise<void> {
+  const [year, m] = month.split('-').map(Number);
+  const previous = new Date(year, m - 2, 1);
+  const key = `${previous.getFullYear()}-${String(previous.getMonth() + 1).padStart(2, '0')}`;
+  await db.transaction('rw', [db.budgets, db.categoryBudgets], async () => {
+    const source = await getBudget(key);
+    if (!source) throw new Error('上期没有预算');
+    const categories = await listCategoryBudgets(key);
+    await saveMonthlyBudget(month, source.totalLimit, categories.map(c => ({ id: c.categoryId, fen: c.limit })), source.autoRenew);
+  });
+}
+
+export async function getAnnualBudget(year: number): Promise<number> {
+  return Number((await db.settings.get(`budget.year.${year}`))?.value ?? 0);
+}
+
+export async function setAnnualBudget(year: number, limit: number): Promise<void> {
+  if (!Number.isInteger(year) || year < 1900 || year > 9999) throw new Error('年份无效');
+  validateLimit(limit);
+  await db.settings.put({ key: `budget.year.${year}`, value: limit, updatedAt: now() });
+  emit('budgets-changed', { month: `${year}` });
+}
 
 /** 读取某月总预算，未设置时返回 undefined。month 形如 '2026-08' */
 export async function getBudget(month: string): Promise<Budget | undefined> {

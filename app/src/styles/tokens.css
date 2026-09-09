@@ -21,6 +21,7 @@
   --muted:#424852;
   --faint:#535862;
   --border:#E6E9EE;
+  --input-focus:color-mix(in srgb, var(--muted) 65%, var(--border));
   --accent-soft:color-mix(in oklab, var(--seed-primary) 12%, var(--seed-surface));
   --gold-soft:color-mix(in oklab, var(--seed-accent) 14%, var(--seed-surface));
   --expense:#C63E24;

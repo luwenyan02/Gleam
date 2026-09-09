@@ -1,40 +1,52 @@
 /**
  * 拾光 · 日历账单（features/calendar，PRD 4.5）
- * 月历视图（statsRepo.dailyAggregates 聚合）：每日支出缩写 + 收入金点、
- * 月份切换、标题点击年月快速跳转浮层、三种视图模式（标准 / 支出热力 / 结余热力）、
- * 点日查看当日收支详情，空缺日期可「补一笔」（openEntrySheet 预设日期）。
- * 视觉结构与原型 index.html #page-cal（L843-866、JS L1561-1633）一致；
- * 热力色阶分母取当月最大单日支出（原型演示数据用固定值）。
+ * 月历 + 所选日汇总与统一明细列表：点明细进详情，任意可记账日期可补一笔；
+ * 分类/账户/标签/商家/金额筛选与热力、汇总、明细同源；返回保留月份、日期、
+ * 模式、筛选与滚动位置。三种视图模式（标准 / 支出热力 / 结余热力）。
  */
 import './calendar.css';
 import { iconHtml } from '../../assets/icons';
+import { esc } from '../../core/esc';
 import { on } from '../../core/store';
 import { formatFen, formatFenCny } from '../../core/money';
-import { dailyAggregates } from '../../core/repo/statsRepo';
+import { ledgerEntriesInRange } from '../../core/repo/statsRepo';
+import { listCategories } from '../../core/repo/categoryRepo';
+import { listAccounts } from '../../core/repo/accountRepo';
+import { listTags, listEntryIdsByTag } from '../../core/repo/tagRepo';
+import { listMerchants } from '../../core/repo/merchantRepo';
+import { getSetting } from '../../core/repo/settingsRepo';
+import { ledgerItems } from '../../core/ledgerEvents';
+import { expandCategoryIds, parseAmountRange } from '../../core/queryValidation';
+import { filterLedgerEntries, summarizeLedgerEntries, type LedgerQuery } from '../../core/ledgerQuery';
+import { entryRowText } from '../detail/entryRowText';
+import { createFilterPanel, emptyFilter, isFilterEmpty, type FilterState } from '../search/filterPanel';
 import { manageOverlay } from '../../shared/overlay';
 import { openEntrySheet } from '../entry/entrySheet';
+import { openEntryDetail } from '../detail/detail';
 import { registerSubpage } from '../shell/router';
 import { showToast } from '../shell/toast';
 
 type CalMode = 'std' | 'heat' | 'net';
 interface DayAgg { expense: number; income: number; count: number }
 
-/* ── 模块状态（render 时重置到当月/今天） ── */
+/* ── 模块状态（跨开合保留，返回不丢位置） ── */
 let body: HTMLElement | undefined;
 /** 并发刷新令牌 */
 let refreshToken = 0;
 let viewY = 0;
-/** 0-11 */
 let viewM = 0;
 /** 选中日 'YYYY-MM-DD'，空串表示未选中 */
 let selKey = '';
 let mode: CalMode = 'std';
+let calFilter: FilterState = emptyFilter();
+let savedScroll = 0;
+let initialized = false;
 /** 待应用的切换过渡类（拼进 .cal-grid，随本次重渲染消费）：月份切换淡入 / 模式切换色彩渐显 */
 let pendingAnim: '' | 'anim-month' | 'anim-mode' = '';
 
 const WD = ['日', '一', '二', '三', '四', '五', '六'];
 const TIPS: Record<CalMode, string> = {
-  std: '金点 = 当日有收入 · 绿色 +金额 = 当日退款净流入 · 点选日期查看当日收支',
+  std: '金点 = 当日有收入 · 绿色 +金额 = 当日退款净流入 · 点选日期查看当日明细',
   heat: '颜色越深 = 当日支出越多 · 按当月最高单日支出定色阶',
   net: '绿色 = 当日结余为正（收入大于支出）· 主色 = 当日净支出',
 };
@@ -66,13 +78,57 @@ async function refresh(): Promise<void> {
   const token = ++refreshToken;
   const anim = pendingAnim;
   pendingAnim = '';
-  const agg = await dailyAggregates(ymStr(viewY, viewM));
+  const monthStart = new Date(viewY, viewM, 1).getTime();
+  const monthEnd = new Date(viewY, viewM + 1, 1).getTime();
+  const countAsIncome = await getSetting('reimburse.countAsIncome');
+  const [entries, expenseCats, incomeCats, accounts, tags, merchants] = await Promise.all([
+    ledgerEntriesInRange(monthStart, monthEnd, countAsIncome),
+    listCategories('expense'), listCategories('income'), listAccounts(), listTags(), listMerchants(),
+  ]);
   if (token !== refreshToken || !el.isConnected) return;
+
+  const catNames = new Map<number, string>();
+  const catMap = new Map([...expenseCats, ...incomeCats].map(c => [c.id, { name: c.name, icon: c.icon }]));
+  for (const c of [...expenseCats, ...incomeCats]) catNames.set(c.id, c.name);
+  const accountNames = new Map(accounts.map(a => [a.id, a.name]));
+  const merchantNames = new Map(merchants.map(m => [m.id, m.name]));
+  const tagIdsByEntry = new Map<number, number[]>();
+  const tagNamesByEntry = new Map<number, string[]>();
+  const tagLinks = await Promise.all(tags.map(async (tag) => ({ tag, entryIds: await listEntryIdsByTag(tag.id) })));
+  for (const { tag, entryIds } of tagLinks) {
+    for (const entryId of entryIds) {
+      tagIdsByEntry.set(entryId, [...(tagIdsByEntry.get(entryId) ?? []), tag.id]);
+      tagNamesByEntry.set(entryId, [...(tagNamesByEntry.get(entryId) ?? []), tag.name]);
+    }
+  }
+  if (token !== refreshToken || !el.isConnected) return;
+
+  const query: LedgerQuery = {
+    types: undefined,
+    categoryIds: calFilter.categoryIds.length ? expandCategoryIds(calFilter.categoryIds, [...expenseCats, ...incomeCats]) : undefined,
+    accountIds: calFilter.accountIds.length ? [...calFilter.accountIds] : undefined,
+    tagIds: calFilter.tagIds.length ? [...calFilter.tagIds] : undefined,
+    merchantIds: calFilter.merchantIds.length ? [...calFilter.merchantIds] : undefined,
+    ...parseAmountRange(calFilter.amountMin, calFilter.amountMax),
+  };
+  const lookup = { categoryNames: catNames, accountNames, tagIdsByEntry, tagNamesByEntry, merchantNames };
+  const matched = filterLedgerEntries(ledgerItems(entries, countAsIncome), query, lookup);
+
+  /* 月历聚合（与明细同一筛选） */
+  const agg = new Map<string, DayAgg>();
+  for (const item of matched) {
+    const key = keyOf(new Date(item.occurredAt).getFullYear(), new Date(item.occurredAt).getMonth(), new Date(item.occurredAt).getDate());
+    const rec = agg.get(key) ?? { expense: 0, income: 0, count: 0 };
+    const summary = summarizeLedgerEntries([item], { reimburseMode: countAsIncome ? 'income' : 'offset' });
+    rec.expense += summary.expense;
+    rec.income += summary.income;
+    rec.count += 1;
+    agg.set(key, rec);
+  }
 
   const today = new Date();
   const isCurMonth = viewY === today.getFullYear() && viewM === today.getMonth();
   const daysInMonth = new Date(viewY, viewM + 1, 0).getDate();
-  // 热力分母：当月最大单日支出
   let maxOut = 0;
   for (const rec of agg.values()) maxOut = Math.max(maxOut, rec.expense);
   if (maxOut <= 0) maxOut = 1;
@@ -84,7 +140,6 @@ async function refresh(): Promise<void> {
   for (let d = 1; d <= daysInMonth; d++) {
     const key = keyOf(viewY, viewM, d);
     const rec = agg.get(key);
-    const future = isCurMonth && d > today.getDate();
     const sel = key === selKey;
     const cls = 'cal-day' + (isCurMonth && d === today.getDate() ? ' today' : '') + (sel ? ' sel' : '');
     const amt = rec && rec.expense !== 0 && mode === 'std'
@@ -93,29 +148,39 @@ async function refresh(): Promise<void> {
         : `<span class="cd-amt refund" aria-label="退款净流入 ${formatFenCny(-rec.expense)}">+${fmtYuan0(-rec.expense)}</span>`
       : '';
     const dot = rec && rec.income > 0 && mode === 'std' ? '<span class="cd-in"></span>' : '';
-    // 选中日不套热力底色（沿用原型 L1598）
-    cells.push(`<button class="${cls}" data-d="${d}" type="button" role="option" aria-selected="${sel}"${future ? ' disabled' : ''}${sel ? '' : cellStyle(rec, maxOut)}><span class="d-num">${d}</span>${amt}${dot}</button>`);
+    cells.push(`<button class="${cls}" data-d="${d}" type="button" role="option" aria-selected="${sel}"${sel ? '' : cellStyle(rec, maxOut)}><span class="d-num">${d}</span>${amt}${dot}</button>`);
   }
 
-  /* 选中日详情卡 */
-  let detailHtml = '<p class="sub" style="margin-top:6px">点选上方日期，查看当日收支</p>';
+  /* 选中日汇总 + 明细列表 */
+  const dayEntries = selKey ? matched.filter(item => keyOf(new Date(item.occurredAt).getFullYear(), new Date(item.occurredAt).getMonth(), new Date(item.occurredAt).getDate()) === selKey) : [];
+  let detailHtml = '<p class="sub" style="margin-top:6px">点选上方日期，查看当日明细</p>';
   if (selKey) {
     const [, , dStr] = selKey.split('-');
     const d = Number(dStr);
     const rec = agg.get(selKey);
-    const isToday = isCurMonth && d === today.getDate();
     const wd = WD[new Date(viewY, viewM, d).getDay()];
-    const addChip = `<button class="chip" data-act="add" style="margin-top:10px">给 ${viewM + 1}月${d}日 补一笔</button>`;
+    const addChip = `<button class="chip" data-act="add" style="margin-top:10px">给 ${viewM + 1}月${d}日 记一笔</button>`;
     const expenseText = rec?.expense != null
       ? rec.expense < 0 ? formatFenCny(rec.expense) : `-¥${formatFen(rec.expense)}`
       : '';
-    const bodyHtml = rec
-      ? `<div class="cd-sum"><span>${rec.expense < 0 ? '净支出' : '支出'}<b${rec.expense < 0 ? ' class="in"' : ''}>${expenseText}</b></span>${rec.income > 0 ? `<span>收入<b class="in">+¥${formatFen(rec.income)}</b></span>` : ''}<span>共 ${rec.count} 笔</span></div>
-         ${isToday ? '' : addChip}`
-      : `<p class="sub" style="margin-top:6px">这一天还没有记录</p>${addChip}`;
-    detailHtml = `<h3 class="card-title">${viewM + 1}月${d}日 · 周${wd}${isToday ? ' <span class="tiny">今天</span>' : ''}</h3>${bodyHtml}`;
+    const rows = dayEntries.map((item) => {
+      const text = entryRowText(item, catMap, accountNames);
+      const note = text.note ? ` <span class="e-sub">· ${esc(text.note)}</span>` : '';
+      const amount = item.type === 'expense'
+        ? (item.refundFlag ? `<span class="num" style="color:var(--income)">+${formatFen(item.amount)}</span>` : `<span class="num" style="color:var(--danger,#d0552e)">-${formatFen(item.amount)}</span>`)
+        : item.type === 'income' ? `<span class="num" style="color:var(--primary)">+${formatFen(item.amount)}</span>` : `<span class="num">${formatFen(item.amount)}</span>`;
+      return `<button class="row" data-eid="${item.id}"><span class="e-ic${text.neutral ? ' neutral' : ''}">${iconHtml(text.icon, 18)}</span><div class="e-main"><p class="e-title">${esc(text.title)}${note}</p><p class="e-meta">${esc(text.meta)}</p></div>${amount}</button>`;
+    }).join('');
+    detailHtml = `
+      <h3 class="card-title">${viewM + 1}月${d}日 · 周${wd}${isCurMonth && d === today.getDate() ? ' <span class="tiny">今天</span>' : ''}</h3>
+      ${rec
+        ? `<div class="cd-sum"><span>${rec.expense < 0 ? '净支出' : '支出'}<b${rec.expense < 0 ? ' class="in"' : ''}>${expenseText}</b></span>${rec.income > 0 ? `<span>收入<b class="in">+¥${formatFen(rec.income)}</b></span>` : ''}<span>共 ${rec.count} 笔</span></div>`
+        : '<p class="sub" style="margin-top:6px">这一天还没有记录</p>'}
+      ${addChip}
+      ${rows ? `<div class="card list" style="margin-top:10px">${rows}</div>` : ''}`;
   }
 
+  const filterLabel = isFilterEmpty(calFilter) ? '筛选' : '筛选中';
   el.innerHTML = `
     <section class="card" aria-label="月历">
       <div class="cal-nav">
@@ -129,10 +194,12 @@ async function refresh(): Promise<void> {
         <button class="chip${mode === 'std' ? ' active' : ''}" data-m="std" role="tab" aria-selected="${mode === 'std'}">标准</button>
         <button class="chip${mode === 'heat' ? ' active' : ''}" data-m="heat" role="tab" aria-selected="${mode === 'heat'}">支出热力</button>
         <button class="chip${mode === 'net' ? ' active' : ''}" data-m="net" role="tab" aria-selected="${mode === 'net'}">结余热力</button>
+        <button class="chip${isFilterEmpty(calFilter) ? '' : ' active'}" data-act="filter" style="margin-left:auto">${filterLabel}</button>
       </div>
       <p class="tiny" style="margin-top:10px">${TIPS[mode]}</p>
     </section>
     <section class="card" aria-live="polite" aria-label="当日收支详情">${detailHtml}</section>`;
+  el.scrollTop = savedScroll;
 }
 
 /** 切换月份；下一月不能越过当前月 */
@@ -145,11 +212,31 @@ function shiftMonth(delta: number): void {
   const d = new Date(viewY, viewM + delta, 1);
   viewY = d.getFullYear();
   viewM = d.getMonth();
-  // 切月后默认选中：当月选今天，其余月选 1 日
   const isCur = viewY === today.getFullYear() && viewM === today.getMonth();
   selKey = keyOf(viewY, viewM, isCur ? today.getDate() : 1);
   pendingAnim = 'anim-month';
   void refresh();
+}
+
+function openFilterPanel(host: HTMLElement): void {
+  const mount = host.closest<HTMLElement>('.subpage') ?? host;
+  let release: (() => void) | undefined;
+  const closePanel = (): void => {
+    release?.();
+    mount.querySelector('.fp-panel')?.remove();
+  };
+  void createFilterPanel({
+    initial: calFilter,
+    onConfirm: (state) => {
+      calFilter = state;
+      closePanel();
+      void refresh();
+    },
+    onCancel: closePanel,
+  }).then((panel) => {
+    mount.appendChild(panel);
+    release = manageOverlay(panel, closePanel);
+  });
 }
 
 /**
@@ -158,7 +245,7 @@ function shiftMonth(delta: number): void {
  */
 function openYmPicker(host: HTMLElement): void {
   const mount = host.closest<HTMLElement>('.subpage') ?? host;
-  if (mount.querySelector('.ym-mask')) return; // 连点标题防重复叠加，只保留一层浮层
+  if (mount.querySelector('.ym-mask')) return;
   const today = new Date();
   const curYm = today.getFullYear() * 12 + today.getMonth();
   const minYear = today.getFullYear() - 5;
@@ -222,18 +309,21 @@ export function initCalendar(): void {
     title: '日历账单',
     render(el) {
       body = el;
-      // 每次打开回到当月并选中今天
-      const today = new Date();
-      viewY = today.getFullYear();
-      viewM = today.getMonth();
-      selKey = keyOf(viewY, viewM, today.getDate());
-      mode = 'std';
+      if (!initialized) {
+        const today = new Date();
+        viewY = today.getFullYear();
+        viewM = today.getMonth();
+        selKey = keyOf(viewY, viewM, today.getDate());
+        mode = 'std';
+        initialized = true;
+      }
 
       el.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
         const nav = target.closest<HTMLElement>('[data-nav]');
         if (nav) { shiftMonth(Number(nav.dataset.nav)); return; }
         if (target.closest('[data-act="ym"]')) { openYmPicker(el); return; }
+        if (target.closest('[data-act="filter"]')) { openFilterPanel(el); return; }
         const modeBtn = target.closest<HTMLElement>('[data-m]');
         if (modeBtn) {
           mode = modeBtn.dataset.m as CalMode;
@@ -247,18 +337,19 @@ export function initCalendar(): void {
           void refresh();
           return;
         }
+        const entryRow = target.closest<HTMLElement>('[data-eid]');
+        if (entryRow) { openEntryDetail(Number(entryRow.dataset.eid)); return; }
         if (target.closest('[data-act="add"]') && selKey) {
-          // 补账：预设为选中日中午 12:00，保存后归入当日流水
           const [y, m, d] = selKey.split('-').map(Number);
           void openEntrySheet({ presetDate: new Date(y, m - 1, d, 12, 0).getTime() });
           showToast(`记账日期已设为 ${m}月${d}日，保存后计入当日流水`);
         }
       });
+      el.addEventListener('scroll', () => { savedScroll = el.scrollTop; }, { passive: true });
       void refresh();
     },
     onShow() { void refresh(); },
   });
 
-  // 账单变化时刷新（子页关闭即销毁，refresh 内部以 isConnected 兜底）
   on('entries-changed', () => void refresh());
 }

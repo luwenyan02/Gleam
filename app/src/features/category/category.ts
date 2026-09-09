@@ -10,7 +10,7 @@ import { ICON_IDS, iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
 import { on } from '../../core/store';
 import {
-  addCategory, deleteCategory, listCategories, listExpenseTree, moveCategory, updateCategory,
+  addCategory, deleteCategory, listCategories, listExpenseTree, moveCategory, updateCategory, reorderCategories,
 } from '../../core/repo/categoryRepo';
 import { registerSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
@@ -28,8 +28,8 @@ function sheetSignal(): AbortSignal {
 }
 
 const TIP: Record<CategoryKind, string> = {
-  expense: '支出为两级分类：大类下挂小类 · 点分类可改名、换图标、移动或升为大类 · 拖动行可排序',
-  income: '收入为单级分类 · 点分类可改名、换图标 · 拖动行可排序',
+  expense: '点击编辑 · 拖动排序',
+  income: '点击编辑 · 拖动排序',
 };
 
 /** 注册分类管理子页（覆盖 sp-categories 占位），main.ts 调用一次 */
@@ -163,13 +163,8 @@ export function initCategoryManager(): void {
 
       /** 把同组分类的既有 sortOrder 值按新顺序重新分配（不与其他组冲突） */
       async function persistOrder(orderedIds: number[]): Promise<void> {
-        const slots = orderedIds
-          .map((id) => byId.get(id)?.sortOrder ?? 0)
-          .sort((a, b) => a - b);
-        for (let i = 0; i < orderedIds.length; i++) {
-          const cat = byId.get(orderedIds[i]);
-          if (cat && cat.sortOrder !== slots[i]) await updateCategory(cat.id, { sortOrder: slots[i] });
-        }
+        try { await reorderCategories(orderedIds); }
+        catch (error) { showToast((error as Error).message); return; }
         showToast('排序已保存');
       }
 

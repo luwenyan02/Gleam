@@ -65,7 +65,7 @@ describe('借贷双账户事务',()=>{
     expect(await findLoanDuplicates(123,10000,'lend',fund,other)).toHaveLength(0);
     expect(await findLoanDuplicates(123,10000,'repay',fund,loan)).toHaveLength(0);
     await expect(deleteAccount(loan)).rejects.toThrow();
-    await softDeleteEntry(id); await deleteAccount(loan);
+    await softDeleteEntry(id); await db.accounts.delete(loan);
     await expect(restoreEntry(id)).rejects.toThrow();
     expect((await db.accounts.get(fund))?.balance).toBe(100000);
     expect((await db.entries.get(id))?.deletedAt).not.toBe(0);

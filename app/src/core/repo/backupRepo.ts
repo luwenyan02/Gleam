@@ -20,6 +20,7 @@ export const TABLE_NAMES = [
   'budgets', 'categoryBudgets', 'recurringRules', 'quickTemplates',
   'tags', 'merchants', 'lifeNotes', 'habits', 'habitChecks',
   'backupRecords', 'importBatches', 'attachments', 'settings',
+  'creditStatements', 'creditPayments',
 ] as const;
 export type TableName = (typeof TABLE_NAMES)[number];
 

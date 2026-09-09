@@ -12,7 +12,12 @@ export interface EntrySaveRequest {
 }
 
 /** 账单及附属写入同成同败，避免“保存失败”后重试导致双份账单/孤立日记。 */
-export async function saveEntryWithContext(request: EntrySaveRequest): Promise<'created' | 'updated'> {
+export interface EntrySaveResult {
+  result: 'created' | 'updated';
+  entryId: number;
+}
+
+export async function saveEntryWithContext(request: EntrySaveRequest): Promise<EntrySaveResult> {
   return db.transaction('rw', [db.entries, db.accounts, db.entryTags, db.lifeNotes, db.merchants], async () => {
     const entry = { ...request.entry };
     if (request.lifeNote) entry.lifeNoteId = await addLifeNote(request.lifeNote);
@@ -20,10 +25,10 @@ export async function saveEntryWithContext(request: EntrySaveRequest): Promise<'
       const old = await db.entries.get(request.editingId);
       await updateEntry(request.editingId, entry, request.tagIds);
       if (entry.merchantId != null && entry.merchantId !== old?.merchantId) await touchMerchant(entry.merchantId);
-      return 'updated';
+      return { result: 'updated' as const, entryId: request.editingId };
     }
-    await addEntry(entry, request.tagIds);
+    const entryId = await addEntry(entry, request.tagIds);
     if (entry.merchantId != null) await touchMerchant(entry.merchantId);
-    return 'created';
+    return { result: 'created' as const, entryId };
   });
 }

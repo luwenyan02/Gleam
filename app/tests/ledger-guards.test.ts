@@ -27,7 +27,7 @@ describe('账务仓库入口不变量',()=>{
     expect((await db.accounts.get(cash))?.balance).toBe(9600);
   });
   it('删除关联账户后，恢复旧账拒绝而不是恢复为悬空账单',async()=>{
-    const id=await addEntry(expense());await softDeleteEntry(id);await deleteAccount(cash);
+    const id=await addEntry(expense());await softDeleteEntry(id);await db.accounts.delete(cash);
     await expect(restoreEntry(id)).rejects.toThrow();
     expect((await db.entries.get(id))?.deletedAt).not.toBe(0);
   });

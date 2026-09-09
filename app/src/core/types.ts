@@ -105,6 +105,10 @@ export interface Entry extends Timestamps {
   importBatchId?: number;
   /** 关联生成的生活随手记 id */
   lifeNoteId?: number;
+  /** 对账调整前的账内余额（分）；仅单边「余额对账调整」使用 */
+  reconcileBeforeBalance?: number;
+  /** 对账输入的实际余额（分）；与 reconcileBeforeBalance 一起保留审计轨迹 */
+  reconcileTargetBalance?: number;
 }
 
 /** 账单-标签多对多关联 */
@@ -123,11 +127,40 @@ export interface Account extends Timestamps {
   balance: number;
   note?: string;
   hidden: boolean;
-  /** 隐藏账户是否计入净资产（跟随设置项初始化，可单独覆盖） */
+  /** 是否计入净资产；与 hidden 独立，隐藏或恢复显示不得改写此值 */
   countInNetWorth: boolean;
-  /** 信用卡还款日（1-31），仅 credit 组使用 */
+  /** 信用卡账单日（1-31），仅 credit 组使用 */
+  billingDay?: number;
+  /** 信用卡到期还款日（1-31），仅 credit 组使用 */
   repayDay?: number;
+  /** 是否提示未还清账单；缺失按开启兼容旧账户 */
+  creditReminderEnabled?: boolean;
   sortOrder: number;
+}
+
+/** 手工核对的信用卡账单周期。金额均以整数分存储。 */
+export interface CreditStatement extends Timestamps {
+  id: number;
+  accountId: number;
+  /** 账单周期起止（含），本地自然日时间戳 */
+  periodStart: number;
+  periodEnd: number;
+  /** 到期还款日本地时间戳 */
+  dueAt: number;
+  /** 本期实际应还（分），由用户按银行账单核对 */
+  amountDue: number;
+  note?: string;
+  /** 本期提醒开关；账户级开关关闭时本字段不再单独生效 */
+  reminderEnabled: boolean;
+}
+
+/** 信用卡账单与真实转账流水的分配关系；同一流水只允许关联一次。 */
+export interface CreditPayment extends Timestamps {
+  id: number;
+  statementId: number;
+  entryId: number;
+  /** 创建关联时分配给本期的金额（分）；实际已还按当前有效流水动态截断 */
+  allocatedAmount: number;
 }
 
 /** 分类。支出两级（parentId 指向大类，undefined 即大类）；收入单级 */
@@ -173,6 +206,8 @@ export interface CategoryBudget extends Timestamps {
 export interface RecurringRule extends Timestamps {
   id: number;
   name: string;
+  /** 收支类型；旧规则缺失时按支出兼容 */
+  type?: CategoryKind;
   /** 约定金额，单位分 */
   amount: number;
   /** 「约定金额、入账时确认」模式（如水电燃气按抄表确认） */
@@ -185,6 +220,14 @@ export interface RecurringRule extends Timestamps {
   enabled: boolean;
   /** 下次入账时间（毫秒时间戳），由调度器推进 */
   nextRunAt: number;
+  /** 每 N 个周期执行一次（周/月/年；缺省 1） */
+  interval?: number;
+  /** 生效开始时间（含）；早于该时间的期次不生成 */
+  startDate?: number;
+  /** 生效结束时间（含）；晚于该时间不再生成新期次 */
+  endDate?: number;
+  /** 周期转账目标账户；设置后生成 accountId → 该账户的转账流水 */
+  transferToAccountId?: number;
 }
 
 /** 速记模板：分类 + 金额 + 名称 */
@@ -328,7 +371,7 @@ export const SETTING_DEFAULTS = {
   'security.secretsMigrated': false as boolean,
   /** 周期账 amountConfirm 待确认项持久化（刷新不丢失，确认/入账后移除） */
   'recurring.pendingConfirms': [] as {
-    ruleId: number; name: string; amount: number; dueAt: number; accountId: number; categoryId: number;
+    ruleId: number; name: string; type?: CategoryKind; amount: number; dueAt: number; accountId: number; categoryId: number;
   }[],
   /* ── [AI] 记账收件箱设置键 ── */
   /** OpenAI 兼容 API 根地址（如 https://api.openai.com 或 https://xx.com/v1） */

@@ -17,12 +17,17 @@ export interface CloudFile {
   lastModified: number;
 }
 
+/** 连接测试的只读结果；directoryReady=false 表示首次上传时才创建目录。 */
+export interface CloudTestResult {
+  directoryReady: boolean;
+}
+
 /** 云备份通道统一接口：整包上传 / 列表 / 下载 / 删除 / 连接测试 */
 export interface BackupProvider {
   /** 通道类型（写 BackupRecord.provider 用） */
   readonly kind: 'webdav' | 's3';
   /** 测试连接：验证地址、凭证与目录可用性，失败抛 CloudError */
-  test(): Promise<void>;
+  test(): Promise<CloudTestResult | void>;
   /** 上传整包 .skbak（同名覆盖） */
   upload(name: string, blob: Blob): Promise<void>;
   /** 列出云端 .skbak 文件，lastModified 倒序 */

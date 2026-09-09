@@ -29,7 +29,7 @@ def run(page,width):
     title=text_style(page,'#hm-days [data-entry-row="1"] .e-title')
     meta=text_style(page,'#hm-days [data-entry-row="1"] .e-meta')
     amount=text_style(page,'#hm-days [data-entry-row="1"] .e-amt')
-    page.locator('#hm-days').screenshot(path=str(OUT/f'home-{width}.png'))
+    page.locator('#page-home').screenshot(path=str(OUT/f'home-{width}.png'))
     issues=[]
     if title['size']<15 or int(title['weight'])<500:issues.append('明细主文字小于15px或字重不足')
     if meta['size']<13:issues.append('日期账户文字小于13px')
@@ -64,7 +64,7 @@ def run(page,width):
     page.evaluate("document.documentElement.setAttribute('data-theme','dark')");page.wait_for_timeout(250)
     dark=text_style(page,'#hm-days [data-entry-row="1"] .e-meta')
     if contrast(dark)<7:issues.append('深色副文字对比度不足')
-    page.locator('#hm-days').screenshot(path=str(OUT/f'dark-{width}.png'))
+    page.locator('#page-home').screenshot(path=str(OUT/f'dark-{width}.png'))
     return {'width':width,'title':title,'meta':meta,'amount':amount,'balance':balance,'key':key,'category':cat,'dark':dark,'contrast':round(contrast(meta),2),'darkContrast':round(contrast(dark),2),'issues':issues}
 
 if __name__=='__main__':

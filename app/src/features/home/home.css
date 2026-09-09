@@ -45,3 +45,14 @@
   .home-empty{padding:12px!important}
   .home-empty>.chip{padding:6px 9px;font-size:11px}
 }
+
+#page-home.is-active{display:flex;flex-direction:column}
+#page-home>*{flex-shrink:0}
+#page-home>.page-head{order:-1}
+#hm-days{display:contents}
+#hm-days>section{flex-shrink:0}
+#hm-more{order:10}
+#hm-quick .hm-all{grid-column:1/-1;justify-self:end;min-height:44px;padding:4px 12px;background:transparent;color:var(--muted)}
+.home-order{display:flex;gap:0;flex-shrink:0}
+.home-order button{min-width:44px;min-height:44px;background:transparent;color:var(--muted)}
+.home-order button:disabled{opacity:.3}

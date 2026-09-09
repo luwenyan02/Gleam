@@ -14,9 +14,13 @@ import {
   type Account, type Category, type Entry,
 } from '../../core/types';
 import {
-  listEntries, updateEntry, softDeleteEntry,
+  listEntries,
   type EntryFilter,
 } from '../../core/repo/entryRepo';
+import {
+  applyBatchEntries, previewBatchEntries,
+  type BatchEntryOperation, type BatchEntryPreview,
+} from '../../core/repo/batchEntryRepo';
 import { listCategories, listExpenseTree } from '../../core/repo/categoryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
 import { listLoanAccounts } from '../../core/repo/loanRepo';
@@ -283,22 +287,56 @@ async function renderDetail(body: HTMLElement): Promise<void> {
 
   /* ── 批量操作 ── */
 
-  batchBar.querySelector('#bb-del')!.addEventListener('click', () => {
-    void (async () => {
-      if (!selected.size) { showToast('请先勾选账单'); return; }
-      const n = selected.size;
-      const ok = await confirmDialog({
-        title: `删除选中的 ${n} 笔账单？`,
-        message: '删除后进入回收站，30 天内可恢复。',
-        okText: '删除',
-        danger: true,
-      });
-      if (!ok) return;
-      for (const id of selected) await softDeleteEntry(id);
+  function previewText(preview: BatchEntryPreview): string {
+    const reasons = new Map<string, number>();
+    for (const item of preview.skipped) reasons.set(item.reason, (reasons.get(item.reason) ?? 0) + 1);
+    const skipped = preview.skipped.length
+      ? `；跳过 ${preview.skipped.length} 笔（${[...reasons].map(([reason, count]) => `${reason} ${count} 笔`).join('，')}）`
+      : '';
+    return `可处理 ${preview.processableIds.length} 笔${skipped}`;
+  }
+
+  async function runBatch(
+    operation: BatchEntryOperation,
+    copy: { title: string; okText: string; success: string; danger?: boolean; recovery?: string },
+  ): Promise<void> {
+    let preview: BatchEntryPreview;
+    try {
+      preview = await previewBatchEntries([...selected], operation);
+    } catch (err) {
+      showToast(`批量操作无法执行：${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    if (!preview.processableIds.length) {
+      showToast(`没有可处理的账单。${previewText(preview)}`);
+      return;
+    }
+    const ok = await confirmDialog({
+      title: copy.title,
+      message: `${previewText(preview)}${copy.recovery ? `。${copy.recovery}` : ''}`,
+      okText: copy.okText,
+      danger: copy.danger,
+    });
+    if (!ok) return;
+    try {
+      const result = await applyBatchEntries([...selected], operation);
       selected.clear();
       batchMode = false;
-      showToast(`已删除 ${n} 笔，30 天内可在「我的 → 回收站」恢复`);
-    })();
+      showToast(`${copy.success} ${result.appliedIds.length} 笔${result.skipped.length ? `，跳过 ${result.skipped.length} 笔` : ''}`);
+    } catch (err) {
+      showToast(`批量操作失败，已回滚整批修改：${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  batchBar.querySelector('#bb-del')!.addEventListener('click', () => {
+    if (!selected.size) { showToast('请先勾选账单'); return; }
+    void runBatch(
+      { kind: 'delete' },
+      {
+        title: `删除选中的 ${selected.size} 笔账单？`, okText: '删除', success: '已删除',
+        danger: true, recovery: '删除后进入回收站，30 天内可恢复',
+      },
+    );
   });
 
   batchBar.querySelector('#bb-cat')!.addEventListener('click', () => {
@@ -309,38 +347,23 @@ async function renderDetail(body: HTMLElement): Promise<void> {
         ...incomeCats.map((cat) => ({ id: cat.id, label: `收入 · ${cat.name}`, icon: cat.icon })),
       ]);
       if (picked == null) return;
-      const kind = catMap.get(picked)?.kind;
-      let done = 0;
-      let skipped = 0;
-      for (const id of selected) {
-        const entry = filtered.find((x) => x.id === id);
-        if (!entry || entry.type === 'transfer' || entry.type === 'loan' || entry.type !== kind) { skipped += 1; continue; }
-        await updateEntry(id, { categoryId: picked });
-        done += 1;
-      }
-      selected.clear();
-      batchMode = false;
-      showToast(`已改分类 ${done} 笔${skipped ? `，跳过 ${skipped} 笔类型不符` : ''}`);
+      await runBatch(
+        { kind: 'category', categoryId: picked },
+        { title: '确认批量修改分类？', okText: '修改', success: '已改分类' },
+      );
     })();
   });
 
   batchBar.querySelector('#bb-acct')!.addEventListener('click', () => {
     void (async () => {
       if (!selected.size) { showToast('请先勾选账单'); return; }
-      const picked = await sheetPick('改账户（转账账单将跳过）',
+      const picked = await sheetPick('改账户（转账 / 借贷账单将跳过）',
         accounts.map((a) => ({ id: a.id, label: a.name, icon: 'ic-wallet', note: formatFen(a.balance) })));
       if (picked == null) return;
-      let done = 0;
-      let skipped = 0;
-      for (const id of selected) {
-        const entry = filtered.find((x) => x.id === id);
-        if (!entry || entry.type === 'transfer') { skipped += 1; continue; }
-        await updateEntry(id, { accountId: picked });
-        done += 1;
-      }
-      selected.clear();
-      batchMode = false;
-      showToast(`已改账户 ${done} 笔${skipped ? `，跳过 ${skipped} 笔转账` : ''}`);
+      await runBatch(
+        { kind: 'account', accountId: picked },
+        { title: '确认批量修改账户？', okText: '修改', success: '已改账户' },
+      );
     })();
   });
 

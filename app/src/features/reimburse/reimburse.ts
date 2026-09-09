@@ -1,6 +1,6 @@
 /**
  * 拾光 · 报销管理（features/reimburse，PRD 4.10）
- * 待报销合计卡 + 勾选列表 →「报销到账」选择到账账户（支持部分报销）→
+ * 待报销合计卡 + 勾选列表 →「报销到账」选择到账账户（可登记不足额实收，一次结清）→
  * entryRepo.settleReimbursement 转入已报销并联动到账账户余额；
  * 统计口径开关写 settings 'reimburse.countAsIncome'（口径差异由 statsRepo 处理，UI 只消费）。
  * 视觉结构与原型 index.html #page-reimburse（L927-954）一致；金额只走 money.ts。
@@ -17,6 +17,7 @@ import { getSetting, setSetting } from '../../core/repo/settingsRepo';
 import { registerSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { showToast } from '../shell/toast';
+import { confirmDialog } from '../shell/dialog';
 import type { Account, Entry } from '../../core/types';
 
 /** 抽屉监听器控制：#sheet 为复用容器，重开前必须废止上一次绑定 */
@@ -31,6 +32,50 @@ function sheetSignal(): AbortSignal {
 function md(ts: number): string {
   const d = new Date(ts);
   return `${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
+/** 完整到账资料才可展示为现金流；历史导入的单一状态标记不补造金额、账户或日期。 */
+function hasReceipt(entry: Entry): boolean {
+  return entry.reimbursedAmount != null
+    && entry.reimbursedAt != null
+    && entry.reimburseAccountId != null;
+}
+
+export function reimbursementDetailText(entry: Entry): string {
+  if (entry.reimburseStatus === 'pending') return '待报销';
+  if (entry.reimburseStatus !== 'done') return '非报销';
+  if (!hasReceipt(entry)) return '已报销（到账资料缺失）';
+  const received = entry.reimbursedAmount!;
+  const difference = entry.amount - received;
+  return difference > 0
+    ? `已报销 · 实收 ¥${formatFen(received)} · 差额 ¥${formatFen(difference)}（一次结清）`
+    : `已报销 ¥${formatFen(received)}`;
+}
+
+export interface ReimbursementRecordPresentation {
+  meta: string;
+  amountText: string;
+  amountClass: '' | 'in';
+}
+
+export function reimbursementRecordPresentation(entry: Entry, accountName?: string): ReimbursementRecordPresentation {
+  if (!hasReceipt(entry)) {
+    return {
+      meta: `${md(entry.occurredAt)} · 历史标记为已报销 · 到账资料缺失`,
+      amountText: '资料缺失',
+      amountClass: '',
+    };
+  }
+  const received = entry.reimbursedAmount!;
+  const difference = entry.amount - received;
+  const settlement = difference > 0
+    ? ` · 一次结清，实收 ¥${formatFen(received)}，差额 ¥${formatFen(difference)}`
+    : '';
+  return {
+    meta: `${md(entry.occurredAt)} · ${md(entry.reimbursedAt!)}报销到账 → ${accountName ?? '账户'}${settlement}`,
+    amountText: `+¥${formatFen(received)}`,
+    amountClass: 'in',
+  };
 }
 
 /** 分类 id → 名称（支出树 + 收入平铺） */
@@ -71,7 +116,7 @@ export function initReimburse(): void {
         </section>
         <section class="card" aria-label="报销统计口径">
           <div class="field"><span>报销款计入收入统计</span><button class="switch" id="rb-mode" role="switch" aria-checked="false" aria-label="报销款计入收入统计"></button></div>
-          <p class="tiny">开启：报销到账记为一笔「报销」收入 · 关闭：报销款只冲抵原支出、不进收入统计。支持部分报销，未报销差额仍计入支出。</p>
+          <p class="tiny">开启：报销到账记为一笔「报销」收入 · 关闭：报销款只冲抵原支出、不进收入统计。每笔确认后一次结清；实收不足原金额时，差额继续计入支出。</p>
         </section>
         <section class="card list" aria-label="已报销记录">
           <h3 class="card-title" style="padding:10px 2px 0">已报销</h3>
@@ -113,16 +158,18 @@ export function initReimburse(): void {
         sw.classList.toggle('on', countIn);
         sw.setAttribute('aria-checked', String(countIn));
 
-        // 已报销按报销日期倒序：原账单、报销日期、到账账户；部分报销标注差额
+        // 已报销按报销日期倒序；缺少到账资料的历史状态标记不能展示为到账。
         const doneSorted = [...done].sort((a, b) => (b.reimbursedAt ?? 0) - (a.reimbursedAt ?? 0));
         el.querySelector('#rb-done')!.innerHTML = doneSorted.length ? doneSorted.map((e) => {
-          const partial = (e.reimbursedAmount ?? e.amount) < e.amount
-            ? ` · 部分报销（原 ¥${formatFen(e.amount)}）` : '';
+          const presentation = reimbursementRecordPresentation(
+            e,
+            acctMap.get(e.reimburseAccountId ?? -1)?.name,
+          );
           return `
           <div class="row">
             <span class="e-ic neutral">${iconHtml('ic-file', 18)}</span>
-            <div class="e-main"><p class="e-title">${rowTitle(e, cats)}</p><p class="e-meta">${md(e.occurredAt)} · ${e.reimbursedAt ? `${md(e.reimbursedAt)}报销到账` : '已报销'} → ${esc(acctMap.get(e.reimburseAccountId ?? -1)?.name ?? '账户')}${partial}</p></div>
-            <p class="e-amt num in">+¥${formatFen(e.reimbursedAmount ?? e.amount)}</p>
+            <div class="e-main"><p class="e-title">${rowTitle(e, cats)}</p><p class="e-meta">${esc(presentation.meta)}</p></div>
+            <p class="e-amt num ${presentation.amountClass}">${presentation.amountText}</p>
           </div>`;
         }).join('') : '<p class="sub" style="padding:12px 2px">还没有已报销记录</p>';
       }
@@ -171,7 +218,7 @@ export function initReimburse(): void {
 
 /* ── 报销到账抽屉 ─────────────────── */
 
-/** 选择到账账户 + 每笔到账金额（默认全额，可改小实现部分报销） */
+/** 选择到账账户 + 每笔实收金额；确认后每笔均一次结清。 */
 async function openSettleSheet(picked: Entry[], onDone: () => void): Promise<void> {
   const [accounts, cats, countIn] = await Promise.all([
     listAccounts(), catNameMap(), getSetting('reimburse.countAsIncome'),
@@ -195,13 +242,13 @@ async function openSettleSheet(picked: Entry[], onDone: () => void): Promise<voi
               ${visible.map((a) => `<button class="chip${a.id === acctId ? ' active' : ''}" data-acct="${a.id}">${esc(a.name)}</button>`).join('')}
             </div>
           </div>
-          <p class="tiny" style="padding:2px 0 6px">到账金额可改小实现部分报销 · 未报销差额仍计入支出</p>
+          <p class="tiny" style="padding:2px 0 6px">按实际到账填写；确认后一次结清，少于原金额的差额不再待报销并继续计入支出</p>
           ${picked.map((e) => `
             <div class="rb-amt-row">
               <div class="e-main"><p class="e-title">${rowTitle(e, cats)}</p><p class="e-meta">${md(e.occurredAt)} · 原金额 ¥${formatFen(e.amount)}</p></div>
               <input class="note num" data-amt="${e.id}" inputmode="decimal" value="${formatFen(e.amount).replace(/,/g, '')}">
             </div>`).join('')}
-          <button class="btn primary" data-act="settle" style="margin-top:14px">确认到账</button>
+          <button class="btn primary" data-act="settle" style="margin-top:14px">确认一次结清</button>
           <p class="tiny" style="text-align:center;margin-top:10px">${countIn ? '当前口径：到账记为一笔「报销」收入，计入收入统计' : '当前口径：到账只冲抵原支出，不计入收入统计'}</p>
         </div>`;
 
@@ -233,6 +280,19 @@ async function openSettleSheet(picked: Entry[], onDone: () => void): Promise<voi
           return;
         }
         const sum = [...amountById.values()].reduce((s, v) => s + v, 0);
+        const shortfalls = picked.flatMap((entry) => {
+          const received = amountById.get(entry.id)!;
+          return received < entry.amount ? [entry.amount - received] : [];
+        });
+        if (shortfalls.length) {
+          const difference = shortfalls.reduce((sum, value) => sum + value, 0);
+          const confirmed = await confirmDialog({
+            title: '确认不足额一次结清',
+            message: `本次实收 ¥${formatFen(sum)}，差额 ¥${formatFen(difference)}。确认后所选账单将结清，差额不再进入待报销。`,
+            okText: '确认结清',
+          });
+          if (!confirmed) return;
+        }
         await settleReimbursement(picked.map((e) => e.id), acctId, amountById);
         onDone();
         closeSheet();

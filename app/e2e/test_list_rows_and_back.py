@@ -64,7 +64,7 @@ def rows(page,width):
         assert '待报销' in page.locator(f'{prefix} [{attribute}="3"]').inner_text()
         assert '已报销' in page.locator(f'{prefix} [{attribute}="7"]').inner_text()
     check('#hm-days','data-entry-row')
-    page.locator('#hm-days').screenshot(path=str(SHOTS/f'list-home-{width}.png'))
+    page.locator('#page-home').screenshot(path=str(SHOTS/f'list-home-{width}.png'))
     page.locator('#btn-search').click();page.locator('#sr-input').fill('演示')
     page.locator('#sr-results [data-eid="1"]').wait_for();page.wait_for_timeout(400)
     check('#sr-results','data-eid')
@@ -102,6 +102,119 @@ def native_date_back(page,width):
     fixture(page);open_draft(page)
     page.evaluate('document.dispatchEvent(new CustomEvent("gleam:system-back"))')
     page.wait_for_timeout(450);check_draft(page)
+
+def date_tab_order(page,width):
+    fixture(page);open_draft(page)
+    assert page.locator('.dw-tab').all_text_contents()==['日期','时间']
+    assert page.locator('.dw-tab[aria-selected="true"]').inner_text()=='时间'
+    assert page.locator('.dw-page-time').is_visible()
+    assert not page.locator('.dw-page-date').is_visible()
+    page.locator('.dw-tab[data-tab="date"]').click()
+    assert page.locator('.dw-page-date').is_visible()
+    page.locator('.dw-tab[data-tab="time"]').click()
+    assert page.locator('.dw-page-time').is_visible()
+    page.screenshot(path=str(SHOTS/f'date-tab-order-{width}.png'))
+    page.locator('.dw-tab[data-tab="date"]').click()
+    page.go_back();page.wait_for_timeout(450);check_draft(page)
+    page.locator('#date-chip').click();page.locator('.dw-panel.dw-open').wait_for()
+    assert page.locator('.dw-tab[aria-selected="true"]').inner_text()=='时间'
+    page.locator('.dw-confirm').click();page.wait_for_timeout(400);check_draft(page)
+
+def asset_trend(page,width):
+    fixture(page);before=ledger_snapshot(page)
+    page.locator('.tab[data-page="page-acct"]').click()
+    chart=page.locator('#page-acct .balance-trend')
+    chart.wait_for()
+    assert not chart.locator('.balance-trend-chart').is_visible(),'默认收起趋势图'
+    page.screenshot(path=str(SHOTS/f'asset-trend-collapsed-{width}.png'),animations='disabled')
+    chart.locator('.balance-trend-heading').click()
+    assert chart.locator('.balance-trend-months span').count()==6
+    assert chart.locator('.balance-trend-axis span').count()==3
+    assert '本月截至当前' in chart.inner_text()
+    assert chart.locator('.balance-trend-plot svg').evaluate('e=>!/(NaN|Infinity)/.test(e.innerHTML)')
+    assert chart.evaluate('e=>e.scrollWidth<=e.clientWidth+1'),'趋势图不能横向溢出'
+    chart.locator('.balance-trend-details summary').click()
+    assert chart.locator('.balance-trend-values li').count()==6
+    assert '¥' in chart.locator('.balance-trend-values').inner_text()
+    chart.locator('.balance-trend-details summary').click()
+    initial=chart.locator('[data-trend-month]').get_attribute('value')
+    chart.locator('[data-trend-shift="-6"]').click()
+    page.wait_for_function('initial=>document.querySelector("#page-acct [data-trend-month]")?.value!==initial',arg=initial)
+    assert chart.locator('.balance-trend-chart').is_visible()
+    assert '本月截至当前' not in chart.inner_text()
+    chart.locator('[data-trend-shift="6"]').click()
+    page.wait_for_function('initial=>document.querySelector("#page-acct [data-trend-month]")?.value===initial',arg=initial)
+    assert chart.locator('input[type="month"]').count()==0,'年月选择应使用应用内统一样式'
+    chart.locator('[data-trend-month]').click()
+    page.locator('.dw-panel.dw-open[aria-label="选择年月"]').wait_for()
+    page.screenshot(path=str(SHOTS/f'trend-month-picker-{width}.png'),animations='disabled')
+    page.go_back();page.locator('.dw-panel').wait_for(state='detached')
+    assert chart.locator('[data-trend-month]').get_attribute('value')==initial,'返回取消不应修改趋势月份'
+    chart.locator('[data-trend-month]').click()
+    page.locator('.dw-panel.dw-open').wait_for()
+    page.locator('.dw-panel').evaluate('panel=>panel.__mwSet(2024,6)')
+    page.locator('.dw-confirm').click()
+    page.wait_for_function('()=>document.querySelector("#page-acct [data-trend-month]")?.value==="2024-06"')
+    page.locator('.dw-panel').wait_for(state='detached')
+    assert chart.locator('[data-trend-month]').evaluate('e=>document.activeElement===e'),'选择完成后焦点应返回月份按钮'
+    assert chart.locator('.balance-trend-chart').is_visible()
+    page.locator('#page-acct .page-head').scroll_into_view_if_needed()
+    page.screenshot(path=str(SHOTS/f'asset-trend-{width}.png'),animations='disabled')
+    assert ledger_snapshot(page)==before,'图表只能读取账务数据'
+    page.locator('[data-acct="1"]').click()
+    page.locator('.account-detail-hero .balance-trend').wait_for()
+    assert page.locator('.account-detail-hero .balance-trend-months span').count()==6
+
+def concise_copy_and_focus(page,width):
+    fixture(page)
+    page.locator('.tab[data-page="page-report"]').click()
+    page.locator('#report-dim [data-dimension="tag"]').click()
+    page.locator('#rank-note').wait_for()
+    assert page.locator('#rank').inner_text()==''
+    assert page.locator('#rank-note').inner_text()=='一笔多标签分别计入各标签，占比可能合计超过 100%；未打标签的账单不在此列'
+    page.locator('.tab[data-page="page-acct"]').click()
+    page.get_by_role('button',name='添加账户',exact=True).click()
+    field=page.locator('.acct-form input.note').first
+    field.wait_for();page.wait_for_timeout(350)
+    field.fill('虚构账户');field.focus()
+    style=field.evaluate('e=>{const s=getComputedStyle(e);return {border:s.borderColor,shadow:s.boxShadow,outline:s.outlineStyle,primary:getComputedStyle(document.documentElement).getPropertyValue("--primary").trim()}}')
+    assert style['shadow']=='none' and style['outline']=='none','输入框只保留一层轻量焦点边框'
+    assert page.locator('#sheet').evaluate('e=>getComputedStyle(e).outlineStyle')=='none','非交互弹层容器不应出现焦点框'
+    page.screenshot(path=str(SHOTS/f'quiet-focus-{width}.png'),animations='disabled')
+    page.locator('#sheet [data-act="close"]').click()
+    page.locator('.tab[data-page="page-mine"]').click()
+    page.get_by_role('button',name='分类管理',exact=False).click()
+    page.locator('#sp-categories').wait_for()
+    assert '点击编辑 · 拖动排序' in page.locator('#sp-categories').inner_text()
+    assert '支出为两级分类' not in page.locator('#sp-categories').inner_text()
+    page.screenshot(path=str(SHOTS/f'concise-category-{width}.png'),animations='disabled')
+
+def contextual_recommendation(page,width):
+    fixture(page)
+    fixed=page.evaluate('()=>new Date(new Date().setHours(12,0,0,0)).getTime()')
+    page.clock.set_fixed_time(fixed / 1000)
+    page.evaluate('''async()=>{
+      const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)});
+      const tx=db.transaction(['entries','categories','accounts','settings'],'readwrite'),now=Date.now();
+      tx.objectStore('entries').clear();
+      const cat=tx.objectStore('categories').get(2);cat.onsuccess=()=>tx.objectStore('categories').put({...cat.result,name:'早餐'});
+      tx.objectStore('settings').put({key:'entry.lastUsed',value:{type:'expense',accountId:1,expenseCategoryId:2},updatedAt:now});
+      for(let i=0;i<8;i++){
+        const lunch=i>=5,at=new Date(now);at.setDate(at.getDate()-i-1);at.setHours(lunch?12:8);
+        tx.objectStore('entries').put({id:i+1,type:'expense',amount:1000,categoryId:lunch?3:2,accountId:lunch?2:1,occurredAt:at.getTime(),createdAt:now,updatedAt:now,deletedAt:0,reimburseStatus:'none'});
+      }
+      await new Promise((r,j)=>{tx.oncomplete=r;tx.onerror=()=>j(tx.error)});db.close();
+    }''')
+    page.reload();page.locator('#fab').click();page.locator('#keypad').wait_for()
+    assert '午餐' in page.locator('#cat-grid .cat[aria-selected="true"]').inner_text()
+    assert '演示工资卡' in page.locator('#acct-name').inner_text()
+    page.locator('#cat-grid .cat').filter(has_text='早餐').click()
+    assert '演示现金' in page.locator('#acct-name').inner_text()
+    page.locator('#acct-btn').click()
+    page.locator('.picker-panel [data-value="2"]').click()
+    page.locator('#cat-grid .cat').filter(has_text='午餐').click()
+    page.locator('#cat-grid .cat').filter(has_text='早餐').click()
+    assert '演示工资卡' in page.locator('#acct-name').inner_text(),'手选账户不得被分类推荐覆盖'
 
 def picker_back(page,width):
     fixture(page);page.locator('.tab[data-page="page-mine"]').click()
@@ -171,6 +284,10 @@ def rapid_navigation_back(page,width):
 if __name__=='__main__':
     cases=[(rows,width) for width in (360,390,430,1024)]
     cases += [(account_balances,width) for width in (360,390,430,1024)]
+    cases += [(date_tab_order,width) for width in (360,390,430,1024)]
+    cases += [(asset_trend,width) for width in (360,390,430,1024)]
+    cases += [(concise_copy_and_focus,width) for width in (360,390,430,1024)]
+    cases += [(contextual_recommendation,390)]
     cases += [(fn,390) for fn in (browser_date_back,native_date_back,picker_back,date_confirm_reopen,sheet_to_subpage,rapid_navigation_back)]
     if os.environ.get('GLEAM_E2E_CASE'):cases=[(fn,w) for fn,w in cases if fn.__name__==os.environ['GLEAM_E2E_CASE']]
     failures=[]

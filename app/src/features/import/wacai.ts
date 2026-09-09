@@ -9,12 +9,14 @@
  * - 借贷支持「资金账户单值 + 收付款人双边」或「收付账户双边」，解析为资金/应收应付两个账户；
  * - 收付账户（转账）「现金:-1.00, 微信钱包:+1.00」正负拆转出/转入并与金额互校；
  * - 参与人多人分摊只按「自己」份额入账，完整明细追加备注；
- * - 标签逗号拆分；属性「已报销」→ 报销状态；属性「退款」按普通支出入账并在备注保留标注；
+ * - 标签逗号拆分；属性「已报销」→ 报销状态；属性「退款」因缺少原支出关联而进入异常待处理；
  *   其余无对应字段并入备注不丢信息；
  * - 支出「利息支出」归「其他/利息」（PRD 附录 A 约定）。
  */
 import { parseYuanToFen } from '../../core/money';
 import type { EntryType, LoanKind } from '../../core/types';
+
+export type ImportSource = 'wacai' | 'wechat' | 'alipay';
 
 /** 挖财 12 列表头（与导出模块同一约定） */
 const HEADERS = [
@@ -36,6 +38,10 @@ const LOAN_KIND_BY_NAME: Record<string, LoanKind> = {
 export interface WacaiRow {
   /** Excel 行号（1 起，含表头行） */
   rowNo: number;
+  /** 原始账单平台；旧挖财调用方可省略，向导按解析结果补足。 */
+  source?: ImportSource;
+  /** 平台交易号，仅用于预检展示和人工核对，不作为自动合并依据。 */
+  externalId?: string;
   type: EntryType;
   occurredAt: number;
   /** 入账金额（分，人民币；分摊/折算后） */
@@ -64,6 +70,7 @@ export interface ParseIssue {
 }
 
 export interface WacaiParseResult {
+  source?: ImportSource;
   rows: WacaiRow[];
   /** 格式异常行（跳过导入） */
   issues: ParseIssue[];
@@ -286,6 +293,12 @@ export async function parseWacaiFile(file: File): Promise<WacaiParseResult> {
       const partText = cellText(cPart);
       const attrText = cellText(cAttr);
 
+      // Excel 不包含 refundOfEntryId。把退款当普通支出会再次扣减账户并放大支出，
+      // 因此无法可靠关联原支出时必须进入异常列表，由用户在原账单上补录退款。
+      if (type === 'expense' && attrText === '退款') {
+        throw new Error('退款无法关联原支出，已列为异常待处理且默认不导入');
+      }
+
       const row: WacaiRow = {
         rowNo, type, occurredAt, amountFen, tags: [], reimburseDone: false, note: '',
       };
@@ -372,17 +385,12 @@ export async function parseWacaiFile(file: File): Promise<WacaiParseResult> {
         if (payeeText) noteParts.push(`收付款人：${payeeText}`);
         // 属性「已报销」仅标记状态：导出文件无到账账户/金额，入库时不产生到账余额效果（见 import.ts rowToEntry）
         if (type === 'expense' && attrText === '已报销') row.reimburseDone = true;
-        // 属性「退款」（拾光导出的退款记录）：跨文件无法还原与原支出的关联（refundOfEntryId 丢失），
-        // 按普通支出入账，仅在备注保留标注，属预期局限；不影响查重（查重只看时间/类型/金额/账户）
-        if (type === 'expense' && attrText === '退款') {
-          noteParts.push('属性：退款（原为退款记录，跨文件导入无法还原关联，已按普通支出入账）');
-        }
       }
 
       // 标签 / 商家 / 属性（未消化的取值并入备注）
       row.tags = cellText(cTags).split(/[,，]/).map((s) => s.trim()).filter(Boolean);
       row.merchant = cellText(cMerchant) || undefined;
-      if (attrText && !(row.type === 'expense' && (attrText === '已报销' || attrText === '退款'))) {
+      if (attrText && !(row.type === 'expense' && attrText === '已报销')) {
         noteParts.push(`属性：${attrText}`);
       }
       row.note = [baseNote, ...noteParts].filter(Boolean).join('；');
@@ -395,7 +403,7 @@ export async function parseWacaiFile(file: File): Promise<WacaiParseResult> {
   }
 
   return {
-    rows, issues, counts,
+    source: 'wacai', rows, issues, counts,
     categoryKeys: [...categoryKeys],
     accountNames: [...accountNames],
   };

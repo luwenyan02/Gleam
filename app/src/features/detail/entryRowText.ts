@@ -25,8 +25,13 @@ export function entryRowText(
   const account = entry.type === 'loan' || entry.type === 'transfer'
     ? `${accounts.get(entry.fromAccountId ?? -1) ?? '—'} → ${accounts.get(entry.toAccountId ?? -1) ?? '—'}`
     : accounts.get(entry.accountId ?? -1) ?? '账户';
+  const hasReceipt = entry.reimbursedAmount != null
+    && entry.reimbursedAt != null
+    && entry.reimburseAccountId != null;
   const status = entry.reimburseStatus === 'pending' ? '待报销'
-    : entry.reimburseStatus === 'done' ? '已报销' : '';
+    : entry.reimburseStatus === 'done'
+      ? hasReceipt ? '已报销' : '已报销（到账资料缺失）'
+      : '';
   const note = entry.note?.trim();
   return {
     title, icon,

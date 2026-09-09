@@ -43,7 +43,7 @@ export interface LedgerSummaryOptions {
   reimburseIncomeCount?: number;
 }
 
-export type ReportDimension = 'trend' | 'category' | 'account' | 'tag';
+export type ReportDimension = 'trend' | 'category' | 'account' | 'tag' | 'income' | 'merchant';
 
 /** 报表只持有用户的周期和当前选中项，不复制明细页筛选状态。 */
 export interface ReportSelection {
@@ -177,6 +177,12 @@ export function reportSelectionToLedgerQuery(selection: ReportSelection): Ledger
   } else if (selection.dimension === 'tag') {
     query.types = selection.types?.length ? [...selection.types] : ['expense'];
     if (selection.selectedIds?.length) query.tagIds = [...selection.selectedIds];
+  } else if (selection.dimension === 'income') {
+    query.types = ['income'];
+    if (selection.selectedIds?.length) query.categoryIds = [...selection.selectedIds];
+  } else if (selection.dimension === 'merchant') {
+    query.types = selection.types?.length ? [...selection.types] : ['expense'];
+    if (selection.selectedIds?.length) query.merchantIds = [...selection.selectedIds];
   }
   return query;
 }

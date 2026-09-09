@@ -17,6 +17,7 @@ export type AppEvent =
   | 'accounts-changed'
   | 'categories-changed'
   | 'budgets-changed'
+  | 'credit-changed'
   | 'life-changed'
   | 'settings-changed'
   | 'route-changed';

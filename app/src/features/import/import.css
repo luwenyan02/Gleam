@@ -13,5 +13,16 @@
 .imp-map .pick-btn{max-width:46vw;border:1px solid var(--border);border-radius:calc(var(--r) - 6px);background:var(--surface);padding:7px 8px;font-size:12.5px;color:var(--fg);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .imp-map td{vertical-align:middle}
 
+.imp-duplicates{margin-top:12px;padding-top:10px;border-top:1px dashed var(--border)}
+.imp-duplicates>p{margin-bottom:6px}
+.imp-dup-choice{width:100%;min-height:52px;margin-top:6px;padding:8px 10px;border:1px solid var(--border);border-radius:calc(var(--r) - 5px);background:var(--surface);color:var(--fg);display:flex;align-items:center;gap:9px;text-align:left}
+.imp-dup-choice.kept{border-color:var(--primary);background:var(--accent-soft)}
+.imp-dup-choice>span:nth-child(2){flex:1;min-width:0}
+.imp-dup-choice b,.imp-dup-choice small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.imp-dup-choice b{font-size:12.5px}
+.imp-dup-choice small{margin-top:3px;color:var(--muted);font-size:11px}
+.imp-dup-choice em{flex:none;color:var(--muted);font-size:11px;font-style:normal}
+.imp-dup-choice.kept em{color:var(--primary);font-weight:600}
+
 .imp-report p{font-size:13px;padding:4px 0}
 .imp-report .big{font-size:calc(26px * var(--seed-type));font-weight:700;padding:6px 0}

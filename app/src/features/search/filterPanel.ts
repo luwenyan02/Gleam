@@ -3,6 +3,8 @@
  * 全屏子页形式，筛选项：类别（多选）、账户（多选）、标签（多选）、商家（多选）、金额范围。
  * 底部双按钮："重置" + "确定"。
  */
+import { parseAmountRange } from '../../core/queryValidation';
+import { showToast } from '../shell/toast';
 import { esc } from '../../core/esc';
 import { listCategories } from '../../core/repo/categoryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
@@ -109,9 +111,9 @@ export async function createFilterPanel(opts: FilterPanelOptions): Promise<HTMLE
             <span class="fp-label">金额范围</span>
           </div>
           <div class="fp-amount-inputs">
-            <input type="number" id="fp-min" placeholder="最小金额" value="${esc(state.amountMin)}" inputmode="decimal">
+            <input type="text" id="fp-min" placeholder="最小金额" value="${esc(state.amountMin)}" inputmode="decimal">
             <span class="fp-sep">—</span>
-            <input type="number" id="fp-max" placeholder="最大金额" value="${esc(state.amountMax)}" inputmode="decimal">
+            <input type="text" id="fp-max" placeholder="最大金额" value="${esc(state.amountMax)}" inputmode="decimal">
           </div>
         </div>
       </div>
@@ -208,6 +210,8 @@ export async function createFilterPanel(opts: FilterPanelOptions): Promise<HTMLE
     if (target.closest('.fp-ok')) {
       state.amountMin = panel.querySelector<HTMLInputElement>('#fp-min')?.value ?? '';
       state.amountMax = panel.querySelector<HTMLInputElement>('#fp-max')?.value ?? '';
+      try { parseAmountRange(state.amountMin, state.amountMax); }
+      catch (error) { showToast(error instanceof Error ? error.message : '金额范围无效'); return; }
       opts.onConfirm(state);
       return;
     }

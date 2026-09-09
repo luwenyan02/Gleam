@@ -13,17 +13,19 @@ import { on } from '../../core/store';
 import { formatFen, formatFenCny, parseYuanToFen } from '../../core/money';
 import {
   addRule, updateRule, setRuleEnabled, deleteRule, listRules, ruleSummary, confirmPendingOccurrence,
+  recurringRuleType, skipNextOccurrence,
   type NewRecurringRule, type PendingConfirm,
 } from '../../core/repo/recurringRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
-import { listExpenseTree } from '../../core/repo/categoryRepo';
+import { listCategories, listExpenseTree } from '../../core/repo/categoryRepo';
 import { onPendingConfirm } from '../../core/scheduler';
 import { registerSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { showToast } from '../shell/toast';
 import { confirmDialog } from '../shell/dialog';
-import type { Account, RecurringRule, RecurFreq } from '../../core/types';
+import type { Account, CategoryKind, RecurringRule, RecurFreq } from '../../core/types';
 import { openPickList, type PickListItem } from '../../shared/pickList';
+import { openDateWheel } from '../../shared/dateTimeWheel';
 
 /* ── 模块状态 ── */
 let body: HTMLElement | undefined;
@@ -53,6 +55,11 @@ const FREQS: { value: RecurFreq; label: string }[] = [
 ];
 
 /** 频率与入账日的可读文案，如「每月5、20日」 */
+function dateLabel(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function freqText(rule: Pick<RecurringRule, 'freq' | 'days'>): string {
   const days = rule.days;
   switch (rule.freq) {
@@ -80,8 +87,8 @@ async function refresh(): Promise<void> {
   const el = body;
   if (!el?.isConnected) return;
   const token = ++refreshToken;
-  const [summary, rules, accounts, tree] = await Promise.all([
-    ruleSummary(), listRules(), listAccounts(), listExpenseTree(),
+  const [summary, rules, accounts, tree, incomeCategories] = await Promise.all([
+    ruleSummary(), listRules(), listAccounts(), listExpenseTree(), listCategories('income'),
   ]);
   if (token !== refreshToken || !el.isConnected) return;
 
@@ -91,46 +98,55 @@ async function refresh(): Promise<void> {
     catIcon.set(g.parent.id, g.parent.icon);
     for (const c of g.children) catIcon.set(c.id, c.icon);
   }
+  for (const category of incomeCategories) catIcon.set(category.id, category.icon);
 
   /* 待确认卡（amountConfirm 规则到期，scheduler 分发） */
   const pendingHtml = pendingQueue.length ? `
     <section class="card" aria-label="待确认入账">
       <h3 class="card-title">待确认入账（${pendingQueue.length} 笔）</h3>
-      <p class="sub" style="margin-bottom:12px">「入账时确认」的周期账已到期，请核对金额后入账</p>
+      <p class="sub" style="margin-bottom:12px">到期后核对金额再入账</p>
       <button class="btn primary" data-act="pending">去确认</button>
     </section>` : '';
 
   /* 汇总卡 */
   const sumHtml = `
     <section class="card cycle-sum" aria-label="周期账汇总">
-      <p class="label">每月固定支出</p>
-      <p class="big num">${formatFenCny(summary.monthlyTotal)}</p>
-      <p class="sub">${summary.enabledCount} 项已启用 · 到期自动入账并提醒，入账前可修改金额</p>
+      <div class="rc-sum-grid">
+        <div><p class="label">每月固定支出</p><p class="big num expense">${formatFenCny(summary.monthlyTotal)}</p></div>
+        <div><p class="label">每月固定收入</p><p class="big num income">${formatFenCny(summary.monthlyIncomeTotal)}</p></div>
+      </div>
+      <p class="sub">${summary.enabledCount} 项已启用 · 到期自动处理或提醒确认</p>
     </section>`;
 
   /* 规则列表 */
   const rowsHtml = rules.map((r) => {
+    const type = recurringRuleType(r);
     const meta = [
+      type === 'income' ? '收入' : '支出',
       freqText(r),
       esc(acctName.get(r.accountId) ?? '账户已删除'),
       r.enabled ? (r.amountConfirm ? `下次 ${mdText(r.nextRunAt)} 确认金额` : `下次 ${mdText(r.nextRunAt)}`) : '已暂停',
-    ].join(' · ');
+      (r.interval ?? 1) > 1 ? `每${r.interval}${r.freq === 'weekly' ? '周' : r.freq === 'monthly' ? '月' : r.freq === 'yearly' ? '年' : '天'}` : '',
+      r.endDate ? `${dateLabel(r.endDate)} 止` : '',
+      r.transferToAccountId ? `转账到 ${esc(acctName.get(r.transferToAccountId) ?? '账户已删除')}` : '',
+    ].filter(Boolean).join(' · ');
     return `
       <div class="row" data-id="${r.id}" role="button" tabindex="0">
         <span class="e-ic${r.enabled ? '' : ' neutral'}">${iconHtml(catIcon.get(r.categoryId) ?? 'ic-repeat')}</span>
         <div class="e-main">
-          <p class="e-title">${esc(r.name)} <span class="e-sub">· ${r.amountConfirm ? '约 ' : ''}${formatFenCny(r.amount)}</span></p>
+          <p class="e-title">${esc(r.name)} <span class="e-sub rc-amount ${type}">· ${r.amountConfirm ? '约 ' : ''}${type === 'income' ? '+' : '−'}${formatFenCny(r.amount)}</span></p>
           <p class="e-meta">${meta}</p>
         </div>
+        <button class="chip" data-skip="${r.id}" aria-label="跳过${esc(r.name)}本期">跳过本期</button>
         <button class="switch${r.enabled ? ' on' : ''}" data-toggle="${r.id}" role="switch" aria-checked="${r.enabled}" aria-label="${esc(r.name)}周期账开关"></button>
       </div>`;
   }).join('');
   const listHtml = rules.length ? `
     <section class="card list" aria-label="周期账列表">${rowsHtml}</section>
-    <p class="tiny" style="text-align:center">周期账入账后会出现在首页流水，并计入报表与预算 · 点行编辑规则</p>` : `
+    <p class="tiny" style="text-align:center">入账后进入首页流水与对应收支统计 · 点行编辑</p>` : `
     <section class="card" aria-label="周期账列表">
       <div class="rc-empty">
-        <p class="sub">还没有周期账<br>房租、话费、会员这类固定支出，设一次就不用再记</p>
+        <p class="sub">还没有周期账<br>工资、房租等固定收支，设置后按期入账</p>
         <button class="btn primary" data-act="new">新建周期账</button>
       </div>
     </section>`;
@@ -141,30 +157,50 @@ async function refresh(): Promise<void> {
 /* ── 新建 / 编辑规则抽屉 ── */
 
 async function openRuleForm(rule?: RecurringRule): Promise<void> {
-  const [accounts, tree] = await Promise.all([listAccounts(false), listExpenseTree()]);
+  const [accounts, tree, incomeCategories] = await Promise.all([
+    listAccounts(false), listExpenseTree(), listCategories('income'),
+  ]);
   if (!accounts.length) {
     showToast('请先在账户页添加一个账户');
     return;
   }
   /* 表单局部状态 */
+  let type: CategoryKind = recurringRuleType({ type: rule?.type });
   let freq: RecurFreq = rule?.freq ?? 'monthly';
   let amountConfirm = rule?.amountConfirm ?? false;
+  let interval = Math.max(1, rule?.interval ?? 1);
+  let startDate: number | undefined = rule?.startDate;
+  let endDate: number | undefined = rule?.endDate;
+  let transferToAccountId: number | undefined = rule?.transferToAccountId;
   const weeklyDays = new Set<number>(rule?.freq === 'weekly' ? rule.days : [1]);
 
   /* pickList 选项与闭包选中值 */
-  const catItems: PickListItem[] = [];
+  const expenseCatItems: PickListItem[] = [];
   for (const g of tree) {
-    catItems.push({ value: g.parent.id, label: `${g.parent.name}（大类）`, group: g.parent.name });
-    for (const c of g.children) catItems.push({ value: c.id, label: c.name, group: g.parent.name });
+    expenseCatItems.push({ value: g.parent.id, label: `${g.parent.name}（大类）`, group: g.parent.name });
+    for (const c of g.children) expenseCatItems.push({ value: c.id, label: c.name, group: g.parent.name });
   }
+  const incomeCatItems: PickListItem[] = incomeCategories.map((category) => ({
+    value: category.id,
+    label: category.name,
+  }));
+  const catItems = (): PickListItem[] => type === 'income' ? incomeCatItems : expenseCatItems;
+  const defaultCatId = (): number | undefined => Number(catItems()[0]?.value) || undefined;
+  const categoryKind = new Map<number, CategoryKind>();
+  for (const item of expenseCatItems) categoryKind.set(Number(item.value), 'expense');
+  for (const item of incomeCatItems) categoryKind.set(Number(item.value), 'income');
   const acctItems: PickListItem[] = accounts.map((a: Account) => ({ value: a.id, label: a.name }));
-  let selectedCatId: number | undefined = rule?.categoryId ?? tree[0]?.children[0]?.id ?? tree[0]?.parent.id;
+  let selectedCatId: number | undefined = rule?.categoryId != null && categoryKind.get(rule.categoryId) === type
+    ? rule.categoryId
+    : defaultCatId();
   let selectedAcctId: number | undefined = rule?.accountId ?? accounts[0]?.id;
   const catBtnLabel = (id?: number): string => {
     for (const g of tree) {
       if (g.parent.id === id) return `${g.parent.name}（大类）`;
       for (const c of g.children) if (c.id === id) return c.name;
     }
+    const income = incomeCategories.find((category) => category.id === id);
+    if (income) return income.name;
     return '请选择分类';
   };
   const acctBtnLabel = (id?: number): string => accounts.find((a) => a.id === id)?.name ?? '请选择账户';
@@ -173,20 +209,18 @@ async function openRuleForm(rule?: RecurringRule): Promise<void> {
   const daysField = (): string => {
     switch (freq) {
       case 'daily':
-        return '<p class="tiny" style="padding:2px 0 8px">每天 09:00 自动入账</p>';
+        return '<div class="field"><span>入账日</span><span class="rc-control rc-daily">每天 09:00</span></div>';
       case 'weekly':
         return `
-          <div class="field"><span>入账日</span><div class="chip-group" id="rc-dow">
+          <div class="field rc-weekly-field"><span>入账日</span><div class="chip-group" id="rc-dow">
             ${DOW.map((t, i) => `<button class="chip${weeklyDays.has(i) ? ' active' : ''}" type="button" data-dow="${i}">周${t}</button>`).join('')}
           </div></div>`;
       case 'monthly':
         return `
-          <div class="field"><span>入账日</span><input class="note num" id="rc-dom" inputmode="numeric" style="max-width:170px;margin-bottom:0;text-align:right" placeholder="如 5,20（可多个）" value="${rule?.freq === 'monthly' ? rule.days.join(',') : ''}"></div>
-          <p class="tiny" style="padding:0 0 8px">1-31，多个日期用逗号分隔；大于当月天数时顺延到月底</p>`;
+          <div class="field"><span>入账日</span><input class="note num rc-control" id="rc-dom" inputmode="numeric" aria-label="每月入账日" aria-description="1至31，多个用逗号分隔，超出当月天数时按月底入账" placeholder="日期，如 5,20" value="${rule?.freq === 'monthly' ? rule.days.join(',') : ''}"></div>`;
       case 'yearly':
         return `
-          <div class="field"><span>入账日</span><input class="note num" id="rc-mmdd" inputmode="numeric" style="max-width:170px;margin-bottom:0;text-align:right" placeholder="如 0101,0615" value="${rule?.freq === 'yearly' ? rule.days.map((v) => String(v).padStart(4, '0')).join(',') : ''}"></div>
-          <p class="tiny" style="padding:0 0 8px">月日各两位（MMDD），多个用逗号分隔</p>`;
+          <div class="field"><span>入账日</span><input class="note num rc-control" id="rc-mmdd" inputmode="numeric" aria-label="每年入账日" aria-description="月日四位数字，例如0101表示1月1日，多个用逗号分隔" placeholder="月日，如 0101,0615" value="${rule?.freq === 'yearly' ? rule.days.map((v) => String(v).padStart(4, '0')).join(',') : ''}"></div>`;
     }
   };
 
@@ -200,22 +234,43 @@ async function openRuleForm(rule?: RecurringRule): Promise<void> {
           <button class="icon-btn" data-act="close" aria-label="关闭">${iconHtml('ic-close')}</button>
         </div>
         <div class="sheet-scroll">
-          <div class="field"><span>名称</span><input class="note" id="rc-name" style="max-width:190px;margin-bottom:0;text-align:right" placeholder="如 房租" maxlength="20" value="${esc(rule?.name ?? '')}"></div>
-          <div class="field"><span>金额（元）</span><input class="note num" id="rc-amount" inputmode="decimal" style="max-width:150px;margin-bottom:0;text-align:right" placeholder="0.00" value="${rule ? yuanValue(rule.amount) : ''}"></div>
+          <div class="field"><span>类型</span><div class="chip-group rc-choice" id="rc-type">
+            <button class="chip${type === 'expense' ? ' active' : ''}" type="button" data-type="expense">支出</button>
+            <button class="chip${type === 'income' ? ' active' : ''}" type="button" data-type="income">收入</button>
+          </div></div>
+          <div class="field"><span>名称</span><input class="note rc-control" id="rc-name" placeholder="如 房租" maxlength="20" value="${esc(rule?.name ?? '')}"></div>
+          <div class="field"><span>金额（元）</span><input class="note num rc-control" id="rc-amount" inputmode="decimal" placeholder="0.00" value="${rule ? yuanValue(rule.amount) : ''}"></div>
           <div class="field"><span>入账时确认金额</span><button class="switch${amountConfirm ? ' on' : ''}" id="rc-confirm" role="switch" aria-checked="${amountConfirm}" aria-label="入账时确认金额"></button></div>
-          <p class="tiny" style="padding:0 0 8px">适合水电燃气等按抄表出账的项目 · 到期不自动入账，提醒你核对金额后确认</p>
+          <p class="tiny rc-help">开启后，到期核对金额再入账</p>
           <div class="field"><span>频率</span><div class="chip-group" id="rc-freq">
             ${FREQS.map((f) => `<button class="chip${freq === f.value ? ' active' : ''}" type="button" data-freq="${f.value}">${f.label}</button>`).join('')}
           </div></div>
           <div id="rc-days">${daysField()}</div>
-          <div class="field"><span>分类</span><button class="pick-btn" id="rc-cat" aria-label="支出分类">${catBtnLabel(selectedCatId)}</button></div>
-          <div class="field"><span>入账账户</span><button class="pick-btn" id="rc-acct" aria-label="入账账户">${acctBtnLabel(selectedAcctId)}</button></div>
+          <div class="field"><span>每几${freq === 'weekly' ? '周' : freq === 'monthly' ? '月' : freq === 'yearly' ? '年' : '天'}</span><input class="note num rc-control" id="rc-interval" inputmode="numeric" style="max-width:90px;text-align:right" value="${interval}"></div>
+          <div class="field"><span>开始日期</span><button class="pick-btn rc-control" id="rc-start" aria-label="生效开始日期">${startDate ? dateLabel(startDate) : '立即生效'}</button></div>
+          <div class="field"><span>结束日期</span><button class="pick-btn rc-control" id="rc-end" aria-label="生效结束日期">${endDate ? dateLabel(endDate) : '长期有效'}</button></div>
+          <div class="field"><span>周期转账到</span><button class="pick-btn rc-control" id="rc-transfer" aria-label="周期转账目标账户">${transferToAccountId ? acctBtnLabel(transferToAccountId) : '不转账'}</button></div>
+          <div class="field"><span>分类</span><button class="pick-btn rc-control" id="rc-cat" aria-label="${type === 'income' ? '收入' : '支出'}分类">${catBtnLabel(selectedCatId)}</button></div>
+          <div class="field"><span>入账账户</span><button class="pick-btn rc-control" id="rc-acct" aria-label="入账账户">${acctBtnLabel(selectedAcctId)}</button></div>
           <button class="btn primary" data-act="save" style="margin-top:14px">${rule ? '保存修改' : '创建周期账'}</button>
           ${rule ? '<button class="btn ghost" data-act="del" style="margin-top:10px;color:var(--over)">删除此周期账</button>' : ''}
         </div>`;
 
       el.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
+        const typeBtn = target.closest<HTMLElement>('[data-type]');
+        if (typeBtn) {
+          const nextType = typeBtn.dataset.type as CategoryKind;
+          if (nextType !== type) {
+            type = nextType;
+            selectedCatId = defaultCatId();
+            el.querySelectorAll('[data-type]').forEach((button) => button.classList.toggle('active', button === typeBtn));
+            const catBtn = el.querySelector<HTMLButtonElement>('#rc-cat')!;
+            catBtn.textContent = catBtnLabel(selectedCatId);
+            catBtn.setAttribute('aria-label', `${type === 'income' ? '收入' : '支出'}分类`);
+          }
+          return;
+        }
         if (target.closest('#rc-confirm')) {
           amountConfirm = !amountConfirm;
           const sw = el.querySelector('#rc-confirm')!;
@@ -224,14 +279,47 @@ async function openRuleForm(rule?: RecurringRule): Promise<void> {
           return;
         }
         if (target.closest('#rc-cat')) {
+          const items = catItems();
+          if (!items.length) {
+            showToast(`暂无${type === 'income' ? '收入' : '支出'}分类，请先添加`);
+            return;
+          }
           openPickList({
             container: el,
             title: '选择分类',
-            items: catItems,
+            items,
             selected: selectedCatId,
             onPick(value, label) {
               selectedCatId = Number(value);
               el.querySelector('#rc-cat')!.textContent = label;
+            },
+          });
+          return;
+        }
+        if (target.closest('#rc-start') || target.closest('#rc-end')) {
+          const which = target.closest('#rc-start') ? 'start' : 'end';
+          const initial = which === 'start' ? startDate ?? Date.now() : endDate ?? Date.now();
+          const d = new Date(initial);
+          const panel = openDateWheel({
+            initial: { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() },
+            onConfirm: r => {
+              const ts = new Date(r.year, r.month - 1, r.day, 9).getTime();
+              if (which === 'start') startDate = ts; else endDate = ts;
+              el.querySelector<HTMLButtonElement>(which === 'start' ? '#rc-start' : '#rc-end')!.textContent = dateLabel(ts);
+            },
+          });
+          document.body.appendChild(panel);
+          return;
+        }
+        if (target.closest('#rc-transfer')) {
+          openPickList({
+            container: el,
+            title: '周期转账目标账户',
+            items: [{ value: 'none', label: '不转账（按收支入账）' }, ...acctItems],
+            selected: transferToAccountId ?? 'none',
+            onPick(value, label) {
+              transferToAccountId = value === 'none' ? undefined : Number(value);
+              el.querySelector<HTMLButtonElement>('#rc-transfer')!.textContent = transferToAccountId ? label : '不转账';
             },
           });
           return;
@@ -305,7 +393,19 @@ async function openRuleForm(rule?: RecurringRule): Promise<void> {
           if (!selectedAcctId) throw new Error('请选择账户');
           const categoryId = selectedCatId;
           const accountId = selectedAcctId;
-          const input: NewRecurringRule = { name, amount, amountConfirm, freq, days, categoryId, accountId, enabled: rule?.enabled ?? true };
+          const intervalRaw = Number(el.querySelector<HTMLInputElement>('#rc-interval')!.value.trim() || '1');
+          if (!Number.isInteger(intervalRaw) || intervalRaw < 1 || intervalRaw > 99) throw new Error('周期间隔应为 1-99 的整数');
+          interval = intervalRaw;
+          if (startDate != null && endDate != null && endDate < startDate) throw new Error('结束日期不能早于开始日期');
+          if (transferToAccountId != null && transferToAccountId === accountId) throw new Error('转账目标不能与入账账户相同');
+          const input: NewRecurringRule = {
+            name, type, amount, amountConfirm, freq, days, categoryId, accountId,
+            enabled: rule?.enabled ?? true,
+            interval,
+            startDate,
+            endDate,
+            transferToAccountId,
+          };
           if (rule) await updateRule(rule.id, input);
           else await addRule(input);
           closeSheet();
@@ -325,6 +425,7 @@ async function openRuleForm(rule?: RecurringRule): Promise<void> {
         });
         if (!ok) return;
         await deleteRule(r.id);
+        pendingQueue.splice(0, pendingQueue.length, ...pendingQueue.filter((item) => item.ruleId !== r.id));
         closeSheet();
         showToast('周期账已删除');
         void refresh();
@@ -352,10 +453,10 @@ async function openPendingSheet(): Promise<void> {
             <button class="icon-btn" data-act="close" aria-label="关闭">${iconHtml('ic-close')}</button>
           </div>
           <div class="sheet-scroll">
-            <p class="tiny" style="padding:0 0 6px">核对金额后逐笔入账；点「关闭」可稍后再确认（刷新页面也不会丢失）</p>
+            <p class="tiny" style="padding:0 0 6px">核对金额后入账，关闭后可稍后处理</p>
             ${pendingQueue.map((p, i) => `
               <div class="field">
-                <span>${esc(p.name)}<i class="rc-due">${mdText(p.dueAt)} 到期 · ${esc(acctName.get(p.accountId) ?? '账户已删除')}</i></span>
+                <span>${esc(p.name)}<i class="rc-due">${p.type === 'income' ? '收入' : '支出'} · ${mdText(p.dueAt)} 到期 · ${esc(acctName.get(p.accountId) ?? '账户已删除')}</i></span>
                 <input class="note num" data-amt="${i}" inputmode="decimal" style="max-width:110px;margin-bottom:0;text-align:right" value="${yuanValue(p.amount)}" aria-label="${esc(p.name)}入账金额（元）">
                 <button class="chip" data-book="${i}">入账</button>
               </div>`).join('')}
@@ -459,6 +560,17 @@ export function initRecurring(): void {
             showToast(enable ? '已启用，从下一期开始入账' : '已暂停，期间到期不入账');
             void refresh();
           });
+          return;
+        }
+        const skip = target.closest<HTMLElement>('[data-skip]');
+        if (skip) {
+          void (async () => {
+            const ok = await confirmDialog({ title: '跳过本期？', message: '下一期顺延到再下一期，本期不再生成账单或待确认项。', okText: '跳过' });
+            if (!ok) return;
+            await skipNextOccurrence(Number(skip.dataset.skip));
+            showToast('已跳过本期');
+            void refresh();
+          })();
           return;
         }
         if (target.closest('[data-act="new"]')) { void openRuleForm(); return; }

@@ -73,6 +73,12 @@ def run_wizard(page, file_path):
     page.click('#sp-import [data-act="to-map"]')
     page.wait_for_selector('#sp-import [data-act="run"]', timeout=10000)
     page.click('#sp-import [data-act="run"]')
+    # 疑似重复预检门：出现确认清单时需再次点击执行（默认跳过）
+    try:
+        page.wait_for_selector('#sp-import .imp-duplicates', timeout=3000)
+        page.click('#sp-import [data-act="run"]')
+    except Exception:
+        pass
     page.wait_for_selector('#sp-import .imp-report', timeout=45000)
     rep = page.inner_text('#sp-import .imp-report')
     page.click('#sp-import [data-act="done"]')
@@ -82,7 +88,7 @@ def run_wizard(page, file_path):
 
 def parse_report(rep):
     ok_n = int(re.search(r'(\d+)\s*条成功入账', rep).group(1))
-    skip_n = int(re.search(r'跳过重复\s*(\d+)\s*条', rep).group(1))
+    skip_n = int(re.search(r'跳过(?:疑似)?重复\s*(\d+)\s*条', rep).group(1))
     return ok_n, skip_n
 
 

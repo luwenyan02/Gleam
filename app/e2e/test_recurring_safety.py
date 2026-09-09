@@ -25,7 +25,8 @@ def recurring_double_click(page) -> None:
       });
       const dueAt = Date.now() - 60_000;
       await new Promise((resolve, reject) => {
-        const tx = db.transaction('settings', 'readwrite');
+        const tx = db.transaction(['settings', 'recurringRules'], 'readwrite');
+        tx.objectStore('recurringRules').put({ id: 999, name: '虚构双击周期账', type: 'expense', amount: 1234, amountConfirm: true, freq: 'monthly', days: [1], accountId: 1, categoryId: 2, enabled: true, nextRunAt: Date.now() + 86400000, createdAt: Date.now(), updatedAt: Date.now() });
         tx.objectStore('settings').put({
         key: 'recurring.pendingConfirms',
         value: [{

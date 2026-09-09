@@ -42,6 +42,7 @@ export const SUBPAGE_META: { id: string; title: string; icon: string }[] = [
   { id: 'sp-calendar', title: '日历账单', icon: 'ic-cal' },
   { id: 'sp-recurring', title: '周期账', icon: 'ic-repeat' },
   { id: 'sp-budget', title: '预算中心', icon: 'ic-coin' },
+  { id: 'sp-credit', title: '信用卡账单', icon: 'ic-card' },
   { id: 'sp-reimburse', title: '报销管理', icon: 'ic-file' },
   { id: 'sp-categories', title: '分类管理', icon: 'ic-set' },
   { id: 'sp-entry-detail', title: '账单明细', icon: 'ic-book' },

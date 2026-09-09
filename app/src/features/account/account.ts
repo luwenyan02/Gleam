@@ -6,17 +6,18 @@
  * 金额格式化只走 money.ts。
  */
 import './account.css';
+import { balanceTrendHtml, bindTrendControls, type TrendViewState } from './balanceTrend';
 import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
 import { on } from '../../core/store';
 import { formatFen, formatFenCny, parseYuanToFen } from '../../core/money';
 import {
-  addAccount, getAccount, getNetWorth, listAccountsByGroup, reconcileAccount, updateAccount,
+  addAccount, getAccount, getNetWorth, listAccountsByGroup, previewReconcileAccount,
+  reconcileAccount, reorderAccountWithinGroup, setAccountCountInNetWorth, setAccountHidden, updateAccount,
 } from '../../core/repo/accountRepo';
 import { netWorthTrend } from '../../core/repo/statsRepo';
 import { getEntry, listEntries } from '../../core/repo/entryRepo';
 import { listCategories } from '../../core/repo/categoryRepo';
-import { getSetting } from '../../core/repo/settingsRepo';
 import { accountFlows, accountMonthRows, accountStatement, type LedgerItem } from '../../core/ledgerEvents';
 import { accountEffects } from '../../core/entryEffects';
 import { registerPage, registerSubpage, openSubpage } from '../shell/router';
@@ -40,6 +41,8 @@ let root: HTMLElement | undefined;
 const folded = new Set<AccountGroup>();
 /** 并发刷新令牌 */
 let refreshToken = 0;
+const netTrendState: TrendViewState = { open: false };
+const accountTrendStates = new Map<number, TrendViewState>();
 /** 长按计时器与标记（长按隐藏后抑制本次 click） */
 let pressTimer: number | undefined;
 let pressFired = false;
@@ -65,11 +68,6 @@ const GROUP_ICONS: Record<AccountGroup, string> = {
   stored: 'ic-card',
   other: 'ic-wallet',
 };
-
-/** 元整数展示（原型 fmt0 语义）：丢弃分位小数 */
-function fmtYuan0(fen: number): string {
-  return formatFen(fen).split('.')[0];
-}
 
 /** 解析可带负号的元输入（信用卡余额），符号在 UI 层处理，换算仍走 money.ts */
 function parseSignedYuan(input: string): number {
@@ -100,41 +98,16 @@ function rowNote(a: Account): string {
 
 /* ── 顶部资产卡 ── */
 
-/** 近 6 个月走势线（SVG polyline，同原型 .spark 结构） */
-function sparkHtml(trend: { month: string; net: number }[], metric = '净资产'): string {
-  if (trend.length < 2) return '';
-  const x0 = 6, x1 = 234, yTop = 7, yBot = 36;
-  const nets = trend.map((t) => t.net);
-  const min = Math.min(...nets);
-  const max = Math.max(...nets);
-  const pts = trend.map((t, i) => {
-    const x = x0 + (i * (x1 - x0)) / (trend.length - 1);
-    const y = max === min ? (yTop + yBot) / 2 : yBot - ((t.net - min) / (max - min)) * (yBot - yTop);
-    return { x, y };
-  });
-  const last = pts[pts.length - 1];
-  const mLabel = (m: string): string => `${Number(m.split('-')[1])}月`;
-  const first = trend[0];
-  const end = trend[trend.length - 1];
-  return `
-    <svg class="spark" viewBox="0 0 240 44" role="img" aria-label="近六个月${esc(metric)}走势">
-      <polyline points="${pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="var(--primary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="3" fill="var(--primary)"/>
-    </svg>
-    <p class="spark-cap">近 6 个月${esc(metric)} · ${mLabel(first.month)} ¥${fmtYuan0(first.net)} → ${mLabel(end.month)} ¥${fmtYuan0(end.net)}</p>`;
-}
-
 /* ── 页面渲染 ── */
 
 /** 重新取数并整页刷新 */
 async function refresh(): Promise<void> {
   if (!root) return;
   const token = ++refreshToken;
-  const [worth, trend, groups, includeHidden] = await Promise.all([
+  const [worth, trend, groups] = await Promise.all([
     getNetWorth(),
-    netWorthTrend(6),
+    netWorthTrend(6, netTrendState.endingMonth),
     listAccountsByGroup(),
-    getSetting('netWorth.includeHidden'),
   ]);
   if (token !== refreshToken || !root) return;
 
@@ -160,8 +133,8 @@ async function refresh(): Promise<void> {
     <section class="card list" aria-label="已隐藏账户">
       <h3 class="card-title" style="padding:10px 2px 0">已隐藏账户</h3>
       ${hidden.map((a) => `
-        <div class="row"><span class="e-ic neutral">${iconHtml('ic-eye', 18)}</span>${esc(a.name)}<span class="row-note num">${includeHidden ? '计入净资产' : '不计入净资产'} · ${formatFenCny(a.balance)}</span><button class="restore-link" data-unhide="${a.id}">显示</button></div>`).join('')}
-      <p class="tiny" style="padding:6px 2px 10px">长按账户可隐藏 · 隐藏账户默认不计入净资产，可在设置中改为计入</p>
+        <div class="row"><span class="e-ic neutral">${iconHtml('ic-eye', 18)}</span>${esc(a.name)}<span class="row-note num">${a.countInNetWorth === false ? '不计入净资产' : '计入净资产'} · ${formatFenCny(a.balance)}</span><button class="restore-link" data-unhide="${a.id}">显示</button></div>`).join('')}
+      <p class="tiny" style="padding:6px 2px 10px">隐藏只影响显示，净资产计入在账户详情单独设置</p>
     </section>`;
 
   root.innerHTML = `
@@ -180,7 +153,7 @@ async function refresh(): Promise<void> {
         <p>总资产<span class="num">${formatFenCny(worth.assets)}</span></p>
         <p>总负债<span class="num">${formatFenCny(worth.debts)}</span></p>
       </div>
-      ${sparkHtml(trend)}
+      ${balanceTrendHtml(trend, '净资产', netTrendState)}
     </section>
 
     ${groupCards || `
@@ -239,6 +212,9 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
   const accountId = detailAccountId;
   if (accountId == null) { body.innerHTML = '<p class="tiny">未指定账户</p>'; return; }
   const targetAccountId = accountId;
+  const trendState = accountTrendStates.get(accountId) ?? { open: false };
+  accountTrendStates.set(accountId, trendState);
+  bindTrendControls(body, trendState, refreshDetail);
   let currentAccount: Account | undefined;
   let monthsShown = 8;
   let detailToken = 0;
@@ -269,7 +245,8 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     const availableMonths = (nowDate.getFullYear()-earliest.getFullYear())*12+nowDate.getMonth()-earliest.getMonth()+1;
     const totalIn = flows.reduce((sum, flow) => Math.max(0, flow.delta) + sum, 0);
     const totalOut = flows.reduce((sum, flow) => Math.max(0, -flow.delta) + sum, 0);
-    const trend = monthRows.slice(0,6).reverse().map((row) => ({ month: row.key, net: row.closing }));
+    const trendAt = trendState.endingMonth ? new Date(`${trendState.endingMonth}-01T12:00:00`).getTime() : Date.now();
+    const trend = accountMonthRows(flows, acct.balance, trendAt, 6).reverse().map((row) => ({ month: row.key, net: row.closing }));
 
     body.innerHTML = `
       <section class="account-detail-hero">
@@ -277,10 +254,14 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
         <p>当前余额</p>
         <h3 class="num${acct.balance < 0 ? ' neg' : ''}">${formatFenCny(acct.balance)}</h3>
         <div class="account-flow-total"><span>总流入 <b class="num">${formatFenCny(totalIn)}</b></span><span>总流出 <b class="num">${formatFenCny(totalOut)}</b></span></div>
-        ${sparkHtml(trend, '账户余额')}
+        ${balanceTrendHtml(trend, '账户余额', trendState)}
         <div class="account-detail-actions">
           <button data-account-action="edit">${iconHtml('ic-pen', 17)}编辑</button>
           <button data-account-action="reconcile">${iconHtml('ic-swap', 17)}对账</button>
+          <button data-account-action="up" aria-label="组内上移">↑ 上移</button>
+          <button data-account-action="down" aria-label="组内下移">↓ 下移</button>
+          <button data-account-action="networth">${acct.countInNetWorth === false ? '计入净资产' : '不计净资产'}</button>
+          <button data-account-action="hide">${acct.hidden ? '恢复显示' : '隐藏账户'}</button>
         </div>
       </section>
       <div class="account-months" id="account-months">
@@ -328,11 +309,15 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
       return;
     }
     const action = target.closest<HTMLElement>('[data-account-action]')?.dataset.accountAction;
-    if (!action || !currentAccount) return;
+    const acct = currentAccount;
+    if (!action || !acct) return;
     if (action === 'more-months') { monthsShown += 8; void refreshDetail(); }
-    else if (action === 'entry') void openEntrySheet({ presetAccountId: currentAccount.id });
-    else if (action === 'edit') void openAccountForm(currentAccount);
-    else if (action === 'reconcile') openReconcileSheet(currentAccount);
+    else if (action === 'entry') void openEntrySheet({ presetAccountId: acct.id });
+    else if (action === 'edit') void openAccountForm(acct);
+    else if (action === 'reconcile') openReconcileSheet(acct);
+    else if (action === 'up' || action === 'down') void reorderAccountWithinGroup(acct.id, action).then(() => showToast('已调整组内顺序')).catch(err => showToast(err.message));
+    else if (action === 'networth') void setAccountCountInNetWorth(acct.id, acct.countInNetWorth === false).then(() => showToast(acct.countInNetWorth === false ? '已计入净资产' : '已不计入净资产'));
+    else if (action === 'hide') void setAccountHidden(acct.id, !acct.hidden).then(() => showToast(acct.hidden ? '已恢复显示' : '已隐藏，可在已隐藏分区恢复'));
   });
   body.addEventListener('keydown', event => {
     if (event.target instanceof HTMLElement && event.target.matches('.entry-swipe-content') && (event.key === 'Enter' || event.key === ' ')) {
@@ -361,13 +346,13 @@ async function toggleHidden(acct: Account): Promise<void> {
   if (!acct.hidden) {
     const ok = await confirmDialog({
       title: `隐藏「${acct.name}」？`,
-      message: '隐藏后该账户移入「已隐藏账户」分区，默认不计入净资产（可在设置中改为计入），可随时恢复显示。',
+      message: '隐藏后该账户移入「已隐藏账户」分区，净资产计入范围保持不变，可随时恢复显示。',
       okText: '隐藏',
     });
     if (!ok) return;
   }
   closeSheet();
-  await updateAccount(acct.id, { hidden: !acct.hidden, countInNetWorth: acct.hidden });
+  await setAccountHidden(acct.id, !acct.hidden);
   showToast(acct.hidden ? `已恢复显示「${acct.name}」` : `已隐藏「${acct.name}」`);
 }
 
@@ -395,6 +380,7 @@ export async function openAccountForm(acct?: Account, presetGroup: AccountGroup 
           <div class="field"><span>名称</span><input class="note" id="af-name" maxlength="20" placeholder="如 招行储蓄卡 ·6688" value="${esc(acct?.name ?? '')}"></div>
           ${acct ? '' : `<div class="field"><span>初始余额</span><div class="signed-amount"><button class="sign-toggle" type="button" id="af-sign" aria-label="切换余额正负" aria-pressed="${negative}">${negative ? '− 欠款' : '+ 余额'}</button><input class="note num" id="af-balance" aria-label="初始余额金额" inputmode="decimal" placeholder="0.00" value=""></div></div>`}
           <div class="field"><span>备注</span><input class="note" id="af-note" maxlength="30" placeholder="选填，如 工资卡" value="${esc(acct?.note ?? '')}"></div>
+          <div class="field" id="af-bill-field"${group === 'credit' ? '' : ' hidden'}><span>账单日</span><input class="note num" id="af-bill" inputmode="numeric" placeholder="每月几号（1-31），选填" value="${acct?.billingDay ?? ''}"></div>
           <div class="field" id="af-repay-field"${group === 'credit' ? '' : ' hidden'}><span>还款日</span><input class="note num" id="af-repay" inputmode="numeric" placeholder="每月几号（1-31），选填" value="${acct?.repayDay ?? ''}"></div>
           <button class="btn primary" data-act="save" style="margin-top:10px">${acct ? '保存修改' : '添加账户'}</button>
           ${acct ? '<p class="tiny" style="text-align:center;margin-top:10px">余额由账单驱动，不能直接修改 · 需要校准请使用「对账」</p>' : ''}
@@ -416,6 +402,7 @@ export async function openAccountForm(acct?: Account, presetGroup: AccountGroup 
           if (sign) { sign.textContent = negative ? '− 欠款' : '+ 余额'; sign.setAttribute('aria-pressed', String(negative)); }
           for (const c of el.querySelectorAll<HTMLElement>('[data-g]')) c.classList.toggle('active', c === chip);
           el.querySelector<HTMLElement>('#af-repay-field')!.hidden = group !== 'credit';
+          el.querySelector<HTMLElement>('#af-bill-field')!.hidden = group !== 'credit';
           return;
         }
         const act = target.closest<HTMLElement>('[data-act]')?.dataset.act;
@@ -429,20 +416,26 @@ export async function openAccountForm(acct?: Account, presetGroup: AccountGroup 
         const note = el.querySelector<HTMLInputElement>('#af-note')!.value.trim() || undefined;
         const repayRaw = el.querySelector<HTMLInputElement>('#af-repay')?.value.trim();
         let repayDay: number | undefined;
+        let billingDay: number | undefined;
+        const billRaw = el.querySelector<HTMLInputElement>('#af-bill')!.value.trim();
+        if (group === 'credit' && billRaw) {
+          billingDay = Number(billRaw);
+          if (!Number.isInteger(billingDay) || billingDay < 1 || billingDay > 31) { showToast('账单日须为 1-31 的整数'); return; }
+        }
         if (group === 'credit' && repayRaw) {
           repayDay = Number(repayRaw);
           if (!Number.isInteger(repayDay) || repayDay < 1 || repayDay > 31) { showToast('还款日须为 1-31 的整数'); return; }
         }
         try {
           if (acct) {
-            await updateAccount(acct.id, { name, note, repayDay: group === 'credit' ? repayDay : undefined });
+            await updateAccount(acct.id, { name, note, billingDay: group === 'credit' ? billingDay : undefined, repayDay: group === 'credit' ? repayDay : undefined });
             closeSheet();
             showToast('账户已更新');
           } else {
             const balRaw = el.querySelector<HTMLInputElement>('#af-balance')!.value.trim();
             const parsed = balRaw ? parseSignedYuan(balRaw) : 0;
             const balance = negative ? -Math.abs(parsed) : parsed;
-            await addAccount({ name, group, balance, note, repayDay });
+            await addAccount({ name, group, balance, note, billingDay, repayDay });
             closeSheet();
             showToast(`已添加「${name}」`);
           }
@@ -474,8 +467,9 @@ function openReconcileSheet(acct: Account): void {
             <p class="big num${acct.balance < 0 ? ' neg' : ''}">${formatFenCny(acct.balance)}</p>
           </div>
           <div class="field"><span>实际余额</span><div class="signed-amount"><button class="sign-toggle" type="button" data-act="sign" aria-label="切换余额正负" aria-pressed="${negative}">${negative ? '− 欠款' : '+ 余额'}</button><input class="note num" id="rc-target" aria-label="实际余额金额" inputmode="decimal" placeholder="0.00" value="${formatFen(Math.abs(acct.balance)).replace(/,/g, '')}"></div></div>
+          <p class="tiny" id="rc-preview" style="padding:2px 0 6px"></p>
           <button class="btn primary" data-act="save" style="margin-top:10px">生成对账调整</button>
-          <p class="tiny" style="text-align:center;margin-top:10px">差额会生成一笔「余额对账调整」记录（不计收支、可追溯），不会直接改数</p>
+          <p class="tiny" style="text-align:center;margin-top:10px">差额记为余额调整，不计收支</p>
         </div>`;
       el.addEventListener('click', (e) => {
         const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
@@ -487,7 +481,24 @@ function openReconcileSheet(acct: Account): void {
           button.setAttribute('aria-pressed', String(negative));
         }
         else if (act === 'save') void save();
+        void preview();
       }, { signal: sheetSignal() });
+      el.addEventListener('input', () => void preview(), { signal: sheetSignal() });
+
+      async function preview(): Promise<void> {
+        const box = el.querySelector<HTMLElement>('#rc-preview');
+        if (!box) return;
+        try {
+          const parsed = parseSignedYuan(el.querySelector<HTMLInputElement>('#rc-target')!.value);
+          const target = negative ? -Math.abs(parsed) : parsed;
+          const info = await previewReconcileAccount(acct.id, target);
+          box.textContent = info.difference === 0
+            ? '账内与实际一致，无需调整'
+            : `当前 ${formatFenCny(info.currentBalance)} · 实际 ${formatFenCny(info.targetBalance)} · 将生成 ${formatFen(info.difference, { sign: true })} 元调整记录`;
+        } catch {
+          box.textContent = '';
+        }
+      }
 
       async function save(): Promise<void> {
         try {
@@ -509,6 +520,7 @@ function openReconcileSheet(acct: Account): void {
 /** 渲染账户页并绑定交互（registerPage render，事件委托只绑一次） */
 function render(el: HTMLElement): void {
   root = el;
+  bindTrendControls(el, netTrendState, refresh);
 
   el.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;

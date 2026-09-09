@@ -16,6 +16,7 @@
 .dw-indicator{position:absolute;left:0;right:0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);pointer-events:none}
 .dw-confirm{display:block;width:100%;padding:13px;border-radius:calc(var(--r) - 2px);font-size:14px;font-weight:600;text-align:center;color:var(--primary);background:transparent;border:1.5px solid var(--primary);transition:all .18s}
 .dw-confirm:active{background:var(--accent-soft)}
+.dw-month-title{margin:0 0 14px;font-size:var(--text-body);font-weight:600;color:var(--fg)}
 
 /* ── 顶部：tab 栏（withTime 时）+「今天」快捷按钮同排 ──
    无 tab（搜索页形态）时仅「今天」靠右；有 tab 时 tab 靠左（margin-right:auto）、今天靠右 */

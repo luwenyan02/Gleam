@@ -5,3 +5,6 @@
 .budget-overview .big{font-size:calc(26px * var(--seed-type));font-weight:700;margin:4px 0 6px}
 .bd-empty{text-align:center;padding:20px 0 14px}
 .bd-empty .btn{max-width:200px;margin:14px auto 0}
+
+.bd-period { display:flex; gap:8px; overflow-x:auto; margin-bottom:12px; }
+.bd-period .btn { flex-shrink:0; min-height:44px; white-space:nowrap; }

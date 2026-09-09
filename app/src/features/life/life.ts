@@ -147,6 +147,18 @@ function shiftMonth(delta: number): void {
   void refresh();
 }
 
+/** 搜索命中生活记录时定位：切到记录所在月份，刷新后滚动到该卡片并短暂高亮。 */
+export function focusLifeRecord(noteId: number, occurredAt: number): void {
+  viewMonth = startOfMonth(occurredAt);
+  void refresh().then(() => {
+    const card = root?.querySelector<HTMLElement>(`[data-note="${noteId}"]`);
+    if (!card) return;
+    card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    card.classList.add('lf-focus');
+    setTimeout(() => card.classList.remove('lf-focus'), 1600);
+  });
+}
+
 async function refresh(): Promise<void> {
   const el = root;
   if (!el?.isConnected) return;

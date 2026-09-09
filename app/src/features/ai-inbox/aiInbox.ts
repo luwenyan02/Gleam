@@ -297,6 +297,13 @@ async function applyInlineEdit(t: HTMLElement, tempId: string): Promise<void> {
     }
   } else if (t instanceof HTMLInputElement && t.dataset.field === 'note') {
     await updateAiPendingItem(tempId, { note: t.value.trim() || undefined });
+  } else if (t instanceof HTMLInputElement && t.dataset.field === 'merchant') {
+    const name = t.value.trim();
+    if (name) {
+      const id = await ensureMerchant(name);
+      if (id != null) await touchMerchant(id);
+    }
+    await updateAiPendingItem(tempId, { merchantName: name || undefined });
   }
 }
 
@@ -304,6 +311,42 @@ async function applyInlineEdit(t: HTMLElement, tempId: string): Promise<void> {
  * 单条确认入账。命中查重且未确认时先展示「疑似重复」，二次点击「仍要入账」放行。
  * @param editAfter true = 入账成功后打开记一笔抽屉微调（openEntrySheet({ entryId })）
  */
+/** 编辑更多：先以草稿打开记账抽屉，保存后才入账并从队列移除。 */
+async function editDraft(tempId: string): Promise<void> {
+  const item = (await listAiPendingItems()).find((it) => it.tempId === tempId);
+  if (!item || item.status !== 'ready') return;
+  if (item.amount == null || !item.categoryName || !item.accountName) {
+    showToast('请先在卡片上补全金额、分类与账户');
+    return;
+  }
+  const [expenseCats, incomeCats, accounts] = await Promise.all([
+    listCategories('expense'), listCategories('income'), listAccounts(),
+  ]);
+  const categoryId = mapCategoryNameToId(item.type ?? 'expense', item.categoryName, expenseCats, incomeCats);
+  const accountId = mapAccountNameToId(item.accountName, accounts);
+  if (categoryId == null || accountId == null) {
+    showToast('分类或账户未匹配，请先在卡片上重新选择');
+    return;
+  }
+  await openEntrySheet({
+    draft: {
+      type: item.type ?? 'expense',
+      amount: item.amount,
+      categoryId,
+      accountId,
+      occurredAt: item.occurredAt,
+      note: item.note,
+      merchantName: item.merchantName,
+    },
+    onSaved: () => {
+      void removeAiPendingItems([tempId]).then(() => {
+        showToast('草稿已入账，待确认项已移除');
+        void refresh();
+      });
+    },
+  });
+}
+
 async function confirmOne(tempId: string, editAfter: boolean): Promise<void> {
   const item = (await listAiPendingItems()).find((it) => it.tempId === tempId);
   if (!item || item.status !== 'ready') return;
@@ -373,7 +416,7 @@ function readyCardHtml(item: AiPendingItem, imgUrl?: string): string {
       <div class="ai-card-head">
         <button class="chip${type === 'expense' ? ' active' : ''}" data-field="type" data-value="expense" data-temp-id="${item.tempId}">支出</button><button class="chip${type === 'income' ? ' active' : ''}" data-field="type" data-value="income" data-temp-id="${item.tempId}">收入</button>
         ${confBadge(item.confidence)}
-        ${item.merchantName ? `<span class="ai-merchant">${esc(item.merchantName)}</span>` : ''}
+        <label class="ai-merchant-field">商家<input data-field="merchant" type="text" value="${esc(item.merchantName ?? '')}" placeholder="商家（可选）"></label>
       </div>
       ${sourceHtml(item, imgUrl)}
       <div class="ai-fields">
@@ -596,7 +639,7 @@ export function initAiInbox(): void {
           void submitText(text);
         } else if (act === 'confirm-all') void confirmAll();
         else if (tempId && act === 'confirm') void confirmOne(tempId, false);
-        else if (tempId && act === 'edit') void confirmOne(tempId, true);
+        else if (tempId && act === 'edit') void editDraft(tempId);
         else if (tempId && act === 'ignore') {
           dupAcked.delete(tempId);
           dupWarned.delete(tempId);

@@ -22,7 +22,8 @@ import { backupFileName, buildSkbak, parseSkbak, sniffEncrypted, type SkbakManif
 import { saveBlobFile } from './download';
 import { exportMonthExcel } from './excel';
 import { mountCloudBackup } from './cloudBackup';
-import { openImportWizard } from '../import/import';
+import { openImportWizardFor } from '../import/import';
+import type { ImportSource } from '../import/wacai';
 import { openMonthWheel } from '../../shared/dateTimeWheel';
 import type { Entry } from '../../core/types';
 import type { TableDump } from '../../core/repo/backupRepo';
@@ -61,9 +62,9 @@ async function refresh(): Promise<void> {
   if (!el?.isConnected) return;
   const token = ++refreshToken;
   // [R09] 计数改走 countLocalStats（db 直接 count），避免每次刷新都全量导出附件 Blob
-  const [counts, lastAt, auto, wifiOnly, records, snapshots] = await Promise.all([
+  const [counts, lastAt, auto, records, snapshots] = await Promise.all([
     countLocalStats(), getSetting('backup.lastBackupAt'), getSetting('backup.auto'),
-    getSetting('backup.wifiOnly'), listBackupRecords(), listSnapshots(),
+    listBackupRecords(), listSnapshots(),
   ]);
   if (token !== refreshToken || !el.isConnected) return;
 
@@ -94,13 +95,12 @@ async function refresh(): Promise<void> {
     <h3 class="bk-group-title">云端配置</h3>
     <section class="card list" id="cloud-backup" aria-label="云端备份"></section>
 
-    <section class="card" aria-label="自动备份设置">
-      <h3 class="card-title">自动备份</h3>
+    <section class="card" aria-label="备份提醒设置">
+      <h3 class="card-title">备份提醒</h3>
       <div class="field"><span>频率</span>
         <div class="chip-group">${freqChip('off', '关')}${freqChip('daily', '每日')}${freqChip('weekly', '每周')}</div>
       </div>
-      <div class="field"><span>仅 Wi-Fi 下上传</span><button class="switch${wifiOnly ? ' on' : ''}" role="switch" aria-checked="${wifiOnly}" data-act="wifi" aria-label="仅 Wi-Fi 下上传"></button></div>
-      <p class="tiny">网页版不能后台自动生成文件：到期时会在此页与首页提醒「该备份了」，点一下即可完成</p>
+      <p class="tiny">按所选频率提醒；备份文件需点击「立即备份」生成。</p>
     </section>
 
     <h3 class="bk-group-title">恢复与历史</h3>
@@ -136,19 +136,19 @@ async function refresh(): Promise<void> {
         <button class="chip" id="bk-month" data-act="month-pick">${fmtMonth(exMonth)}</button>
         <button class="btn ghost" data-act="excel">导出 Excel</button>
       </div>
-      <p class="tiny" style="margin-top:8px">拾光账单_YYYY-MM.xlsx · 与挖财模版同构 12 列，可再被下方导入器读回；退款账单以属性「退款」标注，读回时按普通支出入账（跨文件不保留退款关联）</p>
+      <p class="tiny" style="margin-top:8px">拾光账单_YYYY-MM.xlsx · 与挖财模版同构 12 列，用于查看与交换普通流水；无法还原关联的退款行会在导入预检中阻止。完整迁移请使用 .skbak</p>
     </section>
 
     <section class="card" id="migrate-block" aria-label="账单导入">
       <h3 class="card-title">导入账单</h3>
       <div class="flt-row" role="tablist" aria-label="导入来源" style="margin-bottom:10px">
         <button class="chip active" data-src="wacai" role="tab" aria-selected="true">挖财 Excel</button>
-        <button class="chip" data-src="wechat" role="tab">微信账单</button>
-        <button class="chip" data-src="alipay" role="tab">支付宝账单</button>
+        <button class="chip" data-src="wechat" role="tab" aria-selected="false">微信账单</button>
+        <button class="chip" data-src="alipay" role="tab" aria-selected="false">支付宝账单</button>
       </div>
-      <p class="sub" style="margin-bottom:10px">支持挖财 Excel；导入前可预览字段识别与分类、账户映射，确认后才写入本地账本。</p>
+      <p class="sub" id="bk-import-desc" style="margin-bottom:10px">${IMPORT_COPY[importSource].desc}</p>
       <div class="btn-row">
-        <button class="btn ghost" data-act="pick-import">选择 Excel 文件</button>
+        <button class="btn ghost" data-act="pick-import" id="bk-import-pick">${IMPORT_COPY[importSource].button}</button>
         <button class="btn primary" disabled>开始导入</button>
       </div>
       <p class="tiny">支持 .xlsx / .xls · 导入前会自动创建一次本地快照，7 天内可撤销 · 详细字段规则见 docs/data-backup.md</p>
@@ -338,13 +338,34 @@ async function runRestore(file: File): Promise<void> {
 
 /* ── 导入入口 ── */
 
+/** 当前选择的导入来源；微信/支付宝走本地导出适配器 */
+let importSource: ImportSource = 'wacai';
+
+const IMPORT_COPY: Record<ImportSource, { desc: string; accept: string; button: string }> = {
+  wacai: {
+    desc: '支持挖财 Excel；导入前可预览字段识别与分类、账户映射，确认后才写入本地账本。',
+    accept: '.xls,.xlsx',
+    button: '选择 Excel 文件',
+  },
+  wechat: {
+    desc: '支持微信本地导出的 CSV / Excel 明细；中性资金流转、退款和未完成交易默认不导入，列入异常清单核对。',
+    accept: '.csv,.xls,.xlsx',
+    button: '选择微信账单文件',
+  },
+  alipay: {
+    desc: '支持支付宝本地导出的 CSV / Excel 明细；中性资金流转、退款和未完成交易默认不导入，列入异常清单核对。',
+    accept: '.csv,.xls,.xlsx',
+    button: '选择支付宝账单文件',
+  },
+};
+
 function pickImportFile(): void {
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = '.xls,.xlsx';
+  input.accept = IMPORT_COPY[importSource].accept;
   input.onchange = () => {
     const file = input.files?.[0];
-    if (file) void openImportWizard(file);
+    if (file) void openImportWizardFor(file, importSource);
   };
   input.click();
 }
@@ -378,7 +399,7 @@ export function initBackup(): void {
             void refresh();
           })();
         } else if (t.closest('[data-src]') && t.closest<HTMLElement>('[data-src]')!.dataset.src !== 'wacai') {
-          showToast('微信 / 支付宝账单导入即将支持，当前请使用挖财 Excel');
+          showToast('当前仅支持挖财 Excel');
         } else if (act === 'backup') openBackupSheet();
         else if (act === 'restore') pickRestoreFile();
         else if (act === 'wifi') {
@@ -407,6 +428,17 @@ export function initBackup(): void {
           });
           document.body.appendChild(panel);
         } else if (act === 'pick-import') pickImportFile();
+        const src = t.closest<HTMLElement>('[data-src]')?.dataset.src as ImportSource | undefined;
+        if (src && src !== importSource) {
+          importSource = src;
+          for (const chip of el.querySelectorAll<HTMLElement>('[data-src]')) {
+            const on = chip.dataset.src === importSource;
+            chip.classList.toggle('active', on);
+            chip.setAttribute('aria-selected', String(on));
+          }
+          el.querySelector<HTMLElement>('#bk-import-desc')!.textContent = IMPORT_COPY[importSource].desc;
+          el.querySelector<HTMLElement>('#bk-import-pick')!.textContent = IMPORT_COPY[importSource].button;
+        }
       });
       void refresh();
     },

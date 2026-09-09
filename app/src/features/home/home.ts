@@ -27,6 +27,8 @@ import {
   type EntryQuickAction,
 } from '../detail/detail';
 import './home.css';
+import { getHomeLayout, HOME_SERVICES, type HomeService } from '../../core/repo/homeLayoutRepo';
+import { openPickList } from '../../shared/pickList';
 import { entryRowText } from '../detail/entryRowText';
 
 const PAGE = 40;
@@ -103,15 +105,9 @@ function renderSkeleton(el: HTMLElement): void {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-qa]');
     if (!btn) return;
     const act = btn.dataset.qa!;
-    if (act === 'note') {
-      void listTemplates().then((tpls) => {
-        if (!tpls.length) showToast('暂无速记模板，先记一笔吧');
-        void openEntrySheet({ templateId: tpls[0]?.id });
-      });
-    } else if (act === 'detail') openSubpage('sp-entry-detail');
-    else if (act === 'cal') openSubpage('sp-calendar');
-    else if (act === 'cycle') openSubpage('sp-recurring');
-    else if (act === 'ai') openSubpage('sp-ai-inbox');
+    if (act === 'all') {
+      openPickList({ container: el, title: '全部功能', items: HOME_SERVICES.map(service => ({ value: service.key, label: service.name, icon: service.icon })), onPick: key => void openService(key as HomeService) });
+    } else void openService(act as HomeService);
   });
 
   // 空状态可直接记账；账单条目点击进入编辑抽屉
@@ -145,6 +141,21 @@ function renderSkeleton(el: HTMLElement): void {
   void refresh();
 }
 
+async function openService(key: HomeService): Promise<void> {
+  if (key !== 'note') {
+    const service = HOME_SERVICES.find(s => s.key === key);
+    if (service) openSubpage(service.route);
+    return;
+  }
+  const templates = await listTemplates();
+  if (!templates.length) { openSubpage('sp-template-manage'); return; }
+  if (templates.length === 1) { await openEntrySheet({ templateId: templates[0].id }); return; }
+  openPickList({ container: root!, title: '选择速记模板', searchable: true,
+    items: templates.map(t => ({ value: t.id, label: t.name, note: formatFenCny(t.amount) })),
+    onPick: id => { void openEntrySheet({ templateId: Number(id) }); },
+  });
+}
+
 /* ── 数据刷新 ─────────────────────── */
 
 async function refresh(): Promise<void> {
@@ -152,11 +163,21 @@ async function refresh(): Promise<void> {
   if (!el?.isConnected || loading) return;
   loading = true;
   try {
-    const mods = await getSetting('home.modules');
+    const [mods, layout] = await Promise.all([getSetting('home.modules'), getHomeLayout()]);
     el.querySelector<HTMLElement>('#hm-month')!.hidden = !mods.month;
     el.querySelector<HTMLElement>('#hm-quick')!.hidden = !mods.quick;
     if (mods.month) await refreshMonthCard(el);
     await refreshTimeline(el, mods.today, mods.past);
+    const nav = el.querySelector<HTMLElement>('#hm-quick')!;
+    nav.innerHTML = layout.quick.map(key => {
+      const service = HOME_SERVICES.find(s => s.key === key)!;
+      return `<button class="qa" data-qa="${key}"><span class="qa-ic">${iconHtml(service.icon)}</span>${service.name}</button>`;
+    }).join('') + '<button class="hm-all" data-qa="all">全部 ›</button>';
+    nav.style.gridTemplateColumns = `repeat(${Math.max(1, layout.quick.length)}, minmax(0, 1fr))`;
+    for (const [index, key] of layout.order.entries()) {
+      const selectors = { month: '#hm-month', quick: '#hm-quick', today: '#hm-today', past: '.hm-past' };
+      for (const node of el.querySelectorAll<HTMLElement>(selectors[key])) node.style.order = String(index);
+    }
   } finally {
     loading = false;
   }
@@ -176,7 +197,7 @@ async function refreshMonthCard(el: HTMLElement): Promise<void> {
   el.querySelector('#m-balance')!.textContent = formatFen(sum.balance);
   if (budget && budget.totalLimit > 0) {
     const remain = budget.totalLimit - usage.totalUsed;
-    el.querySelector('#m-remain')!.textContent = formatFen(Math.max(0, remain));
+    el.querySelector('#m-remain')!.textContent = formatFen(remain);
   } else {
     el.querySelector('#m-remain')!.textContent = '未设置';
   }

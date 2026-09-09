@@ -7,7 +7,6 @@
 import { db, now, stamp } from '../db';
 import { ACCOUNT_GROUPS, type Account, type AccountGroup } from '../types';
 import { addEntry } from './entryRepo';
-import { getSetting } from './settingsRepo';
 import { emitAfterCommit as emit } from './transactionEvents';
 
 /** 新建账户输入 */
@@ -20,9 +19,15 @@ export type NewAccount = Omit<Account, 'id' | 'createdAt' | 'updatedAt' | 'hidde
  * @returns 新账户 id
  */
 export async function addAccount(input: NewAccount): Promise<number> {
-  const maxSort = (await db.accounts.orderBy('sortOrder').last())?.sortOrder ?? 0;
+  if (!Number.isSafeInteger(input.balance)) throw new Error('账户余额必须为整数分');
+  validateCreditDays(input.group, input.billingDay, input.repayDay);
+  const sameGroup = await db.accounts.where('group').equals(input.group).toArray();
+  const maxSort = sameGroup.reduce((max, account) => Math.max(max, account.sortOrder), 0);
   const id = await db.accounts.add(
-    stamp({ hidden: false, countInNetWorth: true, sortOrder: maxSort + 1, ...input }) as Account,
+    stamp({
+      hidden: false, countInNetWorth: true, creditReminderEnabled: true,
+      sortOrder: maxSort + 1, ...input,
+    }) as Account,
   );
   emit('accounts-changed', { id });
   return id;
@@ -36,6 +41,9 @@ export async function updateAccount(
   id: number,
   patch: Partial<Omit<Account, 'id' | 'balance' | 'createdAt' | 'updatedAt'>>,
 ): Promise<void> {
+  const current = await db.accounts.get(id);
+  if (!current) throw new Error(`账户不存在：${id}`);
+  validateCreditDays(patch.group ?? current.group, patch.billingDay ?? current.billingDay, patch.repayDay ?? current.repayDay);
   await db.accounts.update(id, { ...patch, updatedAt: now() });
   emit('accounts-changed', { id });
 }
@@ -44,11 +52,20 @@ export async function updateAccount(
  * 删除账户。要求先处理关联账单（存在未删除关联账单时抛错），不进回收站。
  */
 export async function deleteAccount(id: number): Promise<void> {
-  const used = await db.entries
-    .filter((e) => e.deletedAt === 0 && (e.accountId === id || e.fromAccountId === id || e.toAccountId === id || e.reimburseAccountId === id))
-    .count();
-  if (used > 0) throw new Error(`该账户仍有 ${used} 笔关联账单，请先转移或删除`);
-  await db.accounts.delete(id);
+  await db.transaction('rw', [db.accounts, db.entries, db.recurringRules, db.creditStatements], async () => {
+    const account = await db.accounts.get(id);
+    if (!account) return;
+    if (account.balance !== 0) throw new Error('仅余额为 0 的空账户可以删除');
+    const historicalEntries = await db.entries
+      .filter((entry) => entry.accountId === id || entry.fromAccountId === id || entry.toAccountId === id || entry.reimburseAccountId === id)
+      .count();
+    if (historicalEntries > 0) throw new Error(`该账户仍有 ${historicalEntries} 笔历史业务引用，不能删除`);
+    const recurring = await db.recurringRules.where('accountId').equals(id).count();
+    if (recurring > 0) throw new Error(`该账户仍被 ${recurring} 条周期账引用，不能删除`);
+    const statements = await db.creditStatements.where('accountId').equals(id).count();
+    if (statements > 0) throw new Error(`该账户仍有 ${statements} 期信用卡账单，不能删除`);
+    await db.accounts.delete(id);
+  });
   emit('accounts-changed', { id });
 }
 
@@ -56,6 +73,39 @@ export async function deleteAccount(id: number): Promise<void> {
 export async function setAccountHidden(id: number, hidden: boolean): Promise<void> {
   await db.accounts.update(id, { hidden, updatedAt: now() });
   emit('accounts-changed', { id });
+}
+
+/** 单独设置净资产统计口径，不改变账户显示状态。 */
+export async function setAccountCountInNetWorth(id: number, countInNetWorth: boolean): Promise<void> {
+  await db.accounts.update(id, { countInNetWorth, updatedAt: now() });
+  emit('accounts-changed', { id });
+}
+
+/** 账户只在所属分组内上移或下移；其他分组的 sortOrder 不参与交换。 */
+export async function reorderAccountWithinGroup(id: number, direction: 'up' | 'down'): Promise<void> {
+  await db.transaction('rw', db.accounts, async () => {
+    const account = await db.accounts.get(id);
+    if (!account) throw new Error(`账户不存在：${id}`);
+    const rows = (await db.accounts.where('group').equals(account.group).toArray())
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+    const index = rows.findIndex(row => row.id === id);
+    const swapIndex = index + (direction === 'up' ? -1 : 1);
+    if (index < 0 || swapIndex < 0 || swapIndex >= rows.length) return;
+    const slots = rows.map(row => row.sortOrder).sort((a, b) => a - b);
+    [rows[index], rows[swapIndex]] = [rows[swapIndex], rows[index]];
+    const changedAt = now();
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].sortOrder !== slots[i]) await db.accounts.update(rows[i].id, { sortOrder: slots[i], updatedAt: changedAt });
+    }
+  });
+  emit('accounts-changed', { id });
+}
+
+function validateCreditDays(group: AccountGroup, billingDay?: number, repayDay?: number): void {
+  for (const [label, value] of [['账单日', billingDay], ['还款日', repayDay]] as const) {
+    if (value != null && (!Number.isInteger(value) || value < 1 || value > 31)) throw new Error(`${label}须为 1-31 的整数`);
+  }
+  if (group !== 'credit' && (billingDay != null || repayDay != null)) throw new Error('仅信用卡账户可设置账单日和还款日');
 }
 
 /**
@@ -66,18 +116,35 @@ export async function setAccountHidden(id: number, hidden: boolean): Promise<voi
  * @returns 生成的调整账单 id；余额无差异时返回 undefined
  */
 export async function reconcileAccount(id: number, targetBalance: number): Promise<number | undefined> {
-  const acct = await db.accounts.get(id);
-  if (!acct) throw new Error(`账户不存在：${id}`);
-  const diff = targetBalance - acct.balance;
-  if (diff === 0) return undefined;
+  const preview = await previewReconcileAccount(id, targetBalance);
+  if (preview.difference === 0) return undefined;
   return addEntry({
     type: 'transfer',
-    amount: Math.abs(diff),
+    amount: Math.abs(preview.difference),
     occurredAt: now(),
-    fromAccountId: diff < 0 ? id : undefined,
-    toAccountId: diff > 0 ? id : undefined,
+    fromAccountId: preview.difference < 0 ? id : undefined,
+    toAccountId: preview.difference > 0 ? id : undefined,
     note: '余额对账调整',
+    reconcileBeforeBalance: preview.currentBalance,
+    reconcileTargetBalance: preview.targetBalance,
   });
+}
+
+export interface ReconcilePreview {
+  accountId: number;
+  currentBalance: number;
+  targetBalance: number;
+  difference: number;
+}
+
+/** 对账写入前的稳定预览；确认时 reconcileAccount 会重新读取余额，避免陈旧差额。 */
+export async function previewReconcileAccount(id: number, targetBalance: number): Promise<ReconcilePreview> {
+  if (!Number.isSafeInteger(targetBalance)) throw new Error('实际余额必须为整数分');
+  const account = await db.accounts.get(id);
+  if (!account) throw new Error(`账户不存在：${id}`);
+  const difference = targetBalance - account.balance;
+  if (!Number.isSafeInteger(difference)) throw new Error('对账差额超出安全范围');
+  return { accountId: id, currentBalance: account.balance, targetBalance, difference };
 }
 
 /** 单个账户 */
@@ -109,9 +176,8 @@ export async function listAccountsByGroup(): Promise<Record<AccountGroup, Accoun
  * 设置关闭时，隐藏且 countInNetWorth=false 的账户不计入。
  */
 export async function listNetWorthAccounts(): Promise<Account[]> {
-  const includeHidden = await getSetting('netWorth.includeHidden');
   const rows = await db.accounts.toArray();
-  return rows.filter(account => !(account.hidden && !includeHidden && !account.countInNetWorth));
+  return rows.filter(account => account.countInNetWorth !== false);
 }
 
 export async function getNetWorth(): Promise<{ assets: number; debts: number; net: number }> {

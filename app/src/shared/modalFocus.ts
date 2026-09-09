@@ -36,7 +36,10 @@ export function trapModalFocus(container: HTMLElement, onEscape: () => void): ()
       first.focus();
     }
   }, { signal: controller.signal });
-  const frame = requestAnimationFrame(() => { if (container.isConnected && !controller.signal.aborted) (visibleFocusable(container)[0] ?? container).focus({preventScroll:true}); });
+  const focusFirst = () => { if (container.isConnected && !controller.signal.aborted) (visibleFocusable(container)[0] ?? container).focus({preventScroll:true}); };
+  // 已挂载时立即接管焦点，避免弹层可见但首个 Escape 仍发往背景页面。
+  if (container.isConnected) focusFirst();
+  const frame = container.isConnected ? 0 : requestAnimationFrame(focusFirst);
   return () => { cancelAnimationFrame(frame); controller.abort(); };
 }
 

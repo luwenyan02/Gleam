@@ -32,7 +32,16 @@ import { setFabAction } from '../shell/shell';
 import { showToast } from '../shell/toast';
 import { openDateTimeWheel } from '../../shared/dateTimeWheel';
 import { openPickList, type PickListItem } from '../../shared/pickList';
-import { createRepeatDraft, rankFrequentCategories, resolveInitialEntryType } from './entryWorkspace';
+import { manageOverlay } from '../../shared/overlay';
+import {
+  createRepeatDraft,
+  rankFrequentCategories,
+  recommendAccountId,
+  resolveInitialEntryType,
+  resolveRecommendedAccountId,
+  resolveRecommendedCategoryId,
+  toggleTagSelection,
+} from './entryWorkspace';
 import {
   OPERATOR_SYMBOL, applyCalculation, appendDigit, chooseOperator, deleteDigit,
   type CalculatorOperator, type CalculatorState,
@@ -71,6 +80,17 @@ export interface EntrySheetOptions {
   presetType?: EntryType;
   /** 从已有账单创建一笔新草稿；继承业务选择，但不继承金额与备注。 */
   repeatFromEntryId?: number;
+  /** 草稿预填：类型/金额/分类/账户/日期/备注/商家名；保存成功后回调账单 id。 */
+  draft?: {
+    type?: EntryType;
+    amount?: number;
+    categoryId?: number;
+    accountId?: number;
+    occurredAt?: number;
+    note?: string;
+    merchantName?: string;
+  };
+  onSaved?: (entryId: number) => void;
 }
 
 /* ── 抽屉内部状态 ─────────────────── */
@@ -95,7 +115,7 @@ interface SheetCtx {
   date: number;
   bx: boolean;
   tk: boolean;
-  tagId?: number;
+  tagIds: number[];
   merchantId?: number;
   /** 关联退款编辑模式：保留原支出 id，普通记账不设置 */
   refundOfEntryId?: number;
@@ -124,6 +144,10 @@ interface SheetCtx {
   };
   quickExpenseCats: Category[];
   quickIncomeCats: Category[];
+  recommendationHistory: Entry[];
+  recommendationNow: number;
+  categorySelectionLocked: boolean;
+  accountSelectionLocked: boolean;
   showAllCategories: boolean;
   advancedOpen: boolean;
 }
@@ -152,6 +176,7 @@ export function initEntry(): void {
  * @param options 见 {@link EntrySheetOptions}
  */
 export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<void> {
+  savedCallback = options.onSaved;
   const openedAt = Date.now();
   const [tree, incomeCats, accounts, templates, tags, merchants, loanAccounts, lastUsed, freqs, recentEntries] = await Promise.all([
     listExpenseTree(), listCategories('income'), listAccounts(false),
@@ -171,43 +196,58 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
   noteFreqs = freqs;
 
   const expenseCats = tree.flatMap((group) => group.children.length ? group.children : [group.parent]);
-  const firstExpense = expenseCats[0];
-  const expenseIds = new Set(tree.flatMap((group) => [group.parent.id, ...group.children.map((cat) => cat.id)]));
   const accountIds = new Set(accounts.map((account) => account.id));
-  const preferredAccountId = options.presetAccountId != null && accountIds.has(options.presetAccountId)
-    ? options.presetAccountId
+  const hasPresetAccount = options.presetAccountId != null && accountIds.has(options.presetAccountId);
+  const presetAccountId = hasPresetAccount ? options.presetAccountId : undefined;
+  const preferredAccountId = presetAccountId != null
+    ? presetAccountId
     : lastUsed.accountId != null && accountIds.has(lastUsed.accountId)
       ? lastUsed.accountId
       : accounts[0]?.id;
-  const presetLoan = accounts.find(account => account.id === options.presetAccountId)?.group === 'receivable';
+  const presetLoan = accounts.find(account => account.id === presetAccountId)?.group === 'receivable';
   const initialType = presetLoan ? 'loan' : resolveInitialEntryType(options.presetType, lastUsed.type);
+  const initialDate = options.presetDate ?? openedAt;
+  const quickExpenseCats = rankFrequentCategories(expenseCats, recentEntries, {
+    now: openedAt, targetAt: initialDate, entryType: 'expense',
+  });
+  const quickIncomeCats = rankFrequentCategories(incomeCats, recentEntries, {
+    now: openedAt, targetAt: initialDate, entryType: 'income',
+  });
+  const initialCategoryId = initialType === 'income'
+    ? quickIncomeCats[0]?.id
+    : quickExpenseCats[0]?.id;
+  const historyAccountId = initialType === 'expense' || initialType === 'income'
+    ? recommendAccountId(accounts, recentEntries, {
+      now: openedAt,
+      entryType: initialType,
+      categoryId: initialCategoryId,
+      fallbackId: lastUsed.accountId,
+    })
+    : undefined;
+  const initialAccountId = initialType === 'expense' || initialType === 'income'
+    ? resolveRecommendedAccountId(preferredAccountId, historyAccountId, hasPresetAccount)
+    : initialType === 'loan' && accounts.find(account => account.id === preferredAccountId)?.group === 'receivable'
+      ? accounts.find(account => account.group !== 'receivable')?.id
+      : preferredAccountId;
   const c: SheetCtx = {
     type: initialType,
     amt: '', prev: null, prevAmount: null, op: null,
-    categoryId: initialType === 'income'
-      ? lastUsed.incomeCategoryId ?? incomeCats[0]?.id
-      : lastUsed.expenseCategoryId != null && expenseIds.has(lastUsed.expenseCategoryId)
-        ? lastUsed.expenseCategoryId
-        : firstExpense?.id,
+    categoryId: initialCategoryId,
     loanKind: 'borrow',
-    accountId: initialType === 'loan' && accounts.find(account => account.id === preferredAccountId)?.group === 'receivable'
-      ? accounts.find(account => account.group !== 'receivable')?.id : preferredAccountId,
+    accountId: initialAccountId,
     fromId: preferredAccountId,
     toId: accounts.find((account) => account.id !== preferredAccountId)?.id ?? preferredAccountId,
     loanAccountId: presetLoan ? options.presetAccountId : loanAccounts[0]?.id,
-    date: options.presetDate ?? Date.now(),
+    date: initialDate,
     bx: false, tk: false,
+    tagIds: [],
     expenseTree: tree, incomeCats, accounts, templates, tags, merchants, loanAccounts, lastUsed,
-    quickExpenseCats: rankFrequentCategories(
-      expenseCats,
-      recentEntries.filter((entry) => entry.type === 'expense'),
-      { now: openedAt },
-    ),
-    quickIncomeCats: rankFrequentCategories(
-      incomeCats,
-      recentEntries.filter((entry) => entry.type === 'income'),
-      { now: openedAt },
-    ),
+    quickExpenseCats,
+    quickIncomeCats,
+    recommendationHistory: recentEntries,
+    recommendationNow: openedAt,
+    categorySelectionLocked: false,
+    accountSelectionLocked: hasPresetAccount,
     showAllCategories: false,
     advancedOpen: false,
   };
@@ -221,15 +261,25 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     await Promise.all([...new Set([sourceEntry.accountId, sourceEntry.fromAccountId, sourceEntry.toAccountId])].map(includeSelectedAccount));
     const tagIds = await getEntryTagIds(sourceEntry.id);
     c.type = sourceEntry.type;
-    c.categoryId = sourceEntry.categoryId ?? c.categoryId;
-    c.accountId = (sourceEntry.type === 'loan' ? loanFundAccountId(sourceEntry) ?? sourceEntry.accountId : sourceEntry.accountId) ?? c.accountId;
+    if (sourceEntry.categoryId != null) {
+      c.categoryId = sourceEntry.categoryId;
+      c.categorySelectionLocked = true;
+    }
+    const sourceAccountId = sourceEntry.type === 'loan'
+      ? loanFundAccountId(sourceEntry) ?? sourceEntry.accountId
+      : sourceEntry.accountId;
+    if (sourceAccountId != null) {
+      c.accountId = sourceAccountId;
+      c.accountSelectionLocked = true;
+    }
     c.fromId = sourceEntry.fromAccountId ?? c.fromId;
     c.toId = sourceEntry.toAccountId ?? c.toId;
     c.loanKind = sourceEntry.loanKind ?? 'borrow';
     c.loanAccountId = sourceEntry.type === 'loan' ? relatedLoanAccountId(sourceEntry) : c.loanAccountId;
     c.date = sourceEntry.occurredAt;
-    c.tagId = tagIds[0];
+    c.tagIds = [...new Set(tagIds)];
     c.merchantId = sourceEntry.merchantId;
+    refreshEntryRecommendations(c);
   }
 
   if (options.entryId != null && sourceEntry) {
@@ -247,14 +297,31 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
       };
     }
     c.origMerchantId = editEntry.merchantId;
-    c.advancedOpen = c.bx || c.tagId != null || c.merchantId != null || editEntry.lifeNoteId != null;
+    c.advancedOpen = c.bx || c.tagIds.length > 0 || c.merchantId != null || editEntry.lifeNoteId != null;
     initialNote = editEntry.note ?? '';
+  } else if (options.draft) {
+    const draft = options.draft;
+    if (draft.type === 'expense' || draft.type === 'income') {
+      c.type = draft.type;
+      if (draft.categoryId != null) { c.categoryId = draft.categoryId; c.categorySelectionLocked = true; }
+      if (draft.accountId != null) { c.accountId = draft.accountId; c.accountSelectionLocked = true; }
+      if (draft.amount != null) c.amt = String(draft.amount / 100);
+      if (draft.merchantName) {
+        const found = merchants.find((m) => m.name === draft.merchantName);
+        if (found) c.merchantId = found.id;
+      }
+      refreshEntryRecommendations(c);
+    }
+    if (draft.occurredAt != null) c.date = draft.occurredAt;
+    initialNote = draft.note ?? '';
   } else if (options.templateId != null) {
     const tpl = templates.find((t) => t.id === options.templateId);
     if (tpl) {
       c.type = 'expense';
       c.categoryId = tpl.categoryId;
+      c.categorySelectionLocked = true;
       c.amt = String(tpl.amount / 100);
+      refreshEntryRecommendations(c);
     }
   }
 
@@ -297,7 +364,7 @@ function renderSheet(el: HTMLElement, note: string): void {
     </div>
     <div class="sheet-scroll">
       <div class="entry-section-head" id="category-head">
-        <span>常用分类</span><small>按近 90 天使用习惯排序</small>
+        <span>常用分类</span><small>按时段与历史推荐</small>
       </div>
       <div id="cat-grid" class="cat-grid" role="listbox" aria-label="选择分类"></div>
       ${renderTypeForms()}
@@ -343,6 +410,36 @@ function accountName(id: number | undefined): string {
   return ctx?.accounts.find((a) => a.id === id)?.name ?? '选择账户';
 }
 
+/** 按当前草稿时间刷新分类顺序与系统默认值；锁定项来自显式来源或本次手选。 */
+function refreshEntryRecommendations(c: SheetCtx): void {
+  const expenseCats = c.expenseTree.flatMap((group) => group.children.length ? group.children : [group.parent]);
+  c.quickExpenseCats = rankFrequentCategories(expenseCats, c.recommendationHistory, {
+    now: c.recommendationNow,
+    targetAt: c.date,
+    entryType: 'expense',
+  });
+  c.quickIncomeCats = rankFrequentCategories(c.incomeCats, c.recommendationHistory, {
+    now: c.recommendationNow,
+    targetAt: c.date,
+    entryType: 'income',
+  });
+
+  if (c.type !== 'expense' && c.type !== 'income') return;
+  const ranked = c.type === 'expense' ? c.quickExpenseCats : c.quickIncomeCats;
+  c.categoryId = resolveRecommendedCategoryId(c.categoryId, ranked, c.categorySelectionLocked);
+  const recommendedAccountId = recommendAccountId(c.accounts, c.recommendationHistory, {
+    now: c.recommendationNow,
+    entryType: c.type,
+    categoryId: c.categoryId,
+    fallbackId: c.lastUsed.accountId,
+  });
+  c.accountId = resolveRecommendedAccountId(
+    c.accountId,
+    recommendedAccountId,
+    c.accountSelectionLocked,
+  );
+}
+
 /** 顶部选中卡（图标 + 名称）随类型/分类同步 */
 function updatePick(): void {
   const c = ctx!;
@@ -374,7 +471,7 @@ function renderCats(): void {
     : c.showAllCategories ? '全部分类' : '常用分类';
   categoryHead.querySelector('small')!.textContent = isLoan
     ? '选择这笔往来的资金方向'
-    : c.showAllCategories ? '选择后自动回到常用分类' : '按近 90 天使用习惯排序';
+    : c.showAllCategories ? '选择后自动回到常用分类' : '按时段与历史推荐';
   q('#tpl-row').hidden = c.type !== 'expense';
   q('#cat-grid').hidden = isTransfer;
   q('#transfer-block').hidden = !isTransfer;
@@ -460,15 +557,21 @@ function refreshMeta(): void {
   }
   q('#mark-tk').classList.toggle('active', c.tk);
   q('#mark-tk').setAttribute('aria-pressed', String(c.tk));
-  const tag = c.tags.find((t) => t.id === c.tagId);
-  q('#tag-txt').textContent = tag ? `#${tag.name}` : '标签';
-  q('#chip-tag').classList.toggle('active', !!tag);
+  const selectedTags = c.tagIds
+    .map((id) => c.tags.find((tag) => tag.id === id))
+    .filter((tag): tag is Tag => tag != null);
+  q('#tag-txt').textContent = selectedTags.length === 0
+    ? '标签'
+    : selectedTags.length === 1
+      ? `#${selectedTags[0].name}`
+      : `#${selectedTags[0].name} +${selectedTags.length - 1}`;
+  q('#chip-tag').classList.toggle('active', selectedTags.length > 0);
   const shop = c.merchants.find((m) => m.id === c.merchantId);
   q('#shop-txt').textContent = shop ? shop.name : '商家';
   q('#chip-shop').classList.toggle('active', !!shop);
   const advanced = q<HTMLElement>('#advanced-fields');
   const advancedToggle = q<HTMLButtonElement>('[data-act="toggle-advanced"]');
-  const activeAdvanced = Number(!!tag) + Number(!!shop) +
+  const activeAdvanced = Number(selectedTags.length > 0) + Number(!!shop) +
     Number(q('#life-toggle').getAttribute('aria-checked') === 'true');
   advanced.hidden = !c.advancedOpen;
   advancedToggle.setAttribute('aria-expanded', String(c.advancedOpen));
@@ -563,29 +666,20 @@ function pushDigit(ch: string): void {
 function switchEntryType(type: EntryType): void {
   const c = ctx;
   if (!c || !sheetEl) return;
+  if (type === c.type) return;
   if (c.refundOfEntryId != null && type !== 'expense') {
     showToast('退款记录必须保持为支出退款类型');
     return;
   }
   c.type = type;
   c.showAllCategories = false;
+  c.categorySelectionLocked = false;
   for (const button of sheetEl.querySelectorAll<HTMLElement>('#seg button')) {
     const active = button.dataset.type === type;
     button.classList.toggle('active', active);
     button.setAttribute('aria-selected', String(active));
   }
-  if (type === 'expense') {
-    const preferred = c.lastUsed.expenseCategoryId;
-    const categories = c.expenseTree.flatMap((group) => [group.parent, ...group.children]);
-    c.categoryId = categories.some((cat) => cat.id === preferred)
-      ? preferred ?? undefined
-      : c.expenseTree[0]?.children[0]?.id ?? c.expenseTree[0]?.parent.id;
-  } else if (type === 'income') {
-    const preferred = c.lastUsed.incomeCategoryId;
-    c.categoryId = c.incomeCats.some((cat) => cat.id === preferred)
-      ? preferred ?? undefined
-      : c.incomeCats[0]?.id;
-  }
+  refreshEntryRecommendations(c);
   renderCats();
   refreshMeta();
 }
@@ -657,9 +751,14 @@ function applyVoiceText(text: string): void {
     : c.expenseTree.flatMap((group) => [group.parent, ...group.children]);
   const aliasName = Object.entries(aliases).find(([word]) => text.includes(word))?.[1];
   const category = categories.find((item) => text.includes(item.name) || item.name === aliasName);
-  if (category) c.categoryId = category.id;
+  if (category) {
+    c.categoryId = category.id;
+    c.categorySelectionLocked = true;
+    refreshEntryRecommendations(c);
+  }
   q<HTMLInputElement>('#note').value = text;
   renderCats();
+  refreshMeta();
   refreshAmt();
   showToast(amount ? `已识别「${text}」，确认分类后保存` : `已记下「${text}」，请输入金额后保存`);
 }
@@ -699,9 +798,12 @@ function bindEvents(el: HTMLElement): void {
     if (btn.dataset.kind) ctx.loanKind = btn.dataset.kind as LoanKind;
     else {
       ctx.categoryId = Number(btn.dataset.id);
+      ctx.categorySelectionLocked = true;
       ctx.showAllCategories = false;
+      refreshEntryRecommendations(ctx);
     }
     renderCats();
+    refreshMeta();
   });
 
   // 速记模板：一键填充分类 + 金额
@@ -713,11 +815,14 @@ function bindEvents(el: HTMLElement): void {
     const tpl = ctx.templates.find((t) => t.id === Number(btn.dataset.tpl));
     if (!tpl) return;
     ctx.categoryId = tpl.categoryId;
+    ctx.categorySelectionLocked = true;
     ctx.amt = String(tpl.amount / 100);
     ctx.prev = null;
     ctx.prevAmount = null;
     ctx.op = null;
+    refreshEntryRecommendations(ctx);
     renderCats();
+    refreshMeta();
     refreshAmt();
     showToast(`已按模板填好：${tpl.name}，点保存即可入账`);
   });
@@ -773,6 +878,8 @@ function bindEvents(el: HTMLElement): void {
       onConfirm(r) {
         if (!ctx) return;
         ctx.date = new Date(r.year, r.month - 1, r.day, r.hour ?? 0, r.minute ?? 0).getTime();
+        refreshEntryRecommendations(ctx);
+        renderCats();
         refreshMeta();
         if (dayKey(ctx.date) !== dayKey(Date.now())) {
           showToast(`记账时间已设为 ${dateLabel(ctx.date)}，保存后计入当日流水`);
@@ -909,6 +1016,7 @@ async function pickAccount(field: 'accountId' | 'fromId' | 'toId', title: string
   if (field === 'fromId' && id === c.toId) { showToast('转出与转入账户不能相同'); return; }
   if (field === 'toId' && id === c.fromId) { showToast('转出与转入账户不能相同'); return; }
   c[field] = id;
+  if (field === 'accountId') c.accountSelectionLocked = true;
   renderCats();
   refreshMeta();
 }
@@ -934,22 +1042,89 @@ async function pickLoanAccount(): Promise<void> {
   renderCats();
 }
 
+type TagPickerResult = { kind: 'apply'; tagIds: number[] } | { kind: 'create' };
+
+function openTagMultiPicker(tags: readonly Tag[], currentTagIds: readonly number[]): Promise<TagPickerResult | undefined> {
+  return new Promise((resolve) => {
+    if (!sheetEl) { resolve(undefined); return; }
+    const selected = new Set(currentTagIds);
+    const mask = document.createElement('div');
+    mask.className = 'picker-mask';
+    mask.setAttribute('aria-label', '选择标签（可多选）');
+    const panel = document.createElement('div');
+    panel.className = 'picker-panel';
+    panel.innerHTML = `
+      <h4 class="picker-title">选择标签（可多选）</h4>
+      <div class="picker-list" role="listbox" aria-label="标签" aria-multiselectable="true"></div>
+      <div class="dialog-btns" style="padding:12px 16px calc(12px + var(--safe-bottom))">
+        <button class="btn ghost" type="button" data-tag-act="clear">清空</button>
+        <button class="btn ghost" type="button" data-tag-act="create">新建</button>
+        <button class="btn primary" type="button" data-tag-act="apply">完成</button>
+      </div>`;
+    const list = panel.querySelector<HTMLElement>('.picker-list')!;
+    const renderList = () => {
+      list.innerHTML = tags.length
+        ? tags.map((tag) => {
+          const active = selected.has(tag.id);
+          return `<button class="picker-item${active ? ' selected' : ''}" data-tag-id="${tag.id}" type="button" role="option" aria-selected="${active}">
+            <span class="picker-item-icon">${iconHtml('ic-tag', 18)}</span>
+            <span class="picker-item-label">#${esc(tag.name)}</span>
+            ${active ? '<span class="picker-item-check">✓</span>' : ''}
+          </button>`;
+        }).join('')
+        : '<p class="tiny" style="padding:18px;text-align:center">还没有标签，可先新建</p>';
+    };
+    renderList();
+    mask.appendChild(panel);
+    sheetEl.appendChild(mask);
+    requestAnimationFrame(() => panel.classList.add('open'));
+
+    let settled = false;
+    let releaseOverlay: () => void = () => undefined;
+    const finish = (result: TagPickerResult | undefined) => {
+      if (settled) return;
+      settled = true;
+      releaseOverlay();
+      panel.classList.remove('open');
+      setTimeout(() => mask.remove(), 200);
+      resolve(result);
+    };
+    releaseOverlay = manageOverlay(mask, () => finish(undefined));
+    mask.addEventListener('click', (event) => {
+      if (event.target === mask) { finish(undefined); return; }
+      const tagButton = (event.target as HTMLElement).closest<HTMLElement>('[data-tag-id]');
+      if (tagButton) {
+        const next = toggleTagSelection([...selected], Number(tagButton.dataset.tagId));
+        selected.clear();
+        next.forEach((id) => selected.add(id));
+        renderList();
+        return;
+      }
+      const action = (event.target as HTMLElement).closest<HTMLElement>('[data-tag-act]')?.dataset.tagAct;
+      if (action === 'clear') { selected.clear(); renderList(); }
+      else if (action === 'create') finish({ kind: 'create' });
+      else if (action === 'apply') finish({ kind: 'apply', tagIds: [...selected] });
+    });
+  });
+}
+
 async function pickTag(): Promise<void> {
   const c = ctx;
   if (!c) return;
-  const id = await pickList('选择标签（单选）', c.tags.map((t) => ({ id: t.id, label: `#${t.name}`, icon: 'ic-tag' })), {
-    activeId: c.tagId,
-    clearLabel: '不使用标签',
-    createPlaceholder: '新标签，如「出差」',
-    onCreate: async (name) => {
-      const nid = await ensureTag(name);
+  while (ctx === c && sheetEl) {
+    const result = await openTagMultiPicker(c.tags, c.tagIds);
+    if (!result) return;
+    if (result.kind === 'apply') {
+      c.tagIds = result.tagIds;
+      refreshMeta();
+      return;
+    }
+    const createdId = await showCreateInput('新标签，如「出差」', ensureTag);
+    if (createdId != null) {
       c.tags = await listTags();
-      return nid;
-    },
-  });
-  if (id === undefined) return;
-  c.tagId = id ?? undefined;
-  refreshMeta();
+      if (!c.tagIds.includes(createdId)) c.tagIds = [...c.tagIds, createdId];
+    }
+  }
 }
 
 async function pickMerchant(): Promise<void> {
@@ -974,6 +1149,8 @@ async function pickMerchant(): Promise<void> {
 
 /** 保存互斥标志：防止连点「保存/再记」重复入账 */
 let saving = false;
+/** 本次打开的保存成功回调（AI 草稿等外部流程消费） */
+let savedCallback: ((entryId: number) => void) | undefined;
 
 async function rememberLastUsed(c: SheetCtx): Promise<void> {
   const next = {
@@ -1090,7 +1267,7 @@ async function doSave(stay: boolean): Promise<void> {
   }
 
   const backdated = dayKey(c.date) !== dayKey(Date.now());
-  const tagIds = c.tagId != null ? [c.tagId] : [];
+  const tagIds = [...c.tagIds];
   const lifeToggle = q<HTMLElement>('#life-toggle');
 
   try {
@@ -1107,7 +1284,7 @@ async function doSave(stay: boolean): Promise<void> {
       };
     }
 
-    const persisted = await persistEntry({
+    const saved = await persistEntry({
       editingId: c.editingId,
       entry: base,
       tagIds,
@@ -1115,7 +1292,8 @@ async function doSave(stay: boolean): Promise<void> {
       lifeNote,
     });
     await rememberLastUsed(c).catch(() => undefined);
-    if (persisted === 'updated') {
+    savedCallback?.(saved.entryId);
+    if (saved.result === 'updated') {
       showToast('账单已更新');
       closeSheet();
       return;
@@ -1140,7 +1318,7 @@ async function doSave(stay: boolean): Promise<void> {
     toId: c.toId,
     loanAccountId: c.loanAccountId,
     loanKind: c.loanKind,
-    tagId: c.tagId,
+    tagIds: c.tagIds,
     merchantId: c.merchantId,
     occurredAt: c.date,
     note,
@@ -1153,7 +1331,7 @@ async function doSave(stay: boolean): Promise<void> {
   c.op = null;
   c.bx = repeat.reimbursePending;
   c.tk = false;
-  c.tagId = repeat.tagId;
+  c.tagIds = repeat.tagIds ?? [];
   c.merchantId = repeat.merchantId;
   noteInput.value = repeat.note;
   lifeToggle.classList.remove('on'); lifeToggle.setAttribute('aria-checked', 'false');

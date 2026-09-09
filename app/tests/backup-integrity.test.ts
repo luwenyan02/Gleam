@@ -31,7 +31,7 @@ async function archive({
   const manifest: Record<string, unknown> = {
     app: '拾光',
     appVersion: '1.4.1',
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: 1,
     counts,
     checksum: await sha256Hex(dataJson),
@@ -47,7 +47,7 @@ async function archive({
 }
 
 describe('SKBAK v1 解析完整性', () => {
-  it('接受包含 18 张表和真实附件字节的合法 v1 包', async () => {
+  it('接受包含全部表和真实附件字节的合法 v2 包', async () => {
     const data = emptyDump();
     data.accounts = [{ id: 1, name: '虚构现金' }];
     data.attachments = [{
@@ -65,7 +65,7 @@ describe('SKBAK v1 解析完整性', () => {
       attachmentBytes: new Map([[7, new Uint8Array([1, 2, 3, 4])]]),
     }));
 
-    expect(TABLE_NAMES).toHaveLength(18);
+    expect(TABLE_NAMES).toHaveLength(20);
     expect(TABLE_NAMES.every((name) => Array.isArray(parsed.dump[name]))).toBe(true);
     expect(parsed.manifest.counts.accounts).toBe(1);
     expect([...new Uint8Array(await (parsed.dump.attachments[0] as { blob: Blob }).blob.arrayBuffer())])
@@ -81,11 +81,30 @@ describe('SKBAK v1 解析完整性', () => {
   });
 
   it('拒绝比当前应用更新的 schemaVersion', async () => {
-    const source = await archive({ mutateManifest: (manifest) => { manifest.schemaVersion = 2; } });
+    const source = await archive({ mutateManifest: (manifest) => { manifest.schemaVersion = 3; } });
     await expect(parseSkbak(source)).rejects.toThrow('请先升级应用');
   });
 
-  it('拒绝当前格式不支持的旧 schemaVersion', async () => {
+  it('兼容 v1 旧备份，为信用账单新表补空集合且不认领历史转账', async () => {
+    const legacy = emptyDump() as Record<string, unknown>;
+    delete legacy.creditStatements;
+    delete legacy.creditPayments;
+    legacy.entries = [{ id: 1, type: 'transfer', amount: 3000, fromAccountId: 1, toAccountId: 2 }];
+    const source = await archive({
+      data: legacy,
+      mutateManifest: manifest => {
+        manifest.schemaVersion = 1;
+        const counts = manifest.counts as Record<string, number>;
+        delete counts.creditStatements;
+        delete counts.creditPayments;
+      },
+    });
+    const parsed = await parseSkbak(source);
+    expect(parsed.dump.creditStatements).toEqual([]);
+    expect(parsed.dump.creditPayments).toEqual([]);
+  });
+
+  it('拒绝当前格式不支持的更旧 schemaVersion', async () => {
     const source = await archive({ mutateManifest: (manifest) => { manifest.schemaVersion = 0; } });
     await expect(parseSkbak(source)).rejects.toThrow(/不支持.*数据版本/);
   });

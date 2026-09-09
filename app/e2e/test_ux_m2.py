@@ -48,7 +48,7 @@ def main() -> int:
             page.wait_for_selector('#report-dim')
             page.wait_for_function("document.querySelector('#r-spend')?.textContent?.includes('12.00')")
             assert page.locator('#r-seg [data-p]').count() == 4
-            assert page.locator('#report-dim [data-dimension]').count() == 4
+            assert page.locator('#report-dim [data-dimension]').count() == 6
             assert '30.00' in page.inner_text('#r-income')
 
             page.click('#report-dim [data-dimension="category"]')
@@ -76,7 +76,7 @@ def main() -> int:
             page.locator('[data-acct]').first.click()
             page.wait_for_selector('#sp-account-detail.open #account-months')
             page.wait_for_timeout(400)
-            assert page.locator('#sp-account-detail .spark').count() == 1
+            assert page.locator('#sp-account-detail .balance-trend').count() == 1
             assert page.locator('#sp-account-detail [data-account-month]').count() >= 1
             assert page.locator('#account-detail-entry:visible').count() == 1, '账户详情底部应有固定快速记账入口'
 

@@ -21,6 +21,7 @@ import {
   canRefund, getViewEntryId, runEntryQuickAction, type EntryQuickAction,
 } from './entrySwipe';
 import { fullDateTime, typeName } from './detailShared';
+import { reimbursementDetailText } from '../reimburse/reimburse';
 
 export async function renderEntryView(body: HTMLElement): Promise<void> {
   const entryId = getViewEntryId();
@@ -65,8 +66,7 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
     const categoryText = entry.type === 'loan'
       ? LOAN_KIND_META[entry.loanKind ?? 'borrow'].name
       : entry.type === 'transfer' ? '账户转账' : cat?.name ?? '未分类';
-    const reimbursement = entry.reimburseStatus === 'pending' ? '待报销'
-      : entry.reimburseStatus === 'done' ? `已报销 ${formatFenCny(entry.reimbursedAmount ?? 0)}` : '非报销';
+    const reimbursement = reimbursementDetailText(entry);
     const batch = entry.importBatchId != null ? await getImportBatch(entry.importBatchId) : undefined;
     const sourceText = entry.importBatchId == null ? '手工录入' : batch?.source === 'ai' ? 'AI 记账' : '账单导入';
 

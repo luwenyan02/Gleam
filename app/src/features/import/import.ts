@@ -3,7 +3,7 @@
  * 五步：①选文件（备份页触发）→ ②解析预检 → ③映射确认（支持整批自动处理）→
  * ④事务化导入（前置自动快照 + importBatch，失败全回滚）→ ⑤完成报告。
  * 解析规则见 wacai.ts；导入经 entryRepo.importEntriesBatch 复用硬规则驱动余额。
- * 查重：普通账单按「时间+类型+金额+账户」，转账/借贷额外比对双账户。
+ * 重复预检：相同时间、类型、金额和账户仅作为疑似重复，默认跳过，用户可逐条确认保留。
  */
 import './import.css';
 import { esc } from '../../core/esc';
@@ -20,11 +20,12 @@ import {
   type ImportEntryItem, type NewEntry,
 } from '../../core/repo/entryRepo';
 import { loanDirection } from '../../core/loanLedger';
-import { entryIdentity } from '../../core/entryIdentity';
 import { ACCOUNT_GROUP_NAMES, type Account, type Category } from '../../core/types';
-import { parseWacaiFile, type WacaiParseResult, type WacaiRow } from './wacai';
+import { parseWacaiFile, type ImportSource, type WacaiParseResult, type WacaiRow } from './wacai';
+import { parsePaymentFile } from './payment';
 import { accountUsageKey, buildAccountPlans, type AccountPlan } from './accountMapping';
 import { openPickList, type PickListItem } from '../../shared/pickList';
+import { formatFen } from '../../core/money';
 
 /* ── 向导状态 ── */
 
@@ -49,6 +50,13 @@ interface ImportReport {
   createdAccts: number;
 }
 
+export interface DuplicateCandidate {
+  rowNo: number;
+  reason: string;
+}
+
+const SOURCE_LABEL: Record<string, string> = { wacai: '挖财 Excel', wechat: '微信账单', alipay: '支付宝账单' };
+
 interface WizardState {
   file: File;
   result: WacaiParseResult;
@@ -60,6 +68,10 @@ interface WizardState {
   step: 2 | 3 | 4 | 5;
   report?: ImportReport;
   running: boolean;
+  /** undefined 表示尚未预检；空数组表示已预检且无候选。 */
+  duplicateCandidates?: DuplicateCandidate[];
+  /** 用户明确确认虽疑似重复仍要导入的 Excel 行号。 */
+  keepDuplicateRows: Set<number>;
 }
 
 let state: WizardState | undefined;
@@ -68,6 +80,39 @@ let body: HTMLElement | undefined;
 /* 映射页 pickList 共享 items（mappingHtml 构建，click 委托引用） */
 let mapExpenseItems: PickListItem[] = [];
 let mapIncomeItems: PickListItem[] = [];
+
+function rowDuplicateKey(row: WacaiRow): string {
+  if (row.type === 'transfer') {
+    return JSON.stringify([row.type, row.occurredAt, row.amountFen, row.fromAccountName, row.toAccountName]);
+  }
+  if (row.type === 'loan') {
+    return JSON.stringify([
+      row.type, row.occurredAt, row.amountFen, row.loanKind, row.accountName, row.loanAccountName,
+    ]);
+  }
+  return JSON.stringify([row.type, row.occurredAt, row.amountFen, row.accountName]);
+}
+
+/** 同批相同关键字段只标记后出现的行，首行仍作为正常候选导入。 */
+export function findBatchDuplicateRowNumbers(rows: readonly WacaiRow[]): number[] {
+  const seen = new Set<string>();
+  const duplicates: number[] = [];
+  for (const row of rows) {
+    const key = rowDuplicateKey(row);
+    if (seen.has(key)) duplicates.push(row.rowNo);
+    else seen.add(key);
+  }
+  return duplicates;
+}
+
+/** 实际组装导入集合时复用同一决策，确保“确认保留”不只停留在界面。 */
+export function shouldImportDuplicateCandidate(
+  rowNo: number,
+  candidates: readonly DuplicateCandidate[],
+  keepRows: ReadonlySet<number>,
+): boolean {
+  return !candidates.some((candidate) => candidate.rowNo === rowNo) || keepRows.has(rowNo);
+}
 
 /* ── 匹配与新建 ── */
 
@@ -132,15 +177,72 @@ async function buildPlans(result: WacaiParseResult): Promise<Pick<WizardState, '
   return { cats, accts, expenseCats, incomeCats, accounts };
 }
 
+function mappedExistingAccountId(st: WizardState, usage: Parameters<typeof accountUsageKey>[0], name: string): number | undefined {
+  // 计划键带角色（fund/loan/general），同名多用途时按 usages 覆盖查找，避免查重漏判
+  const plan = st.accts.find((item) => item.name === name && item.usages.includes(usage));
+  if (!plan) return undefined;
+  if (typeof plan.choice === 'number') return plan.choice;
+  return plan.matchedId;
+}
+
+async function hasStoredDuplicate(st: WizardState, row: WacaiRow): Promise<boolean> {
+  if (row.type === 'transfer') {
+    const from = mappedExistingAccountId(st, 'general', row.fromAccountName!);
+    const to = mappedExistingAccountId(st, 'general', row.toAccountName!);
+    if (from == null || to == null) return false;
+    return (await findTransferDuplicates(row.occurredAt, row.amountFen, from, to)).length > 0;
+  }
+  if (row.type === 'loan') {
+    const fund = mappedExistingAccountId(st, 'fund', row.accountName!);
+    const loan = mappedExistingAccountId(st, 'loan', row.loanAccountName!);
+    if (fund == null || loan == null) return false;
+    const direction = loanDirection(row.loanKind!, fund, loan);
+    return (await findLoanDuplicates(
+      row.occurredAt, row.amountFen, row.loanKind!, direction.fromAccountId, direction.toAccountId,
+    )).length > 0;
+  }
+  const account = mappedExistingAccountId(st, 'general', row.accountName!);
+  if (account == null) return false;
+  return (await findDuplicates(row.occurredAt, row.type, row.amountFen, account)).length > 0;
+}
+
+async function findDuplicateCandidates(st: WizardState): Promise<DuplicateCandidate[]> {
+  const candidates = new Map<number, Set<string>>();
+  for (const rowNo of findBatchDuplicateRowNumbers(st.result.rows)) {
+    candidates.set(rowNo, new Set(['同批存在相同时间、金额和账户']));
+  }
+  const storedMatches = await Promise.all(st.result.rows.map(async (row) => ({
+    rowNo: row.rowNo,
+    matched: await hasStoredDuplicate(st, row),
+  })));
+  for (const match of storedMatches) {
+    if (!match.matched) continue;
+    const reasons = candidates.get(match.rowNo) ?? new Set<string>();
+    reasons.add('账本已有相同时间、金额和账户的流水');
+    candidates.set(match.rowNo, reasons);
+  }
+  return [...candidates.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([rowNo, reasons]) => ({ rowNo, reason: [...reasons].join('；') }));
+}
+
 /* ── 第④步：事务化导入 ── */
 
 async function runImport(): Promise<void> {
   const st = state;
   if (!st || st.running) return;
   st.running = true;
-  st.step = 4;
-  renderStep();
   try {
+    if (st.duplicateCandidates == null) {
+      st.duplicateCandidates = await findDuplicateCandidates(st);
+      st.keepDuplicateRows.clear();
+      if (st.duplicateCandidates.length) {
+        showToast(`发现 ${st.duplicateCandidates.length} 条疑似重复，请确认是否保留`);
+        return;
+      }
+    }
+    st.step = 4;
+    renderStep();
     // 前置自动快照（7 天内可在备份页撤销）
     await createSnapshot('import', `导入「${st.file.name}」前`);
 
@@ -166,54 +268,33 @@ async function runImport(): Promise<void> {
         for (const usage of p.usages) acctIds.set(accountUsageKey(usage, p.name), accountId);
       }
 
+      const duplicateCandidates = st.duplicateCandidates ?? [];
+      const rowsToImport = st.result.rows.filter((row) => shouldImportDuplicateCandidate(
+        row.rowNo, duplicateCandidates, st.keepDuplicateRows,
+      ));
+      const skippedRows = st.result.rows
+        .filter((row) => !shouldImportDuplicateCandidate(row.rowNo, duplicateCandidates, st.keepDuplicateRows))
+        .map((row) => row.rowNo);
       const tagIds = new Map<string, number>();
       const merchantIds = new Map<string, number>();
-      for (const row of st.result.rows) {
+      for (const row of rowsToImport) {
         for (const tag of row.tags) if (!tagIds.has(tag)) tagIds.set(tag, await ensureTag(tag));
         if (row.merchant && !merchantIds.has(row.merchant)) {
           merchantIds.set(row.merchant, await ensureMerchant(row.merchant));
         }
       }
 
-      // 查重（时间+类型+金额+账户；转账按 from/to）→ 命中默认跳过
       const items: ImportEntryItem[] = [];
       const importedRows: WacaiRow[] = [];
-      const skippedRows: number[] = [];
-      const batchKeys = new Set<string>();
-      for (const row of st.result.rows) {
+      for (const row of rowsToImport) {
         const input = rowToEntry(row, catIds, acctIds, merchantIds);
-        let dup;
-        if (row.type === 'transfer') {
-          dup = await findTransferDuplicates(
-            row.occurredAt, row.amountFen,
-            acctIds.get(accountUsageKey('general', row.fromAccountName!)),
-            acctIds.get(accountUsageKey('general', row.toAccountName!)),
-          );
-        } else if (row.type === 'loan') {
-          const direction = loanDirection(
-            row.loanKind!,
-            acctIds.get(accountUsageKey('fund', row.accountName!))!,
-            acctIds.get(accountUsageKey('loan', row.loanAccountName!))!,
-          );
-          dup = await findLoanDuplicates(
-            row.occurredAt, row.amountFen, row.loanKind!, direction.fromAccountId, direction.toAccountId,
-          );
-        } else {
-          dup = await findDuplicates(
-            row.occurredAt, row.type, row.amountFen,
-            acctIds.get(accountUsageKey('general', row.accountName!)),
-          );
-        }
-        const key = entryIdentity(input);
-        if (dup.length || batchKeys.has(key)) { skippedRows.push(row.rowNo); continue; }
-        batchKeys.add(key);
         items.push({ input, tagIds: row.tags.map((tag) => tagIds.get(tag)!) });
         importedRows.push(row);
       }
 
       if (items.length) {
         await importEntriesBatch(items, {
-          source: 'wacai',
+          source: st.result.source ?? 'wacai',
           fileName: st.file.name,
           counts: { ...st.result.counts, skipped: skippedRows.length },
           snapshotRef: `导入「${st.file.name}」前`,
@@ -312,7 +393,7 @@ function precheckHtml(st: WizardState): string {
   const unAcct = st.accts.filter((p) => p.matchedId == null).length;
   return `
     <section class="card">
-      <h3 class="card-title">解析预检 · ${esc(st.file.name)}</h3>
+      <h3 class="card-title">解析预检 · ${esc(st.file.name)}<span class="tiny" style="margin-left:8px">来源：${esc(SOURCE_LABEL[st.result.source ?? 'wacai'])}</span></h3>
       <p class="sub">共解析出 <b>${rows.length}</b> 条有效流水（空行已跳过）</p>
       <div class="imp-stat">
         <b>支出 ${counts.expense}</b><b>收入 ${counts.income}</b>
@@ -350,6 +431,26 @@ function mappingHtml(st: WizardState): string {
     if (p.choice === 'auto') return `自动新建（${ACCOUNT_GROUP_NAMES[p.group]}）`;
     return esc(st.accounts.find((a) => a.id === p.choice)?.name ?? '未知');
   };
+  const duplicateRows = new Map(st.result.rows.map((row) => [row.rowNo, row]));
+  const duplicateReview = st.duplicateCandidates?.length ? `
+      <div class="imp-duplicates" aria-label="疑似重复确认">
+        <p><b>发现 ${st.duplicateCandidates.length} 条疑似重复</b></p>
+        <p class="tiny">相同时间、金额和账户不等于同一笔流水。以下默认跳过；确认确为不同流水时，可逐条选择仍然导入。</p>
+        ${st.duplicateCandidates.map((candidate) => {
+          const row = duplicateRows.get(candidate.rowNo)!;
+          const date = new Date(row.occurredAt);
+          const when = `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+          const account = row.type === 'transfer'
+            ? `${row.fromAccountName} → ${row.toAccountName}`
+            : row.type === 'loan' ? `${row.accountName} / ${row.loanAccountName}` : row.accountName;
+          const kept = st.keepDuplicateRows.has(row.rowNo);
+          return `<button class="imp-dup-choice${kept ? ' kept' : ''}" data-dup-row="${row.rowNo}" aria-pressed="${kept}">
+            <span class="ck${kept ? ' on' : ''}" aria-hidden="true"></span>
+            <span><b>第 ${row.rowNo} 行 · ¥${formatFen(row.amountFen)} · ${esc(account ?? '账户')}</b><small>${when} · ${esc(candidate.reason)}</small></span>
+            <em>${kept ? '将保留' : '默认跳过'}</em>
+          </button>`;
+        }).join('')}
+      </div>` : '';
   return `
     <section class="card imp-map">
       <h3 class="card-title">映射确认</h3>
@@ -366,10 +467,11 @@ function mappingHtml(st: WizardState): string {
       <div class="btn-row" style="margin-top:12px">
         <button class="btn ghost" data-act="auto-all">按建议自动处理</button>
       </div>` : '<p class="sub">全部分类与账户均已精确匹配，无需处理 ✓</p>'}
-      <p class="tiny" style="margin-top:10px">导入前会自动创建本地快照（7 天内可撤销）；借贷须类型、金额和双账户均一致才会判为重复</p>
+      ${duplicateReview}
+      <p class="tiny" style="margin-top:10px">导入前会先预检疑似重复并自动创建本地快照（7 天内可撤销）</p>
       <div class="btn-row" style="margin-top:8px">
         <button class="btn ghost" data-act="to-pre">上一步</button>
-        <button class="btn primary" data-act="run"${st.accts.some((p) => p.choice == null) ? ' disabled' : ''}>开始导入</button>
+        <button class="btn primary" data-act="run"${st.accts.some((p) => p.choice == null) ? ' disabled' : ''}>${st.duplicateCandidates?.length ? '按上述选择导入' : '检查重复并导入'}</button>
       </div>
     </section>`;
 }
@@ -381,7 +483,7 @@ function reportHtml(st: WizardState): string {
       <h3 class="card-title">导入完成</h3>
       <p class="big num">${r.imported} <small style="font-size:13px;font-weight:400">条成功入账</small></p>
       <p>支出 ${r.byType.expense} · 收入 ${r.byType.income} · 转账 ${r.byType.transfer} · 借贷 ${r.byType.loan}（解析计数）</p>
-      <p>跳过重复 ${r.skipped} 条${r.skippedRows.length ? `（行号 ${r.skippedRows.join('、')}）` : ''} · 格式异常跳过 ${st.result.issues.length} 条</p>
+      <p>跳过疑似重复 ${r.skipped} 条${r.skippedRows.length ? `（行号 ${r.skippedRows.join('、')}）` : ''} · 格式异常跳过 ${st.result.issues.length} 条</p>
       ${r.reimburse ? `<p>报销：${r.reimburse} 条已标记「已报销」（无到账账户信息，仅记状态）</p>` : ''}
       ${r.loanAccounts.length ? `<p>借贷往来：已映射应收/应付账户 ${esc(r.loanAccounts.join('、'))}，两侧余额随账单联动</p>` : ''}
       ${r.fx ? `<p>外币折算：${r.fx} 条按导入时参考汇率折算为人民币，原币种金额在备注中保留</p>` : ''}
@@ -400,10 +502,16 @@ function reportHtml(st: WizardState): string {
  * 表头不符等致命错误在此拦截（toast），不进入向导。
  */
 export async function openImportWizard(file: File): Promise<void> {
+  return openImportWizardFor(file, 'wacai');
+}
+
+/** 按指定来源解析并打开导入向导；微信/支付宝走本地导出适配器。 */
+export async function openImportWizardFor(file: File, source: ImportSource): Promise<void> {
   try {
-    const result = await parseWacaiFile(file);
+    const result = source === 'wacai' ? await parseWacaiFile(file) : await parsePaymentFile(file, source);
+    result.source = source;
     const plans = await buildPlans(result);
-    state = { file, result, ...plans, step: 2, running: false };
+    state = { file, result, ...plans, step: 2, running: false, keepDuplicateRows: new Set() };
     openSubpage('sp-import');
   } catch (err) {
     showToast(err instanceof Error ? err.message : String(err));
@@ -433,6 +541,8 @@ export function initImport(): void {
             selected: p.choice,
             onPick(value, label) {
               p.choice = value === 'auto' ? 'auto' : Number(value);
+              st.duplicateCandidates = undefined;
+              st.keepDuplicateRows.clear();
               catBtn.textContent = label;
             },
           });
@@ -454,12 +564,22 @@ export function initImport(): void {
             selected: p.choice,
             onPick(value, label) {
               p.choice = value === 'auto' ? 'auto' : Number(value);
+              st.duplicateCandidates = undefined;
+              st.keepDuplicateRows.clear();
               const selected = st.accounts.find(account => account.id === p.choice);
               acctBtn.textContent = selected ? `${label}（${ACCOUNT_GROUP_NAMES[selected.group]}）` : label;
               const runBtn = el.querySelector<HTMLButtonElement>('[data-act="run"]');
               if (runBtn) runBtn.disabled = st.accts.some((plan) => plan.choice == null);
             },
           });
+          return;
+        }
+        const duplicateButton = target.closest<HTMLElement>('[data-dup-row]');
+        if (duplicateButton) {
+          const rowNo = Number(duplicateButton.dataset.dupRow);
+          if (st.keepDuplicateRows.has(rowNo)) st.keepDuplicateRows.delete(rowNo);
+          else st.keepDuplicateRows.add(rowNo);
+          renderStep();
           return;
         }
         const act = target.closest<HTMLElement>('[data-act]')?.dataset.act;
@@ -470,6 +590,8 @@ export function initImport(): void {
         else if (act === 'auto-all') {
           for (const p of st.cats) if (p.matchedId == null) p.choice = 'auto';
           for (const p of st.accts) if (p.matchedId == null && !p.ambiguous) p.choice = 'auto';
+          st.duplicateCandidates = undefined;
+          st.keepDuplicateRows.clear();
           renderStep();
           showToast('已全部设为按建议自动处理');
         } else if (act === 'run') void runImport();

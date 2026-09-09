@@ -43,4 +43,17 @@ describe('挖财导入安全回归', () => {
     expect(result.rows).toEqual([]);
     expect(result.issues[0]?.message).toContain('转账');
   });
+
+  it('退款缺少原支出关联时进入异常待处理且默认不导入', async () => {
+    const result = await parseWacaiFile(fileOf([
+      ['2026-09-03 10:00', '支出', '购物/日用', 88, '人民币', '', '虚构现金', '自己', '', '', '退款', '虚构退款'],
+    ]));
+
+    expect(result.rows).toEqual([]);
+    expect(result.counts.expense).toBe(0);
+    expect(result.issues).toEqual([
+      expect.objectContaining({ rowNo: 2, message: expect.stringContaining('退款') }),
+    ]);
+    expect(result.issues[0]?.message).toContain('无法关联原支出');
+  });
 });

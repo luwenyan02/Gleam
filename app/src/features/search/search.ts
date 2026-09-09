@@ -4,6 +4,7 @@
  * 高级筛选面板、关键词搜索（流水 + 生活记录）、左滑操作、entries-changed 自动刷新。
  */
 import './search.css';
+import { expandCategoryIds, parseAmountRange, validateDateRange } from '../../core/queryValidation';
 import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
 import { formatFen } from '../../core/money';
@@ -13,15 +14,20 @@ import { listAccounts } from '../../core/repo/accountRepo';
 import { listMerchants } from '../../core/repo/merchantRepo';
 import { listTags, listEntryIdsByTag } from '../../core/repo/tagRepo';
 import { listLifeNotes } from '../../core/repo/lifeRepo';
+import {
+  applyBatchEntries, previewBatchEntries,
+  type BatchEntryOperation, type BatchEntryPreview,
+} from '../../core/repo/batchEntryRepo';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
 import { registerSubpage, openSubpage, closeSubpage, switchPage } from '../shell/router';
 import { showToast } from '../shell/toast';
+import { confirmDialog } from '../shell/dialog';
 import { on } from '../../core/store';
 import { openEntryDetail } from '../detail/detail';
 import {
   bindEntrySwipeActions, entrySwipeActionsHtml, runEntryQuickAction, type EntryQuickAction,
 } from '../detail/entrySwipe';
-import { type Entry, type EntryType, type LifeNote } from '../../core/types';
+import { type Account, type Category, type Entry, type EntryType, type LifeNote, type Tag } from '../../core/types';
 import {
   filterLedgerEntries, groupLedgerEntries, summarizeLedgerEntries,
   type LedgerQuery,
@@ -31,6 +37,8 @@ import { createFilterPanel, emptyFilter, isFilterEmpty, type FilterState } from 
 import { ledgerItems, type LedgerItem } from '../../core/ledgerEvents';
 import { manageOverlay } from '../../shared/overlay';
 import { entryRowText } from '../detail/entryRowText';
+import { sheetPick } from '../detail/detailShared';
+import { focusLifeRecord } from '../life/life';
 
 let body: HTMLElement | undefined;
 let searchToken = 0;
@@ -47,6 +55,13 @@ let filterState: FilterState = emptyFilter();
 let summaryFilter: 'all' | 'expense' | 'income' = 'all';
 let queryTypes: EntryType[] = [];
 let ledgerOnly = false;
+let batchMode = false;
+let batchSelectAll = false;
+const batchSelected = new Set<number>();
+let batchResultIds: number[] = [];
+let batchCategories: Category[] = [];
+let batchAccounts: Account[] = [];
+let batchTags: Tag[] = [];
 const PAGE_SIZE = 100;
 let shown = PAGE_SIZE;
 let lastQueryKey = '';
@@ -57,6 +72,30 @@ interface PendingLedgerSearch {
 }
 
 let pendingLedgerSearch: PendingLedgerSearch | undefined;
+
+function updateBatchControls(): void {
+  const subpage = body?.closest<HTMLElement>('.subpage');
+  const button = subpage?.querySelector<HTMLButtonElement>('#sr-batch');
+  const bar = subpage?.querySelector<HTMLElement>('#sr-batch-bar');
+  if (!button || !bar) return;
+  button.hidden = !batchMode && batchResultIds.length === 0;
+  button.textContent = batchMode ? '完成' : '批量';
+  button.classList.toggle('active', batchMode);
+  bar.hidden = !batchMode;
+  const count = bar.querySelector<HTMLElement>('#sr-batch-count');
+  if (count) count.textContent = `已选 ${batchSelected.size} / ${batchResultIds.length} 笔`;
+  const toggle = bar.querySelector<HTMLButtonElement>('#sr-batch-all');
+  if (toggle) toggle.textContent = batchSelected.size === batchResultIds.length && batchResultIds.length ? '取消全选' : '全选结果';
+}
+
+function batchPreviewText(preview: BatchEntryPreview): string {
+  const reasons = new Map<string, number>();
+  for (const item of preview.skipped) reasons.set(item.reason, (reasons.get(item.reason) ?? 0) + 1);
+  const skipped = preview.skipped.length
+    ? `；跳过 ${preview.skipped.length} 笔（${[...reasons].map(([reason, count]) => `${reason} ${count} 笔`).join('，')}）`
+    : '';
+  return `可处理 ${preview.processableIds.length} 笔${skipped}`;
+}
 
 /** 从报表或账户页进入携带相同条件的统一明细查询。 */
 export function openLedgerSearch(query: LedgerQuery, title?: string): void {
@@ -191,17 +230,20 @@ async function doSearch(kw: string): Promise<void> {
   const hasStructuredQuery = dateRange !== 'all' || !isFilterEmpty(filterState) || queryTypes.length > 0;
   // 没有关键词也没有任何结构化条件时才显示历史；报表下钻可直接列出全部匹配账单。
   if (!kw && !hasStructuredQuery) {
+    batchResultIds = [];
+    batchSelected.clear();
+    batchMode = false;
+    batchSelectAll = false;
     const history = await loadHistory();
     if (token !== searchToken) return;
     renderHistory(resultsEl, history);
     const filters = body?.querySelector<HTMLElement>('#sr-active-filters');
     filters?.replaceChildren();
     if (filters) filters.hidden = true;
+    updateBatchControls();
     return;
   }
 
-  // 保存搜索历史
-  if (kw) void saveHistory(kw);
 
   const [expenseCats, incomeCats, merchants, tags, entries, notes, accounts] = await Promise.all([
     listCategories('expense'), listCategories('income'), listMerchants(), listTags(),
@@ -218,6 +260,9 @@ async function doSearch(kw: string): Promise<void> {
   for (const t of tags) tagNames.set(t.id, t.name);
   const merchantNames = new Map<number, string>();
   for (const m of merchants) merchantNames.set(m.id, m.name);
+  batchCategories = [...expenseCats, ...incomeCats];
+  batchAccounts = accounts;
+  batchTags = tags;
 
   const win = rangeWindow();
   const tagIdsByEntry = new Map<number, number[]>();
@@ -231,21 +276,15 @@ async function doSearch(kw: string): Promise<void> {
   }
   if (token !== searchToken || !resultsEl.isConnected) return;
 
-  const parseAmount = (value: string): number | undefined => {
-    if (!value.trim()) return undefined;
-    const amount = Number(value);
-    return Number.isFinite(amount) ? Math.round(amount * 100) : undefined;
-  };
   const query: LedgerQuery = {
     from: win?.from,
     to: win?.to,
     types: queryTypes.length ? [...queryTypes] : undefined,
-    categoryIds: filterState.categoryIds.length ? [...filterState.categoryIds] : undefined,
+    categoryIds: filterState.categoryIds.length ? expandCategoryIds(filterState.categoryIds, [...expenseCats, ...incomeCats]) : undefined,
     accountIds: filterState.accountIds.length ? [...filterState.accountIds] : undefined,
     tagIds: filterState.tagIds.length ? [...filterState.tagIds] : undefined,
     merchantIds: filterState.merchantIds.length ? [...filterState.merchantIds] : undefined,
-    amountMin: parseAmount(filterState.amountMin),
-    amountMax: parseAmount(filterState.amountMax),
+    ...parseAmountRange(filterState.amountMin, filterState.amountMax),
     keyword: kw || undefined,
     field: fieldMode,
   };
@@ -268,6 +307,13 @@ async function doSearch(kw: string): Promise<void> {
   let displayEntries = matchedEntries;
   if (summaryFilter === 'expense') displayEntries = matchedEntries.filter(e => e.type === 'expense');
   else if (summaryFilter === 'income') displayEntries = matchedEntries.filter(e => e.type === 'income');
+  batchResultIds = [...new Set(displayEntries.filter((entry) => entry.kind === 'entry').map((entry) => entry.id))];
+  if (batchMode && batchSelectAll) {
+    batchSelected.clear();
+    batchResultIds.forEach((id) => batchSelected.add(id));
+  } else {
+    for (const id of [...batchSelected]) if (!batchResultIds.includes(id)) batchSelected.delete(id);
+  }
   const hitEntries = displayEntries.slice(0, shown);
 
   // 生活记录搜索（仅 all/note 模式下）
@@ -278,11 +324,15 @@ async function doSearch(kw: string): Promise<void> {
   const entryRow = (e: LedgerItem) => {
     const text = entryRowText(e, catMap, accountNames);
     const note = text.note ? ` <span class="e-sub">· ${esc(text.note)}</span>` : '';
+    const selectable = e.kind === 'entry';
+    const lead = batchMode && selectable
+      ? `<span class="ck${batchSelected.has(e.id) ? ' on' : ''}" aria-hidden="true"></span>`
+      : `<span class="e-ic${text.neutral ? ' neutral' : ''}">${iconHtml(text.icon, 18)}</span>`;
     return `
-      <div class="entry-swipe" data-eid="${e.id}"${e.kind === 'reimbursement' ? ' data-reimbursement' : ''}>
-        ${e.kind === 'reimbursement' ? '' : entrySwipeActionsHtml(e)}
+      <div class="entry-swipe${batchMode ? ' sr-batch-row' : ''}" data-eid="${e.id}"${e.kind === 'reimbursement' ? ' data-reimbursement' : ''}>
+        ${e.kind === 'reimbursement' || batchMode ? '' : entrySwipeActionsHtml(e)}
         <button class="row entry-swipe-content">
-          <span class="e-ic${text.neutral ? ' neutral' : ''}">${iconHtml(text.icon, 18)}</span>
+          ${lead}
           <div class="e-main"><p class="e-title">${esc(text.title)}${note}</p>
             <p class="e-meta">${esc(text.meta)}</p>
             ${e.kind === 'reimbursement' ? '<p class="e-meta">点击查看原支出</p>' : e.type === 'expense' && e.reimburseStatus === 'done' ? `<p class="sr-net">原额 ${formatFen(e.amount)} · 已报销 ${formatFen(e.reimbursedAmount ?? 0)}${!countReimburseAsIncome ? ` · 净支出 ${formatFen((e.refundFlag ? -e.amount : e.amount) - (e.reimbursedAmount ?? 0))}` : ''}</p>` : ''}</div>
@@ -291,7 +341,7 @@ async function doSearch(kw: string): Promise<void> {
       </div>`;
   };
   const noteRow = (n: LifeNote) => `
-    <button class="row" data-nid="${n.id}">
+    <button class="row" data-nid="${n.id}" data-note-at="${n.occurredAt}">
       <div class="e-main"><p class="e-title">${esc(n.title || '（无标题）')}</p>
         <p class="e-meta">${dayKey(n.occurredAt)}${n.body ? ` · ${esc(n.body.slice(0, 30))}` : ''}</p></div>
       <span class="chev">${iconHtml('ic-right', 15)}</span>
@@ -301,6 +351,7 @@ async function doSearch(kw: string): Promise<void> {
   const fullGroups = new Map(groupLedgerEntries(displayEntries).map(g => [g.day, summarizeLedgerEntries(g.entries, summaryOptions)]));
 
   resultsEl.innerHTML = `
+    ${batchMode ? `<div class="sr-batch-scope"><b>批量处理当前全部结果</b><span>已载入 ${batchResultIds.length} 笔，不受分页限制</span></div>` : ''}
     <div class="sr-summary-row${[summary.balance,summary.expense,summary.income].some(v=>formatFen(v).length>10) ? ' is-wide' : ''}">
       <button class="sr-summary-card${summaryFilter === 'all' ? ' active' : ''}" data-sf="all" aria-pressed="${summaryFilter === 'all'}">
         <div class="sc-label">结余</div>
@@ -327,6 +378,7 @@ async function doSearch(kw: string): Promise<void> {
       <div class="sr-list-head"><h3>生活记录（${hitNotes.length}）</h3></div>
       ${hitNotes.map(noteRow).join('')}
     </section>` : ''}`;
+  updateBatchControls();
 }
 
 /* ── 渲染搜索历史 ── */
@@ -418,6 +470,10 @@ export function initSearch(): void {
       summaryFilter = 'all';
       queryTypes = [];
       ledgerOnly = false;
+      batchMode = false;
+      batchSelectAll = false;
+      batchSelected.clear();
+      batchResultIds = [];
       shown = PAGE_SIZE;
       lastQueryKey = '';
 
@@ -477,6 +533,28 @@ export function initSearch(): void {
         <div class="sr-active-filters" id="sr-active-filters" aria-label="已启用筛选" hidden></div>
         <div id="sr-results"></div>`;
 
+      const subpage = el.closest<HTMLElement>('.subpage')!;
+      const head = subpage.querySelector<HTMLElement>('.sub-head')!;
+      const batchButton = document.createElement('button');
+      batchButton.className = 'chip sr-batch-button';
+      batchButton.id = 'sr-batch';
+      batchButton.textContent = '批量';
+      batchButton.hidden = true;
+      head.appendChild(batchButton);
+      const batchBar = document.createElement('div');
+      batchBar.className = 'batch-bar sr-batch-bar';
+      batchBar.id = 'sr-batch-bar';
+      batchBar.hidden = true;
+      batchBar.innerHTML = `
+        <span class="sub" id="sr-batch-count">已选 0 笔</span>
+        <button class="chip" id="sr-batch-all">全选结果</button>
+        <button class="chip" data-batch-act="category">改分类</button>
+        <button class="chip" data-batch-act="account">改账户</button>
+        <button class="chip" data-batch-act="tag-add">加标签</button>
+        <button class="chip" data-batch-act="tag-remove">移标签</button>
+        <button class="chip danger" data-batch-act="delete">回收站</button>`;
+      subpage.appendChild(batchBar);
+
       const input = el.querySelector<HTMLInputElement>('#sr-input')!;
       const clearBtn = el.querySelector<HTMLElement>('#sr-clear-input')!;
       let timer = 0;
@@ -490,6 +568,14 @@ export function initSearch(): void {
       input.addEventListener('input', () => {
         clearBtn.hidden = !input.value;
         triggerSearch();
+      });
+
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          window.clearTimeout(timer);
+          if (input.value.trim()) void saveHistory(input.value.trim());
+          void doSearch(input.value.trim());
+        }
       });
 
       // 清空输入
@@ -516,12 +602,12 @@ export function initSearch(): void {
         const chip = (e.target as HTMLElement).closest<HTMLElement>('[data-range]');
         if (!chip) return;
         const range = chip.dataset.range as DateRange;
-        dateRange = range;
-        for (const c of el.querySelectorAll<HTMLElement>('#sr-dates .chip')) c.classList.toggle('active', c === chip);
         if (range === 'custom') {
           // 打开开始日期选择
           openFromDateWheel();
         } else {
+          dateRange = range;
+          for (const c of el.querySelectorAll<HTMLElement>('#sr-dates .chip')) c.classList.toggle('active', c === chip);
           // 根据选中的 chip 计算对应的起止日期并同步到顶部日期显示
           const now = new Date();
           const y = now.getFullYear();
@@ -554,6 +640,9 @@ export function initSearch(): void {
         const panel = openDateWheel({
           initial: customFrom ?? getDefaultFrom(),
           onConfirm(r) {
+            const end = customTo ?? getDefaultTo();
+            try { validateDateRange(new Date(r.year, r.month - 1, r.day).getTime(), new Date(end.year, end.month - 1, end.day).getTime()); }
+            catch (error) { showToast((error as Error).message); return; }
             customFrom = r;
             dateRange = 'custom';
             // 激活自定义chip
@@ -571,6 +660,9 @@ export function initSearch(): void {
         const panel = openDateWheel({
           initial: customTo ?? getDefaultTo(),
           onConfirm(r) {
+            const start = customFrom ?? getDefaultFrom();
+            try { validateDateRange(new Date(start.year, start.month - 1, start.day).getTime(), new Date(r.year, r.month - 1, r.day).getTime()); }
+            catch (error) { showToast((error as Error).message); return; }
             customTo = r;
             dateRange = 'custom';
             for (const c of el.querySelectorAll<HTMLElement>('#sr-dates .chip')) {
@@ -604,6 +696,105 @@ export function initSearch(): void {
         document.body.appendChild(panel);
         panel.setAttribute('aria-label','高级筛选');
         releasePanel = manageOverlay(panel, () => { releasePanel(); panel.remove(); });
+      });
+
+      batchButton.addEventListener('click', () => {
+        batchMode = !batchMode;
+        batchSelectAll = batchMode;
+        batchSelected.clear();
+        if (batchMode) batchResultIds.forEach((id) => batchSelected.add(id));
+        void doSearch(input.value.trim());
+      });
+
+      async function runBatch(
+        operation: BatchEntryOperation,
+        copy: { title: string; okText: string; success: string; danger?: boolean; recovery?: string },
+      ): Promise<void> {
+        if (!batchSelected.size) { showToast('当前没有已选账单'); return; }
+        let preview: BatchEntryPreview;
+        try {
+          preview = await previewBatchEntries([...batchSelected], operation);
+        } catch (error) {
+          showToast(`批量操作无法执行：${error instanceof Error ? error.message : String(error)}`);
+          return;
+        }
+        if (!preview.processableIds.length) {
+          showToast(`没有可处理的账单。${batchPreviewText(preview)}`);
+          return;
+        }
+        const ok = await confirmDialog({
+          title: copy.title,
+          message: `${batchPreviewText(preview)}${copy.recovery ? `。${copy.recovery}` : ''}`,
+          okText: copy.okText,
+          danger: copy.danger,
+        });
+        if (!ok) return;
+        try {
+          const result = await applyBatchEntries([...batchSelected], operation);
+          batchMode = false;
+          batchSelectAll = false;
+          batchSelected.clear();
+          showToast(`${copy.success} ${result.appliedIds.length} 笔${result.skipped.length ? `，跳过 ${result.skipped.length} 笔` : ''}`);
+          await doSearch(input.value.trim());
+        } catch (error) {
+          showToast(`批量操作失败，已回滚整批修改：${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
+      batchBar.addEventListener('click', (event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest('#sr-batch-all')) {
+          const allSelected = batchResultIds.length > 0 && batchSelected.size === batchResultIds.length;
+          batchSelected.clear();
+          if (!allSelected) batchResultIds.forEach((id) => batchSelected.add(id));
+          batchSelectAll = !allSelected;
+          void doSearch(input.value.trim());
+          return;
+        }
+        const action = target.closest<HTMLElement>('[data-batch-act]')?.dataset.batchAct;
+        if (!action) return;
+        void (async () => {
+          if (!batchSelected.size) { showToast('请先选择账单'); return; }
+          if (action === 'category') {
+            const categoryId = await sheetPick('改分类（不适用的账单会说明跳过原因）', batchCategories.map((category) => ({
+              id: category.id,
+              label: `${category.kind === 'expense' ? '支出' : '收入'} · ${category.name}`,
+              icon: category.icon,
+            })));
+            if (categoryId != null) await runBatch(
+              { kind: 'category', categoryId },
+              { title: '确认修改全部已选账单的分类？', okText: '修改', success: '已改分类' },
+            );
+          } else if (action === 'account') {
+            const accountId = await sheetPick('改账户（转账与借贷会跳过）', batchAccounts.map((account) => ({
+              id: account.id, label: account.name, icon: 'ic-wallet', note: formatFen(account.balance),
+            })));
+            if (accountId != null) await runBatch(
+              { kind: 'account', accountId },
+              { title: '确认修改全部已选账单的账户？', okText: '修改', success: '已改账户' },
+            );
+          } else if (action === 'tag-add' || action === 'tag-remove') {
+            if (!batchTags.length) { showToast('还没有可用标签，请先在设置中创建'); return; }
+            const tagId = await sheetPick(action === 'tag-add' ? '添加标签' : '移除标签', batchTags.map((tag) => ({
+              id: tag.id, label: tag.name, icon: 'ic-tag',
+            })));
+            if (tagId != null) {
+              const adding = action === 'tag-add';
+              await runBatch(
+                { kind: 'tags', mode: adding ? 'add' : 'remove', tagIds: [tagId] },
+                { title: `确认${adding ? '添加' : '移除'}所选标签？`, okText: adding ? '添加' : '移除', success: `已${adding ? '添加' : '移除'}标签` },
+              );
+            }
+          } else if (action === 'delete') {
+            await runBatch(
+              { kind: 'delete' },
+              {
+                title: `将 ${batchSelected.size} 笔账单移入回收站？`, okText: '移入回收站', success: '已移入回收站',
+                danger: true, recovery: '30 天内可从回收站恢复',
+              },
+            );
+          }
+        })();
       });
 
       // 结果区点击事件代理
@@ -658,6 +849,19 @@ export function initSearch(): void {
         const action = t.closest<HTMLElement>('[data-entry-action]');
         const entryRow = t.closest<HTMLElement>('[data-eid]');
         if (entryRow?.dataset.swipeSuppress === 'true') return;
+        if (batchMode && entryRow) {
+          if (entryRow.hasAttribute('data-reimbursement')) {
+            showToast('报销到账是原支出的展示事件，请选择原账单操作');
+            return;
+          }
+          const id = Number(entryRow.dataset.eid);
+          if (batchSelected.has(id)) batchSelected.delete(id);
+          else batchSelected.add(id);
+          batchSelectAll = batchResultIds.length > 0 && batchSelected.size === batchResultIds.length;
+          entryRow.querySelector('.ck')?.classList.toggle('on', batchSelected.has(id));
+          updateBatchControls();
+          return;
+        }
         if (action && entryRow) {
           if (action.getAttribute('aria-disabled') === 'true') { showToast('仅普通支出账单支持退款'); return; }
           void getEntry(Number(entryRow.dataset.eid)).then((entry) => {
@@ -669,6 +873,8 @@ export function initSearch(): void {
         const nid = t.closest<HTMLElement>('[data-nid]')?.dataset.nid;
         if (entryRow) openEntryDetail(Number(entryRow.dataset.eid));
         else if (nid) {
+          const noteRow = t.closest<HTMLElement>('[data-nid]')!;
+          focusLifeRecord(Number(nid), Number(noteRow.dataset.noteAt));
           closeSubpage();
           switchPage('page-life');
         }

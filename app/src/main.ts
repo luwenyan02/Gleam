@@ -18,6 +18,7 @@ import { initEntry } from './features/entry/entrySheet';
 import { initHome } from './features/home/home';
 import { initDetail } from './features/detail/detail';
 import { initBudget } from './features/budget/budget';
+import { initCredit } from './features/credit/credit';
 import { initRecurring } from './features/recurring/recurring';
 import { initCalendar } from './features/calendar/calendar';
 import { initLoan } from './features/loan/loan';
@@ -59,6 +60,7 @@ async function bootstrap(): Promise<void> {
   initHome();
   initDetail();
   initBudget();
+  initCredit();
   initRecurring();
   initCalendar();
   initLoan();

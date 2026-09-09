@@ -1,6 +1,6 @@
 /**
  * 拾光 · 日期/时间滚轮选择器（共享组件）
- * 自搜索页 dateWheel 迁移并扩展：withTime=true 时面板顶部提供「时间/日期」双 tab——
+ * 自搜索页 dateWheel 迁移并扩展：withTime=true 时面板顶部提供「日期/时间」双 tab——
  * 时间页月/日/时/分四列（默认页，年份取日期页当前选中值，不在时间页展示），
  * 日期页年/月/日三列；月/日列为两页共享的唯一实例，切 tab 时迁移 DOM 节点，状态不丢。
  * 支持 minDate/maxDate 越界收敛（年份范围收敛 + 月/日列联动裁剪）、顶部「今天」快捷按钮。
@@ -35,7 +35,7 @@ export interface DateTimeWheelOptions {
   /** 初始日期时间（withTime 时 hour/minute 缺省取当前时刻） */
   initial: { year: number; month: number; day: number; hour?: number; minute?: number };
   /**
-   * true：顶部「时间/日期」双 tab——时间页 4 列（月/日/时/分，默认激活）+ 日期页 3 列（年/月/日）；
+   * true：顶部「日期/时间」双 tab——时间页 4 列（月/日/时/分，默认激活）+ 日期页 3 列（年/月/日）；
    * false（默认）：无 tab、纯 3 列日期（搜索页形态，行为视觉与原 dateWheel 一致）。
    */
   withTime?: boolean;
@@ -269,7 +269,7 @@ function createColumn(
 
 /**
  * 打开日期/时间滚轮选择器（底部弹出面板）。
- * withTime=true：「时间/日期」双 tab（默认时间页），时间页 4 列 + 日期页 3 列，确定应用完整日期+时间；
+ * withTime=true：「日期/时间」双 tab（默认时间页），时间页 4 列 + 日期页 3 列，确定应用完整日期+时间；
  * withTime=false：无 tab 纯 3 列（搜索页形态）。
  * 返回面板 DOM（调用方负责 append 到 body 并显示）。
  */
@@ -330,8 +330,8 @@ export function openDateTimeWheel(opts: DateTimeWheelOptions): HTMLElement {
     <div class="dw-content">
       <div class="dw-head">
         ${withTime ? `<div class="dw-tabs" role="tablist" aria-label="选择类型">
-          <button class="dw-tab active" type="button" data-tab="time" role="tab" aria-selected="true">时间</button>
           <button class="dw-tab" type="button" data-tab="date" role="tab" aria-selected="false">日期</button>
+          <button class="dw-tab active" type="button" data-tab="time" role="tab" aria-selected="true">时间</button>
         </div>` : ''}
         <button class="dw-today" type="button">今天</button>
       </div>
@@ -508,6 +508,7 @@ export function openDateWheel(opts: DateWheelOptions): HTMLElement {
 // ────────────────────────────────────────────────────────────────────────────
 
 export interface MonthWheelOptions {
+  title?: string;
   initial: { year: number; month: number };
   minDate?: { year: number; month: number };
   maxDate?: { year: number; month: number };
@@ -523,7 +524,7 @@ export function openMonthWheel(opts: MonthWheelOptions): HTMLElement {
   const now = new Date();
 
   // ── 年份范围（同 openDateTimeWheel 逻辑） ──
-  let minYear = Math.max(MIN_YEAR, opts.minDate?.year ?? MIN_YEAR);
+  let minYear = opts.minDate?.year ?? MIN_YEAR;
   const maxYear = Math.min(now.getFullYear() + 1, opts.maxDate?.year ?? now.getFullYear() + 1);
   minYear = Math.min(minYear, maxYear);
   const years = Array.from({ length: maxYear - minYear + 1 }, (_, i) => `${minYear + i}年`);
@@ -563,6 +564,12 @@ export function openMonthWheel(opts: MonthWheelOptions): HTMLElement {
   const confirmBtn = panel.querySelector<HTMLButtonElement>('.dw-confirm')!;
 
   // ── 两列：年 + 月（flex:1 自动均分） ──
+  if (opts.title) {
+    const title = document.createElement('h3');
+    title.className = 'dw-month-title';
+    title.textContent = opts.title;
+    panel.querySelector('.dw-content')!.prepend(title);
+  }
   const yearCol = createColumn(colsWrap, years, initYear - minYear, () => rebuildMonths());
   const monthCol = createColumn(colsWrap, mItems(initYear), initMonth - initMLo);
 

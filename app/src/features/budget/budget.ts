@@ -11,19 +11,23 @@ import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
 import { on } from '../../core/store';
 import { formatFen, formatFenCny, parseYuanToFen } from '../../core/money';
-import { getBudget, ensureMonthBudget, listCategoryBudgets, setBudget, setCategoryBudget } from '../../core/repo/budgetRepo';
-import { budgetUsage } from '../../core/repo/statsRepo';
+import { getBudget, ensureMonthBudget, listCategoryBudgets, saveMonthlyBudget, copyPreviousBudget, getAnnualBudget, setAnnualBudget } from '../../core/repo/budgetRepo';
+import { budgetUsage, rangeSummary, yearRange } from '../../core/repo/statsRepo';
 import { listExpenseTree } from '../../core/repo/categoryRepo';
 import { getSetting } from '../../core/repo/settingsRepo';
 import { registerSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { showToast } from '../shell/toast';
+import { confirmDialog } from '../shell/dialog';
+import { openMonthWheel } from '../../shared/dateTimeWheel';
 import type { Category } from '../../core/types';
 
 /* ── 模块状态 ── */
 let body: HTMLElement | undefined;
 /** 并发刷新令牌 */
 let refreshToken = 0;
+let selectedMonth = curMonth();
+let annual = false;
 /** 抽屉监听器控制（#sheet 为复用容器，重开前废止上一次绑定，防重复提交） */
 let sheetAbort: AbortController | undefined;
 
@@ -33,7 +37,6 @@ function sheetSignal(): AbortSignal {
   return sheetAbort.signal;
 }
 
-const CN_MONTHS = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'];
 
 /** 当前月 'YYYY-MM' */
 function curMonth(): string {
@@ -58,14 +61,23 @@ async function refresh(): Promise<void> {
   const el = body;
   if (!el?.isConnected) return;
   const token = ++refreshToken;
-  const month = curMonth();
+  const month = selectedMonth;
   // ensureMonthBudget：上月开启延续时按上月额度（含子预算）自动建档
   const [budget, usage, tree, catBudgets] = await Promise.all([
-    ensureMonthBudget(month), budgetUsage(month), listExpenseTree(), listCategoryBudgets(month),
+    (month === curMonth() ? ensureMonthBudget(month) : getBudget(month)), budgetUsage(month), listExpenseTree(), listCategoryBudgets(month),
   ]);
   if (token !== refreshToken || !el.isConnected) return;
 
   const d = new Date();
+  const selectedYear = Number(month.slice(0, 4));
+  const periodControls = `<div class="bd-period"><button class="btn" data-act="period">${annual ? selectedYear + '年' : month} ▾</button><button class="btn" data-act="mode">${annual ? '查看月预算' : '查看年度预算'}</button>${annual ? '' : '<button class="btn" data-act="copy">复制上期</button>'}</div>`;
+  if (annual) {
+    const range = yearRange(selectedYear);
+    const [limit, summary] = await Promise.all([getAnnualBudget(selectedYear), rangeSummary(range.from, range.to)]);
+    if (token !== refreshToken || !el.isConnected) return;
+    el.innerHTML = `${periodControls}<section class="card budget-overview"><p class="label">${selectedYear}年总预算</p><p class="big num">${formatFenCny(limit)}</p><div class="bd-meta"><p>已使用<span class="num">${formatFenCny(summary.expense)}</span></p><p>剩余<span class="num">${formatFenCny(limit - summary.expense)}</span></p></div><button class="btn primary" data-act="setup">设置年度预算</button></section>`;
+    return;
+  }
   const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
   const timePct = (d.getDate() / daysInMonth) * 100;
 
@@ -88,22 +100,22 @@ async function refresh(): Promise<void> {
     }
     overviewHtml = `
       <section class="card budget-overview" aria-label="本月总预算">
-        <p class="label">${CN_MONTHS[d.getMonth()]}月总预算</p>
+        <p class="label">${month} 总预算</p>
         <p class="big num">${formatFenCny(budget.totalLimit)}</p>
-        <div class="bd-bar"><i class="${barCls}" style="width:${Math.min(100, usedPct).toFixed(1)}%"></i></div>
+        <div class="bd-bar"><i class="${barCls}" style="width:${Math.max(0, Math.min(100, usedPct)).toFixed(1)}%"></i></div>
         <div class="bd-meta">
           <p>已使用<span class="num">${formatFenCny(used)}</span></p>
           <p>剩余<span class="num">${formatFenCny(remain)}</span></p>
-          <p>日均可用<span class="num">${formatFenCny(daily)}</span></p>
+          ${month === curMonth() ? `<p>日均可用<span class="num">${formatFenCny(daily)}</span></p>` : ''}
         </div>
-        <p class="tiny" style="margin-top:8px">${hint}</p>
+        <p class="tiny" style="margin-top:8px">${month === curMonth() ? hint : '按所选自然月统计'}</p>
       </section>`;
   } else {
     overviewHtml = `
       <section class="card budget-overview" aria-label="本月总预算">
-        <p class="label">${CN_MONTHS[d.getMonth()]}月总预算</p>
+        <p class="label">${month} 总预算</p>
         <div class="bd-empty">
-          <p class="sub">还没有设置本月预算<br>设定总额度后，首页总览与这里会同步展示进度</p>
+          <p class="sub">还没有设置所选月份预算<br>设定总额度后，首页总览与这里会同步展示进度</p>
           <button class="btn primary" data-act="setup">设置预算</button>
         </div>
       </section>`;
@@ -122,11 +134,12 @@ async function refresh(): Promise<void> {
     return `
       <div class="bd-row">
         <div class="bd-top"><span>${esc(cat.name)}</span><span class="num">${formatFenCny(used)} <em class="lim">/ ¥${fmtYuan0(limit)}</em>${flag}</span></div>
-        <div class="bd-bar"><i class="${st}" style="width:${Math.min(100, pct).toFixed(1)}%"></i></div>
+        <div class="bd-bar"><i class="${st}" style="width:${Math.max(0, Math.min(100, pct)).toFixed(1)}%"></i></div>
       </div>`;
   }).join('');
 
   el.innerHTML = `
+    ${periodControls}
     ${overviewHtml}
     <section class="card" aria-label="分类子预算">
       <h3 class="card-title">分类子预算</h3>
@@ -139,14 +152,14 @@ async function refresh(): Promise<void> {
 /* ── 预算设置抽屉 ── */
 
 async function openBudgetSheet(): Promise<void> {
-  const month = curMonth();
+  const month = selectedMonth;
+  if (annual) { await openAnnualSheet(Number(month.slice(0, 4))); return; }
   const [budget, tree, catBudgets, renewDefault] = await Promise.all([
     getBudget(month), listExpenseTree(), listCategoryBudgets(month), getSetting('budget.autoRenew'),
   ]);
   const limitMap = new Map<number, number>(catBudgets.map((cb) => [cb.categoryId, cb.limit]));
   let autoRenew = budget?.autoRenew ?? renewDefault;
   const parents: Category[] = tree.map((g) => g.parent);
-  const d = new Date();
 
   openSheet({
     ariaLabel: '预算设置',
@@ -154,7 +167,7 @@ async function openBudgetSheet(): Promise<void> {
     render(el) {
       el.innerHTML = `
         <div class="sheet-head">
-          <p class="sheet-title">预算设置 · ${CN_MONTHS[d.getMonth()]}月</p>
+          <p class="sheet-title">预算设置 · ${month}</p>
           <button class="icon-btn" data-act="close" aria-label="关闭">${iconHtml('ic-close')}</button>
         </div>
         <div class="sheet-scroll">
@@ -181,7 +194,10 @@ async function openBudgetSheet(): Promise<void> {
         else if (act === 'save') void save();
       }, { signal: sheetSignal() });
 
+      let saving = false;
       async function save(): Promise<void> {
+        if (saving) return;
+        saving = true;
         try {
           const totalRaw = el.querySelector<HTMLInputElement>('#bd-total')!.value.trim();
           const totalFen = totalRaw ? parseYuanToFen(totalRaw) : 0;
@@ -190,16 +206,36 @@ async function openBudgetSheet(): Promise<void> {
             const raw = input.value.trim();
             catLimits.push({ id: Number(input.dataset.cat), fen: raw ? parseYuanToFen(raw) : 0 });
           }
-          await setBudget(month, totalFen, autoRenew);
-          for (const { id, fen } of catLimits) await setCategoryBudget(month, id, fen);
+          await saveMonthlyBudget(month, totalFen, catLimits, autoRenew);
           closeSheet();
-          showToast(totalFen > 0 ? `${CN_MONTHS[d.getMonth()]}月预算已保存` : '已清除本月总预算');
+          showToast(totalFen > 0 ? `${month}预算已保存` : '已清除所选月份总预算');
         } catch (err) {
           showToast(err instanceof Error ? err.message : String(err));
-        }
+        } finally { saving = false; }
       }
     },
   });
+}
+
+async function openAnnualSheet(year: number): Promise<void> {
+  const limit = await getAnnualBudget(year);
+  let saving = false;
+  openSheet({ ariaLabel: '年度预算设置', onClose: () => sheetAbort?.abort(), render(el) {
+    el.innerHTML = `<div class="sheet-head"><p class="sheet-title">${year}年总预算</p><button class="icon-btn" data-act="close" aria-label="关闭">${iconHtml('ic-close')}</button></div><div class="sheet-scroll"><div class="field"><span>总额度</span><input class="note num" id="bd-annual" inputmode="decimal" placeholder="元，留空则不设" value="${limit ? formatFen(limit).replace(/,/g, '') : ''}"></div><button class="btn primary" data-act="save">保存预算</button></div>`;
+    el.addEventListener('click', async event => {
+      const act = (event.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
+      if (act === 'close') closeSheet();
+      if (act !== 'save' || saving) return;
+      saving = true;
+      try {
+        const raw = el.querySelector<HTMLInputElement>('#bd-annual')!.value.trim();
+        await setAnnualBudget(year, raw ? parseYuanToFen(raw) : 0);
+        closeSheet();
+        showToast('年度预算已保存');
+      } catch (err) { showToast(err instanceof Error ? err.message : String(err)); }
+      finally { saving = false; }
+    }, { signal: sheetSignal() });
+  } });
 }
 
 /* ── 装配 ── */
@@ -223,7 +259,20 @@ export function initBudget(): void {
         head.appendChild(btn);
       }
       el.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).closest('[data-act="setup"]')) void openBudgetSheet();
+        const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
+        if (act === 'setup') void openBudgetSheet();
+        if (act === 'mode') { annual = !annual; void refresh(); }
+        if (act === 'period') {
+          const [year, month] = selectedMonth.split('-').map(Number);
+          const panel = openMonthWheel({ initial: { year, month }, onConfirm: value => { selectedMonth = `${value.year}-${String(value.month).padStart(2, '0')}`; void refresh(); } });
+          document.body.appendChild(panel);
+        }
+        if (act === 'copy') void (async () => {
+          const month = selectedMonth;
+          if (await getBudget(month) && !await confirmDialog({ title: '复制上期预算', message: `将替换 ${month} 的总预算和分类预算，是否继续？` })) return;
+          await copyPreviousBudget(month);
+          showToast('已复制上期预算');
+        })().catch(err => showToast(err.message));
       });
       void refresh();
     },

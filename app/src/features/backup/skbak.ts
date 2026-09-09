@@ -20,7 +20,7 @@ async function loadJSZip(): Promise<typeof JSZipType> {
 /** 应用版本（构建时从 package.json 注入，也是 Android versionName 的唯一来源） */
 export const APP_VERSION = __APP_VERSION__;
 /** 备份包数据结构版本（对应 db.ts schema v1） */
-export const SKBAK_SCHEMA_VERSION = 1;
+export const SKBAK_SCHEMA_VERSION = 2;
 /** 加密包头 magic（8 字节 ASCII） */
 const MAGIC = 'SKBAK1E:';
 /** PBKDF2 迭代次数（≥100k） */
@@ -133,6 +133,8 @@ function parseManifest(text: string): SkbakManifest {
   }
   for (const name of TABLE_NAMES) {
     const count = value.counts[name];
+    // v1 旧包 manifest 没有信用卡新表计数
+    if (count === undefined && value.schemaVersion < 2 && (name === 'creditStatements' || name === 'creditPayments')) continue;
     if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
       throw new Error(`manifest.json 结构损坏：数据表 ${name} 计数无效`);
     }
@@ -150,8 +152,13 @@ function parseTableDump(text: string, manifest: SkbakManifest): TableDump {
   if (!isRecord(value)) throw new Error('data.json 结构损坏');
   for (const name of TABLE_NAMES) {
     const rows = value[name];
+    // v1 旧包没有信用卡账单表：补空集合，历史转账不自动认领为还款
+    if (rows === undefined && manifest.schemaVersion < 2 && (name === 'creditStatements' || name === 'creditPayments')) {
+      value[name] = [];
+      continue;
+    }
     if (!Array.isArray(rows)) throw new Error(`data.json 数据表 ${name} 缺失或不是数组`);
-    if (manifest.counts[name] !== rows.length) {
+    if ((manifest.counts[name] ?? 0) !== rows.length) {
       throw new Error(`manifest 计数与数据表 ${name} 实际条数不一致`);
     }
   }
@@ -198,7 +205,7 @@ export async function parseSkbak(
   if (manifest.schemaVersion > SKBAK_SCHEMA_VERSION) {
     throw new Error(`备份包来自更新的数据版本（v${manifest.schemaVersion}），请先升级应用`);
   }
-  if (manifest.schemaVersion !== SKBAK_SCHEMA_VERSION) {
+  if (manifest.schemaVersion < 1) {
     throw new Error(`备份包使用不支持的数据版本（v${manifest.schemaVersion}）`);
   }
   const dataJson = await dataFile.async('text');

@@ -196,10 +196,18 @@ def choose_rows(page, rows, name):
     })
 
 
+def confirm_duplicate_gate(page):
+    try:
+        page.locator('#sp-import .imp-duplicates').wait_for(timeout=3000)
+        page.locator('#sp-import [data-act="run"]').click()
+    except Exception:
+        pass
+
 def import_rows(page, rows, name):
     choose_rows(page, rows, name)
     page.locator('#sp-import [data-act="to-map"]').click()
     page.locator('#sp-import [data-act="run"]').click()
+    confirm_duplicate_gate(page)
     page.locator('#sp-import .imp-report').wait_for(timeout=20000)
 
 
@@ -290,12 +298,14 @@ def import_retry_is_atomic(page):
     )
 
     page.locator('#sp-import [data-act="run"]').click()
+    confirm_duplicate_gate(page)
     page.wait_for_function('window.__importFaultFired === true')
     page.locator('#sp-import [data-act="run"]').wait_for()
     first = snapshot(page)
     first_snapshot_count = snapshot_count(page)
 
     page.locator('#sp-import [data-act="run"]').click()
+    confirm_duplicate_gate(page)
     page.locator('#sp-import .imp-report').wait_for(timeout=20000)
     second = snapshot(page)
     second_snapshot_count = snapshot_count(page)

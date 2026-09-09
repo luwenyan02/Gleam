@@ -16,6 +16,7 @@ import * as statsRepo from '../../core/repo/statsRepo';
 import { listCategories } from '../../core/repo/categoryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
 import { listTags } from '../../core/repo/tagRepo';
+import { listMerchants } from '../../core/repo/merchantRepo';
 import { registerPage } from '../shell/router';
 import type { Account, Category } from '../../core/types';
 import {
@@ -45,6 +46,8 @@ interface ReportData {
   cats: RankRow[];
   accts: RankRow[];
   tags: RankRow[];
+  incomes: RankRow[];
+  merchants: RankRow[];
 }
 
 /* ── 模块状态 ── */
@@ -73,11 +76,6 @@ const GROUP_ICONS: Record<Account['group'], string> = {
   stored: 'ic-card',
   other: 'ic-wallet',
 };
-
-/** 元整数展示（原型 fmt0 语义）：丢弃分位小数 */
-function fmtYuan0(fen: number): string {
-  return formatFen(fen).split('.')[0];
-}
 
 /** 当前周期的时间范围 [from, to) */
 function currentRange(): { from: number; to: number } {
@@ -168,19 +166,24 @@ async function loadTrend(): Promise<ReportData['trend']> {
 /** 装载当前周期全部数据（汇总 + 趋势 + 三维排行） */
 async function loadData(): Promise<ReportData> {
   const { from, to } = currentRange();
-  const [summary, trend, breakdown, acctRank, tagRank, expenseCats, accounts, tags] = await Promise.all([
+  const [summary, trend, breakdown, acctRank, tagRank, incomeRank, merchantRank, expenseCats, incomeCats, accounts, tags, merchants] = await Promise.all([
     statsRepo.rangeSummary(from, to),
     loadTrend(),
     statsRepo.categoryBreakdown(from, to),
     statsRepo.accountRanking(from, to),
     statsRepo.tagRanking(from, to),
+    statsRepo.incomeCategoryBreakdown(from, to),
+    statsRepo.merchantRanking(from, to),
     listCategories('expense'),
+    listCategories('income'),
     listAccounts(),
     listTags(),
+    listMerchants(),
   ]);
-  const catMap = new Map<number, Category>(expenseCats.map((c) => [c.id, c]));
+  const catMap = new Map<number, Category>([...expenseCats, ...incomeCats].map((c) => [c.id, c]));
   const acctMap = new Map<number, Account>(accounts.map((a) => [a.id, a]));
   const tagMap = new Map(tags.map((t) => [t.id, t.name]));
+  const merchantMap = new Map(merchants.map((m) => [m.id, m.name]));
   return {
     label: periodLabel(),
     summary,
@@ -204,6 +207,20 @@ async function loadData(): Promise<ReportData> {
       queryIds: [tagId],
       name: tagMap.get(tagId) ?? '已删除标签',
       icon: 'ic-tag',
+      amount,
+    })),
+    incomes: incomeRank.map(({ categoryId, amount }) => ({
+      id: categoryId,
+      queryIds: [categoryId],
+      name: catMap.get(categoryId)?.name ?? '未分类',
+      icon: catMap.get(categoryId)?.icon ?? 'ic-coin',
+      amount,
+    })),
+    merchants: merchantRank.map(({ merchantId, amount }) => ({
+      id: merchantId,
+      queryIds: [merchantId],
+      name: merchantMap.get(merchantId) ?? '已删除商家',
+      icon: 'ic-shop',
       amount,
     })),
   };
@@ -277,12 +294,12 @@ function renderDonut(cats: RankRow[]): void {
     s += `<circle class="donut-hit" role="button" tabindex="0" data-report-dim="category" data-report-ids="${r.queryIds.join(',')}" aria-label="${esc(r.name)} ${((r.amount / total) * 100).toFixed(1)}%，查看明细" cx="60" cy="60" r="48" fill="none" stroke="var(--c${i + 1})" stroke-width="15" stroke-dasharray="${Math.max(0, len - 2.4).toFixed(2)} ${(C - len + 2.4).toFixed(2)}" stroke-dashoffset="${(-acc).toFixed(2)}" transform="rotate(-90 60 60)"/>`;
     acc += len;
   });
-  s += '<text x="60" y="56" text-anchor="middle" font-size="9" fill="var(--muted)">总支出</text>';
-  s += `<text x="60" y="72" text-anchor="middle" font-size="13" font-weight="700" fill="var(--fg)" font-family="var(--font-mono)">¥${fmtYuan0(total)}</text>`;
+  s += '<text x="60" y="56" text-anchor="middle" font-size="9" fill="var(--muted)">净支出</text>';
+  s += `<text x="60" y="72" text-anchor="middle" font-size="13" font-weight="700" fill="var(--fg)" font-family="var(--font-mono)">¥${formatFen(cats.reduce((sum, row) => sum + row.amount, 0))}</text>`;
   svg.innerHTML = s;
   legend.innerHTML = rows
     .map((r, i) => `<li><button data-report-dim="category" data-report-ids="${r.queryIds.join(',')}"><span class="dot" style="background:var(--c${i + 1})"></span>${esc(r.name)}<b class="num">${((r.amount / total) * 100).toFixed(1)}%</b></button></li>`)
-    .join('');
+    .join('') + (cats.some(row => row.amount < 0) ? '<li class="tiny">环形占比仅展示正净支出分类，退款净额见下方明细</li>' : '');
 }
 
 /** 排行卡（原型 renderRank）：分类/账户/标签三维度，占比以周期总支出为基数 */
@@ -290,14 +307,17 @@ function renderRank(data: ReportData): void {
   const list = root!.querySelector<HTMLElement>('#rank')!;
   const note = root!.querySelector<HTMLElement>('#rank-note')!;
   const more = root!.querySelector<HTMLButtonElement>('#rank-more')!;
-  const rows = dimension === 'account' ? data.accts : dimension === 'tag' ? data.tags : data.cats;
+  const rows = dimension === 'account' ? data.accts
+    : dimension === 'tag' ? data.tags
+      : dimension === 'income' ? data.incomes
+        : dimension === 'merchant' ? data.merchants : data.cats;
   note.hidden = dimension !== 'tag';
   if (rows.length === 0) {
-    list.innerHTML = `<li class="rank-empty">${dimension === 'tag' ? '该周期没有打了标签的支出' : '该周期暂无支出记录'}</li>`;
+    list.innerHTML = dimension === 'tag' || dimension === 'merchant' ? '' : dimension === 'income' ? '<li class="rank-empty">该周期暂无收入记录</li>' : '<li class="rank-empty">该周期暂无支出记录</li>';
     more.hidden = true;
     return;
   }
-  const base = data.summary.expense || rows.reduce((sum, r) => sum + r.amount, 0);
+  const base = (dimension === 'income' ? data.summary.income : data.summary.expense) || rows.reduce((sum, r) => sum + r.amount, 0);
   const shown = rankExpanded ? rows : rows.slice(0, 3);
   list.innerHTML = shown
     .map((r, i) => {
@@ -306,7 +326,7 @@ function renderRank(data: ReportData): void {
         <span class="e-ic sm">${iconHtml(r.icon, 17)}</span>
         <div class="rank-main">
           <div class="rank-top"><span>${dimension === 'tag' ? '#' + esc(r.name) : esc(r.name)}</span><span class="num">¥${formatFen(r.amount)}</span></div>
-          <div class="rank-bar"><i style="width:${Math.min(100, pct).toFixed(1)}%;background:var(--c${(i % 6) + 1})"></i></div>
+          <div class="rank-bar"><i style="width:${Math.max(0, Math.min(100, pct)).toFixed(1)}%;background:var(--c${(i % 6) + 1})"></i></div>
         </div>
         <span class="rank-pct num">${pct.toFixed(1)}%</span></button></li>`;
     })
@@ -324,7 +344,7 @@ function applyDimensionView(): void {
   donutCard.hidden = dimension !== 'category';
   rankCard.hidden = dimension === 'trend';
   const titles: Record<Exclude<ReportDimension, 'trend'>, string> = {
-    category: '分类排行', account: '账户排行', tag: '标签排行',
+    category: '分类排行', account: '账户排行', tag: '标签排行', income: '收入分类', merchant: '商家排行',
   };
   if (dimension !== 'trend') root!.querySelector<HTMLElement>('#rank-title')!.textContent = titles[dimension];
 }
@@ -423,6 +443,8 @@ function render(el: HTMLElement): void {
       <button data-dimension="category" role="tab">分类</button>
       <button data-dimension="account" role="tab">账户</button>
       <button data-dimension="tag" role="tab">标签</button>
+      <button data-dimension="income" role="tab">收入</button>
+      <button data-dimension="merchant" role="tab">商家</button>
     </div>
 
     <section class="card">
@@ -453,7 +475,7 @@ function render(el: HTMLElement): void {
         <button class="rank-more" id="rank-more" hidden>展开全部</button>
       </div>
       <ul class="rank" id="rank"></ul>
-      <p class="tiny" id="rank-note" hidden>标签排行只统计打了标签的支出 · 未打标签的账单不在此列</p>
+      <p class="tiny" id="rank-note" hidden>一笔多标签分别计入各标签，占比可能合计超过 100%；未打标签的账单不在此列</p>
     </section>`;
 
   // 周期分段切换
@@ -536,7 +558,8 @@ function render(el: HTMLElement): void {
       const selectedIds = (drill.dataset.reportIds ?? '').split(',').map(Number).filter(Number.isFinite);
       const selectedDimension = drill.dataset.reportDim as Exclude<ReportDimension, 'trend'>;
       const selection: ReportSelection = { from, to, dimension: selectedDimension, selectedIds };
-      openLedgerSearch(reportSelectionToLedgerQuery(selection), `${periodLabel()} · ${selectedDimension === 'category' ? '分类' : selectedDimension === 'account' ? '账户' : '标签'}明细`);
+      const dimLabel = { category: '分类', account: '账户', tag: '标签', income: '收入分类', merchant: '商家' }[selectedDimension];
+      openLedgerSearch(reportSelectionToLedgerQuery(selection), `${periodLabel()} · ${dimLabel}明细`);
     }
   });
   el.addEventListener('keydown', (event) => {
