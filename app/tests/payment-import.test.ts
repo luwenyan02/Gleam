@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
+import * as XLSX from 'xlsx';
 import { parsePaymentFile } from '../src/features/import/payment';
 
 function csvFile(lines: string[], name: string): File {
   return new File([`\uFEFF${lines.join('\r\n')}`], name, { type: 'text/csv' });
+}
+
+function utf16LeFile(content: string, name: string): File {
+  const bytes = new Uint8Array(2 + content.length * 2);
+  bytes[0] = 0xff;
+  bytes[1] = 0xfe;
+  for (let index = 0; index < content.length; index++) {
+    const code = content.charCodeAt(index);
+    bytes[2 + index * 2] = code & 0xff;
+    bytes[3 + index * 2] = code >> 8;
+  }
+  return new File([bytes], name, { type: 'text/csv' });
 }
 
 describe('微信与支付宝本地账单解析', () => {
@@ -79,5 +92,65 @@ describe('微信与支付宝本地账单解析', () => {
     expect(result.issues.map((issue) => issue.message).join('\n')).toContain('不计收支');
     expect(result.issues.map((issue) => issue.message).join('\n')).toContain('退款');
     expect(result.issues.map((issue) => issue.message).join('\n')).toContain('交易关闭');
+  });
+
+  it('微信兼容制表符分隔、带逗号及换行的引号字段', async () => {
+    const content = [
+      '微信支付账单明细',
+      '交易时间\t交易类型\t交易对方\t商品\t收/支\t金额(元)\t支付方式\t当前状态\t交易单号\t备注',
+      '2026-09-06 12:30:00\t商户消费\t"虚构,小馆"\t"虚构午餐\n套餐"\t支出\t18.60\t零钱通\t支付成功\twx-tab-fiction\t"备注,含逗号"',
+    ].join('\r\n');
+
+    const result = await parsePaymentFile(new File([`\uFEFF${content}`], '微信支付账单.txt'), 'wechat');
+
+    expect(result.issues).toEqual([]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      type: 'expense', amountFen: 1860, merchant: '虚构,小馆', accountName: '微信零钱通',
+      externalId: 'wx-tab-fiction',
+    });
+    expect(result.rows[0]?.note).toContain('虚构午餐\n套餐');
+    expect(result.rows[0]?.note).toContain('备注,含逗号');
+  });
+
+  it('支付宝兼容 UTF-16LE 编码及旧版等价表头', async () => {
+    const content = [
+      '支付宝交易记录',
+      '交易创建时间,类型,收付款人,商品名称,收支,金额（元）,付款方式,状态,交易号,备注',
+      '2026/09/07 08:05:06,餐饮,虚构早餐铺,虚构早餐,支出,9.90,余额,交易成功,ali-utf16-fiction,晨间消费',
+    ].join('\r\n');
+
+    const result = await parsePaymentFile(utf16LeFile(content, '支付宝交易记录.csv'), 'alipay');
+
+    expect(result.issues).toEqual([]);
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        type: 'expense', amountFen: 990, merchant: '虚构早餐铺', accountName: '支付宝余额',
+        externalId: 'ali-utf16-fiction',
+      }),
+    ]);
+  });
+
+  it('微信 Excel 文件兼容数值日期和本地工作表', async () => {
+    const serial = (Date.UTC(2026, 8, 8, 14, 20) - Date.UTC(1899, 11, 30)) / 86_400_000;
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ['微信支付账单明细'],
+      ['交易时间', '交易类型', '交易对方', '商品', '收/支', '金额(元)', '支付方式', '当前状态', '交易单号'],
+      [serial, '商户消费', '虚构文具店', '虚构笔记本', '支出', 12.34, '零钱', '支付成功', 'wx-xlsx-fiction'],
+    ]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, '账单明细');
+    const file = new File(
+      [XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })],
+      '微信支付账单.xlsx',
+      { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+    );
+
+    const result = await parsePaymentFile(file, 'wechat');
+
+    expect(result.issues).toEqual([]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({ amountFen: 1234, merchant: '虚构文具店', externalId: 'wx-xlsx-fiction' });
+    expect(new Date(result.rows[0]!.occurredAt)).toEqual(new Date(2026, 8, 8, 14, 20));
   });
 });
