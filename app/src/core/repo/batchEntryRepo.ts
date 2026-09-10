@@ -4,7 +4,7 @@
  * 先通过 previewBatchEntries 给界面展示可处理项与逐项跳过原因；
  * applyBatchEntries 会在同一个 Dexie 事务内重新预检并提交，供明细与搜索复用。
  */
-import { db } from '../db';
+import { db, now } from '../db';
 import type { CategoryKind, Entry, EntryType } from '../types';
 import { softDeleteEntry, updateEntry } from './entryRepo';
 import { emitAfterCommit as emit } from './transactionEvents';
@@ -182,10 +182,20 @@ export async function applyBatchEntries(
     [db.entries, db.accounts, db.entryTags, db.categories, db.tags],
     async () => {
       const preview = await previewBatchEntries(entryIds, operation);
+      if (operation.kind === 'category' && preview.processableIds.length) {
+        const entries = await db.entries.bulkGet(preview.processableIds);
+        if (entries.some((entry) => entry == null)) throw new Error('批量提交前账单状态已变化');
+        const updatedAt = now();
+        await db.entries.bulkPut(entries.map((entry) => ({
+          ...entry!,
+          categoryId: operation.categoryId,
+          updatedAt,
+        })));
+        emit('entries-changed');
+        return { ...preview, appliedIds: [...preview.processableIds] };
+      }
       for (const entryId of preview.processableIds) {
-        if (operation.kind === 'category') {
-          await updateEntry(entryId, { categoryId: operation.categoryId });
-        } else if (operation.kind === 'account') {
+        if (operation.kind === 'account') {
           await updateEntry(entryId, { accountId: operation.accountId });
         } else if (operation.kind === 'tags') {
           const targetIds = normalizedIds(operation.tagIds);

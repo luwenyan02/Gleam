@@ -16,7 +16,7 @@ import { listTags, listEntryIdsByTag } from '../../core/repo/tagRepo';
 import { listLifeNotes } from '../../core/repo/lifeRepo';
 import {
   applyBatchEntries, previewBatchEntries,
-  type BatchEntryOperation, type BatchEntryPreview,
+  type BatchEntryOperation, type BatchEntryPreview, type BatchEntryResult,
 } from '../../core/repo/batchEntryRepo';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
 import { registerSubpage, openSubpage, closeSubpage, switchPage } from '../shell/router';
@@ -226,6 +226,10 @@ async function doSearch(kw: string): Promise<void> {
   const resultsEl = body?.querySelector<HTMLElement>('#sr-results');
   if (!resultsEl) return;
   const token = ++searchToken;
+  resultsEl.setAttribute('aria-busy', 'true');
+  if (!resultsEl.querySelector('.sr-summary-row, .sr-day-card, .sr-batch-scope')) {
+    resultsEl.innerHTML = '<p class="sr-empty" role="status">正在筛选账单…</p>';
+  }
 
   const hasStructuredQuery = dateRange !== 'all' || !isFilterEmpty(filterState) || queryTypes.length > 0;
   // 没有关键词也没有任何结构化条件时才显示历史；报表下钻可直接列出全部匹配账单。
@@ -237,6 +241,7 @@ async function doSearch(kw: string): Promise<void> {
     const history = await loadHistory();
     if (token !== searchToken) return;
     renderHistory(resultsEl, history);
+    resultsEl.setAttribute('aria-busy', 'false');
     const filters = body?.querySelector<HTMLElement>('#sr-active-filters');
     filters?.replaceChildren();
     if (filters) filters.hidden = true;
@@ -378,6 +383,7 @@ async function doSearch(kw: string): Promise<void> {
       <div class="sr-list-head"><h3>生活记录（${hitNotes.length}）</h3></div>
       ${hitNotes.map(noteRow).join('')}
     </section>` : ''}`;
+  resultsEl.setAttribute('aria-busy', 'false');
   updateBatchControls();
 }
 
@@ -729,15 +735,32 @@ export function initSearch(): void {
           danger: copy.danger,
         });
         if (!ok) return;
+        batchBar.setAttribute('aria-busy', 'true');
+        batchBar.querySelectorAll<HTMLButtonElement>('button').forEach((button) => { button.disabled = true; });
+        const progress = batchBar.querySelector<HTMLElement>('#sr-batch-count');
+        if (progress) progress.textContent = `正在处理 ${preview.processableIds.length} 笔…`;
+        let result: BatchEntryResult;
         try {
-          const result = await applyBatchEntries([...batchSelected], operation);
+          result = await applyBatchEntries([...batchSelected], operation);
+        } catch (error) {
+          showToast(`批量操作失败，已回滚整批修改：${error instanceof Error ? error.message : String(error)}`);
+          batchBar.setAttribute('aria-busy', 'false');
+          batchBar.querySelectorAll<HTMLButtonElement>('button').forEach((button) => { button.disabled = false; });
+          updateBatchControls();
+          return;
+        }
+        try {
           batchMode = false;
           batchSelectAll = false;
           batchSelected.clear();
           showToast(`${copy.success} ${result.appliedIds.length} 笔${result.skipped.length ? `，跳过 ${result.skipped.length} 笔` : ''}`);
           await doSearch(input.value.trim());
         } catch (error) {
-          showToast(`批量操作失败，已回滚整批修改：${error instanceof Error ? error.message : String(error)}`);
+          showToast(`${copy.success}已完成，但结果刷新失败：${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+          batchBar.setAttribute('aria-busy', 'false');
+          batchBar.querySelectorAll<HTMLButtonElement>('button').forEach((button) => { button.disabled = false; });
+          updateBatchControls();
         }
       }
 

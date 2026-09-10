@@ -126,6 +126,29 @@ describe('共享批量账单事务', () => {
     expect(events).toEqual([]);
   });
 
+  it('批量改分类的高速写入中途失败时仍整批回滚，且不广播成功事件', async () => {
+    const first = await addEntry({
+      type: 'expense', amount: 1_000, occurredAt: 1, categoryId: expenseOne, accountId: cash,
+    });
+    const second = await addEntry({
+      type: 'expense', amount: 2_000, occurredAt: 2, categoryId: expenseOne, accountId: cash,
+    });
+    const originalBulkPut = db.entries.bulkPut.bind(db.entries);
+    vi.spyOn(db.entries, 'bulkPut').mockImplementation((async (entries: readonly Entry[]) => {
+      await originalBulkPut([entries[0]!]);
+      throw new Error('虚构批量分类写入失败');
+    }) as typeof db.entries.bulkPut);
+    const events: string[] = [];
+    stops.push(on('entries-changed', () => events.push('entries-changed')));
+
+    await expect(applyBatchEntries([first, second], { kind: 'category', categoryId: expenseTwo }))
+      .rejects.toThrow('虚构批量分类写入失败');
+
+    expect((await db.entries.get(first))?.categoryId).toBe(expenseOne);
+    expect((await db.entries.get(second))?.categoryId).toBe(expenseOne);
+    expect(events).toEqual([]);
+  });
+
   it('批量删除在一个事务中软删除可处理账单，已删除和不存在项给出跳过原因', async () => {
     const active = await addEntry({
       type: 'income', amount: 800, occurredAt: 1, categoryId: incomeTwo, accountId: cash,

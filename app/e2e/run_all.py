@@ -22,6 +22,7 @@ TESTS = (
     'test_home_configuration.py', 'test_query_integrity.py', 'test_budget_periods.py',
     'test_calendar_daylist.py', 'test_credit_statements.py',
     'test_browser_usability.py',
+    'test_large_ledger.py',
 )
 
 
