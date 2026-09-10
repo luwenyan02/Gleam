@@ -24,6 +24,6 @@
 #rc-dow .chip{flex:0 0 44px;width:44px;min-width:44px;padding:7px 0;justify-content:center}
 .rc-daily{display:flex;align-items:center;justify-content:flex-end;min-height:44px}
 /* 表单里的分类/账户选择按钮（模块内私有，避免污染全局） */
-.pick-btn{padding:8px 12px;border:1.5px solid var(--border);border-radius:calc(var(--r) - 4px);background:var(--bg);color:var(--fg);font:inherit;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pick-btn{min-height:44px;padding:8px 12px;border:1.5px solid var(--border);border-radius:calc(var(--r) - 4px);background:var(--bg);color:var(--fg);font:inherit;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 待确认抽屉：字段行里的到期说明 */
 .rc-due{display:block;font-size:10.5px;color:var(--faint);margin-top:2px;font-style:normal}

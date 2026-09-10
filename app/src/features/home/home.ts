@@ -30,6 +30,7 @@ import './home.css';
 import { getHomeLayout, HOME_SERVICES, type HomeService } from '../../core/repo/homeLayoutRepo';
 import { openPickList } from '../../shared/pickList';
 import { entryRowText } from '../detail/entryRowText';
+import { listInAppReminders } from '../../core/notify';
 
 const PAGE = 40;
 
@@ -52,7 +53,7 @@ export function initHome(): void {
 
   // 数据变化时去抖刷新（仅首页已挂载时）
   const events = ['entries-changed', 'accounts-changed', 'categories-changed',
-    'budgets-changed', 'life-changed', 'settings-changed'] as const;
+    'budgets-changed', 'credit-changed', 'life-changed', 'settings-changed'] as const;
   for (const ev of events) on(ev, scheduleRefresh);
 }
 
@@ -77,6 +78,8 @@ function renderSkeleton(el: HTMLElement): void {
       </div>
     </header>
 
+    <section class="card home-reminders" id="hm-reminders" aria-label="应用内提醒" hidden></section>
+
     <section class="month-card" id="hm-month" aria-label="本月收支总览" hidden>
       <div class="mc-heading"><p class="mc-label"></p><span class="mc-unit">单位：元</span></div>
       <p class="mc-amt num"><span id="m-spend">0.00</span></p>
@@ -100,6 +103,11 @@ function renderSkeleton(el: HTMLElement): void {
 
   el.querySelector('#btn-home-edit')!.addEventListener('click', () => openSubpage('sp-home-custom'));
   el.querySelector('#btn-search')!.addEventListener('click', () => openSubpage('sp-search'));
+
+  el.querySelector('#hm-reminders')!.addEventListener('click', (e) => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>('[data-reminder-route]');
+    if (row?.dataset.reminderRoute) openSubpage(row.dataset.reminderRoute);
+  });
 
   el.querySelector('#hm-quick')!.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-qa]');
@@ -166,14 +174,17 @@ async function refresh(): Promise<void> {
     const [mods, layout] = await Promise.all([getSetting('home.modules'), getHomeLayout()]);
     el.querySelector<HTMLElement>('#hm-month')!.hidden = !mods.month;
     el.querySelector<HTMLElement>('#hm-quick')!.hidden = !mods.quick;
-    if (mods.month) await refreshMonthCard(el);
-    await refreshTimeline(el, mods.today, mods.past);
+    await Promise.all([
+      mods.month ? refreshMonthCard(el) : Promise.resolve(),
+      refreshReminders(el),
+      refreshTimeline(el, mods.today, mods.past),
+    ]);
     const nav = el.querySelector<HTMLElement>('#hm-quick')!;
     nav.innerHTML = layout.quick.map(key => {
       const service = HOME_SERVICES.find(s => s.key === key)!;
       return `<button class="qa" data-qa="${key}"><span class="qa-ic">${iconHtml(service.icon)}</span>${service.name}</button>`;
-    }).join('') + '<button class="hm-all" data-qa="all">全部 ›</button>';
-    nav.style.gridTemplateColumns = `repeat(${Math.max(1, layout.quick.length)}, minmax(0, 1fr))`;
+    }).join('') + `<button class="hm-all" data-qa="all"><span class="qa-ic">${iconHtml('ic-file')}</span>全部</button>`;
+    nav.style.gridTemplateColumns = `repeat(${Math.max(1, layout.quick.length + 1)}, minmax(44px, 1fr))`;
     for (const [index, key] of layout.order.entries()) {
       const selectors = { month: '#hm-month', quick: '#hm-quick', today: '#hm-today', past: '.hm-past' };
       for (const node of el.querySelectorAll<HTMLElement>(selectors[key])) node.style.order = String(index);
@@ -181,6 +192,25 @@ async function refresh(): Promise<void> {
   } finally {
     loading = false;
   }
+}
+
+async function refreshReminders(el: HTMLElement): Promise<void> {
+  const container = el.querySelector<HTMLElement>('#hm-reminders')!;
+  const reminders = await listInAppReminders();
+  if (!reminders.length) {
+    container.hidden = true;
+    container.innerHTML = '';
+    return;
+  }
+  container.hidden = false;
+  container.innerHTML = `
+    <div class="home-reminder-head"><h3>提醒</h3><span>${reminders.length} 项待处理</span></div>
+    ${reminders.map((reminder) => `
+      <button class="row" data-reminder-route="${reminder.route}">
+        <span class="e-ic sm">${iconHtml(reminder.icon, 17)}</span>
+        <span class="e-main"><span class="e-title">${esc(reminder.title)}</span><span class="e-meta">${esc(reminder.body)}</span></span>
+        <span class="chev">${iconHtml('ic-right', 15)}</span>
+      </button>`).join('')}`;
 }
 
 /** 月度总览卡：与预算中心严格同源（statsRepo.budgetUsage / budgetRepo.getBudget） */

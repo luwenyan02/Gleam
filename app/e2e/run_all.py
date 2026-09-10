@@ -11,7 +11,8 @@ from pathlib import Path
 
 APP_ROOT = Path(__file__).parents[1]
 PROJECT_ROOT = APP_ROOT.parent
-URL = 'http://127.0.0.1:4601/'
+URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4601/')
+EXTERNAL_URL = 'GLEAM_E2E_URL' in os.environ
 TESTS = (
     'test_acceptance.py', 'test_refund.py', 'test_m3.py', 'test_ux_m1.py', 'test_ux_m2.py',
     'test_ux_m3.py', 'test_acceptance_fixes.py', 'test_requested_refinements.py',
@@ -20,6 +21,7 @@ TESTS = (
     'test_stats_safety.py', 'test_backup_integrity.py', 'test_text_clarity.py', 'test_recurring_types_ui.py',
     'test_home_configuration.py', 'test_query_integrity.py', 'test_budget_periods.py',
     'test_calendar_daylist.py', 'test_credit_statements.py',
+    'test_browser_usability.py',
 )
 
 
@@ -52,6 +54,8 @@ def main() -> int:
 
     try:
         if not server_ready():
+            if EXTERNAL_URL:
+                raise RuntimeError(f'指定的验收地址不可访问：{URL}')
             server = subprocess.Popen(
                 ['npm', 'run', 'preview', '--', '--host', '127.0.0.1', '--port', '4601'],
                 cwd=APP_ROOT,

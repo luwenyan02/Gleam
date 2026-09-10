@@ -47,7 +47,7 @@ async function refresh(): Promise<void> {
     getSetting('theme.mode'),
   ]);
   if (!el.isConnected) return;
-  // [R07] 通知开关（仅 Android 原生端可用，Web 端禁用并提示）
+  // [R07] Android 使用系统通知；Web 使用首页应用内提醒。
   const [ntfRecurring, ntfCredit, ntfBackup] = await Promise.all([
     getSetting('notification.recurring'), getSetting('notification.creditCard'), getSetting('notification.backup'),
   ]);
@@ -91,12 +91,12 @@ async function refresh(): Promise<void> {
 
     <section class="card" aria-label="通知">
       <h3 class="card-title">通知</h3>
-      <div class="field"><span>周期账入账提醒</span>${switchHtml('ntf-recurring', ntfRecurring as boolean, '周期账入账提醒', !isNative)}</div>
-      <div class="field"><span>信用卡还款日提醒</span>${switchHtml('ntf-credit', ntfCredit as boolean, '信用卡还款日提醒', !isNative)}</div>
-      <div class="field"><span>备份到期提醒</span>${switchHtml('ntf-backup', ntfBackup as boolean, '备份到期提醒', !isNative)}</div>
+      <div class="field"><span>周期账入账提醒</span>${switchHtml('ntf-recurring', ntfRecurring as boolean, '周期账入账提醒')}</div>
+      <div class="field"><span>信用卡还款日提醒</span>${switchHtml('ntf-credit', ntfCredit as boolean, '信用卡还款日提醒')}</div>
+      <div class="field"><span>备份到期提醒</span>${switchHtml('ntf-backup', ntfBackup as boolean, '备份到期提醒')}</div>
       <p class="tiny">${isNative
         ? '周期账当日 09:00、还款日当天 10:00、备份到期次日 09:00 提醒；首次开启需授权系统通知'
-        : '仅 Android 端支持系统通知'}</p>
+        : '开启后在拾光首页显示应用内提醒；关闭页面后不会在系统通知栏准时推送'}</p>
     </section>
 
     <section class="card" aria-label="记账偏好">
@@ -334,12 +334,13 @@ export function initSettings(): void {
           const key = ({ 'ntf-recurring': 'notification.recurring', 'ntf-credit': 'notification.creditCard', 'ntf-backup': 'notification.backup' } as const)[sw];
           void (async () => {
             const cur = await getSetting(key);
-            if (!cur && !(await ensurePermission())) {
+            if (!cur && Capacitor.isNativePlatform() && !(await ensurePermission())) {
               showToast('未获得通知权限，请到系统设置中允许拾光发送通知');
               void refresh();
               return;
             }
             await setSetting(key, !cur);
+            if (!Capacitor.isNativePlatform()) showToast(cur ? '已关闭首页应用内提醒' : '已开启，将在首页显示应用内提醒');
             void refresh();
           })();
         } else if (sw === 'reimburse' || sw === 'budget') {

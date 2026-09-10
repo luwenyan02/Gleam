@@ -182,7 +182,7 @@ async function refresh(): Promise<void> {
 
   const filterLabel = isFilterEmpty(calFilter) ? '筛选' : '筛选中';
   el.innerHTML = `
-    <section class="card" aria-label="月历">
+    <section class="card calendar-card" aria-label="月历">
       <div class="cal-nav">
         <button class="icon-btn" data-nav="-1" aria-label="上一月">${iconHtml('ic-left')}</button>
         <button class="cal-title" type="button" data-act="ym" aria-label="选择年月">${viewY}年${viewM + 1}月<span class="cal-caret" aria-hidden="true">▾</span></button>

@@ -25,9 +25,18 @@
 
 /* 快捷区只保留一手可点的 30px 图标，将纵向空间让给今日流水。 */
 #hm-quick{padding:7px 4px;margin-bottom:12px}
-#hm-quick .qa{gap:6px;font-size:13px;min-height:52px}
+#hm-quick .qa,#hm-quick .hm-all{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;min-width:44px;min-height:54px;font-size:13px;white-space:nowrap;color:var(--muted)}
 #hm-quick .qa-ic{width:30px;height:30px;border-radius:10px}
 #hm-quick .qa-ic svg.ic{width:16px;height:16px}
+#hm-quick .hm-all .qa-ic{background:color-mix(in oklab,var(--seed-fg) 7%,var(--surface));color:var(--muted)}
+
+/* 网页版提醒仅在有到期事项时出现，放在标题下、可配置首页模块之前。 */
+#hm-reminders{padding:10px 14px;margin-bottom:10px}
+.home-reminder-head{display:flex;align-items:center;justify-content:space-between;padding:2px 2px 4px}
+.home-reminder-head h3{font-size:var(--text-body);font-weight:650}
+.home-reminder-head span{font-size:var(--text-small);color:var(--faint)}
+.home-reminders .row{padding:9px 2px}
+.home-reminders .e-title,.home-reminders .e-meta{display:block}
 
 /* 空状态：保留原卡片语言，增加一个清晰、可触达的记账动作。 */
 .home-empty{display:flex;align-items:center;gap:10px;padding:14px!important}
@@ -52,7 +61,6 @@
 #hm-days{display:contents}
 #hm-days>section{flex-shrink:0}
 #hm-more{order:10}
-#hm-quick .hm-all{grid-column:1/-1;justify-self:end;min-height:44px;padding:4px 12px;background:transparent;color:var(--muted)}
 .home-order{display:flex;gap:0;flex-shrink:0}
 .home-order button{min-width:44px;min-height:44px;background:transparent;color:var(--muted)}
 .home-order button:disabled{opacity:.3}

@@ -17,6 +17,13 @@ def main():
             page.goto(URL)
             page.wait_for_selector('#hm-quick:not([hidden])')
             assert page.locator('#hm-quick .qa').count() == 5
+            quick_buttons = page.locator('#hm-quick button').evaluate_all(
+                "els => els.map(el => ({text: el.textContent.trim(), ...el.getBoundingClientRect().toJSON()}))"
+            )
+            assert len(quick_buttons) == 6
+            assert quick_buttons[-1]['text'] == '全部'
+            assert abs(quick_buttons[-1]['top'] - quick_buttons[0]['top']) < 1, '“全部”不应另起一行'
+            assert all(button['width'] >= 43 and button['height'] >= 43 for button in quick_buttons)
             page.click('#btn-home-edit')
             page.wait_for_selector('[data-sw="today"]')
             page.click('[data-move="quick"][data-step="-1"]')

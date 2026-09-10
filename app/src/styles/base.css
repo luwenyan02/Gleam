@@ -137,6 +137,7 @@ button.chip,.tab,.fab,.icon-btn,.btn,button.row,.seg button,.qa,.lf-check{min-wi
 .row .chev svg.ic{width:15px;height:15px}
 .acct-amt{margin-left:auto;font-size:13px;font-weight:600}
 .acct-amt.neg{color:var(--expense)}
+.restore-link{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px}
 
 /* ── 首页快捷区 ───────────────────── */
 .quick-row{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;padding:12px 6px}
@@ -217,6 +218,7 @@ button.chip,.tab,.fab,.icon-btn,.btn,button.row,.seg button,.qa,.lf-check{min-wi
 .ym-nav b{font-size:calc(15px * var(--seed-type));font-weight:600}
 .ym-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .ym-grid button{
+  min-height:44px;
   padding:11px 0;border-radius:calc(var(--r) - 4px);font-size:13px;color:var(--fg);
   background:color-mix(in oklab, var(--seed-fg) 5%, var(--surface));transition:background .15s;
 }
@@ -328,7 +330,7 @@ button.chip,.tab,.fab,.icon-btn,.btn,button.row,.seg button,.qa,.lf-check{min-wi
 .meta-row{display:flex;gap:8px;padding:10px 0;overflow-x:auto;scrollbar-width:none}
 .meta-row::-webkit-scrollbar{display:none}
 .toggle-chip.on{background:var(--primary);color:var(--on-accent);border-color:var(--primary)}
-.note{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:calc(var(--r) - 4px);background:var(--bg);font-size:13px;color:var(--fg);font-family:inherit;margin-bottom:12px;outline:none;transition:border-color .18s}
+.note{width:100%;min-height:44px;padding:12px 14px;border:1.5px solid var(--border);border-radius:calc(var(--r) - 4px);background:var(--bg);font-size:13px;color:var(--fg);font-family:inherit;margin-bottom:12px;outline:none;transition:border-color .18s}
 .note:focus{border-color:var(--primary)}
 .note::placeholder{color:var(--faint)}
 .keypad{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}

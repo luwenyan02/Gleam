@@ -2,22 +2,22 @@
 
 /* ── A. 搜索栏：字段选择器 + 输入框 + 取消 ── */
 .sr-topbar{display:flex;align-items:center;gap:8px;padding:0 0 10px}
-.sr-field-btn{display:flex;align-items:center;gap:4px;padding:7px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--fg);white-space:nowrap;flex:none}
+.sr-field-btn{display:flex;align-items:center;gap:4px;min-height:44px;padding:7px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--fg);white-space:nowrap;flex:none}
 .sr-field-btn svg.ic{width:12px;height:12px;stroke-width:2.2}
-.sr-input-wrap{flex:1;min-width:0;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:8px 12px}
+.sr-input-wrap{flex:1;min-width:0;min-height:44px;display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:0 4px 0 12px}
 .sr-input-wrap .sr-ic{color:var(--muted);display:flex;flex:none}
 .sr-input-wrap .sr-ic svg.ic{width:16px;height:16px}
-.sr-input-wrap input{flex:1;min-width:0;border:0;background:transparent;font-size:14px;color:var(--fg);outline:none}
+.sr-input-wrap input{flex:1;min-width:0;height:44px;border:0;background:transparent;font-size:14px;color:var(--fg);outline:none}
 .sr-input-wrap input::placeholder{color:var(--faint)}
-.sr-input-wrap .sr-clear{display:flex;color:var(--faint);padding:2px}
+.sr-input-wrap .sr-clear{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;color:var(--faint)}
 .sr-input-wrap .sr-clear svg.ic{width:14px;height:14px}
-.sr-cancel{font-size:14px;color:var(--primary);font-weight:500;flex:none;padding:4px}
+.sr-cancel{min-width:44px;min-height:44px;font-size:14px;color:var(--primary);font-weight:500;flex:none;padding:4px}
 
 /* ── B. 日期范围行 ── */
 .sr-date-row{display:flex;align-items:center;justify-content:center;gap:6px;padding:4px 0 8px;font-size:13px}
-.sr-date-btn{color:var(--primary);font-weight:500;border-bottom:1px dashed color-mix(in oklab, var(--primary) 40%, transparent)}
+.sr-date-btn{min-height:44px;color:var(--primary);font-weight:500;border-bottom:1px dashed color-mix(in oklab, var(--primary) 40%, transparent)}
 .sr-date-sep{color:var(--muted);font-size:12px}
-.sr-filter-icon{margin-left:auto;display:flex;align-items:center;padding:4px;color:var(--muted)}
+.sr-filter-icon{margin-left:auto;display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;color:var(--muted)}
 .sr-filter-icon.active{color:var(--primary)}
 .sr-filter-icon svg.ic{width:18px;height:18px}
 
@@ -95,7 +95,7 @@
 @keyframes fpSlideIn{from{transform:translateX(100%)}to{transform:none}}
 .fp-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
 .fp-header h2{font-size:16px;font-weight:600}
-.fp-cancel{font-size:14px;color:var(--primary);font-weight:500}
+.fp-cancel{min-width:44px;min-height:44px;font-size:14px;color:var(--primary);font-weight:500}
 .fp-body{flex:1;overflow-y:auto;padding:0 18px}
 .fp-section{border-bottom:1px solid var(--border);padding:4px 0}
 .fp-row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;cursor:pointer}
@@ -106,7 +106,7 @@
 .fp-chips{display:flex;flex-wrap:wrap;gap:8px}
 .fp-chips .chip{font-size:12px;padding:6px 12px}
 .fp-amount-inputs{display:flex;align-items:center;gap:8px;padding:4px 0 14px}
-.fp-amount-inputs input{flex:1;min-width:0;padding:10px 12px;border:1.5px solid var(--border);border-radius:calc(var(--r) - 4px);background:var(--surface);font-size:13px;color:var(--fg);outline:none}
+.fp-amount-inputs input{flex:1;min-width:0;min-height:44px;padding:10px 12px;border:1.5px solid var(--border);border-radius:calc(var(--r) - 4px);background:var(--surface);font-size:13px;color:var(--fg);outline:none}
 .fp-amount-inputs input:focus{border-color:var(--primary)}
 .fp-sep{color:var(--faint);font-size:14px}
 .fp-footer{display:flex;gap:12px;padding:12px 18px calc(12px + var(--safe-bottom));border-top:1px solid var(--border)}

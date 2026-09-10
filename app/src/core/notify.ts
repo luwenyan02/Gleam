@@ -7,7 +7,7 @@
  * - 信用卡还款日提醒（id 2000+）：credit 组含 repayDay 账户，还款日当天 10:00；
  * - 备份到期提醒（id 3000）：backup.auto 非 off 且按 lastBackupAt+频率已到期/将到期，次日 09:00 一条。
  * 全部通知非精确（isExactNotification: false）+ allowWhileIdle，接受分钟级偏差；
- * Web 非原生平台全部 no-op，三开关默认关闭、由用户显式开启触发授权。
+ * Web 不调系统通知 API；三开关控制首页应用内提醒。
  */
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications, type LocalNotificationSchema } from '@capacitor/local-notifications';
@@ -15,6 +15,7 @@ import { on } from './store';
 import { getSetting } from './repo/settingsRepo';
 import { listRules } from './repo/recurringRepo';
 import { listAccounts } from './repo/accountRepo';
+import { listCreditStatementSummaries } from './repo/creditRepo';
 import { formatFen } from './money';
 import { openSubpage, switchPage } from '../features/shell/router';
 
@@ -30,6 +31,89 @@ const ID_GROUPS = {
 
 /** 重排窗口：未来 7 天 */
 const WINDOW_MS = 7 * 86400000;
+const CREDIT_WINDOW_MS = 3 * 86400000;
+
+export interface InAppReminder {
+  id: string;
+  kind: 'recurring' | 'creditCard' | 'backup';
+  title: string;
+  body: string;
+  dueAt: number;
+  route: 'sp-recurring' | 'sp-credit' | 'sp-backup';
+  icon: 'ic-repeat' | 'ic-card' | 'ic-cloud';
+}
+
+function reminderDateText(dueAt: number, now: number): string {
+  const due = new Date(dueAt);
+  const today = new Date(now);
+  due.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((due.getTime() - today.getTime()) / 86400000);
+  if (days < 0) return `已逾期 ${-days} 天`;
+  if (days === 0) return '今天到期';
+  if (days === 1) return '明天到期';
+  return `${due.getMonth() + 1}月${due.getDate()}日到期`;
+}
+
+/** 网页版首页提醒；只在打开拾光时计算，不承诺页面关闭后的系统推送。 */
+export async function listInAppReminders(now = Date.now()): Promise<InAppReminder[]> {
+  if (Capacitor.isNativePlatform()) return [];
+  const [swRecurring, swCredit, swBackup, backupAuto, lastBackupAt] = await Promise.all([
+    getSetting('notification.recurring'),
+    getSetting('notification.creditCard'),
+    getSetting('notification.backup'),
+    getSetting('backup.auto'),
+    getSetting('backup.lastBackupAt'),
+  ]);
+  const reminders: InAppReminder[] = [];
+  if (swRecurring) {
+    for (const rule of await listRules()) {
+      if (!rule.enabled || rule.nextRunAt > now + WINDOW_MS) continue;
+      reminders.push({
+        id: `recurring-${rule.id}`,
+        kind: 'recurring',
+        title: `周期账 · ${rule.name}`,
+        body: `${reminderDateText(rule.nextRunAt, now)}${rule.amountConfirm ? '，需确认金额' : `，${rule.type === 'income' ? '收入' : '支出'} ¥${formatFen(rule.amount)}`}`,
+        dueAt: rule.nextRunAt,
+        route: 'sp-recurring',
+        icon: 'ic-repeat',
+      });
+    }
+  }
+  if (swCredit) {
+    const cards = (await listAccounts()).filter((account) => account.group === 'credit' && account.creditReminderEnabled !== false);
+    for (const card of cards) {
+      for (const summary of await listCreditStatementSummaries(card.id!)) {
+        if (summary.remaining <= 0 || summary.statement.reminderEnabled === false || summary.statement.dueAt > now + CREDIT_WINDOW_MS) continue;
+        reminders.push({
+          id: `credit-${summary.statement.id}`,
+          kind: 'creditCard',
+          title: `信用卡 · ${card.name}`,
+          body: `${reminderDateText(summary.statement.dueAt, now)}，剩余应还 ¥${formatFen(summary.remaining)}`,
+          dueAt: summary.statement.dueAt,
+          route: 'sp-credit',
+          icon: 'ic-card',
+        });
+      }
+    }
+  }
+  if (swBackup && backupAuto !== 'off') {
+    const span = backupAuto === 'daily' ? 86400000 : WINDOW_MS;
+    const dueAt = lastBackupAt ? lastBackupAt + span : 0;
+    if (dueAt <= now) {
+      reminders.push({
+        id: 'backup',
+        kind: 'backup',
+        title: '备份到期',
+        body: '该备份了，生成新的本地备份包',
+        dueAt,
+        route: 'sp-backup',
+        icon: 'ic-cloud',
+      });
+    }
+  }
+  return reminders.sort((a, b) => a.dueAt - b.dueAt).slice(0, 5);
+}
 
 /**
  * 检查并按需请求系统通知权限。
@@ -82,7 +166,6 @@ async function collectRecurring(now: number): Promise<LocalNotificationSchema[]>
  * 还清或修改到期日后由重排自动更新。
  */
 async function collectCreditCard(now: number): Promise<LocalNotificationSchema[]> {
-  const { listCreditStatementSummaries } = await import('./repo/creditRepo');
   const accounts = await listAccounts();
   const cards = accounts.filter((a) => a.group === 'credit' && a.creditReminderEnabled !== false);
   const out: LocalNotificationSchema[] = [];

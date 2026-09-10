@@ -13,7 +13,7 @@ import { listEntries } from '../../core/repo/entryRepo';
 import {
   addCreditStatement, createAndLinkCreditPayment, deleteCreditStatement,
   getCreditStatementSummary, linkExistingCreditPayment, listCreditStatementSummaries,
-  updateCreditStatement, type CreditStatementSummary,
+  unlinkCreditPayment, updateCreditStatement, type CreditStatementSummary,
 } from '../../core/repo/creditRepo';
 import type { Account } from '../../core/types';
 import { registerSubpage } from '../shell/router';
@@ -307,7 +307,6 @@ export function initCredit(): void {
             void refresh();
           } else if (act === 'unlink') {
             const paymentId = Number(target!.dataset.pay);
-            const { unlinkCreditPayment } = await import('../../core/repo/creditRepo');
             await unlinkCreditPayment(paymentId);
             showToast('已解除关联，转账流水保留');
             void refresh();
