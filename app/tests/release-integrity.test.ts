@@ -139,4 +139,26 @@ describe('Android 启动图标', () => {
       expect(foreground.alpha(Math.floor(foreground.width / 2), Math.floor(foreground.height / 2))).toBeGreaterThan(247);
     }
   });
+
+  it('高分辨率背景保留左上角光束和光点细节', () => {
+    const background = decodePng(
+      readFileSync(
+        new URL('../android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_background.png', import.meta.url),
+      ),
+    );
+    const luminance = (x: number, y: number) => {
+      const [red, green, blue] = background.rgb(x, y);
+      return red * 0.299 + green * 0.587 + blue * 0.114;
+    };
+    let contrast = 0;
+    let comparisons = 0;
+    for (let y = 80; y < 180; y += 1) {
+      for (let x = 80; x < 180; x += 1) {
+        contrast += Math.abs(luminance(x, y) - luminance(x + 1, y));
+        contrast += Math.abs(luminance(x, y) - luminance(x, y + 1));
+        comparisons += 2;
+      }
+    }
+    expect(contrast / comparisons).toBeGreaterThan(0.5);
+  });
 });
