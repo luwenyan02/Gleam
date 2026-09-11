@@ -10,8 +10,11 @@ export function entryRowText(
   const category = categories.get(entry.categoryId ?? -1);
   let title = category?.name ?? (entry.type === 'income' ? '收入' : '支出');
   let icon = category?.icon ?? 'ic-coin';
+  const reconciliation = entry.reconcileBeforeBalance != null && entry.reconcileTargetBalance != null;
   if (entry.kind === 'reimbursement') {
     title = '报销到账'; icon = 'ic-file';
+  } else if (reconciliation) {
+    title = '余额对账调整'; icon = 'ic-swap';
   } else if (entry.type === 'transfer') {
     title = entry.note === '余额对账调整' ? '余额对账调整' : '转账'; icon = 'ic-swap';
   } else if (entry.type === 'loan') {

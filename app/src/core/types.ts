@@ -105,7 +105,7 @@ export interface Entry extends Timestamps {
   importBatchId?: number;
   /** 关联生成的生活随手记 id */
   lifeNoteId?: number;
-  /** 对账调整前的账内余额（分）；仅单边「余额对账调整」使用 */
+  /** 对账调整前的账内余额（分）；仅「余额对账调整」流水使用 */
   reconcileBeforeBalance?: number;
   /** 对账输入的实际余额（分）；与 reconcileBeforeBalance 一起保留审计轨迹 */
   reconcileTargetBalance?: number;
@@ -125,6 +125,8 @@ export interface Account extends Timestamps {
   group: AccountGroup;
   /** 当前余额，单位分，可为负（信用卡） */
   balance: number;
+  /** 信用额度，单位分；仅 credit 组使用，缺失表示尚未设置 */
+  creditLimit?: number;
   note?: string;
   hidden: boolean;
   /** 是否计入净资产；与 hidden 独立，隐藏或恢复显示不得改写此值 */

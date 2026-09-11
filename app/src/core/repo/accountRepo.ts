@@ -20,7 +20,7 @@ export type NewAccount = Omit<Account, 'id' | 'createdAt' | 'updatedAt' | 'hidde
  */
 export async function addAccount(input: NewAccount): Promise<number> {
   if (!Number.isSafeInteger(input.balance)) throw new Error('账户余额必须为整数分');
-  validateCreditDays(input.group, input.billingDay, input.repayDay);
+  validateCreditFields(input.group, input.billingDay, input.repayDay, input.creditLimit);
   const sameGroup = await db.accounts.where('group').equals(input.group).toArray();
   const maxSort = sameGroup.reduce((max, account) => Math.max(max, account.sortOrder), 0);
   const id = await db.accounts.add(
@@ -43,7 +43,12 @@ export async function updateAccount(
 ): Promise<void> {
   const current = await db.accounts.get(id);
   if (!current) throw new Error(`账户不存在：${id}`);
-  validateCreditDays(patch.group ?? current.group, patch.billingDay ?? current.billingDay, patch.repayDay ?? current.repayDay);
+  validateCreditFields(
+    patch.group ?? current.group,
+    patch.billingDay ?? current.billingDay,
+    patch.repayDay ?? current.repayDay,
+    patch.creditLimit ?? current.creditLimit,
+  );
   await db.accounts.update(id, { ...patch, updatedAt: now() });
   emit('accounts-changed', { id });
 }
@@ -101,16 +106,45 @@ export async function reorderAccountWithinGroup(id: number, direction: 'up' | 'd
   emit('accounts-changed', { id });
 }
 
-function validateCreditDays(group: AccountGroup, billingDay?: number, repayDay?: number): void {
+function validateCreditFields(
+  group: AccountGroup,
+  billingDay?: number,
+  repayDay?: number,
+  creditLimit?: number,
+): void {
   for (const [label, value] of [['账单日', billingDay], ['还款日', repayDay]] as const) {
     if (value != null && (!Number.isInteger(value) || value < 1 || value > 31)) throw new Error(`${label}须为 1-31 的整数`);
   }
-  if (group !== 'credit' && (billingDay != null || repayDay != null)) throw new Error('仅信用卡账户可设置账单日和还款日');
+  if (creditLimit != null && (!Number.isSafeInteger(creditLimit) || creditLimit <= 0)) {
+    throw new Error('信用额度须为大于 0 的整数分');
+  }
+  if (group !== 'credit' && (billingDay != null || repayDay != null || creditLimit != null)) {
+    throw new Error('仅信用卡账户可设置信用额度、账单日和还款日');
+  }
+}
+
+export interface CreditLimitStatus {
+  limit: number;
+  remaining: number;
+  overLimit: number;
+}
+
+/** 信用卡可用额度：信用额度 + 当前余额（信用卡欠款余额为负）。 */
+export function creditLimitStatus(account: Account): CreditLimitStatus | undefined {
+  if (account.group !== 'credit' || account.creditLimit == null
+    || !Number.isSafeInteger(account.creditLimit) || account.creditLimit <= 0) return undefined;
+  const available = account.creditLimit + account.balance;
+  if (!Number.isSafeInteger(available)) return undefined;
+  return {
+    limit: account.creditLimit,
+    remaining: Math.max(0, available),
+    overLimit: Math.max(0, -available),
+  };
 }
 
 /**
  * 对账：把账户余额调整到 targetBalance。
- * 生成一条「余额对账调整」转账账单（单边，不计收支），由账单联动余额，而非直接改数。
+ * 差额增加生成收入，差额减少生成支出；由账单联动余额并计入收支，而非直接改数。
  * @param id 账户 id
  * @param targetBalance 对账后的余额（分）
  * @returns 生成的调整账单 id；余额无差异时返回 undefined
@@ -119,11 +153,10 @@ export async function reconcileAccount(id: number, targetBalance: number): Promi
   const preview = await previewReconcileAccount(id, targetBalance);
   if (preview.difference === 0) return undefined;
   return addEntry({
-    type: 'transfer',
+    type: preview.difference > 0 ? 'income' : 'expense',
     amount: Math.abs(preview.difference),
     occurredAt: now(),
-    fromAccountId: preview.difference < 0 ? id : undefined,
-    toAccountId: preview.difference > 0 ? id : undefined,
+    accountId: id,
     note: '余额对账调整',
     reconcileBeforeBalance: preview.currentBalance,
     reconcileTargetBalance: preview.targetBalance,

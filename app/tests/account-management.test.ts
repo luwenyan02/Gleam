@@ -2,10 +2,12 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../src/core/db';
 import {
-  addAccount, deleteAccount, getNetWorth, listAccountsByGroup, previewReconcileAccount,
-  reconcileAccount, reorderAccountWithinGroup, setAccountCountInNetWorth, setAccountHidden,
+  addAccount, creditLimitStatus, deleteAccount, getNetWorth, listAccountsByGroup, previewReconcileAccount,
+  reconcileAccount, reorderAccountWithinGroup, setAccountCountInNetWorth, setAccountHidden, updateAccount,
 } from '../src/core/repo/accountRepo';
-import { getEntry } from '../src/core/repo/entryRepo';
+import { getEntry, restoreEntry, softDeleteEntry } from '../src/core/repo/entryRepo';
+import { rangeSummary } from '../src/core/repo/statsRepo';
+import { exportAll, restoreAll } from '../src/core/repo/backupRepo';
 
 beforeEach(async () => { await db.delete(); await db.open(); });
 
@@ -37,17 +39,52 @@ describe('账户管理边界', () => {
     expect((await getNetWorth()).net).toBe(0);
   });
 
-  it('对账先给出差额预览，生成的单边流水保留账内与实际余额', async () => {
+  it('对账差额增加记收入、减少记支出，并保留账内与实际余额', async () => {
     const id = await addAccount({ name: '虚构现金', group: 'cash', balance: 10_000 });
     expect(await previewReconcileAccount(id, 12_300)).toEqual({
       accountId: id, currentBalance: 10_000, targetBalance: 12_300, difference: 2_300,
     });
 
-    const entryId = await reconcileAccount(id, 12_300);
-    expect(await getEntry(entryId!)).toMatchObject({
-      type: 'transfer', amount: 2_300, toAccountId: id,
+    const incomeId = await reconcileAccount(id, 12_300);
+    expect(await getEntry(incomeId!)).toMatchObject({
+      type: 'income', amount: 2_300, accountId: id, note: '余额对账调整',
       reconcileBeforeBalance: 10_000, reconcileTargetBalance: 12_300,
     });
+    const expenseId = await reconcileAccount(id, 11_000);
+    expect(await getEntry(expenseId!)).toMatchObject({
+      type: 'expense', amount: 1_300, accountId: id, note: '余额对账调整',
+      reconcileBeforeBalance: 12_300, reconcileTargetBalance: 11_000,
+    });
+    expect((await db.accounts.get(id))?.balance).toBe(11_000);
+    expect(await rangeSummary(new Date(2000, 0, 1).getTime(), new Date(2100, 0, 1).getTime()))
+      .toEqual({ expense: 1_300, income: 2_300, balance: 1_000 });
+    await softDeleteEntry(expenseId!);
+    expect((await db.accounts.get(id))?.balance).toBe(12_300);
+    await restoreEntry(expenseId!);
+    expect((await db.accounts.get(id))?.balance).toBe(11_000);
+  });
+
+  it('信用卡保存信用额度并按当前欠款计算剩余或超额', async () => {
+    const id = await addAccount({
+      name: '虚构信用卡', group: 'credit', balance: -3_000, creditLimit: 10_000,
+    });
+    expect(creditLimitStatus((await db.accounts.get(id))!)).toEqual({
+      limit: 10_000, remaining: 7_000, overLimit: 0,
+    });
+
+    await updateAccount(id, { creditLimit: 2_000 });
+    expect(creditLimitStatus((await db.accounts.get(id))!)).toEqual({
+      limit: 2_000, remaining: 0, overLimit: 1_000,
+    });
+    await expect(updateAccount(id, { creditLimit: -1 })).rejects.toThrow('信用额度');
+    await expect(addAccount({
+      name: '虚构储蓄卡', group: 'debit', balance: 0, creditLimit: 10_000,
+    })).rejects.toThrow('仅信用卡账户');
+
+    const dump = await exportAll();
+    await db.accounts.clear();
+    await restoreAll(dump);
+    expect((await db.accounts.get(id))?.creditLimit).toBe(2_000);
   });
 
   it('仅余额为零且从未被业务引用的账户可以删除', async () => {

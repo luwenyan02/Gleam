@@ -14,6 +14,7 @@ export function fullDateTime(ts: number): string {
 }
 
 export function typeName(entry: Entry): string {
+  if (entry.reconcileBeforeBalance != null && entry.reconcileTargetBalance != null) return '余额对账调整';
   if (entry.refundFlag) return '支出退款';
   if (entry.type === 'expense') return '支出';
   if (entry.type === 'income') return '收入';

@@ -41,7 +41,8 @@ export function getRefundEntryId(): number | undefined {
 }
 
 export function canRefund(entry: Entry): boolean {
-  return entry.type === 'expense' && !entry.refundFlag;
+  return entry.type === 'expense' && !entry.refundFlag
+    && entry.reconcileBeforeBalance == null && entry.reconcileTargetBalance == null;
 }
 
 /** 列表左滑后显示的四个操作。 */

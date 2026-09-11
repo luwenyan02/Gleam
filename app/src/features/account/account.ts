@@ -12,7 +12,7 @@ import { esc } from '../../core/esc';
 import { on } from '../../core/store';
 import { formatFen, formatFenCny, parseYuanToFen } from '../../core/money';
 import {
-  addAccount, getAccount, getNetWorth, listAccountsByGroup, previewReconcileAccount,
+  addAccount, creditLimitStatus, getAccount, getNetWorth, listAccountsByGroup, previewReconcileAccount,
   reconcileAccount, reorderAccountWithinGroup, setAccountCountInNetWorth, setAccountHidden, updateAccount,
 } from '../../core/repo/accountRepo';
 import { netWorthTrend } from '../../core/repo/statsRepo';
@@ -91,9 +91,16 @@ function repayNote(a: Account): string | undefined {
   return `${m + 1}月${day}日 还款`;
 }
 
-/** 行备注：信用卡优先展示还款日，其余展示备注 */
+/** 行备注：信用卡展示还款日与剩余额度，其余展示备注 */
 function rowNote(a: Account): string {
-  return repayNote(a) ?? a.note ?? '';
+  const limit = creditLimitStatus(a);
+  const limitNote = limit
+    ? limit.overLimit > 0
+      ? `已超额 ${formatFenCny(limit.overLimit)}`
+      : `剩余额度 ${formatFenCny(limit.remaining)}`
+    : undefined;
+  const creditNotes = [limitNote, repayNote(a)].filter(Boolean);
+  return creditNotes.length ? creditNotes.join(' · ') : a.note ?? '';
 }
 
 /* ── 顶部资产卡 ── */
@@ -124,7 +131,7 @@ async function refresh(): Promise<void> {
         <button class="row group-head" data-group="${g}" aria-expanded="${!folded.has(g)}">${ACCOUNT_GROUP_NAMES[g]}<span class="g-count">${rows.length} 个</span><span class="acct-amt num${subtotal < 0 ? ' neg' : ''}">${formatFenCny(subtotal)}</span><span class="chev">${iconHtml('ic-right')}</span></button>
         <div class="g-rows">
           ${rows.map((a) => `
-            <button class="row" data-acct="${a.id}"><span class="e-ic">${iconHtml(GROUP_ICONS[g], 18)}</span>${esc(a.name)}${rowNote(a) ? `<span class="row-note">${esc(rowNote(a))}</span>` : ''}<span class="acct-amt num${a.balance < 0 ? ' neg' : ''}">${formatFenCny(a.balance)}</span></button>`).join('')}
+            <button class="row acct-account-row" data-acct="${a.id}"><span class="e-ic">${iconHtml(GROUP_ICONS[g], 18)}</span><span class="acct-row-copy"><span class="acct-row-name">${esc(a.name)}</span>${rowNote(a) ? `<span class="row-note">${esc(rowNote(a))}</span>` : ''}</span><span class="acct-amt num${a.balance < 0 ? ' neg' : ''}">${formatFenCny(a.balance)}</span></button>`).join('')}
         </div>
       </section>`;
   }).join('');
@@ -245,6 +252,7 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     const availableMonths = (nowDate.getFullYear()-earliest.getFullYear())*12+nowDate.getMonth()-earliest.getMonth()+1;
     const totalIn = flows.reduce((sum, flow) => Math.max(0, flow.delta) + sum, 0);
     const totalOut = flows.reduce((sum, flow) => Math.max(0, -flow.delta) + sum, 0);
+    const limit = creditLimitStatus(acct);
     const trendAt = trendState.endingMonth ? new Date(`${trendState.endingMonth}-01T12:00:00`).getTime() : Date.now();
     const trend = accountMonthRows(flows, acct.balance, trendAt, 6).reverse().map((row) => ({ month: row.key, net: row.closing }));
 
@@ -253,6 +261,10 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
         <div class="account-detail-top"><span>${ACCOUNT_GROUP_NAMES[acct.group]}</span><small>${esc(repayNote(acct) ?? acct.note ?? '人民币账户')}</small></div>
         <p>当前余额</p>
         <h3 class="num${acct.balance < 0 ? ' neg' : ''}">${formatFenCny(acct.balance)}</h3>
+        ${limit ? `<div class="credit-limit-summary">
+          <span>信用额度 <b class="num">${formatFenCny(limit.limit)}</b></span>
+          <span>${limit.overLimit > 0 ? '已超额' : '剩余额度'} <b class="num${limit.overLimit > 0 ? ' neg' : ''}">${formatFenCny(limit.overLimit || limit.remaining)}</b></span>
+        </div>` : ''}
         <div class="account-flow-total"><span>总流入 <b class="num">${formatFenCny(totalIn)}</b></span><span>总流出 <b class="num">${formatFenCny(totalOut)}</b></span></div>
         ${balanceTrendHtml(trend, '账户余额', trendState)}
         <div class="account-detail-actions">
@@ -380,6 +392,7 @@ export async function openAccountForm(acct?: Account, presetGroup: AccountGroup 
           <div class="field"><span>名称</span><input class="note" id="af-name" maxlength="20" placeholder="如 招行储蓄卡 ·6688" value="${esc(acct?.name ?? '')}"></div>
           ${acct ? '' : `<div class="field"><span>初始余额</span><div class="signed-amount"><button class="sign-toggle" type="button" id="af-sign" aria-label="切换余额正负" aria-pressed="${negative}">${negative ? '− 欠款' : '+ 余额'}</button><input class="note num" id="af-balance" aria-label="初始余额金额" inputmode="decimal" placeholder="0.00" value=""></div></div>`}
           <div class="field"><span>备注</span><input class="note" id="af-note" maxlength="30" placeholder="选填，如 工资卡" value="${esc(acct?.note ?? '')}"></div>
+          <div class="field" id="af-limit-field"${group === 'credit' ? '' : ' hidden'}><span>信用额度</span><input class="note num" id="af-limit" inputmode="decimal" placeholder="如 50000.00，选填" value="${acct?.creditLimit != null ? formatFen(acct.creditLimit).replace(/,/g, '') : ''}"></div>
           <div class="field" id="af-bill-field"${group === 'credit' ? '' : ' hidden'}><span>账单日</span><input class="note num" id="af-bill" inputmode="numeric" placeholder="每月几号（1-31），选填" value="${acct?.billingDay ?? ''}"></div>
           <div class="field" id="af-repay-field"${group === 'credit' ? '' : ' hidden'}><span>还款日</span><input class="note num" id="af-repay" inputmode="numeric" placeholder="每月几号（1-31），选填" value="${acct?.repayDay ?? ''}"></div>
           <button class="btn primary" data-act="save" style="margin-top:10px">${acct ? '保存修改' : '添加账户'}</button>
@@ -401,6 +414,7 @@ export async function openAccountForm(acct?: Account, presetGroup: AccountGroup 
           const sign = el.querySelector<HTMLButtonElement>('#af-sign');
           if (sign) { sign.textContent = negative ? '− 欠款' : '+ 余额'; sign.setAttribute('aria-pressed', String(negative)); }
           for (const c of el.querySelectorAll<HTMLElement>('[data-g]')) c.classList.toggle('active', c === chip);
+          el.querySelector<HTMLElement>('#af-limit-field')!.hidden = group !== 'credit';
           el.querySelector<HTMLElement>('#af-repay-field')!.hidden = group !== 'credit';
           el.querySelector<HTMLElement>('#af-bill-field')!.hidden = group !== 'credit';
           return;
@@ -427,15 +441,18 @@ export async function openAccountForm(acct?: Account, presetGroup: AccountGroup 
           if (!Number.isInteger(repayDay) || repayDay < 1 || repayDay > 31) { showToast('还款日须为 1-31 的整数'); return; }
         }
         try {
+          const limitRaw = el.querySelector<HTMLInputElement>('#af-limit')!.value.trim();
+          const creditLimit = group === 'credit' && limitRaw ? parseYuanToFen(limitRaw) : undefined;
+          if (creditLimit != null && creditLimit <= 0) { showToast('信用额度须大于 0'); return; }
           if (acct) {
-            await updateAccount(acct.id, { name, note, billingDay: group === 'credit' ? billingDay : undefined, repayDay: group === 'credit' ? repayDay : undefined });
+            await updateAccount(acct.id, { name, note, creditLimit, billingDay: group === 'credit' ? billingDay : undefined, repayDay: group === 'credit' ? repayDay : undefined });
             closeSheet();
             showToast('账户已更新');
           } else {
             const balRaw = el.querySelector<HTMLInputElement>('#af-balance')!.value.trim();
             const parsed = balRaw ? parseSignedYuan(balRaw) : 0;
             const balance = negative ? -Math.abs(parsed) : parsed;
-            await addAccount({ name, group, balance, note, billingDay, repayDay });
+            await addAccount({ name, group, balance, note, creditLimit, billingDay, repayDay });
             closeSheet();
             showToast(`已添加「${name}」`);
           }
@@ -469,8 +486,9 @@ function openReconcileSheet(acct: Account): void {
           <div class="field"><span>实际余额</span><div class="signed-amount"><button class="sign-toggle" type="button" data-act="sign" aria-label="切换余额正负" aria-pressed="${negative}">${negative ? '− 欠款' : '+ 余额'}</button><input class="note num" id="rc-target" aria-label="实际余额金额" inputmode="decimal" placeholder="0.00" value="${formatFen(Math.abs(acct.balance)).replace(/,/g, '')}"></div></div>
           <p class="tiny" id="rc-preview" style="padding:2px 0 6px"></p>
           <button class="btn primary" data-act="save" style="margin-top:10px">生成对账调整</button>
-          <p class="tiny" style="text-align:center;margin-top:10px">差额记为余额调整，不计收支</p>
+          <p class="tiny" style="text-align:center;margin-top:10px">差额增加记为收入，减少记为支出</p>
         </div>`;
+      const signal = sheetSignal();
       el.addEventListener('click', (e) => {
         const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
         if (act === 'close') closeSheet();
@@ -482,8 +500,8 @@ function openReconcileSheet(acct: Account): void {
         }
         else if (act === 'save') void save();
         void preview();
-      }, { signal: sheetSignal() });
-      el.addEventListener('input', () => void preview(), { signal: sheetSignal() });
+      }, { signal });
+      el.addEventListener('input', () => void preview(), { signal });
 
       async function preview(): Promise<void> {
         const box = el.querySelector<HTMLElement>('#rc-preview');

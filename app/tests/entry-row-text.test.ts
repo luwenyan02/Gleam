@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Entry } from '../src/core/types';
 import { entryRowText } from '../src/features/detail/entryRowText';
+import { canRefund } from '../src/features/detail/entrySwipe';
 
 const categories = new Map([[1,{name:'公交',icon:'ic-bus'}]]);
 const accounts = new Map([[1,'演示现金'],[2,'演示小林']]);
@@ -28,6 +29,9 @@ describe('首页/搜索/账户共用的明细文案', () => {
   it('报销到账使用到账事件的账户与日期，余额调整标题不被备注重复', () => {
     expect(entryRowText({...entry,kind:'reimbursement',type:'income',accountId:2},categories,accounts)).toMatchObject({title:'报销到账',meta:'9月7日 15:50 · 演示小林'});
     expect(entryRowText({...entry,type:'transfer',toAccountId:1,note:'余额对账调整'},categories,accounts)).toMatchObject({title:'余额对账调整',note:''});
+    const adjustment={...entry,type:'expense' as const,accountId:1,note:'余额对账调整',reconcileBeforeBalance:1200,reconcileTargetBalance:800};
+    expect(entryRowText(adjustment,categories,accounts)).toMatchObject({title:'余额对账调整',icon:'ic-swap',note:''});
+    expect(canRefund(adjustment)).toBe(false);
   });
 
   it('历史已报销记录缺少到账资料时明确提示资料缺失', () => {

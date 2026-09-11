@@ -24,7 +24,7 @@
 - 转账 / 借贷**不计收支统计**（statsRepo 已按此口径过滤）；
 - 编辑 = 回滚旧账单余额影响 + 重放新账单；软删除 = 回滚；恢复 = 重放；物理删除仅允许回收站内账单；
 - 报销到账效果（`reimburseAccountId` + `reimbursedAmount`）随原账单一起回滚/重放；
-- 对账不直接改余额：`accountRepo.reconcileAccount` 生成一笔 note 为「余额对账调整」的**单边转账账单**（不计收支、可追溯）。
+- 对账不直接改余额：`accountRepo.reconcileAccount` 生成一笔 note 为「余额对账调整」的收入或支出账单，并保留调整前后余额（计入收支、可追溯）。
 
 ## 报销统计口径（settings `reimburse.countAsIncome`）
 

@@ -55,7 +55,8 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
     const refunds = entry.refundFlag ? [] : await listRefunds(entry.id);
     const original = entry.refundOfEntryId != null ? await getEntry(entry.refundOfEntryId) : undefined;
     const remaining = canRefund(entry) ? await refundableAmount(entry.id) : 0;
-    const icon = entry.type === 'transfer' ? 'ic-swap'
+    const reconciliation = entry.reconcileBeforeBalance != null && entry.reconcileTargetBalance != null;
+    const icon = reconciliation || entry.type === 'transfer' ? 'ic-swap'
       : entry.type === 'loan' ? LOAN_KIND_META[entry.loanKind ?? 'borrow'].icon
         : cat?.icon ?? 'ic-coin';
     const inflow = entry.type === 'income' || entry.refundFlag
@@ -63,7 +64,7 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
     const accountText = entry.type === 'transfer' || entry.type === 'loan'
       ? `${accountMap.get(entry.fromAccountId ?? -1)?.name ?? '账户'} → ${accountMap.get(entry.toAccountId ?? -1)?.name ?? '账户'}`
       : account?.name ?? '未选择账户';
-    const categoryText = entry.type === 'loan'
+    const categoryText = reconciliation ? '余额对账调整' : entry.type === 'loan'
       ? LOAN_KIND_META[entry.loanKind ?? 'borrow'].name
       : entry.type === 'transfer' ? '账户转账' : cat?.name ?? '未分类';
     const reimbursement = reimbursementDetailText(entry);

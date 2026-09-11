@@ -21,6 +21,7 @@ TESTS = (
     'test_stats_safety.py', 'test_backup_integrity.py', 'test_text_clarity.py', 'test_recurring_types_ui.py',
     'test_home_configuration.py', 'test_query_integrity.py', 'test_budget_periods.py',
     'test_calendar_daylist.py', 'test_credit_statements.py',
+    'test_account_reconcile_credit_limit.py',
     'test_browser_usability.py',
     'test_large_ledger.py',
 )
