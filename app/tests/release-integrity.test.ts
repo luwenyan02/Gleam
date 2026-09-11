@@ -85,11 +85,14 @@ function decodePng(buffer: Buffer) {
       const start = y * stride + x * channels;
       return [pixels[start], pixels[start + 1], pixels[start + 2]];
     },
+    alpha(x: number, y: number) {
+      return channels === 4 ? pixels[y * stride + x * channels + 3] : 255;
+    },
   };
 }
 
 describe('Android 启动图标', () => {
-  it('完整 Logo 作为背景铺满自适应蒙版，普通与圆形入口保持一致', () => {
+  it('透明前景收进安全区，渐变背景铺满普通与圆形入口', () => {
     const resources = [
       '../android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml',
       '../android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml',
@@ -97,8 +100,9 @@ describe('Android 启动图标', () => {
 
     for (const xml of resources) {
       expect(xml).toContain('<background android:drawable="@mipmap/ic_launcher_background" />');
-      expect(xml).toContain('<foreground android:drawable="@android:color/transparent" />');
-      expect(xml).not.toContain('<inset');
+      expect(xml).toContain('<inset');
+      expect(xml).toContain('android:drawable="@mipmap/ic_launcher_foreground"');
+      expect(xml.match(/android:inset(?:Left|Top|Right|Bottom)="18dp"/g)).toHaveLength(4);
     }
   });
 
@@ -118,6 +122,21 @@ describe('Android 启动图标', () => {
       for (const [red, green, blue] of edgePixels) {
         expect(red > 240 && green > 240 && blue > 240).toBe(false);
       }
+    }
+  });
+
+  it('各密度前景的外部背景透明，书本主体保持不透明', () => {
+    for (const density of ['ldpi', 'mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']) {
+      const foreground = decodePng(
+        readFileSync(
+          new URL(`../android/app/src/main/res/mipmap-${density}/ic_launcher_foreground.png`, import.meta.url),
+        ),
+      );
+      expect(foreground.alpha(0, 0)).toBeLessThan(8);
+      expect(foreground.alpha(foreground.width - 1, 0)).toBeLessThan(8);
+      expect(foreground.alpha(0, foreground.height - 1)).toBeLessThan(8);
+      expect(foreground.alpha(foreground.width - 1, foreground.height - 1)).toBeLessThan(8);
+      expect(foreground.alpha(Math.floor(foreground.width / 2), Math.floor(foreground.height / 2))).toBeGreaterThan(247);
     }
   });
 });
