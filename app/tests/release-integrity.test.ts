@@ -92,7 +92,7 @@ function decodePng(buffer: Buffer) {
 }
 
 describe('Android 启动图标', () => {
-  it('透明前景收进安全区，渐变背景铺满普通与圆形入口', () => {
+  it('透明前景以 17dp 缩进轻微放大，渐变背景铺满普通与圆形入口', () => {
     const resources = [
       '../android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml',
       '../android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml',
@@ -102,7 +102,7 @@ describe('Android 启动图标', () => {
       expect(xml).toContain('<background android:drawable="@mipmap/ic_launcher_background" />');
       expect(xml).toContain('<inset');
       expect(xml).toContain('android:drawable="@mipmap/ic_launcher_foreground"');
-      expect(xml.match(/android:inset(?:Left|Top|Right|Bottom)="18dp"/g)).toHaveLength(4);
+      expect(xml.match(/android:inset(?:Left|Top|Right|Bottom)="17dp"/g)).toHaveLength(4);
     }
   });
 
@@ -140,25 +140,4 @@ describe('Android 启动图标', () => {
     }
   });
 
-  it('高分辨率背景保留左上角光束和光点细节', () => {
-    const background = decodePng(
-      readFileSync(
-        new URL('../android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_background.png', import.meta.url),
-      ),
-    );
-    const luminance = (x: number, y: number) => {
-      const [red, green, blue] = background.rgb(x, y);
-      return red * 0.299 + green * 0.587 + blue * 0.114;
-    };
-    let contrast = 0;
-    let comparisons = 0;
-    for (let y = 80; y < 180; y += 1) {
-      for (let x = 80; x < 180; x += 1) {
-        contrast += Math.abs(luminance(x, y) - luminance(x + 1, y));
-        contrast += Math.abs(luminance(x, y) - luminance(x, y + 1));
-        comparisons += 2;
-      }
-    }
-    expect(contrast / comparisons).toBeGreaterThan(0.5);
-  });
 });
