@@ -62,4 +62,4 @@ npm run test:e2e
 - 除非用户明确恢复 GitHub 维护，不执行远端推送、创建或更新 PR、Issue、Release，也不上传源码或安装包。历史 GitHub 计划不再是待办；已有远端仓库保持原样。
 - 使用本地短分支开发，合入本地 `main` 前完成构建、测试、视觉验收和敏感信息扫描；无需远端 CI 或 PR。
 - Android release 签名从本机安全属性文件或环境变量读取；签名证书不得更换。
-- APK/AAB 和校验文件在本地 `.tmp/artifacts/releases/` 交付，不进入 Git 历史；真机验收仍须执行。
+- APK/AAB 和校验文件在本地 `release/` 交付（该目录被 Git 忽略），不进入 Git 历史；真机验收仍须执行。

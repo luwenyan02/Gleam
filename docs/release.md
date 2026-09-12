@@ -70,6 +70,6 @@ npm run verify:apk -- /absolute/path/to/Gleam-vX.Y.Z.apk
 ## 本地版本交付
 
 1. 完成本地测试与验收，保存源码和说明文档的 Git 提交。
-2. 构建并核验 APK，将候选包和 SHA-256 校验文件保存到 `.tmp/artifacts/releases/`，提供本地路径。
+2. 构建并核验 APK，将候选包和 SHA-256 校验文件保存到项目根目录 `release/`（被 Git 忽略），提供本地路径。
 3. 真机验收通过后，按需创建与 `package.json` 一致的本地 `vX.Y.Z` 标签，并在 `CHANGELOG.md` 记录新增、修复和升级提示；未验收的包继续标记为候选版。
 4. 安装包和签名材料不进入 Git 历史；另行妥善保存重要版本的本地副本。保留的 `.github/` 配置仅供历史参考，不作为当前交付流程。
