@@ -1,7 +1,7 @@
 /**
  * 拾光 · 账户页（features/account，PRD 4.6）
  * 顶部资产卡（净资产 + 近 6 个月走势线）、四组分组列表（折叠/小计）、
- * 添加/编辑账户、单账户流水、对账调整余额、长按隐藏与恢复显示。
+ * 添加/编辑账户、单账户流水、对账调整余额，以及分组账户管理。
  * 视觉结构与原型 index.html #page-acct（L680-738）一致；数据一律经 repo，
  * 金额格式化只走 money.ts。
  */
@@ -12,7 +12,7 @@ import { esc } from '../../core/esc';
 import { on } from '../../core/store';
 import { formatFen, formatFenCny, parseYuanToFen } from '../../core/money';
 import {
-  addAccount, creditLimitStatus, getAccount, getNetWorth, listAccountsByGroup, previewReconcileAccount,
+  addAccount, creditLimitStatus, deleteAccount, getAccount, getNetWorth, listAccountsByGroup, previewReconcileAccount,
   reconcileAccount, reorderAccountWithinGroup, setAccountCountInNetWorth, setAccountHidden, updateAccount,
 } from '../../core/repo/accountRepo';
 import { netWorthTrend } from '../../core/repo/statsRepo';
@@ -43,9 +43,6 @@ const folded = new Set<AccountGroup>();
 let refreshToken = 0;
 const netTrendState: TrendViewState = { open: false };
 const accountTrendStates = new Map<number, TrendViewState>();
-/** 长按计时器与标记（长按隐藏后抑制本次 click） */
-let pressTimer: number | undefined;
-let pressFired = false;
 /** 抽屉监听器控制：#sheet 为复用容器，重开前必须废止上一次绑定，否则监听器叠加导致重复提交 */
 let sheetAbort: AbortController | undefined;
 let detailAccountId: number | undefined;
@@ -136,21 +133,13 @@ async function refresh(): Promise<void> {
       </section>`;
   }).join('');
 
-  const hiddenCard = hidden.length === 0 ? '' : `
-    <section class="card list" aria-label="已隐藏账户">
-      <h3 class="card-title" style="padding:10px 2px 0">已隐藏账户</h3>
-      ${hidden.map((a) => `
-        <div class="row"><span class="e-ic neutral">${iconHtml('ic-eye', 18)}</span>${esc(a.name)}<span class="row-note num">${a.countInNetWorth === false ? '不计入净资产' : '计入净资产'} · ${formatFenCny(a.balance)}</span><button class="restore-link" data-unhide="${a.id}">显示</button></div>`).join('')}
-      <p class="tiny" style="padding:6px 2px 10px">隐藏只影响显示，净资产计入在账户详情单独设置</p>
-    </section>`;
-
   root.innerHTML = `
     <header class="page-head">
       <div>
         <h1 class="brand sm">账户</h1>
         <p class="sub">${subHead}</p>
       </div>
-      <button class="icon-btn" data-add aria-label="添加账户">${iconHtml('ic-plus')}</button>
+      <div class="account-head-actions"><button data-account-manage>管理</button><button class="icon-btn" data-add aria-label="添加账户">${iconHtml('ic-plus')}</button></div>
     </header>
 
     <section class="card asset acct-hero">
@@ -167,8 +156,7 @@ async function refresh(): Promise<void> {
       <section class="card">
         <p class="sub" style="text-align:center;padding:18px 0">还没有可展示的账户<br>点右上角 <b>＋</b> 添加现金、储蓄卡、网络账户或信用卡</p>
       </section>`}
-    ${hiddenCard}
-    <p class="tiny" style="text-align:center;padding:4px 0 10px">点击分组可收起 · 转账不计收支，只在账户间流动</p>`;
+    <p class="tiny" style="text-align:center;padding:4px 0 10px">点击账户查看流水 · 排序、隐藏及净资产范围请进入管理</p>`;
 }
 
 /* ── 账户详情抽屉（流水 / 编辑 / 对账 / 隐藏） ── */
@@ -259,21 +247,18 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     body.innerHTML = `
       <section class="account-detail-hero">
         <div class="account-detail-top"><span>${ACCOUNT_GROUP_NAMES[acct.group]}</span><small>${esc(repayNote(acct) ?? acct.note ?? '人民币账户')}</small></div>
-        <p>当前余额</p>
-        <h3 class="num${acct.balance < 0 ? ' neg' : ''}">${formatFenCny(acct.balance)}</h3>
-        ${limit ? `<div class="credit-limit-summary">
-          <span>信用额度 <b class="num">${formatFenCny(limit.limit)}</b></span>
-          <span>${limit.overLimit > 0 ? '已超额' : '剩余额度'} <b class="num${limit.overLimit > 0 ? ' neg' : ''}">${formatFenCny(limit.overLimit || limit.remaining)}</b></span>
-        </div>` : ''}
+        <div class="account-balance-overview${limit ? ' has-limit' : ''}">
+          <div class="account-current-balance"><p>当前余额</p><h3 class="num${acct.balance < 0 ? ' neg' : ''}">${formatFenCny(acct.balance)}</h3></div>
+          ${limit ? `<div class="credit-limit-side">
+            <p><span>信用额度</span><b class="num">${formatFenCny(limit.limit)}</b></p>
+            <p><span>${limit.overLimit > 0 ? '已超额' : '剩余额度'}</span><b class="num${limit.overLimit > 0 ? ' neg' : ''}">${formatFenCny(limit.overLimit || limit.remaining)}</b></p>
+          </div>` : ''}
+        </div>
         <div class="account-flow-total"><span>总流入 <b class="num">${formatFenCny(totalIn)}</b></span><span>总流出 <b class="num">${formatFenCny(totalOut)}</b></span></div>
         ${balanceTrendHtml(trend, '账户余额', trendState)}
         <div class="account-detail-actions">
           <button data-account-action="edit">${iconHtml('ic-pen', 17)}编辑</button>
           <button data-account-action="reconcile">${iconHtml('ic-swap', 17)}对账</button>
-          <button data-account-action="up" aria-label="组内上移">↑ 上移</button>
-          <button data-account-action="down" aria-label="组内下移">↓ 下移</button>
-          <button data-account-action="networth">${acct.countInNetWorth === false ? '计入净资产' : '不计净资产'}</button>
-          <button data-account-action="hide">${acct.hidden ? '恢复显示' : '隐藏账户'}</button>
         </div>
       </section>
       <div class="account-months" id="account-months">
@@ -327,9 +312,6 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     else if (action === 'entry') void openEntrySheet({ presetAccountId: acct.id });
     else if (action === 'edit') void openAccountForm(acct);
     else if (action === 'reconcile') openReconcileSheet(acct);
-    else if (action === 'up' || action === 'down') void reorderAccountWithinGroup(acct.id, action).then(() => showToast('已调整组内顺序')).catch(err => showToast(err.message));
-    else if (action === 'networth') void setAccountCountInNetWorth(acct.id, acct.countInNetWorth === false).then(() => showToast(acct.countInNetWorth === false ? '已计入净资产' : '已不计入净资产'));
-    else if (action === 'hide') void setAccountHidden(acct.id, !acct.hidden).then(() => showToast(acct.hidden ? '已恢复显示' : '已隐藏，可在已隐藏分区恢复'));
   });
   body.addEventListener('keydown', event => {
     if (event.target instanceof HTMLElement && event.target.matches('.entry-swipe-content') && (event.key === 'Enter' || event.key === ' ')) {
@@ -350,10 +332,7 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
 
 /* ── 隐藏 / 恢复显示 ── */
 
-/**
- * 隐藏或恢复账户。隐藏时同步 countInNetWorth=false（默认不计净资产，
- * 设置「隐藏账户计入净资产」开启时由 getNetWorth 统一放行），恢复时还原为 true。
- */
+/** 隐藏或恢复账户；显示状态与净资产计入范围保持独立。 */
 async function toggleHidden(acct: Account): Promise<void> {
   if (!acct.hidden) {
     const ok = await confirmDialog({
@@ -366,6 +345,105 @@ async function toggleHidden(acct: Account): Promise<void> {
   closeSheet();
   await setAccountHidden(acct.id, !acct.hidden);
   showToast(acct.hidden ? `已恢复显示「${acct.name}」` : `已隐藏「${acct.name}」`);
+}
+
+/** 账户管理动作抽屉：集中承载编辑、净资产范围、隐藏恢复与受约束删除。 */
+function openManagedAccountSheet(acct: Account): void {
+  openSheet({
+    ariaLabel: `管理账户：${acct.name}`,
+    onClose: () => sheetAbort?.abort(),
+    render(el) {
+      el.innerHTML = `
+        <div class="acct-sheet-head">
+          <div><p class="sheet-title">${esc(acct.name)}</p><p class="tiny">${ACCOUNT_GROUP_NAMES[acct.group]} · ${formatFenCny(acct.balance)}</p></div>
+          <button class="icon-btn" data-manage-action="close" aria-label="关闭">${iconHtml('ic-close')}</button>
+        </div>
+        <div class="sheet-scroll account-manage-sheet">
+          <button class="row" data-manage-action="edit"><span class="e-ic">${iconHtml('ic-pen', 18)}</span><span>编辑账户</span><span class="row-note">名称、备注及信用卡信息</span></button>
+          <button class="row" data-manage-action="networth"><span class="e-ic neutral">${iconHtml('ic-chart', 18)}</span><span>${acct.countInNetWorth === false ? '计入净资产' : '不计入净资产'}</span><span class="row-note">当前${acct.countInNetWorth === false ? '未计入' : '已计入'}</span></button>
+          <button class="row" data-manage-action="visibility"><span class="e-ic neutral">${iconHtml('ic-eye', 18)}</span><span>${acct.hidden ? '恢复显示' : '隐藏账户'}</span><span class="row-note">${acct.hidden ? '重新显示在账户页' : '流水仍会保留'}</span></button>
+          <button class="row danger" data-manage-action="delete"><span class="e-ic neutral">${iconHtml('ic-trash', 18)}</span><span>删除空账户</span><span class="row-note">仅无余额、无历史及引用时可删</span></button>
+        </div>`;
+      const signal = sheetSignal();
+      el.addEventListener('click', (event) => {
+        const action = (event.target as HTMLElement).closest<HTMLElement>('[data-manage-action]')?.dataset.manageAction;
+        if (!action) return;
+        if (action === 'close') closeSheet();
+        else if (action === 'edit') void openAccountForm(acct);
+        else if (action === 'networth') {
+          void setAccountCountInNetWorth(acct.id, acct.countInNetWorth === false).then(() => {
+            closeSheet();
+            showToast(acct.countInNetWorth === false ? '已计入净资产' : '已不计入净资产');
+          }).catch(error => showToast(error instanceof Error ? error.message : String(error)));
+        } else if (action === 'visibility') {
+          void toggleHidden(acct);
+        } else if (action === 'delete') {
+          closeSheet();
+          void confirmDialog({
+            title: `删除「${acct.name}」？`,
+            message: '仅无余额、无历史流水及业务引用的空账户可以删除。',
+            okText: '删除',
+            danger: true,
+          }).then(async (ok) => {
+            if (!ok) return;
+            try {
+              await deleteAccount(acct.id);
+              showToast(`已删除「${acct.name}」`);
+            } catch (error) {
+              showToast(error instanceof Error ? error.message : String(error));
+            }
+          });
+        }
+      }, { signal });
+    },
+  });
+}
+
+/** 账户管理子页：全部账户按分组展示，排序与设置均在列表原位完成。 */
+function renderAccountManager(body: HTMLElement): void {
+  body.classList.add('account-manage-body');
+
+  async function refreshManager(): Promise<void> {
+    const groups = await listAccountsByGroup();
+    if (!body.isConnected) return;
+    const cards = ACCOUNT_GROUPS.map((group) => {
+      const rows = groups[group];
+      if (!rows.length) return '';
+      return `<section class="card list account-manage-group" data-manage-group="${group}" aria-label="${ACCOUNT_GROUP_NAMES[group]}账户管理">
+        <div class="account-manage-group-head"><b>${ACCOUNT_GROUP_NAMES[group]}</b><span>${rows.length} 个</span></div>
+        ${rows.map((account, index) => `<div class="row account-manage-row${account.hidden ? ' is-hidden' : ''}" data-manage-account="${account.id}">
+          <span class="e-ic${account.hidden ? ' neutral' : ''}">${iconHtml(GROUP_ICONS[group], 18)}</span>
+          <span class="account-manage-copy"><b>${esc(account.name)}</b><small>${account.hidden ? '已隐藏' : '显示中'} · ${account.countInNetWorth === false ? '不计入净资产' : '计入净资产'}</small></span>
+          <span class="account-manage-sort">
+            <button class="icon-btn" data-move="up" aria-label="上移「${esc(account.name)}」"${index === 0 ? ' disabled' : ''}>↑</button>
+            <button class="icon-btn" data-move="down" aria-label="下移「${esc(account.name)}」"${index === rows.length - 1 ? ' disabled' : ''}>↓</button>
+          </span>
+          <button class="account-settings-link" data-account-settings>设置</button>
+        </div>`).join('')}
+      </section>`;
+    }).join('');
+    body.innerHTML = `<p class="sub account-manage-tip">账户按类型分组。上下箭头调整组内顺序；设置中可编辑、隐藏或调整净资产范围。</p>${cards || '<section class="card"><p class="sub" style="text-align:center;padding:18px 0">还没有账户</p></section>'}`;
+  }
+
+  body.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement;
+    const row = target.closest<HTMLElement>('[data-manage-account]');
+    if (!row) return;
+    const id = Number(row.dataset.manageAccount);
+    const move = target.closest<HTMLElement>('[data-move]')?.dataset.move as 'up' | 'down' | undefined;
+    if (move) {
+      void reorderAccountWithinGroup(id, move).catch(error => showToast(error instanceof Error ? error.message : String(error)));
+      return;
+    }
+    if (target.closest('[data-account-settings]')) {
+      void getAccount(id).then(account => account && openManagedAccountSheet(account));
+    }
+  });
+  const off = on('accounts-changed', () => {
+    if (!body.isConnected) { off(); return; }
+    void refreshManager();
+  });
+  void refreshManager();
 }
 
 /* ── 添加 / 编辑账户表单 ── */
@@ -542,13 +620,8 @@ function render(el: HTMLElement): void {
 
   el.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
+    if (target.closest('[data-account-manage]')) { openSubpage('sp-account-manage'); return; }
     if (target.closest('[data-add]')) { void openAccountForm(); return; }
-    const unhide = target.closest<HTMLElement>('[data-unhide]');
-    if (unhide) {
-      const id = Number(unhide.dataset.unhide);
-      void updateAccount(id, { hidden: false, countInNetWorth: true }).then(() => showToast('已恢复显示'));
-      return;
-    }
     const head = target.closest<HTMLElement>('[data-group]');
     if (head) {
       const g = head.dataset.group as AccountGroup;
@@ -561,25 +634,9 @@ function render(el: HTMLElement): void {
     }
     const row = target.closest<HTMLElement>('[data-acct]');
     if (row) {
-      if (pressFired) { pressFired = false; return; } // 长按隐藏后不再触发点击
       void openAccountDetail(Number(row.dataset.acct));
     }
   });
-
-  // 长按账户行 → 隐藏（550ms；移动/滚动/抬起取消）
-  el.addEventListener('pointerdown', (e) => {
-    const row = (e.target as HTMLElement).closest<HTMLElement>('[data-acct]');
-    if (!row) return;
-    pressFired = false;
-    pressTimer = window.setTimeout(() => {
-      pressFired = true;
-      void getAccount(Number(row.dataset.acct)).then((a) => a && toggleHidden(a));
-    }, 550);
-  });
-  for (const evt of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
-    el.addEventListener(evt, () => { if (pressTimer) clearTimeout(pressTimer); });
-  }
-  el.addEventListener('scroll', () => { if (pressTimer) clearTimeout(pressTimer); }, { passive: true });
 
   on('accounts-changed', () => void refresh());
   on('entries-changed', () => void refresh());
@@ -594,5 +651,9 @@ export function registerAccountPage(): void {
   registerSubpage('sp-account-detail', {
     title: '账户详情',
     render(body) { void renderAccountDetail(body); },
+  });
+  registerSubpage('sp-account-manage', {
+    title: '账户管理',
+    render: renderAccountManager,
   });
 }
