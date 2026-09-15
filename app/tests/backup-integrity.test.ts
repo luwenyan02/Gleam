@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
 import { TABLE_NAMES, type TableDump } from '../src/core/repo/backupRepo';
-import { parseSkbak } from '../src/features/backup/skbak';
+import { parseSkbak, SKBAK_SCHEMA_VERSION } from '../src/features/backup/skbak';
 
 function emptyDump(): TableDump {
   return Object.fromEntries(TABLE_NAMES.map((name) => [name, []])) as TableDump;
@@ -65,7 +65,7 @@ describe('SKBAK v1 解析完整性', () => {
       attachmentBytes: new Map([[7, new Uint8Array([1, 2, 3, 4])]]),
     }));
 
-    expect(TABLE_NAMES).toHaveLength(20);
+    expect(TABLE_NAMES).toHaveLength(21);
     expect(TABLE_NAMES.every((name) => Array.isArray(parsed.dump[name]))).toBe(true);
     expect(parsed.manifest.counts.accounts).toBe(1);
     expect([...new Uint8Array(await (parsed.dump.attachments[0] as { blob: Blob }).blob.arrayBuffer())])
@@ -81,7 +81,7 @@ describe('SKBAK v1 解析完整性', () => {
   });
 
   it('拒绝比当前应用更新的 schemaVersion', async () => {
-    const source = await archive({ mutateManifest: (manifest) => { manifest.schemaVersion = 3; } });
+    const source = await archive({ mutateManifest: (manifest) => { manifest.schemaVersion = SKBAK_SCHEMA_VERSION + 1; } });
     await expect(parseSkbak(source)).rejects.toThrow('请先升级应用');
   });
 
@@ -146,5 +146,49 @@ describe('SKBAK v1 解析完整性', () => {
     });
 
     await expect(parseSkbak(source)).rejects.toThrow(/附件.*7.*大小/);
+  });
+
+  it.each([1, 2])('兼容 v%s 不含普通记账附件关联的旧包', async schemaVersion => {
+    const data = emptyDump() as Record<string, unknown>;
+    delete data.entryAttachments;
+    const parsed = await parseSkbak(await archive({ data, mutateManifest: manifest => {
+      manifest.schemaVersion = schemaVersion;
+      delete (manifest.counts as Record<string, number>).entryAttachments;
+    } }));
+    expect(parsed.dump.entryAttachments).toEqual([]);
+  });
+
+  it('v3 验证附件内容哈希，拒绝等长篡改和缺失哈希', async () => {
+    const data = emptyDump();
+    data.attachments = [{ id: 7, mime: 'image/png', size: 4, blob: null }];
+    const checksum = await sha256Hex('test');
+    const make = (content: string, includeHash = true) => archive({
+      data,
+      attachmentBytes: new Map([[7, new TextEncoder().encode(content)]]),
+      mutateManifest: manifest => {
+        manifest.schemaVersion = 3;
+        if (includeHash) manifest.attachmentChecksums = { 7: checksum };
+      },
+    });
+    await expect(parseSkbak(await make('test'))).resolves.toBeDefined();
+    await expect(parseSkbak(await make('evil'))).rejects.toThrow(/附件.*7.*校验/);
+    await expect(parseSkbak(await make('test', false))).rejects.toThrow(/附件.*7.*校验/);
+  });
+
+  it('拒绝指向不存在流水的附件关联', async () => {
+    const data = emptyDump();
+    data.entryAttachments = [{ id: 1, entryId: 999, attachmentId: 7, sortOrder: 0 }];
+    await expect(parseSkbak(await archive({ data }))).rejects.toThrow(/凭证.*关联/);
+  });
+
+  it('恢复前拒绝重复凭证关系主键', async () => {
+    const data = emptyDump();
+    data.entries = [{ id: 1 }, { id: 2 }];
+    data.attachments = [{ id: 7, mime: 'image/png', size: 1, blob: null }];
+    data.entryAttachments = [
+      { id: 1, entryId: 1, attachmentId: 7, sortOrder: 0 },
+      { id: 1, entryId: 2, attachmentId: 7, sortOrder: 0 },
+    ];
+    await expect(parseSkbak(await archive({ data, attachmentBytes: new Map([[7, new Uint8Array([1])]]) }))).rejects.toThrow(/凭证.*重复/);
   });
 });

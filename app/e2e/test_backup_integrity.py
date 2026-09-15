@@ -26,7 +26,7 @@ def seed_icon_photo(page):
             request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error);
           });
-          const tx = db.transaction(['attachments', 'lifeNotes'], 'readwrite');
+          const tx = db.transaction(['attachments', 'lifeNotes', 'entries', 'entryAttachments', 'accounts'], 'readwrite');
           const now = 1788796800000;
           tx.objectStore('attachments').put({
             id: attachmentId,
@@ -47,6 +47,9 @@ def seed_icon_photo(page):
             createdAt: now,
             updatedAt: now,
           });
+          tx.objectStore('accounts').put({ id: attachmentId, name: '虚构凭证账户', group: 'cash', balance: -100, hidden: false, countInNetWorth: true, sortOrder: 99, createdAt: now, updatedAt: now });
+          tx.objectStore('entries').put({ id: attachmentId, type: 'expense', amount: 100, accountId: attachmentId, occurredAt: now, deletedAt: 0, createdAt: now, updatedAt: now });
+          tx.objectStore('entryAttachments').put({ id: attachmentId, entryId: attachmentId, attachmentId, sortOrder: 0 });
           await new Promise((resolve, reject) => {
             tx.oncomplete = resolve;
             tx.onerror = () => reject(tx.error);
@@ -80,8 +83,9 @@ def database_fingerprint(page):
           const countsPromise = Promise.all(names.map(async name => [name, await request(name, 'count')]));
           const attachmentPromise = request('attachments', 'get', attachmentId);
           const notePromise = request('lifeNotes', 'get', attachmentId);
-          const [counts, attachment, note] = await Promise.all([
-            countsPromise, attachmentPromise, notePromise,
+          const linksPromise = request('entryAttachments', 'getAll');
+          const [counts, attachment, note, links] = await Promise.all([
+            countsPromise, attachmentPromise, notePromise, linksPromise,
           ]);
           db.close();
           if (!attachment) return { counts: Object.fromEntries(counts), attachment: null, note };
@@ -89,6 +93,7 @@ def database_fingerprint(page):
           const digest = await crypto.subtle.digest('SHA-256', bytes);
           return {
             counts: Object.fromEntries(counts),
+            links,
             attachment: {
               id: attachment.id,
               mime: attachment.mime,
@@ -118,9 +123,10 @@ def delete_icon_photo(page):
             request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error);
           });
-          const tx = db.transaction(['attachments', 'lifeNotes'], 'readwrite');
+          const tx = db.transaction(['attachments', 'lifeNotes', 'entryAttachments'], 'readwrite');
           tx.objectStore('attachments').delete(attachmentId);
           tx.objectStore('lifeNotes').delete(attachmentId);
+          tx.objectStore('entryAttachments').delete(attachmentId);
           await new Promise((resolve, reject) => {
             tx.oncomplete = resolve;
             tx.onerror = () => reject(tx.error);
@@ -142,6 +148,9 @@ def corrupt_backup(source, name, kind):
     omitted = set()
     if kind == 'missing_attachment':
         omitted.add(f'attachments/{ATTACHMENT_ID}')
+    elif kind == 'tampered_attachment':
+        name = f'attachments/{ATTACHMENT_ID}'
+        payloads[name] = bytes([payloads[name][0] ^ 1]) + payloads[name][1:]
     elif kind == 'count_mismatch':
         manifest['counts']['attachments'] += 1
         payloads['manifest.json'] = json.dumps(manifest, ensure_ascii=False).encode('utf-8')
@@ -180,6 +189,7 @@ def assert_corrupt_backups_are_rejected(page):
     baseline = database_fingerprint(page)
     cases = (
         ('missing_attachment', '附件'),
+        ('tampered_attachment', '校验'),
         ('count_mismatch', '计数'),
         ('missing_table', '数据表 settings'),
     )

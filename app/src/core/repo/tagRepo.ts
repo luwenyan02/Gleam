@@ -28,8 +28,20 @@ export async function ensureTag(name: string): Promise<number> {
 }
 
 /** 改名（重名时抛错，由 &name 唯一索引保证） */
-export async function renameTag(id: number, name: string): Promise<void> {
-  await db.tags.update(id, { name: name.trim(), updatedAt: now() });
+export async function renameTag(id: number, name: string, color?: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error('标签名不能为空');
+  const normalized = color?.trim().toUpperCase() || undefined;
+  if (normalized != null && !/^#[0-9A-F]{6}$/.test(normalized)) throw new Error('标签颜色格式无效');
+  await db.tags.update(id, { name: trimmed, ...(color !== undefined ? { color: normalized } : {}), updatedAt: now() });
+  emit('entries-changed');
+}
+
+/** 标签颜色为空表示跟随主题；非空值统一存为大写 #RRGGBB。 */
+export async function setTagColor(id: number, color?: string): Promise<void> {
+  const normalized = color?.trim().toUpperCase() || undefined;
+  if (normalized != null && !/^#[0-9A-F]{6}$/.test(normalized)) throw new Error('标签颜色格式无效');
+  if (await db.tags.update(id, { color: normalized, updatedAt: now() }) === 0) throw new Error('标签不存在');
   emit('entries-changed');
 }
 

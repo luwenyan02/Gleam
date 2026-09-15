@@ -21,6 +21,10 @@ import {
 } from './lock';
 import { openPickList } from '../../shared/pickList';
 import { secretStore } from '../../core/secretStore';
+import {
+  accountingMonthRange, getAccountingMonth, setAccountingMonthStartDay,
+} from '../../core/repo/periodRepo';
+import { formatAccountingRange } from '../../core/period';
 
 let body: HTMLElement | undefined;
 let sheetAbort: AbortController | undefined;
@@ -40,12 +44,16 @@ async function refresh(): Promise<void> {
   const el = body;
   if (!el?.isConnected) return;
   const isNative = Capacitor.isNativePlatform();
-  const [pin, webauthn, bioOk, countAsIncome, autoRenew, backupAuto, retention, themeMode] = await Promise.all([
+  const [pin, webauthn, bioOk, countAsIncome, autoRenew, backupAuto, retention, themeMode, monthStartDay] = await Promise.all([
     getSetting('security.pin'), getSetting('security.webauthn'), biometricAvailable(),
     getSetting('reimburse.countAsIncome'),
     getSetting('budget.autoRenew'), getSetting('backup.auto'), getSetting('trash.retentionDays'),
     getSetting('theme.mode'),
+    getSetting('accounting.monthStartDay'),
   ]);
+  if (!el.isConnected) return;
+  const currentAccountingMonth = await getAccountingMonth();
+  const currentAccountingRange = await accountingMonthRange(currentAccountingMonth);
   if (!el.isConnected) return;
   // [R07] Android 使用系统通知；Web 使用首页应用内提醒。
   const [ntfRecurring, ntfCredit, ntfBackup] = await Promise.all([
@@ -103,6 +111,12 @@ async function refresh(): Promise<void> {
       <h3 class="card-title">记账偏好</h3>
       <div class="field"><span>报销到账记为收入</span>${switchHtml('reimburse', countAsIncome as boolean, '报销到账记为收入')}</div>
       <p class="tiny">开＝到账记一笔「报销」收入；关＝冲抵原支出。与报销页开关同步</p>
+      <label class="field" for="accounting-month-start"><span>财务月起始日</span>
+        <select class="st-select" id="accounting-month-start" aria-label="财务月起始日">
+          ${Array.from({ length: 28 }, (_, index) => index + 1).map(day => `<option value="${day}"${day === monthStartDay ? ' selected' : ''}>每月 ${day} 日</option>`).join('')}
+        </select>
+      </label>
+      <p class="tiny">当前财务月 ${currentAccountingMonth}：${formatAccountingRange(currentAccountingRange)}。仅月总览、月报表和月预算采用此范围；周与年仍按自然周期。</p>
       <div class="field"><span>预算自动延续到下月</span>${switchHtml('budget', autoRenew as boolean, '预算自动延续')}</div>
     </section>
 
@@ -364,6 +378,11 @@ export function initSettings(): void {
             .catch(() => showToast('API Key 保存失败，请重新输入'));
         }
         else if (t.id === 'ai-thres') void setSetting('ai.autoConfirmThreshold', Number(t.value));
+        else if (t.id === 'accounting-month-start') {
+          void setAccountingMonthStartDay(Number(t.value))
+            .then(() => showToast('财务月起始日已更新'))
+            .catch(err => showToast(err instanceof Error ? err.message : String(err)));
+        }
       });
       el.addEventListener('input', (e) => {
         const t = e.target as HTMLInputElement;

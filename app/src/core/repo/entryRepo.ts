@@ -16,6 +16,7 @@ import { on } from '../store';
 import { emitAfterCommit as emit } from './transactionEvents';
 import { accountEffects } from '../entryEffects';
 import { validateLoanAccounts } from '../loanLedger';
+import { removeEntryAttachmentLinks } from './entryAttachmentRepo';
 import type { Entry, EntryType, ImportBatch, LoanKind, ReimburseStatus } from '../types';
 
 /** 新建账单输入（id/时间戳/软删除字段由仓库补齐） */
@@ -230,18 +231,20 @@ export async function restoreEntry(id: number): Promise<void> {
  * 同时清理标签关联。
  */
 export async function purgeEntry(id: number): Promise<void> {
-  await db.transaction('rw', [db.entries, db.entryTags], async () => {
+  await db.transaction('rw', [db.entries, db.entryTags, db.entryAttachments, db.attachments, db.lifeNotes, db.settings], async () => {
     const e = await db.entries.get(id);
     if (!e) return;
     if (e.deletedAt === 0) throw new Error('仅可物理删除回收站中的账单');
     if (!e.refundFlag) {
       const refundIds = (await db.entries.filter((entry) => entry.refundOfEntryId === id).toArray()).map((entry) => entry.id);
       if (refundIds.length) {
+        await removeEntryAttachmentLinks(refundIds);
         await db.entryTags.where('entryId').anyOf(refundIds).delete();
         await db.entries.bulkDelete(refundIds);
       }
     }
     await db.entryTags.where('entryId').equals(id).delete();
+    await removeEntryAttachmentLinks([id]);
     await db.entries.delete(id);
   });
   emit('entries-changed', { id });

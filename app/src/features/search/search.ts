@@ -4,6 +4,7 @@
  * 高级筛选面板、关键词搜索（流水 + 生活记录）、左滑操作、entries-changed 自动刷新。
  */
 import './search.css';
+import { openEntityInsight } from '../tagmerchant/tagmerchant';
 import { expandCategoryIds, parseAmountRange, validateDateRange } from '../../core/queryValidation';
 import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
@@ -214,6 +215,8 @@ function renderActiveFilters(maps: FilterLabelMaps): void {
   for (const id of filterState.accountIds) chip('account', maps.accountNames.get(id) ?? '已删除账户', id);
   for (const id of filterState.tagIds) chip('tag', `#${maps.tagNames.get(id) ?? '已删除标签'}`, id);
   for (const id of filterState.merchantIds) chip('merchant', maps.merchantNames.get(id) ?? '已删除商家', id);
+  for (const id of filterState.tagIds) chips.push(`<button class="chip" data-entity-kind="tag" data-entity-id="${id}">${esc(maps.tagNames.get(id) ?? '标签')}详情 ›</button>`);
+  for (const id of filterState.merchantIds) chips.push(`<button class="chip" data-entity-kind="merchant" data-entity-id="${id}">${esc(maps.merchantNames.get(id) ?? '商家')}详情 ›</button>`);
   if (filterState.amountMin || filterState.amountMax) {
     chip('amount', `${filterState.amountMin || '0'} – ${filterState.amountMax || '不限'} 元`);
   }
@@ -823,6 +826,8 @@ export function initSearch(): void {
       // 结果区点击事件代理
       el.addEventListener('click', (e) => {
         const t = e.target as HTMLElement;
+        const entity = t.closest<HTMLElement>('[data-entity-kind]');
+        if (entity) { openEntityInsight(entity.dataset.entityKind as 'tag' | 'merchant', Number(entity.dataset.entityId)); return; }
         if (t.closest('#sr-load-more')) { shown += PAGE_SIZE; void doSearch(input.value.trim()); return; }
 
         const removeFilter = t.closest<HTMLElement>('[data-remove-filter]');

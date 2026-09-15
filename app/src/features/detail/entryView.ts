@@ -22,6 +22,9 @@ import {
 } from './entrySwipe';
 import { fullDateTime, typeName } from './detailShared';
 import { reimbursementDetailText } from '../reimburse/reimburse';
+import { listEntryAttachments } from '../../core/repo/entryAttachmentRepo';
+import { previewReceipt, receiptThumbnail } from '../entry/receiptEditor';
+import { openEntityInsight } from '../tagmerchant/tagmerchant';
 
 export async function renderEntryView(body: HTMLElement): Promise<void> {
   const entryId = getViewEntryId();
@@ -51,7 +54,7 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
     const accountMap = new Map(accounts.map((account) => [account.id, account]));
     const account = accountMap.get(entry.accountId ?? -1);
     const merchant = merchants.find((item) => item.id === entry.merchantId);
-    const tagNames = tags.filter((tag) => tagIds.includes(tag.id)).map((tag) => `#${tag.name}`);
+    const selectedTags = tags.filter((tag) => tagIds.includes(tag.id));
     const refunds = entry.refundFlag ? [] : await listRefunds(entry.id);
     const original = entry.refundOfEntryId != null ? await getEntry(entry.refundOfEntryId) : undefined;
     const remaining = canRefund(entry) ? await refundableAmount(entry.id) : 0;
@@ -70,6 +73,7 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
     const reimbursement = reimbursementDetailText(entry);
     const batch = entry.importBatchId != null ? await getImportBatch(entry.importBatchId) : undefined;
     const sourceText = entry.importBatchId == null ? '手工录入' : batch?.source === 'ai' ? 'AI 记账' : '账单导入';
+    const receipts = await listEntryAttachments(entry.id);
 
     subpage.querySelector<HTMLElement>('.sub-head h2')!.textContent = typeName(entry);
     body.innerHTML = `
@@ -82,17 +86,23 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
         <div class="detail-field"><span>时间</span><b class="num">${fullDateTime(entry.occurredAt)}</b></div>
         <div class="detail-field"><span>${entry.type === 'expense' ? (entry.refundFlag ? '退款账户' : '付款账户') : '资金账户'}</span><b>${esc(accountText)}</b></div>
         <div class="detail-field"><span>分类</span><b>${esc(categoryText)}</b></div>
-        <div class="detail-field"><span>商家</span><b>${esc(merchant?.name ?? '无商家')}</b></div>
+        <div class="detail-field"><span>商家</span><b>${merchant ? `<button class="chip" data-view-merchant="${merchant.id}">${esc(merchant.name)} ›</button>` : '无商家'}</b></div>
         ${entry.type === 'expense' && !entry.refundFlag ? `<div class="detail-field"><span>报销</span><b>${reimbursement}</b></div>` : ''}
-        ${tagNames.length ? `<div class="detail-field"><span>标签</span><b>${esc(tagNames.join(' '))}</b></div>` : ''}
+        ${selectedTags.length ? `<div class="detail-field"><span>标签</span><b>${selectedTags.map(tag => `<button class="chip" data-view-tag="${tag.id}">#${esc(tag.name)} ›</button>`).join(' ')}</b></div>` : ''}
       </section>
       <section class="card list entry-view-fields compact">
         <div class="detail-field"><span>来源</span><b>${sourceText}</b></div>
         ${entry.refundFlag ? `<div class="detail-field"><span>关联原账单</span><b>${original ? `${esc(typeName(original))} · ${formatFenCny(original.amount)}` : '原账单已删除'}</b></div>` : ''}
       </section>
       <section class="entry-view-note${entry.note ? '' : ' empty'}">${entry.note ? esc(entry.note) : '无备注'}</section>
+      ${receipts.length ? `<section aria-label="账单凭证"><p class="card-title">凭证 · ${receipts.length}</p><div class="receipt-strip">${receipts.map((receipt, index) => `<button class="receipt-thumb" type="button" data-view-receipt="${index}" aria-label="预览凭证 ${index + 1}">${receiptThumbnail(receipt)}</button>`).join('')}</div></section>` : ''}
       ${refunds.length ? `<section class="refund-links"><p class="card-title">关联退款 · ${refunds.length} 笔</p>${refunds.map((refund) => `<div><span>${fullDateTime(refund.occurredAt)}</span><b class="num">+${formatFen(refund.amount)}</b></div>`).join('')}<p>尚可退款 <b class="num">${formatFenCny(remaining)}</b></p></section>` : ''}
       <p class="entry-audit">账单 ID：${entry.id}<br>创建时间：${fullDateTime(entry.createdAt)}<br>修改时间：${fullDateTime(entry.updatedAt)}</p>`;
+    body.querySelectorAll<HTMLButtonElement>('[data-view-receipt]').forEach(button => {
+      button.onclick = () => previewReceipt(receipts[Number(button.dataset.viewReceipt)]!);
+    });
+    body.querySelectorAll<HTMLButtonElement>('[data-view-tag]').forEach(button => { button.onclick = () => openEntityInsight('tag', Number(button.dataset.viewTag)); });
+    body.querySelectorAll<HTMLButtonElement>('[data-view-merchant]').forEach(button => { button.onclick = () => openEntityInsight('merchant', Number(button.dataset.viewMerchant)); });
 
     const refundLabel = !canRefund(entry) ? '不可退款' : remaining > 0 ? '退款' : '已退完';
     actionBar.innerHTML = `

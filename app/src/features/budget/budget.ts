@@ -21,12 +21,18 @@ import { showToast } from '../shell/toast';
 import { confirmDialog } from '../shell/dialog';
 import { openMonthWheel } from '../../shared/dateTimeWheel';
 import type { Category } from '../../core/types';
+import { accountingMonthRange, getAccountingMonth } from '../../core/repo/periodRepo';
+import { accountingRangeProgress, formatAccountingRange } from '../../core/period';
 
 /* ── 模块状态 ── */
 let body: HTMLElement | undefined;
 /** 并发刷新令牌 */
 let refreshToken = 0;
-let selectedMonth = curMonth();
+let selectedMonth = '';
+/** 未手动选期时，起始日变化应自动切换到新的当前财务月。 */
+let followsCurrentMonth = true;
+/** 年预算始终使用自然年，不借用可能跨年的财务月键。 */
+let selectedAnnualYear = new Date().getFullYear();
 let annual = false;
 /** 抽屉监听器控制（#sheet 为复用容器，重开前废止上一次绑定，防重复提交） */
 let sheetAbort: AbortController | undefined;
@@ -37,12 +43,6 @@ function sheetSignal(): AbortSignal {
   return sheetAbort.signal;
 }
 
-
-/** 当前月 'YYYY-MM' */
-function curMonth(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
 
 /** 元整数展示（原型 fmt0 语义，用于 '/ ¥1,800' 的额度） */
 function fmtYuan0(fen: number): string {
@@ -61,16 +61,20 @@ async function refresh(): Promise<void> {
   const el = body;
   if (!el?.isConnected) return;
   const token = ++refreshToken;
+  const currentMonth = await getAccountingMonth();
+  if (followsCurrentMonth || !selectedMonth) selectedMonth = currentMonth;
   const month = selectedMonth;
+  const range = await accountingMonthRange(month);
+  const rangeText = formatAccountingRange(range);
   // ensureMonthBudget：上月开启延续时按上月额度（含子预算）自动建档
   const [budget, usage, tree, catBudgets] = await Promise.all([
-    (month === curMonth() ? ensureMonthBudget(month) : getBudget(month)), budgetUsage(month), listExpenseTree(), listCategoryBudgets(month),
+    (month === currentMonth ? ensureMonthBudget(month) : getBudget(month)), budgetUsage(month), listExpenseTree(), listCategoryBudgets(month),
   ]);
   if (token !== refreshToken || !el.isConnected) return;
 
   const d = new Date();
-  const selectedYear = Number(month.slice(0, 4));
-  const periodControls = `<div class="bd-period"><button class="btn" data-act="period">${annual ? selectedYear + '年' : month} ▾</button><button class="btn" data-act="mode">${annual ? '查看月预算' : '查看年度预算'}</button>${annual ? '' : '<button class="btn" data-act="copy">复制上期</button>'}</div>`;
+  const selectedYear = selectedAnnualYear;
+  const periodControls = `<div class="bd-period"><button class="btn" data-act="period">${annual ? selectedYear + '年' : `财务月 ${month}`} ▾</button><button class="btn" data-act="mode">${annual ? '查看月预算' : '查看年度预算'}</button>${annual ? '' : '<button class="btn" data-act="copy">复制上期</button>'}</div>${annual ? '' : `<p class="tiny" style="text-align:center;margin:-4px 0 10px">${rangeText}</p>`}`;
   if (annual) {
     const range = yearRange(selectedYear);
     const [limit, summary] = await Promise.all([getAnnualBudget(selectedYear), rangeSummary(range.from, range.to)]);
@@ -78,8 +82,8 @@ async function refresh(): Promise<void> {
     el.innerHTML = `${periodControls}<section class="card budget-overview"><p class="label">${selectedYear}年总预算</p><p class="big num">${formatFenCny(limit)}</p><div class="bd-meta"><p>已使用<span class="num">${formatFenCny(summary.expense)}</span></p><p>剩余<span class="num">${formatFenCny(limit - summary.expense)}</span></p></div><button class="btn primary" data-act="setup">设置年度预算</button></section>`;
     return;
   }
-  const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-  const timePct = (d.getDate() / daysInMonth) * 100;
+  const progress = accountingRangeProgress(range, d.getTime());
+  const timePct = progress.percent;
 
   /* 总预算卡 */
   let overviewHtml: string;
@@ -87,35 +91,35 @@ async function refresh(): Promise<void> {
     const used = usage.totalUsed;
     const usedPct = (used / budget.totalLimit) * 100;
     const remain = budget.totalLimit - used;
-    const remainDays = daysInMonth - d.getDate() + 1;
+    const remainDays = progress.remainingDays;
     const daily = Math.max(0, Math.floor(remain / remainDays));
     const barCls = usedPct > 100 ? 'over' : usedPct > timePct ? 'warn' : 'ok';
     let hint: string;
     if (usedPct > 100) {
       hint = `预算已超支 ${formatFenCny(used - budget.totalLimit)} —— 建议压缩本月剩余开销`;
     } else if (usedPct > timePct) {
-      hint = `刚过 ${d.getMonth() + 1}月${d.getDate()}日，时间进度 ${timePct.toFixed(1)}%，但预算已用 ${usedPct.toFixed(1)}% —— 消费偏快，注意后面的节奏`;
+      hint = `截至 ${d.getMonth() + 1}月${d.getDate()}日，周期进度 ${timePct.toFixed(1)}%，但预算已用 ${usedPct.toFixed(1)}% —— 消费偏快，注意后面的节奏`;
     } else {
       hint = `时间进度 ${timePct.toFixed(1)}%，预算已用 ${usedPct.toFixed(1)}% —— 节奏稳健，继续保持`;
     }
     overviewHtml = `
-      <section class="card budget-overview" aria-label="本月总预算">
-        <p class="label">${month} 总预算</p>
+      <section class="card budget-overview" aria-label="财务月总预算">
+        <p class="label">${month} 财务月总预算</p>
         <p class="big num">${formatFenCny(budget.totalLimit)}</p>
         <div class="bd-bar"><i class="${barCls}" style="width:${Math.max(0, Math.min(100, usedPct)).toFixed(1)}%"></i></div>
         <div class="bd-meta">
           <p>已使用<span class="num">${formatFenCny(used)}</span></p>
           <p>剩余<span class="num">${formatFenCny(remain)}</span></p>
-          ${month === curMonth() ? `<p>日均可用<span class="num">${formatFenCny(daily)}</span></p>` : ''}
+          ${month === currentMonth ? `<p>日均可用<span class="num">${formatFenCny(daily)}</span></p>` : ''}
         </div>
-        <p class="tiny" style="margin-top:8px">${month === curMonth() ? hint : '按所选自然月统计'}</p>
+        <p class="tiny" style="margin-top:8px">${month === currentMonth ? hint : `按 ${rangeText} 统计`}</p>
       </section>`;
   } else {
     overviewHtml = `
-      <section class="card budget-overview" aria-label="本月总预算">
-        <p class="label">${month} 总预算</p>
+      <section class="card budget-overview" aria-label="财务月总预算">
+        <p class="label">${month} 财务月总预算</p>
         <div class="bd-empty">
-          <p class="sub">还没有设置所选月份预算<br>设定总额度后，首页总览与这里会同步展示进度</p>
+          <p class="sub">还没有设置所选财务月预算<br>设定总额度后，首页总览与这里会同步展示进度</p>
           <button class="btn primary" data-act="setup">设置预算</button>
         </div>
       </section>`;
@@ -146,14 +150,15 @@ async function refresh(): Promise<void> {
       ${rowsHtml || '<p class="sub" style="padding:8px 0 12px">还没有分类子预算 · 点右上角设置，按支出大类分配额度</p>'}
       <p class="bd-legend"><span><i style="background:var(--income)"></i>进度良好</span><span><i style="background:var(--primary)"></i>消费偏快</span><span><i style="background:var(--over)"></i>已超支</span></p>
     </section>
-    <p class="tiny" style="text-align:center">月末未用完的预算不结转 · ${budget?.autoRenew !== false ? '下月自动按本月额度延续，可在预算设置中关闭' : '已关闭自动延续，下月需重新设置'}</p>`;
+    <p class="tiny" style="text-align:center">财务月结束时未用完的预算不结转 · ${budget?.autoRenew !== false ? '下个财务月自动按本期额度延续，可在预算设置中关闭' : '已关闭自动延续，下期需重新设置'}</p>`;
 }
 
 /* ── 预算设置抽屉 ── */
 
 async function openBudgetSheet(): Promise<void> {
+  if (!selectedMonth) selectedMonth = await getAccountingMonth();
   const month = selectedMonth;
-  if (annual) { await openAnnualSheet(Number(month.slice(0, 4))); return; }
+  if (annual) { await openAnnualSheet(selectedAnnualYear); return; }
   const [budget, tree, catBudgets, renewDefault] = await Promise.all([
     getBudget(month), listExpenseTree(), listCategoryBudgets(month), getSetting('budget.autoRenew'),
   ]);
@@ -167,13 +172,13 @@ async function openBudgetSheet(): Promise<void> {
     render(el) {
       el.innerHTML = `
         <div class="sheet-head">
-          <p class="sheet-title">预算设置 · ${month}</p>
+          <p class="sheet-title">财务月预算 · ${month}</p>
           <button class="icon-btn" data-act="close" aria-label="关闭">${iconHtml('ic-close')}</button>
         </div>
         <div class="sheet-scroll">
           <div class="field"><span>总额度</span><input class="note num" id="bd-total" inputmode="decimal" style="max-width:160px;margin-bottom:0;text-align:right" placeholder="元，留空则不设" value="${budget && budget.totalLimit > 0 ? formatFen(budget.totalLimit).replace(/,/g, '') : ''}"></div>
           <div class="field"><span>下月自动延续</span><button class="switch${autoRenew ? ' on' : ''}" id="bd-renew" role="switch" aria-checked="${autoRenew}" aria-label="下月自动按本月额度延续"></button></div>
-          <p class="tiny" style="padding:2px 0 8px">月末未用完不结转 · 开启延续后，下月按本月额度（含子预算）自动建档</p>
+          <p class="tiny" style="padding:2px 0 8px">财务月结束时未用完不结转 · 开启延续后，下个财务月按本期额度（含子预算）自动建档</p>
           <h3 class="card-title" style="margin:6px 0 2px">分类子预算（按支出大类）</h3>
           ${parents.map((p) => `
             <div class="field"><span>${esc(p.name)}</span><input class="note num" data-cat="${p.id}" inputmode="decimal" style="max-width:140px;margin-bottom:0;text-align:right" placeholder="不设" value="${(limitMap.get(p.id) ?? 0) > 0 ? formatFen(limitMap.get(p.id)!).replace(/,/g, '') : ''}"></div>`).join('')}
@@ -208,7 +213,7 @@ async function openBudgetSheet(): Promise<void> {
           }
           await saveMonthlyBudget(month, totalFen, catLimits, autoRenew);
           closeSheet();
-          showToast(totalFen > 0 ? `${month}预算已保存` : '已清除所选月份总预算');
+          showToast(totalFen > 0 ? `${month} 财务月预算已保存` : '已清除所选财务月总预算');
         } catch (err) {
           showToast(err instanceof Error ? err.message : String(err));
         } finally { saving = false; }
@@ -261,15 +266,26 @@ export function initBudget(): void {
       el.addEventListener('click', (e) => {
         const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
         if (act === 'setup') void openBudgetSheet();
-        if (act === 'mode') { annual = !annual; void refresh(); }
+        if (act === 'mode') {
+          annual = !annual;
+          if (annual) selectedAnnualYear = followsCurrentMonth ? new Date().getFullYear() : Number(selectedMonth.slice(0, 4));
+          void refresh();
+        }
         if (act === 'period') {
-          const [year, month] = selectedMonth.split('-').map(Number);
-          const panel = openMonthWheel({ initial: { year, month }, onConfirm: value => { selectedMonth = `${value.year}-${String(value.month).padStart(2, '0')}`; void refresh(); } });
+          const [monthYear, month] = selectedMonth.split('-').map(Number);
+          const panel = openMonthWheel({ initial: { year: annual ? selectedAnnualYear : monthYear, month: annual ? 1 : month }, onConfirm: value => {
+            if (annual) selectedAnnualYear = value.year;
+            else {
+              selectedMonth = `${value.year}-${String(value.month).padStart(2, '0')}`;
+              followsCurrentMonth = false;
+            }
+            void refresh();
+          } });
           document.body.appendChild(panel);
         }
         if (act === 'copy') void (async () => {
           const month = selectedMonth;
-          if (await getBudget(month) && !await confirmDialog({ title: '复制上期预算', message: `将替换 ${month} 的总预算和分类预算，是否继续？` })) return;
+          if (await getBudget(month) && !await confirmDialog({ title: '复制上期预算', message: `将替换财务月 ${month} 的总预算和分类预算，是否继续？` })) return;
           await copyPreviousBudget(month);
           showToast('已复制上期预算');
         })().catch(err => showToast(err.message));

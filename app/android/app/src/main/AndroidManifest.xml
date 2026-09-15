@@ -19,6 +19,12 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="shiguang" android:host="entry" />
+            </intent-filter>
             <!-- AI 记账收件箱：接收系统分享的文本 / 图片（@capgo/capacitor-share-target） -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -44,6 +50,10 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+        <receiver android:name=".GleamWidget" android:exported="false" android:label="拾光月度记账">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/gleam_widget_info" />
+        </receiver>
     </application>
 
     <!-- Permissions -->

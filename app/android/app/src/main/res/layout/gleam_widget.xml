@@ -1,0 +1,12 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="12dp" android:background="@drawable/widget_background">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="本月支出" android:textColor="@color/widget_secondary" android:textSize="12sp" />
+    <TextView android:id="@+id/widget_expense" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="—" android:textColor="@color/widget_accent" android:textSize="22sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="剩余预算 " android:textColor="@color/widget_secondary" android:textSize="12sp" />
+        <TextView android:id="@+id/widget_remaining" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="—" android:textColor="@color/widget_text" android:textSize="14sp" android:maxLines="1" android:ellipsize="end" />
+    </LinearLayout>
+    <TextView android:id="@+id/widget_caption" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:minHeight="28dp" android:text="打开拾光更新本月" android:textColor="@color/widget_secondary" android:textSize="11sp" android:maxLines="2" android:gravity="center_vertical" android:ellipsize="end" />
+    <TextView android:id="@+id/widget_add" android:layout_width="match_parent" android:layout_height="44dp" android:gravity="center" android:text="＋ 记一笔" android:textColor="@color/widget_accent" android:textStyle="bold" android:textSize="16sp" android:contentDescription="打开拾光记支出" />
+</LinearLayout>

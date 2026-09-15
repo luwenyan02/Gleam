@@ -8,3 +8,18 @@
 /* 抽屉头 */
 .tm-sheet-head{display:flex;align-items:center;gap:12px;margin-bottom:4px}
 .tm-sheet-head .sheet-title{flex:1}
+.tm-manage-row{display:flex;align-items:center;gap:4px;min-width:0}
+.tm-open{flex:1;min-width:0;text-align:left;overflow-wrap:anywhere}.tm-edit{flex:none}
+.tm-tag-dot{display:inline-block;flex:none;width:12px;height:12px;border-radius:50%;background:var(--tag-color)}
+.tm-insight-hero{display:flex;align-items:center;gap:12px;margin:18px 0}
+.tm-insight-hero>div{flex:1;min-width:0}.tm-insight-hero h3{font-size:20px;overflow-wrap:anywhere}.tm-insight-hero p{font-size:13px;color:var(--muted)}
+.tm-hero-icon{display:grid;place-items:center;width:44px;height:44px;border-radius:12px;color:var(--tag-color);background:var(--accent-soft)}
+.tm-range{margin:0 0 12px;font-size:13px}
+.tm-summary{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px;background:var(--surface);border-radius:16px;margin-bottom:12px}
+.tm-summary>div:last-child{grid-column:1/-1;display:flex;align-items:center;gap:12px}.tm-summary span{display:block;font-size:13px;color:var(--muted)}.tm-summary b{display:block;font-size:19px;overflow-wrap:anywhere}
+.tm-trend{padding:14px;margin-bottom:16px}.tm-trend h3{font-size:15px}.tm-trend p{font-size:12px;color:var(--muted)}
+.tm-trend-scroll{display:flex;gap:4px;overflow-x:auto;padding:12px 0}.tm-trend-point{flex:0 0 44px;text-align:center;font-size:12px;cursor:pointer}.tm-bars{height:76px;display:flex;justify-content:center;align-items:flex-end;gap:3px}.tm-bars i{display:block;width:10px;max-height:72px;border-radius:3px 3px 0 0}.tm-bars .expense,.tm-trend-legend .expense{background:var(--primary)}.tm-bars .income,.tm-trend-legend .income{background:#18A999}.tm-trend-legend span{display:inline-block;width:9px;height:9px;margin:0 4px 0 12px}
+.tm-insight-entry{width:100%;text-align:left;min-height:64px;background:transparent}.tm-insight-entry .e-main{min-width:0}.tm-insight-entry .e-title{white-space:normal;overflow-wrap:anywhere}.tm-insight-entry .e-amt{flex:none}
+#tm-color{min-height:44px;flex:1;font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px}
+.tm-insight-entry .e-main{display:flex;flex-direction:column;gap:4px}.tm-insight-entry .e-meta{display:block;white-space:normal;line-height:1.5}
+.tm-trend-point{background:transparent;color:var(--fg);border:0;padding:0}

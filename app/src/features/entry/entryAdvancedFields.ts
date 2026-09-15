@@ -16,5 +16,6 @@ export function renderAdvancedFields(templates: readonly QuickTemplate[]): strin
       <button class="chip" type="button" id="chip-shop" aria-pressed="false">${iconHtml('ic-shop', 16)}<span id="shop-txt">商家</span></button>
       <button class="chip toggle-chip" id="life-toggle" type="button" role="switch" aria-checked="false">同时写生活记录</button>
     </div>
+    <div id="receipt-editor" aria-label="账单凭证"></div>
   </section>`;
 }

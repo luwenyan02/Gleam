@@ -19,8 +19,8 @@ async function loadJSZip(): Promise<typeof JSZipType> {
 
 /** 应用版本（构建时从 package.json 注入，也是 Android versionName 的唯一来源） */
 export const APP_VERSION = __APP_VERSION__;
-/** 备份包数据结构版本（对应 db.ts schema v1） */
-export const SKBAK_SCHEMA_VERSION = 2;
+/** 备份包数据结构版本；v3 增加凭证关系与附件内容哈希。 */
+export const SKBAK_SCHEMA_VERSION = 3;
 /** 加密包头 magic（8 字节 ASCII） */
 const MAGIC = 'SKBAK1E:';
 /** PBKDF2 迭代次数（≥100k） */
@@ -37,12 +37,13 @@ export interface SkbakManifest {
   counts: Record<string, number>;
   /** data.json 文本的 SHA-256（十六进制） */
   checksum: string;
+  attachmentChecksums?: Record<string, string>;
 }
 
 /* ── Web Crypto 工具 ── */
 
-async function sha256Hex(text: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+async function sha256Hex(text: string | ArrayBuffer): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', typeof text === 'string' ? new TextEncoder().encode(text) : text);
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
@@ -87,6 +88,7 @@ export async function buildSkbak(dump: TableDump, password?: string): Promise<Bl
     generatedAt: Date.now(),
     counts: countDump(dump),
     checksum: await sha256Hex(dataJson),
+    attachmentChecksums: Object.fromEntries(await Promise.all(atts.map(async a => [String(a.id), await sha256Hex(await a.blob.arrayBuffer())]))),
   };
 
   const zip = new JSZip();
@@ -133,6 +135,7 @@ function parseManifest(text: string): SkbakManifest {
   }
   for (const name of TABLE_NAMES) {
     const count = value.counts[name];
+    if (count === undefined && value.schemaVersion < 3 && name === 'entryAttachments') continue;
     // v1 旧包 manifest 没有信用卡新表计数
     if (count === undefined && value.schemaVersion < 2 && (name === 'creditStatements' || name === 'creditPayments')) continue;
     if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
@@ -152,6 +155,10 @@ function parseTableDump(text: string, manifest: SkbakManifest): TableDump {
   if (!isRecord(value)) throw new Error('data.json 结构损坏');
   for (const name of TABLE_NAMES) {
     const rows = value[name];
+    if (rows === undefined && manifest.schemaVersion < 3 && name === 'entryAttachments') {
+      value[name] = [];
+      continue;
+    }
     // v1 旧包没有信用卡账单表：补空集合，历史转账不自动认领为还款
     if (rows === undefined && manifest.schemaVersion < 2 && (name === 'creditStatements' || name === 'creditPayments')) {
       value[name] = [];
@@ -232,8 +239,27 @@ export async function parseSkbak(
     if (bytes.byteLength !== a.size) {
       throw new Error(`备份包附件 ${a.id} 大小与声明不一致`);
     }
+    if (manifest.schemaVersion >= 3 && manifest.attachmentChecksums?.[String(a.id)] !== await sha256Hex(bytes)) {
+      throw new Error(`备份包附件 ${a.id} 校验不符`);
+    }
     restored.push({ attachment: a, blob: new Blob([bytes], { type: a.mime }) });
   }
   for (const item of restored) item.attachment.blob = item.blob;
+  const entryIds = new Set((dump.entries as Array<{ id: number }>).map(entry => entry.id));
+  const attachmentIds = new Set(atts.map(attachment => attachment.id));
+  const relationKeys = new Set<string>();
+  const relationIds = new Set<number>();
+  for (const relation of dump.entryAttachments) {
+    if (!isRecord(relation) || !Number.isSafeInteger(relation.id) || Number(relation.id) <= 0
+      || !Number.isSafeInteger(relation.entryId) || !entryIds.has(relation.entryId as number)
+      || !Number.isSafeInteger(relation.attachmentId) || !attachmentIds.has(relation.attachmentId as number)
+      || !Number.isSafeInteger(relation.sortOrder) || Number(relation.sortOrder) < 0) {
+      throw new Error('备份包账单凭证关联损坏');
+    }
+    const key = `${relation.entryId}:${relation.attachmentId}`;
+    if (relationKeys.has(key) || relationIds.has(relation.id as number)) throw new Error('备份包账单凭证关联重复');
+    relationKeys.add(key);
+    relationIds.add(relation.id as number);
+  }
   return { manifest, dump };
 }

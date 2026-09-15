@@ -1,6 +1,6 @@
 /**
- * 拾光 · Dexie 数据库定义（schema v1）
- * 单库 GleamDB，18 张表。UI 模块不得直接操作 db，一律经 repo/ 仓库层。
+ * 拾光 · Dexie 数据库定义（schema v3）
+ * 单库 GleamDB，21 张表。UI 模块不得直接操作 db，一律经 repo/ 仓库层。
  *
  * 索引约定：
  * - 软删除表（entries/lifeNotes）的 deletedAt 统一存 0 表示未删除，
@@ -9,7 +9,7 @@
  */
 import Dexie, { type EntityTable } from 'dexie';
 import type {
-  Account, Attachment, BackupRecord, Budget, Category, CategoryBudget, Entry, EntryTag,
+  Account, Attachment, BackupRecord, Budget, Category, CategoryBudget, Entry, EntryTag, EntryAttachment,
   CreditPayment, CreditStatement, Habit, HabitCheck, ImportBatch, LifeNote, LoanContact, Merchant, QuickTemplate,
   RecurringRule, Setting, Tag,
 } from './types';
@@ -17,6 +17,7 @@ import type {
 export const db = new Dexie('GleamDB') as Dexie & {
   entries: EntityTable<Entry, 'id'>;
   entryTags: EntityTable<EntryTag, 'id'>;
+  entryAttachments: EntityTable<EntryAttachment, 'id'>;
   accounts: EntityTable<Account, 'id'>;
   categories: EntityTable<Category, 'id'>;
   loanContacts: EntityTable<LoanContact, 'id'>;
@@ -78,6 +79,10 @@ db.version(2).stores({
     if (account.hidden && legacyIncludedHidden) account.countInNetWorth = true;
     if (typeof account.creditReminderEnabled !== 'boolean') account.creditReminderEnabled = true;
   });
+});
+
+db.version(3).stores({
+  entryAttachments: '++id, entryId, attachmentId, &[entryId+attachmentId]',
 });
 
 /** 当前时间戳（毫秒），统一出口便于测试替换 */

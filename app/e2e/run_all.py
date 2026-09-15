@@ -23,6 +23,8 @@ TESTS = (
     'test_calendar_daylist.py', 'test_credit_statements.py',
     'test_account_reconcile_credit_limit.py',
     'test_account_management_ui.py',
+    'test_entry_receipts.py',
+    'test_entity_details.py', 'test_accounting_period.py',
     'test_browser_usability.py',
     'test_large_ledger.py',
 )

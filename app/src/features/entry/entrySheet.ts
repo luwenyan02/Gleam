@@ -15,12 +15,12 @@ import {
   type Merchant, type QuickTemplate, type Tag,
 } from '../../core/types';
 import {
-  getEntry, getEntryTagIds, dayKey, getNoteFrequencies, listEntries,
+  getEntry, getEntryTagIds, dayKey, listEntries,
   type NewEntry, type NoteFrequency,
 } from '../../core/repo/entryRepo';
 import { listExpenseTree, listCategories } from '../../core/repo/categoryRepo';
 import { getAccount, listAccounts } from '../../core/repo/accountRepo';
-import { listTemplates } from '../../core/repo/templateRepo';
+import { listTemplates, rememberTemplate } from '../../core/repo/templateRepo';
 import { listTags, ensureTag } from '../../core/repo/tagRepo';
 import { listMerchants, ensureMerchant } from '../../core/repo/merchantRepo';
 import { listLoanAccounts, getLoanAccount, ensureLoanAccount } from '../../core/repo/loanRepo';
@@ -52,6 +52,9 @@ import {
   renderCategoryButton, renderCategoryToggle, selectQuickCategories,
 } from './entryCategoryPicker';
 import { persistEntry } from './entrySaveService';
+import { listEntryAttachments } from '../../core/repo/entryAttachmentRepo';
+import { mountReceiptEditor, type ReceiptDraft } from './receiptEditor';
+import { rankMerchantSuggestions, rankNoteSuggestions } from '../../core/repo/entityInsightsRepo';
 import { loanDirection, loanAccountId as relatedLoanAccountId, loanFundAccountId } from '../../core/loanLedger';
 import './entry.css';
 
@@ -59,6 +62,7 @@ import './entry.css';
  * 打开「记一笔」抽屉的选项。
  */
 export interface EntrySheetOptions {
+  receiptDrafts?: ReceiptDraft[];
   /**
    * 编辑模式：传入已有账单 id，抽屉预填该账单全部字段
    * （类型/金额/分类/账户/日期/备注/标签/商家/报销退款标记），保存走 entryRepo.updateEntry。
@@ -96,6 +100,7 @@ export interface EntrySheetOptions {
 /* ── 抽屉内部状态 ─────────────────── */
 
 interface SheetCtx {
+  templateId?: number;
   type: EntryType;
   /** 当前操作数（元，字符串） */
   amt: string;
@@ -150,13 +155,13 @@ interface SheetCtx {
   accountSelectionLocked: boolean;
   showAllCategories: boolean;
   advancedOpen: boolean;
+  receipts?: ReturnType<typeof mountReceiptEditor>;
 }
 
 let ctx: SheetCtx | null = null;
 let sheetEl: HTMLElement | null = null;
 
 /** 备注历史频率缓存（openEntrySheet 预载，建议 chip 纯前端过滤） */
-let noteFreqs: NoteFrequency[] = [];
 /** 当前展示的建议项（chip 用 data-note-idx 索引，避免备注原文进 HTML 属性） */
 let noteSuggestItems: NoteFrequency[] = [];
 
@@ -178,10 +183,9 @@ export function initEntry(): void {
 export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<void> {
   savedCallback = options.onSaved;
   const openedAt = Date.now();
-  const [tree, incomeCats, accounts, templates, tags, merchants, loanAccounts, lastUsed, freqs, recentEntries] = await Promise.all([
+  const [tree, incomeCats, accounts, templates, tags, merchants, loanAccounts, lastUsed, recentEntries] = await Promise.all([
     listExpenseTree(), listCategories('income'), listAccounts(false),
     listTemplates(), listTags(), listMerchants(), listLoanAccounts(false), getSetting('entry.lastUsed'),
-    getNoteFrequencies(),
     listEntries({ from: openedAt - 90 * 24 * 60 * 60 * 1000, to: openedAt + 1 }),
   ]);
   // 隐藏账户不进入默认列表，但显式入口与历史账单的已选账户必须可见还原。
@@ -193,7 +197,6 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     if (account.group === 'receivable') loanAccounts.push(account);
   }
   await includeSelectedAccount(options.presetAccountId);
-  noteFreqs = freqs;
 
   const expenseCats = tree.flatMap((group) => group.children.length ? group.children : [group.parent]);
   const accountIds = new Set(accounts.map((account) => account.id));
@@ -317,6 +320,7 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
   } else if (options.templateId != null) {
     const tpl = templates.find((t) => t.id === options.templateId);
     if (tpl) {
+      c.templateId = tpl.id;
       c.type = 'expense';
       c.categoryId = tpl.categoryId;
       c.categorySelectionLocked = true;
@@ -325,14 +329,18 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     }
   }
 
+  const initialReceipts = c.editingId == null ? options.receiptDrafts ?? [] : await listEntryAttachments(c.editingId);
+  if (initialReceipts.length) c.advancedOpen = true;
   ctx = c;
   openSheet({
     ariaLabel: c.editingId ? '编辑账单' : '记一笔',
     render(el) {
       sheetEl = el;
       renderSheet(el, initialNote);
+      c.receipts = mountReceiptEditor(el.querySelector<HTMLElement>('#receipt-editor')!, initialReceipts);
     },
     onClose() {
+      c.receipts?.dispose();
       sheetEl?.classList.remove('entry-workspace', 'note-editing', 'categories-expanded');
       ctx = null;
       sheetEl = null;
@@ -341,6 +349,17 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
 }
 
 /* ── 渲染 ─────────────────────────── */
+
+/** 系统分享优先补入当前草稿，不能覆盖用户正在填写的账单。 */
+export async function attachSharedReceipts(receipts: ReceiptDraft[]): Promise<void> {
+  if (ctx?.receipts) {
+    ctx.receipts.add(receipts);
+    ctx.advancedOpen = true;
+    refreshMeta();
+    return;
+  }
+  await openEntrySheet({ receiptDrafts: receipts });
+}
 
 function renderSheet(el: HTMLElement, note: string): void {
   const c = ctx!;
@@ -814,6 +833,7 @@ function bindEvents(el: HTMLElement): void {
     if (!btn || !ctx) return;
     const tpl = ctx.templates.find((t) => t.id === Number(btn.dataset.tpl));
     if (!tpl) return;
+    ctx.templateId = tpl.id;
     ctx.categoryId = tpl.categoryId;
     ctx.categorySelectionLocked = true;
     ctx.amt = String(tpl.amount / 100);
@@ -1130,7 +1150,8 @@ async function pickTag(): Promise<void> {
 async function pickMerchant(): Promise<void> {
   const c = ctx;
   if (!c) return;
-  const id = await pickList('选择商家（常用在前）', c.merchants.map((m) => ({ id: m.id, label: m.name, icon: 'ic-shop' })), {
+  const ranked = rankMerchantSuggestions(c.merchants, c.recommendationHistory, { type: c.type, categoryId: c.categoryId, now: c.recommendationNow });
+  const id = await pickList('选择商家（近期同类优先）', ranked.map((m) => ({ id: m.id, label: m.name, icon: 'ic-shop' })), {
     activeId: c.merchantId,
     clearLabel: '不关联商家',
     createPlaceholder: '新商家，如「永辉超市」',
@@ -1290,8 +1311,10 @@ async function doSave(stay: boolean): Promise<void> {
       tagIds,
       originalMerchantId: c.origMerchantId,
       lifeNote,
+      receipts: c.receipts?.values().map(receipt => receipt.id == null ? receipt : { id: receipt.id }),
     });
     await rememberLastUsed(c).catch(() => undefined);
+    if (c.templateId != null) await rememberTemplate(c.templateId).catch(() => undefined);
     savedCallback?.(saved.entryId);
     if (saved.result === 'updated') {
       showToast('账单已更新');
@@ -1309,6 +1332,7 @@ async function doSave(stay: boolean): Promise<void> {
   if (!stay) { closeSheet(); return; }
 
   // 再记：继承类型/分类/账户/标签/商家，清空金额与随笔性内容。
+  c.receipts?.clear();
   const repeat = createRepeatDraft({
     type: c.type,
     amount: fen,
@@ -1352,7 +1376,9 @@ function renderNoteSuggest(el: HTMLElement): void {
   const c = ctx;
   if (!box || !c) return;
   const kw = el.querySelector<HTMLInputElement>('#note')!.value.trim();
-  const pool = kw ? noteFreqs.filter((f) => f.note.includes(kw) && f.note !== kw) : noteFreqs;
+  const recent = rankNoteSuggestions(c.recommendationHistory, { type: c.type, categoryId: c.categoryId, now: c.recommendationNow, limit: 50 });
+  const pool = recent.filter(item => !kw || (item.text.includes(kw) && item.text !== kw))
+    .map(item => ({ note: item.text, count: item.count, categoryIds: item.categoryCount && c.categoryId != null ? [c.categoryId] : [] }));
   const catId = c.type === 'expense' || c.type === 'income' ? c.categoryId : undefined;
   const sorted = catId != null
     ? [...pool].sort((a, b) =>

@@ -16,6 +16,7 @@ import type { Entry } from '../types';
 import { filterLedgerEntries, summarizeLedgerEntries } from '../ledgerQuery';
 import { ledgerItems, type LedgerItem } from '../ledgerEvents';
 import { accountEffects } from '../entryEffects';
+import { accountingMonthRange } from './periodRepo';
 
 /** 收支汇总结果（分） */
 export interface Summary {
@@ -95,7 +96,7 @@ export async function rangeSummary(from: number, to: number): Promise<Summary> {
 
 /** 月收支汇总。month 形如 '2026-08' */
 export async function monthSummary(month: string): Promise<Summary> {
-  const { from, to } = monthRange(month);
+  const { from, to } = await accountingMonthRange(month);
   return rangeSummary(from, to);
 }
 
@@ -275,7 +276,7 @@ export async function netWorthTrend(months = 6, endingMonth?: string): Promise<{
  * @returns totalUsed 为全部支出合计；byCategory 仅含有支出的大类
  */
 export async function budgetUsage(month: string): Promise<{ totalUsed: number; byCategory: Map<number, number> }> {
-  const { from, to } = monthRange(month);
+  const { from, to } = await accountingMonthRange(month);
   const breakdown = await categoryBreakdown(from, to);
   const byCategory = new Map<number, number>();
   let totalUsed = 0;

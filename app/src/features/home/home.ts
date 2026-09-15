@@ -31,6 +31,7 @@ import { getHomeLayout, HOME_SERVICES, type HomeService } from '../../core/repo/
 import { openPickList } from '../../shared/pickList';
 import { entryRowText } from '../detail/entryRowText';
 import { listInAppReminders } from '../../core/notify';
+import { accountingMonthRange, getAccountingMonth } from '../../core/repo/periodRepo';
 
 const PAGE = 40;
 
@@ -80,7 +81,7 @@ function renderSkeleton(el: HTMLElement): void {
 
     <section class="card home-reminders" id="hm-reminders" aria-label="应用内提醒" hidden></section>
 
-    <section class="month-card" id="hm-month" aria-label="本月收支总览" hidden>
+    <section class="month-card" id="hm-month" aria-label="财务月收支总览" hidden>
       <div class="mc-heading"><p class="mc-label"></p><span class="mc-unit">单位：元</span></div>
       <p class="mc-amt num"><span id="m-spend">0.00</span></p>
       <div class="mc-row">
@@ -215,13 +216,14 @@ async function refreshReminders(el: HTMLElement): Promise<void> {
 
 /** 月度总览卡：与预算中心严格同源（statsRepo.budgetUsage / budgetRepo.getBudget） */
 async function refreshMonthCard(el: HTMLElement): Promise<void> {
-  const d = new Date();
-  const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  const [sum, budget, usage] = await Promise.all([
-    monthSummary(month), getBudget(month), budgetUsage(month),
+  const month = await getAccountingMonth();
+  const [sum, budget, usage, range] = await Promise.all([
+    monthSummary(month), getBudget(month), budgetUsage(month), accountingMonthRange(month),
   ]);
-  const CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'];
-  el.querySelector('.mc-label')!.textContent = `${CN[d.getMonth()]}月 · 本月支出`;
+  const from = new Date(range.from);
+  const to = new Date(range.to);
+  to.setDate(to.getDate() - 1);
+  el.querySelector('.mc-label')!.textContent = `财务月 · ${from.getMonth() + 1}月${from.getDate()}日–${to.getMonth() + 1}月${to.getDate()}日支出`;
   el.querySelector('#m-spend')!.textContent = formatFen(sum.expense);
   el.querySelector('#m-income')!.textContent = formatFen(sum.income);
   el.querySelector('#m-balance')!.textContent = formatFen(sum.balance);

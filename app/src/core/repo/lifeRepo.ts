@@ -8,6 +8,7 @@ import { db, now, stamp } from '../db';
 import { emitAfterCommit as emit } from './transactionEvents';
 import type { Attachment, Habit, HabitCheck, LifeNote } from '../types';
 import { dayKey } from './entryRepo';
+import { collectUnreferencedAttachments } from './entryAttachmentRepo';
 
 /** 新建生活记录输入（deletedAt 由仓库补 0） */
 export type NewLifeNote = Omit<LifeNote, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>;
@@ -47,12 +48,12 @@ export async function restoreLifeNote(id: number): Promise<void> {
 
 /** 物理删除生活记录（仅回收站内允许），连带清除其照片附件 */
 export async function purgeLifeNote(id: number): Promise<void> {
-  await db.transaction('rw', [db.lifeNotes, db.attachments], async () => {
+  await db.transaction('rw', [db.lifeNotes, db.attachments, db.entryAttachments, db.settings], async () => {
     const note = await db.lifeNotes.get(id);
     if (!note) return;
     if (!note.deletedAt) throw new Error('仅回收站中的记录可彻底删除');
-    if (note.photoRefs?.length) await db.attachments.bulkDelete(note.photoRefs);
     await db.lifeNotes.delete(id);
+    await collectUnreferencedAttachments(note.photoRefs ?? []);
   });
   emit('life-changed', { id });
 }
@@ -87,8 +88,8 @@ export async function listDeletedLifeNotes(): Promise<LifeNote[]> {
 /**
  * 存入照片 Blob，返回附件 id（写入 LifeNote.photoRefs 由调用方负责）。
  */
-export async function addAttachment(blob: Blob, name?: string): Promise<number> {
-  return db.attachments.add(stamp({ mime: blob.type || 'application/octet-stream', name, size: blob.size, blob }) as Attachment);
+export async function addAttachment(blob: Blob, name?: string, thumbnail?: string): Promise<number> {
+  return db.attachments.add(stamp({ mime: blob.type || 'application/octet-stream', name, size: blob.size, blob, thumbnail }) as Attachment);
 }
 
 /** 读取附件 */

@@ -35,6 +35,8 @@ import { initSettings } from './features/settings/settings';
 import { initSearch } from './features/search/search';
 import { initTemplateManage } from './features/template/template';
 import { initShareListener } from './features/ai-inbox/shareListener';
+import { initNativeEntry } from './features/entry/nativeEntry';
+import { initNativeWidget } from './features/entry/nativeWidget';
 import { initAiInbox } from './features/ai-inbox/aiInbox';
 import { enforceAppLock } from './features/settings/lock';
 import { migrateLegacySecrets } from './core/secretStore';
@@ -51,8 +53,6 @@ async function bootstrap(): Promise<void> {
   const { booked, backupDue } = await startScheduler();
   // [R07] 本地通知：消费调度结果重排未来 7 天提醒（Web 端 no-op）
   initNotifications();
-  // [AI] 系统分享监听须在 mountShell 前注册，覆盖冷启动分享（子页未就绪时由收件箱缓冲）
-  initShareListener();
   mountShell(document.getElementById('app')!);
   registerAccountPage();
   registerReportPage();
@@ -77,6 +77,10 @@ async function bootstrap(): Promise<void> {
   initSearch();
   initTemplateManage();
   initAiInbox();
+  // 解锁与界面就绪后消费原生插件缓冲的分享，才能安全选择「识别 / 凭证」。
+  initShareListener();
+  void initNativeEntry().catch(error => console.warn('[entry] 原生快捷入口初始化失败', error));
+  initNativeWidget();
   if (secretMigration.failed.length) showToast('部分旧凭据未能迁移，请在设置中重新输入', 3600);
   if (booked > 0) showToast(`周期账已自动入账 ${booked} 笔`);
   // [M3] 自动备份到期轻提醒（频率在设置/备份页配置）

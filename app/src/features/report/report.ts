@@ -8,6 +8,7 @@
  * 年 = 所选年 12 个月支出+收入双柱。转账/借贷不计收支由 statsRepo 保证。
  */
 import './report.css';
+import { openEntityInsight } from '../tagmerchant/tagmerchant';
 import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
 import { on } from '../../core/store';
@@ -26,6 +27,8 @@ import {
 import { openLedgerSearch } from '../search/search';
 import { openDateWheel, openMonthWheel } from '../../shared/dateTimeWheel';
 import { showToast } from '../shell/toast';
+import { accountingMonthRange, getAccountingMonth } from '../../core/repo/periodRepo';
+import { formatAccountingRange, shiftMonthKey } from '../../core/period';
 
 type Period = 'week' | 'month' | 'year' | 'custom';
 
@@ -41,6 +44,7 @@ interface RankRow {
 /** 一次刷新所需的全部报表数据 */
 interface ReportData {
   label: string;
+  range: { from: number; to: number };
   summary: statsRepo.Summary;
   trend: { labels: string[]; expense: number[]; incomes: number[]; ranges: { from: number; to: number }[] };
   cats: RankRow[];
@@ -62,6 +66,10 @@ let root: HTMLElement | undefined;
 let refreshToken = 0;
 /** 待应用的切换过渡范围：'all'=周期切换整页内容淡入，'rank'=仅排行卡 */
 let pendingAnim: 'all' | 'rank' | null = null;
+/** 月视图使用财务月键；为空时按当前日期和全局起始日初始化。 */
+let selectedAccountingMonth = '';
+let followsCurrentAccountingMonth = true;
+let activeRange: { from: number; to: number } | undefined;
 
 const DAY = 86400000;
 
@@ -78,21 +86,20 @@ const GROUP_ICONS: Record<Account['group'], string> = {
 };
 
 /** 当前周期的时间范围 [from, to) */
-function currentRange(): { from: number; to: number } {
+async function currentRange(): Promise<{ from: number; to: number }> {
   if (period === 'week') return statsRepo.weekRange(anchor.getTime());
   if (period === 'year') return statsRepo.yearRange(anchor.getFullYear());
   if (period === 'custom' && customRange) return customRange;
-  return statsRepo.monthRange(monthStr(anchor));
-}
-
-function monthStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  if (!selectedAccountingMonth || followsCurrentAccountingMonth) {
+    selectedAccountingMonth = await getAccountingMonth(anchor.getTime());
+  }
+  return accountingMonthRange(selectedAccountingMonth);
 }
 
 /** 周期标签：'8月2日 – 8月8日' / '2026年8月' / '2026年' */
-function periodLabel(): string {
+function periodLabel(range: { from: number; to: number }): string {
   if (period === 'week') {
-    const { from, to } = statsRepo.weekRange(anchor.getTime());
+    const { from, to } = range;
     const a = new Date(from);
     const b = new Date(to - DAY);
     return `${a.getMonth() + 1}月${a.getDate()}日 – ${b.getMonth() + 1}月${b.getDate()}日`;
@@ -103,11 +110,11 @@ function periodLabel(): string {
     const to = new Date(customRange.to - 1);
     return `${from.getFullYear()}/${from.getMonth() + 1}/${from.getDate()} – ${to.getFullYear()}/${to.getMonth() + 1}/${to.getDate()}`;
   }
-  return `${anchor.getFullYear()}年${anchor.getMonth() + 1}月`;
+  return `财务月 ${selectedAccountingMonth} · ${formatAccountingRange(range)}`;
 }
 
 /** 周期前后翻页（dir = ±1） */
-function shiftPeriod(dir: 1 | -1): void {
+async function shiftPeriod(dir: 1 | -1): Promise<void> {
   if (period === 'custom' && customRange) {
     const span = customRange.to - customRange.from;
     customRange = { from: customRange.from + dir * span, to: customRange.to + dir * span };
@@ -116,9 +123,16 @@ function shiftPeriod(dir: 1 | -1): void {
     void refresh();
     return;
   }
+  if (period === 'month') {
+    if (!selectedAccountingMonth) selectedAccountingMonth = await getAccountingMonth(anchor.getTime());
+    selectedAccountingMonth = shiftMonthKey(selectedAccountingMonth, dir);
+    followsCurrentAccountingMonth = false;
+    pendingAnim = 'all';
+    void refresh();
+    return;
+  }
   const d = new Date(anchor);
   if (period === 'week') d.setDate(d.getDate() + dir * 7);
-  else if (period === 'month') d.setMonth(d.getMonth() + dir, 1);
   else d.setFullYear(d.getFullYear() + dir, d.getMonth(), 1);
   anchor = d;
   pendingAnim = 'all';
@@ -127,8 +141,7 @@ function shiftPeriod(dir: 1 | -1): void {
 
 /* ── 数据装载 ── */
 
-function trendBuckets(): { label: string; from: number; to: number }[] {
-  const range = currentRange();
+function trendBuckets(range: { from: number; to: number }): { label: string; from: number; to: number }[] {
   if (period === 'year') {
     return Array.from({ length: 12 }, (_, month) => ({
       label: `${month + 1}月`,
@@ -139,21 +152,26 @@ function trendBuckets(): { label: string; from: number; to: number }[] {
   const days = Math.max(1, Math.ceil((range.to - range.from) / DAY));
   const bucketDays = period === 'week' ? 1 : Math.max(1, Math.ceil(days / (period === 'month' ? 5 : 10)));
   const buckets: { label: string; from: number; to: number }[] = [];
-  for (let from = range.from; from < range.to; from += bucketDays * DAY) {
-    const to = Math.min(range.to, from + bucketDays * DAY);
+  for (let from = range.from; from < range.to;) {
+    const next = new Date(from);
+    next.setDate(next.getDate() + bucketDays);
+    const to = Math.min(range.to, next.getTime());
     const first = new Date(from);
     const last = new Date(to - 1);
     const label = bucketDays === 1
       ? `${first.getMonth() + 1}/${first.getDate()}`
-      : `${first.getDate()}-${last.getDate()}日`;
+      : first.getMonth() === last.getMonth()
+        ? `${first.getDate()}–${last.getDate()}日`
+        : `${first.getMonth() + 1}/${first.getDate()}–${last.getMonth() + 1}/${last.getDate()}`;
     buckets.push({ label, from, to });
+    from = to;
   }
   return buckets;
 }
 
 /** 趋势数据严格取当前周期，柱/点的范围可直接转换为明细查询。 */
-async function loadTrend(): Promise<ReportData['trend']> {
-  const buckets = trendBuckets();
+async function loadTrend(range: { from: number; to: number }): Promise<ReportData['trend']> {
+  const buckets = trendBuckets(range);
   const summaries = await Promise.all(buckets.map((bucket) => statsRepo.rangeSummary(bucket.from, bucket.to)));
   return {
     labels: buckets.map((bucket) => bucket.label),
@@ -165,10 +183,11 @@ async function loadTrend(): Promise<ReportData['trend']> {
 
 /** 装载当前周期全部数据（汇总 + 趋势 + 三维排行） */
 async function loadData(): Promise<ReportData> {
-  const { from, to } = currentRange();
+  const range = await currentRange();
+  const { from, to } = range;
   const [summary, trend, breakdown, acctRank, tagRank, incomeRank, merchantRank, expenseCats, incomeCats, accounts, tags, merchants] = await Promise.all([
     statsRepo.rangeSummary(from, to),
-    loadTrend(),
+    loadTrend(range),
     statsRepo.categoryBreakdown(from, to),
     statsRepo.accountRanking(from, to),
     statsRepo.tagRanking(from, to),
@@ -185,7 +204,8 @@ async function loadData(): Promise<ReportData> {
   const tagMap = new Map(tags.map((t) => [t.id, t.name]));
   const merchantMap = new Map(merchants.map((m) => [m.id, m.name]));
   return {
-    label: periodLabel(),
+    label: periodLabel(range),
+    range,
     summary,
     trend,
     cats: breakdown.map(({ categoryId, amount }) => ({
@@ -328,7 +348,7 @@ function renderRank(data: ReportData): void {
           <div class="rank-top"><span>${dimension === 'tag' ? '#' + esc(r.name) : esc(r.name)}</span><span class="num">¥${formatFen(r.amount)}</span></div>
           <div class="rank-bar"><i style="width:${Math.max(0, Math.min(100, pct)).toFixed(1)}%;background:var(--c${(i % 6) + 1})"></i></div>
         </div>
-        <span class="rank-pct num">${pct.toFixed(1)}%</span></button></li>`;
+        <span class="rank-pct num">${pct.toFixed(1)}%</span></button>${(dimension === 'tag' || dimension === 'merchant') && r.queryIds.length === 1 ? `<button class="chip" data-entity-kind="${dimension}" data-entity-id="${r.queryIds[0]}" aria-label="${esc(r.name)}详情">详情 ›</button>` : ''}</li>`;
     })
     .join('');
   more.hidden = rows.length <= 3;
@@ -357,8 +377,8 @@ function setPeriodButtons(el: HTMLElement): void {
   }
 }
 
-function pickCustomPeriod(onDone: () => void): void {
-  const current = currentRange();
+async function pickCustomPeriod(onDone: () => void): Promise<void> {
+  const current = await currentRange();
   const fromDate = new Date(current.from);
   const first = openDateWheel({
     initial: { year: fromDate.getFullYear(), month: fromDate.getMonth() + 1, day: fromDate.getDate() },
@@ -406,6 +426,7 @@ async function refresh(): Promise<void> {
   pendingAnim = null;
   const data = await loadData();
   if (token !== refreshToken || !root) return;
+  activeRange = data.range;
   root.querySelector<HTMLElement>('#r-label')!.textContent = data.label;
   root.querySelector<HTMLElement>('#r-spend')!.textContent = formatFenCny(data.summary.expense);
   root.querySelector<HTMLElement>('#r-income')!.textContent = `¥${formatFen(data.summary.income)}`;
@@ -484,11 +505,15 @@ function render(el: HTMLElement): void {
     if (!btn) return;
     const nextPeriod = btn.dataset.p as Period;
     if (nextPeriod === 'custom') {
-      pickCustomPeriod(() => setPeriodButtons(el));
+      void pickCustomPeriod(() => setPeriodButtons(el));
       return;
     }
     period = nextPeriod;
     anchor = new Date(); // 切周期回到当前周期
+    if (period === 'month') {
+      selectedAccountingMonth = '';
+      followsCurrentAccountingMonth = true;
+    }
     rankExpanded = false;
     setPeriodButtons(el);
     pendingAnim = 'all';
@@ -497,7 +522,21 @@ function render(el: HTMLElement): void {
 
   // 周期前后翻页
   el.querySelector('#r-label')!.addEventListener('click', () => {
-    if (period === 'custom') { pickCustomPeriod(() => setPeriodButtons(el)); return; }
+    if (period === 'custom') { void pickCustomPeriod(() => setPeriodButtons(el)); return; }
+    if (period === 'month') {
+      void (async () => {
+        const selected = selectedAccountingMonth || await getAccountingMonth(anchor.getTime());
+        const [year, month] = selected.split('-').map(Number);
+        const picker = openMonthWheel({ initial: { year, month }, onConfirm: result => {
+          selectedAccountingMonth = `${result.year}-${String(result.month).padStart(2, '0')}`;
+          followsCurrentAccountingMonth = false;
+          rankExpanded = false;
+          void refresh();
+        } });
+        document.body.appendChild(picker);
+      })();
+      return;
+    }
     const commit = (year: number, month: number, day = 1) => {
       anchor = new Date(year, month - 1, day); rankExpanded = false; void refresh();
     };
@@ -507,7 +546,7 @@ function render(el: HTMLElement): void {
     document.body.appendChild(picker);
   });
   for (const btn of el.querySelectorAll<HTMLElement>('[data-nav]')) {
-    btn.addEventListener('click', () => shiftPeriod(Number(btn.dataset.nav) as 1 | -1));
+    btn.addEventListener('click', () => void shiftPeriod(Number(btn.dataset.nav) as 1 | -1));
   }
 
   // 维度切换：周期 → 维度 → 单一结果区。
@@ -534,12 +573,15 @@ function render(el: HTMLElement): void {
       return;
     }
 
-    const { from, to } = currentRange();
+    const range = activeRange;
+    if (!range) return;
+    const { from, to } = range;
+    const label = root?.querySelector<HTMLElement>('#r-label')?.textContent ?? '';
     const summary = target.closest<HTMLElement>('[data-summary-type]');
     if (summary) {
       const type = summary.dataset.summaryType;
       const types = type === 'all' ? undefined : [type as 'expense' | 'income'];
-      openLedgerSearch(reportSelectionToLedgerQuery({ from, to, dimension: 'trend', types }), `${periodLabel()} · ${type === 'expense' ? '支出' : type === 'income' ? '收入' : '全部明细'}`);
+      openLedgerSearch(reportSelectionToLedgerQuery({ from, to, dimension: 'trend', types }), `${label} · ${type === 'expense' ? '支出' : type === 'income' ? '收入' : '全部明细'}`);
       return;
     }
 
@@ -554,12 +596,14 @@ function render(el: HTMLElement): void {
     }
 
     const drill = target.closest<HTMLElement>('[data-report-dim][data-report-ids]');
+    const entity = target.closest<HTMLElement>('[data-entity-kind]');
+    if (entity) { openEntityInsight(entity.dataset.entityKind as 'tag' | 'merchant', Number(entity.dataset.entityId)); return; }
     if (drill) {
       const selectedIds = (drill.dataset.reportIds ?? '').split(',').map(Number).filter(Number.isFinite);
       const selectedDimension = drill.dataset.reportDim as Exclude<ReportDimension, 'trend'>;
       const selection: ReportSelection = { from, to, dimension: selectedDimension, selectedIds };
       const dimLabel = { category: '分类', account: '账户', tag: '标签', income: '收入分类', merchant: '商家' }[selectedDimension];
-      openLedgerSearch(reportSelectionToLedgerQuery(selection), `${periodLabel()} · ${dimLabel}明细`);
+      openLedgerSearch(reportSelectionToLedgerQuery(selection), `${label} · ${dimLabel}明细`);
     }
   });
   el.addEventListener('keydown', (event) => {

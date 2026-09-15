@@ -15,6 +15,7 @@ import { listCategories } from './categoryRepo';
 import { listAccounts } from './accountRepo';
 import { secretStore } from '../secretStore';
 import { assertImageModel, chatOptions } from '../aiChatOptions';
+import { collectUnreferencedAttachments } from './entryAttachmentRepo';
 
 /* ── 识别结果与错误 ─────────────────── */
 
@@ -483,7 +484,10 @@ export async function removeAiPendingItems(tempIds: string[]): Promise<void> {
     )];
     return kept;
   });
-  if (orphanAttachmentIds.length) await db.attachments.bulkDelete(orphanAttachmentIds);
+  if (orphanAttachmentIds.length) {
+    await db.transaction('rw', [db.attachments, db.entryAttachments, db.lifeNotes, db.settings],
+      () => collectUnreferencedAttachments(orphanAttachmentIds));
+  }
 }
 
 /**

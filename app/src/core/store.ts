@@ -13,6 +13,7 @@
  */
 
 export type AppEvent =
+  | 'templates-changed'
   | 'entries-changed'
   | 'accounts-changed'
   | 'categories-changed'

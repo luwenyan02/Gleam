@@ -118,6 +118,14 @@ export interface EntryTag {
   tagId: number;
 }
 
+/** 账单凭证关联，顺序独立于共享附件实体。 */
+export interface EntryAttachment {
+  id: number;
+  entryId: number;
+  attachmentId: number;
+  sortOrder: number;
+}
+
 /** 账户。信用卡余额为负；hidden + countInNetWorth 控制净资产口径 */
 export interface Account extends Timestamps {
   id: number;
@@ -246,6 +254,8 @@ export interface QuickTemplate extends Timestamps {
 export interface Tag extends Timestamps {
   id: number;
   name: string;
+  /** 标签识别色（#RRGGBB）；缺省时使用主题强调色。 */
+  color?: string;
 }
 
 /** 商家，按 useCount 排序 */
@@ -324,6 +334,8 @@ export interface Attachment extends Timestamps {
   name?: string;
   size: number;
   blob: Blob;
+  /** 凭证缩略图 data URL；原图只在预览时读取。 */
+  thumbnail?: string;
 }
 
 /** 设置（kv） */
@@ -343,6 +355,8 @@ export const SETTING_DEFAULTS = {
   'netWorth.includeHidden': false,
   /** 预算自动延续 */
   'budget.autoRenew': true,
+  /** 财务月起始日。限制为 1–28，1 表示自然月。 */
+  'accounting.monthStartDay': 1,
   /** 回收站保留天数（展示用，v1.0 固定 30） */
   'trash.retentionDays': 30,
   /** 首页模块开关 */
@@ -354,6 +368,7 @@ export const SETTING_DEFAULTS = {
     accountId: null as number | null,
     type: null as EntryType | null,
   },
+  'entry.recentTemplates': [] as number[],
   /** 自动备份：off / daily / weekly */
   'backup.auto': 'off' as 'off' | 'daily' | 'weekly',
   /** 自动备份仅 Wi-Fi */
