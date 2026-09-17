@@ -15,6 +15,7 @@ it('备份和恢复包含本地草稿与小报，但不继承生活 AI 授权', 
   ];
   await putLifeDraft({
     key: 'new', title: '', body: '', occurredAt: 1, photos: [], existingPhotoRefs: [], messages, aiExcluded: false,
+    migratedBodyMessage: '虚构原话',
     summaryProposal: { title: '草稿摘要', body: '虚构整理稿', tags: ['虚构'], sourceMessageCount: 2 },
   });
   const noteId = await addLifeNote({ kind: 'diary', title: '已确认', body: '正式记录', conversation: messages, occurredAt: 1 });
@@ -26,6 +27,7 @@ it('备份和恢复包含本地草稿与小报，但不继承生活 AI 授权', 
   await restoreAll(dump);
   expect(await getLifeDraft('new')).toMatchObject({
     messages,
+    migratedBodyMessage: '虚构原话',
     summaryProposal: { title: '草稿摘要', body: '虚构整理稿', sourceMessageCount: 2 },
   });
   expect(await getLifeNote(noteId)).toMatchObject({ body: '正式记录', conversation: messages });

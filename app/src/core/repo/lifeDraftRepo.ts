@@ -19,6 +19,7 @@ export function migrateLifeDraft(input: unknown): LifeDraft {
   if (legacyBody && !(draft.messages[0]?.role === 'user' && draft.messages[0].content.trim() === legacyBody)) {
     draft.messages.unshift({ role: 'user', content: legacyBody });
     draft.originalBody = legacyBody;
+    draft.migratedBodyMessage = legacyBody;
   }
   draft.body = '';
 
@@ -61,7 +62,7 @@ export function validateLifeDraft(input: unknown): asserts input is LifeDraft {
   if (typeof draft.title !== 'string' || typeof draft.body !== 'string') throw new Error('草稿文字无效');
   if (!Number.isFinite(draft.occurredAt)) throw new Error('草稿发生时间无效');
   if (draft.sourceUpdatedAt != null && !Number.isFinite(draft.sourceUpdatedAt)) throw new Error('草稿来源版本无效');
-  if (typeof draft.aiExcluded !== 'boolean' || [draft.aiText, draft.pendingReply, draft.mood, draft.originalBody].some(value => value != null && typeof value !== 'string')) throw new Error('草稿可选字段无效');
+  if (typeof draft.aiExcluded !== 'boolean' || [draft.aiText, draft.pendingReply, draft.mood, draft.originalBody, draft.migratedBodyMessage].some(value => value != null && typeof value !== 'string')) throw new Error('草稿可选字段无效');
   if (draft.tags != null && (!Array.isArray(draft.tags) || draft.tags.some(tag => typeof tag !== 'string'))) throw new Error('草稿标签无效');
   if (!Array.isArray(draft.existingPhotoRefs) || !Array.isArray(draft.photos) || !Array.isArray(draft.messages)) {
     throw new Error('草稿结构无效');
@@ -116,19 +117,22 @@ function sameMessage(left: LifeChatMessage, right: LifeChatMessage): boolean {
 
 function mergeConversation(
   existing: LifeChatMessage[] | undefined,
+  storedMessages: LifeChatMessage[],
   migratedMessages: LifeChatMessage[],
-  syntheticBody: string | undefined,
+  migratedBodyMessage: string | undefined,
 ): LifeChatMessage[] | undefined {
   if (!existing?.length) return migratedMessages.length ? structuredClone(migratedMessages) : undefined;
-  const messages = syntheticBody
+  const containsExistingPrefix = storedMessages.length >= existing.length
+    && existing.every((message, index) => sameMessage(message, storedMessages[index]));
+  if (containsExistingPrefix) return structuredClone(storedMessages);
+  const messages = migratedBodyMessage
     && migratedMessages[0]?.role === 'user'
-    && migratedMessages[0].content === syntheticBody
+    && migratedMessages[0].content === migratedBodyMessage
+    && existing.some(message => message.role === 'user' && message.content === migratedBodyMessage)
     ? migratedMessages.slice(1)
     : migratedMessages;
   if (!messages.length) return structuredClone(existing);
-  const containsExistingPrefix = messages.length >= existing.length
-    && existing.every((message, index) => sameMessage(message, messages[index]));
-  return structuredClone(containsExistingPrefix ? messages : [...existing, ...messages]);
+  return structuredClone([...existing, ...messages]);
 }
 
 function bytesFromBase64(base64: string): Uint8Array<ArrayBuffer> {
@@ -222,7 +226,7 @@ export async function saveLifeDraft(key: string): Promise<number> {
     const tags = (proposal?.tags ?? draft.tags)?.map((tag) => tag.trim()).filter(Boolean);
     const changedAt = now();
     let noteId: number;
-    const conversation = mergeConversation(existing?.conversation, draft.messages, draft.originalBody);
+    const conversation = mergeConversation(existing?.conversation, storedDraft.messages, draft.messages, draft.migratedBodyMessage);
     if (existing) {
       noteId = existing.id;
       await db.lifeNotes.put({

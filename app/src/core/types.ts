@@ -342,6 +342,8 @@ export interface LifeDraft {
   review?: LifeReview;
   /** 编辑既有 AI 整理稿时用于保留原始文本，保存时仍以当前 body/messages 为准。 */
   originalBody?: string;
+  /** 旧版迁移主动插入的正文消息；仅用于合并时消除已有会话中的重复项。 */
+  migratedBodyMessage?: string;
 }
 
 export interface LifeEditionBlock {

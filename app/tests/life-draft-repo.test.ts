@@ -50,6 +50,7 @@ describe('生活故事草稿仓库', () => {
       },
     });
     expect(migrated.messages.filter(message => message.role === 'user' && message.content === '先去公园。')).toHaveLength(1);
+    expect(migrated.migratedBodyMessage).toBeUndefined();
     expect(migrateLifeDraft(migrated)).toEqual(migrated);
     expect(legacy).toMatchObject({ body: '先去公园。', aiText: '今天在公园看到了一只橘猫。' });
   });
@@ -64,6 +65,7 @@ describe('生活故事草稿仓库', () => {
       messages: [{ role: 'user', content: 42 }],
     }))).toThrow('对话草稿结构无效');
     expect(() => migrateLifeDraft(draft({ tags: ['有效', 3] }))).toThrow('草稿标签无效');
+    expect(() => migrateLifeDraft(draft({ migratedBodyMessage: 42 }))).toThrow('草稿可选字段无效');
   });
 
   it('超过 AI 新响应限制的历史标签仍可原样迁移、持久化且幂等', async () => {
@@ -151,9 +153,8 @@ describe('生活故事草稿仓库', () => {
 
   it('迁移后的旧增量草稿追加既有会话时不写入 synthetic body', async () => {
     const existingConversation = [
-      { role: 'user' as const, content: '旧起点' },
+      { role: 'user' as const, content: '旧起点\n\n我在公园散步。' },
       { role: 'assistant' as const, content: '当时发生了什么？' },
-      { role: 'user' as const, content: '我在公园散步。' },
     ];
     const noteId = await addLifeNote({
       kind: 'diary', body: '旧整理稿', originalBody: '旧起点\n\n我在公园散步。', conversation: existingConversation, occurredAt,
@@ -175,9 +176,8 @@ describe('生活故事草稿仓库', () => {
 
   it('迁移后的旧完整会话草稿保存时不重复既有会话', async () => {
     const existingConversation = [
-      { role: 'user' as const, content: '旧起点' },
+      { role: 'user' as const, content: '旧起点\n\n我在公园散步。' },
       { role: 'assistant' as const, content: '当时发生了什么？' },
-      { role: 'user' as const, content: '我在公园散步。' },
     ];
     const noteId = await addLifeNote({
       kind: 'diary', body: '旧整理稿', originalBody: '旧起点\n\n我在公园散步。', conversation: existingConversation, occurredAt,
@@ -196,6 +196,79 @@ describe('生活故事草稿仓库', () => {
     await saveLifeDraft('legacy-full');
 
     expect((await getLifeNote(noteId))?.conversation).toEqual(completeConversation);
+  });
+
+  it('编辑草稿把后来新增的真实正文迁移并保存时保留在会话中', async () => {
+    const existingConversation = [
+      { role: 'user' as const, content: '先去了公园。' },
+      { role: 'assistant' as const, content: '还发生了什么？' },
+    ];
+    const noteId = await addLifeNote({
+      kind: 'diary', body: '旧整理稿', originalBody: '先去了公园。', conversation: existingConversation, occurredAt,
+    });
+    const note = (await getLifeNote(noteId))!;
+    const migrated = migrateLifeDraft(draft({
+      key: 'legacy-new-body', noteId, sourceUpdatedAt: note.updatedAt,
+      body: '后来去了书店。',
+      messages: [{ role: 'assistant', content: '买了什么书？' }],
+      aiText: '后来又去了书店。',
+    }));
+    expect(migrated.migratedBodyMessage).toBe('后来去了书店。');
+    expect(migrateLifeDraft(migrated)).toEqual(migrated);
+
+    await putLifeDraft(migrated);
+    await saveLifeDraft('legacy-new-body');
+
+    expect((await getLifeNote(noteId))?.conversation).toEqual([
+      ...existingConversation,
+      { role: 'user', content: '后来去了书店。' },
+      { role: 'assistant', content: '买了什么书？' },
+    ]);
+  });
+
+  it('originalBody 恰等于增量首条但没有迁移标记时保留该真实消息', async () => {
+    const existingConversation = [
+      { role: 'user' as const, content: '先去了公园。' },
+      { role: 'assistant' as const, content: '还发生了什么？' },
+      { role: 'user' as const, content: '后来去了书店。' },
+    ];
+    const noteId = await addLifeNote({ kind: 'diary', body: '旧整理稿', conversation: existingConversation, occurredAt });
+    const note = (await getLifeNote(noteId))!;
+    const realIncrement = [
+      { role: 'user' as const, content: '后来去了书店。' },
+      { role: 'assistant' as const, content: '买了什么书？' },
+    ];
+
+    await putLifeDraft(draft({
+      key: 'no-marker', noteId, sourceUpdatedAt: note.updatedAt,
+      body: '', originalBody: '后来去了书店。', messages: realIncrement,
+      summaryProposal: { title: '更新', body: '后来又去了书店。', tags: [], sourceMessageCount: 2 },
+    }));
+    await saveLifeDraft('no-marker');
+
+    expect((await getLifeNote(noteId))?.conversation).toEqual([...existingConversation, ...realIncrement]);
+  });
+
+  it('迁移标记对应内容不在既有会话时也保留首条消息', async () => {
+    const existingConversation = [
+      { role: 'user' as const, content: '先去了公园。' },
+      { role: 'assistant' as const, content: '还发生了什么？' },
+    ];
+    const noteId = await addLifeNote({ kind: 'diary', body: '旧整理稿', conversation: existingConversation, occurredAt });
+    const note = (await getLifeNote(noteId))!;
+    const migratedIncrement = [
+      { role: 'user' as const, content: '后来去了书店。' },
+      { role: 'assistant' as const, content: '买了什么书？' },
+    ];
+
+    await putLifeDraft(draft({
+      key: 'marker-not-in-existing', noteId, sourceUpdatedAt: note.updatedAt,
+      body: '', originalBody: '后来去了书店。', messages: migratedIncrement, migratedBodyMessage: '后来去了书店。',
+      summaryProposal: { title: '更新', body: '后来又去了书店。', tags: [], sourceMessageCount: 2 },
+    }));
+    await saveLifeDraft('marker-not-in-existing');
+
+    expect((await getLifeNote(noteId))?.conversation).toEqual([...existingConversation, ...migratedIncrement]);
   });
 
   it('草稿入口拒绝伪造或不完整的摘要方案', async () => {
