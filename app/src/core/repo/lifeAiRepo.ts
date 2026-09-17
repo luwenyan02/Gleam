@@ -75,20 +75,19 @@ function parseLifeChatTurn(raw: string): LifeChatTurnResult {
   try {
     parsed = JSON.parse(text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
   } catch {
-    if (text.startsWith('{') || text.startsWith('[') || /^```(?:json)?/i.test(text)) throw new Error('生活 AI 对话格式无效，请重试');
-    if (!text || text.length > 600) throw new Error('生活 AI 返回内容过长或为空，请重试');
-    return { reply: text, readyToSummarize: false };
+    throw new Error('生活 AI 对话格式无效，请重试');
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('生活 AI 对话格式无效，请重试');
   }
   const value = parsed as { reply?: unknown; readyToSummarize?: unknown };
-  if (typeof value.reply !== 'string' || !value.reply.trim() || value.reply.trim().length > 600) {
+  if (typeof value.reply !== 'string' || !value.reply.trim() || value.reply.trim().length > 600
+    || typeof value.readyToSummarize !== 'boolean') {
     throw new Error('生活 AI 对话格式无效，请重试');
   }
   return {
     reply: value.reply.trim(),
-    readyToSummarize: typeof value.readyToSummarize === 'boolean' ? value.readyToSummarize : false,
+    readyToSummarize: value.readyToSummarize,
   };
 }
 

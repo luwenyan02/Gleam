@@ -54,6 +54,18 @@ describe('生活故事草稿仓库', () => {
     expect(legacy).toMatchObject({ body: '先去公园。', aiText: '今天在公园看到了一只橘猫。' });
   });
 
+  it('公开迁移函数对 unknown 和畸形旧草稿抛出稳定业务错误', () => {
+    expect(() => migrateLifeDraft(null)).toThrow('草稿 key 无效');
+    expect(() => migrateLifeDraft(draft({ messages: null }))).toThrow('草稿结构无效');
+    expect(() => migrateLifeDraft(draft({
+      messages: [{ role: 'system', content: '伪造消息' }],
+    }))).toThrow('对话草稿结构无效');
+    expect(() => migrateLifeDraft(draft({
+      messages: [{ role: 'user', content: 42 }],
+    }))).toThrow('对话草稿结构无效');
+    expect(() => migrateLifeDraft(draft({ tags: ['有效', 3] }))).toThrow('草稿标签无效');
+  });
+
   it('纯照片整理稿保留空原话标记，不把 AI 文字冒充用户原话', async () => {
     await putLifeDraft(draft({ body: '', aiText: '照片里的公园。', photos: [{ name: '图.png', dataUrl: png() }] }));
     const noteId = await saveLifeDraft('composer');

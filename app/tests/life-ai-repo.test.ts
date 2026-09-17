@@ -115,16 +115,18 @@ describe('生活 AI 结构化多轮对话', () => {
     })).resolves.toEqual({ reply: '还记得它当时在做什么吗？', readyToSummarize: true });
   });
 
-  it('结构不完整时只保留可验证回复，绝不猜测摘要就绪', async () => {
+  it('纯文本或缺失严格字段时安全拒绝，绝不猜测摘要就绪', async () => {
     const fetchSpy = vi.fn()
       .mockResolvedValueOnce(response(JSON.stringify({ reply: '愿意的话，再讲一个小细节。' })))
       .mockResolvedValueOnce(response(JSON.stringify({ reply: '我们可以先停在这里。', readyToSummarize: 'true' })))
+      .mockResolvedValueOnce(response('这是一段非 JSON 纯文本'))
       .mockResolvedValueOnce(response('{"readyToSummarize":true}'));
     vi.stubGlobal('fetch', fetchSpy);
     const input = { body: '', messages: [{ role: 'user' as const, content: '今天散步。' }] };
 
-    await expect(continueLifeChat(input)).resolves.toEqual({ reply: '愿意的话，再讲一个小细节。', readyToSummarize: false });
-    await expect(continueLifeChat(input)).resolves.toEqual({ reply: '我们可以先停在这里。', readyToSummarize: false });
+    await expect(continueLifeChat(input)).rejects.toThrow('对话格式无效');
+    await expect(continueLifeChat(input)).rejects.toThrow('对话格式无效');
+    await expect(continueLifeChat(input)).rejects.toThrow('对话格式无效');
     await expect(continueLifeChat(input)).rejects.toThrow('对话格式无效');
   });
 });

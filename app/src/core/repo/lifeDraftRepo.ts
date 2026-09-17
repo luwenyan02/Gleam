@@ -9,7 +9,8 @@ const DATA_URL_RE = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]*={0,
  * 把旧版对话草稿转为“原始会话 + 独立摘要方案”。
  * 返回新副本，可重复调用，不修改入参。
  */
-export function migrateLifeDraft(input: LifeDraft): LifeDraft {
+export function migrateLifeDraft(input: unknown): LifeDraft {
+  validateLifeDraft(input);
   const draft = structuredClone(input);
   const hasLegacyChat = draft.messages.length > 0 || draft.aiText != null || draft.summaryProposal != null;
   if (!hasLegacyChat) return draft;
@@ -53,7 +54,8 @@ function validatePhoto(photo: LifeDraftPhoto): { mime: string; base64: string; s
   return { mime: match[1], base64, size };
 }
 
-export function validateLifeDraft(draft: LifeDraft): void {
+export function validateLifeDraft(input: unknown): asserts input is LifeDraft {
+  const draft = input as LifeDraft;
   if (!draft || typeof draft.key !== 'string' || !draft.key.trim()) throw new Error('草稿 key 无效');
   if (typeof draft.title !== 'string' || typeof draft.body !== 'string') throw new Error('草稿文字无效');
   if (!Number.isFinite(draft.occurredAt)) throw new Error('草稿发生时间无效');
