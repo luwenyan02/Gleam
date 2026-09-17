@@ -149,6 +149,55 @@ describe('生活故事草稿仓库', () => {
     expect((await getLifeNote(noteId))?.conversation).toEqual(completeConversation);
   });
 
+  it('迁移后的旧增量草稿追加既有会话时不写入 synthetic body', async () => {
+    const existingConversation = [
+      { role: 'user' as const, content: '旧起点' },
+      { role: 'assistant' as const, content: '当时发生了什么？' },
+      { role: 'user' as const, content: '我在公园散步。' },
+    ];
+    const noteId = await addLifeNote({
+      kind: 'diary', body: '旧整理稿', originalBody: '旧起点\n\n我在公园散步。', conversation: existingConversation, occurredAt,
+    });
+    const note = (await getLifeNote(noteId))!;
+    const addedTurn = [
+      { role: 'user' as const, content: '后来看到一只橘猫。' },
+      { role: 'assistant' as const, content: '它在做什么？' },
+    ];
+
+    await putLifeDraft(migrateLifeDraft(draft({
+      key: 'legacy-delta', noteId, sourceUpdatedAt: note.updatedAt,
+      body: '旧起点\n\n我在公园散步。', messages: addedTurn, aiText: '更新后的整理稿',
+    })));
+    await saveLifeDraft('legacy-delta');
+
+    expect((await getLifeNote(noteId))?.conversation).toEqual([...existingConversation, ...addedTurn]);
+  });
+
+  it('迁移后的旧完整会话草稿保存时不重复既有会话', async () => {
+    const existingConversation = [
+      { role: 'user' as const, content: '旧起点' },
+      { role: 'assistant' as const, content: '当时发生了什么？' },
+      { role: 'user' as const, content: '我在公园散步。' },
+    ];
+    const noteId = await addLifeNote({
+      kind: 'diary', body: '旧整理稿', originalBody: '旧起点\n\n我在公园散步。', conversation: existingConversation, occurredAt,
+    });
+    const note = (await getLifeNote(noteId))!;
+    const addedTurn = [
+      { role: 'user' as const, content: '后来看到一只橘猫。' },
+      { role: 'assistant' as const, content: '它在做什么？' },
+    ];
+    const completeConversation = [...existingConversation, ...addedTurn];
+
+    await putLifeDraft(migrateLifeDraft(draft({
+      key: 'legacy-full', noteId, sourceUpdatedAt: note.updatedAt,
+      body: '旧起点\n\n我在公园散步。', messages: completeConversation, aiText: '更新后的整理稿',
+    })));
+    await saveLifeDraft('legacy-full');
+
+    expect((await getLifeNote(noteId))?.conversation).toEqual(completeConversation);
+  });
+
   it('草稿入口拒绝伪造或不完整的摘要方案', async () => {
     await expect(putLifeDraft(draft({
       summaryProposal: { title: '标题', body: '正文', tags: [], sourceMessageCount: -1 },

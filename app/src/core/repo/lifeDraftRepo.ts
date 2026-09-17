@@ -18,6 +18,7 @@ export function migrateLifeDraft(input: unknown): LifeDraft {
   const legacyBody = draft.body.trim();
   if (legacyBody && !(draft.messages[0]?.role === 'user' && draft.messages[0].content.trim() === legacyBody)) {
     draft.messages.unshift({ role: 'user', content: legacyBody });
+    draft.originalBody = legacyBody;
   }
   draft.body = '';
 
@@ -115,14 +116,19 @@ function sameMessage(left: LifeChatMessage, right: LifeChatMessage): boolean {
 
 function mergeConversation(
   existing: LifeChatMessage[] | undefined,
-  storedMessages: LifeChatMessage[],
   migratedMessages: LifeChatMessage[],
+  syntheticBody: string | undefined,
 ): LifeChatMessage[] | undefined {
   if (!existing?.length) return migratedMessages.length ? structuredClone(migratedMessages) : undefined;
-  if (!storedMessages.length) return structuredClone(existing);
-  const containsExistingPrefix = storedMessages.length >= existing.length
-    && existing.every((message, index) => sameMessage(message, storedMessages[index]));
-  return structuredClone(containsExistingPrefix ? storedMessages : [...existing, ...storedMessages]);
+  const messages = syntheticBody
+    && migratedMessages[0]?.role === 'user'
+    && migratedMessages[0].content === syntheticBody
+    ? migratedMessages.slice(1)
+    : migratedMessages;
+  if (!messages.length) return structuredClone(existing);
+  const containsExistingPrefix = messages.length >= existing.length
+    && existing.every((message, index) => sameMessage(message, messages[index]));
+  return structuredClone(containsExistingPrefix ? messages : [...existing, ...messages]);
 }
 
 function bytesFromBase64(base64: string): Uint8Array<ArrayBuffer> {
@@ -216,7 +222,7 @@ export async function saveLifeDraft(key: string): Promise<number> {
     const tags = (proposal?.tags ?? draft.tags)?.map((tag) => tag.trim()).filter(Boolean);
     const changedAt = now();
     let noteId: number;
-    const conversation = mergeConversation(existing?.conversation, storedDraft.messages, draft.messages);
+    const conversation = mergeConversation(existing?.conversation, draft.messages, draft.originalBody);
     if (existing) {
       noteId = existing.id;
       await db.lifeNotes.put({
