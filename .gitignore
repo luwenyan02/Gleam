@@ -6,6 +6,7 @@
 # Codex and local working artifacts
 .tmp/
 .selftest/
+.superpowers/
 outputs/
 uploads/
 release/
