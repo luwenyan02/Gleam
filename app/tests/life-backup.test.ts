@@ -2,18 +2,32 @@ import 'fake-indexeddb/auto';
 import { beforeEach, expect, it } from 'vitest';
 import { db } from '../src/core/db';
 import { exportAll, restoreAll, sanitizeDumpForBackup } from '../src/core/repo/backupRepo';
-import { putLifeDraft } from '../src/core/repo/lifeDraftRepo';
+import { getLifeDraft, putLifeDraft } from '../src/core/repo/lifeDraftRepo';
+import { addLifeNote, getLifeNote } from '../src/core/repo/lifeRepo';
+import { getSetting, setSetting } from '../src/core/repo/settingsRepo';
 
 beforeEach(async () => { await db.delete(); await db.open(); });
 
 it('备份和恢复包含本地草稿与小报，但不继承生活 AI 授权', async () => {
-  await putLifeDraft({ key: 'new', title: '', body: '虚构原话', occurredAt: 1, photos: [], existingPhotoRefs: [], messages: [], aiExcluded: false });
-  await db.settings.put({ key: 'life.aiEnabled', value: true, updatedAt: 1 });
+  const messages = [
+    { role: 'user' as const, content: '虚构原话' },
+    { role: 'assistant' as const, content: '虚构追问' },
+  ];
+  await putLifeDraft({
+    key: 'new', title: '', body: '', occurredAt: 1, photos: [], existingPhotoRefs: [], messages, aiExcluded: false,
+    summaryProposal: { title: '草稿摘要', body: '虚构整理稿', tags: ['虚构'], sourceMessageCount: 2 },
+  });
+  const noteId = await addLifeNote({ kind: 'diary', title: '已确认', body: '正式记录', conversation: messages, occurredAt: 1 });
+  await setSetting('life.aiEnabled', true);
   const dump = await exportAll();
   expect(dump.lifeDrafts).toHaveLength(1);
   expect(dump.lifeEditions).toEqual([]);
-  expect(sanitizeDumpForBackup(dump).settings).toContainEqual({ key: 'life.aiEnabled', value: false, updatedAt: 1 });
+  expect(sanitizeDumpForBackup(dump).settings).toContainEqual(expect.objectContaining({ key: 'life.aiEnabled', value: false }));
   await restoreAll(dump);
-  expect(await db.lifeDrafts.get('new')).toMatchObject({ body: '虚构原话' });
-  expect((await db.settings.get('life.aiEnabled'))?.value).toBe(false);
+  expect(await getLifeDraft('new')).toMatchObject({
+    messages,
+    summaryProposal: { title: '草稿摘要', body: '虚构整理稿', sourceMessageCount: 2 },
+  });
+  expect(await getLifeNote(noteId)).toMatchObject({ body: '正式记录', conversation: messages });
+  expect(await getSetting('life.aiEnabled')).toBe(false);
 });

@@ -5,6 +5,40 @@ import { collectUnreferencedAttachments, MAX_ENTRY_ATTACHMENTS, MAX_RECEIPT_BYTE
 
 const DATA_URL_RE = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]*={0,2})$/;
 
+/**
+ * 把旧版对话草稿转为“原始会话 + 独立摘要方案”。
+ * 返回新副本，可重复调用，不修改入参。
+ */
+export function migrateLifeDraft(input: LifeDraft): LifeDraft {
+  const draft = structuredClone(input);
+  const hasLegacyChat = draft.messages.length > 0 || draft.aiText != null || draft.summaryProposal != null;
+  if (!hasLegacyChat) return draft;
+
+  const legacyBody = draft.body.trim();
+  if (legacyBody && !(draft.messages[0]?.role === 'user' && draft.messages[0].content.trim() === legacyBody)) {
+    draft.messages.unshift({ role: 'user', content: legacyBody });
+  }
+  draft.body = '';
+
+  const legacySummary = draft.aiText?.trim();
+  if (legacySummary && !draft.summaryProposal) {
+    draft.summaryProposal = {
+      title: draft.title.trim(),
+      body: legacySummary,
+      mood: draft.mood?.trim() || undefined,
+      tags: (draft.tags ?? []).map(tag => tag.trim()).filter(Boolean),
+      sourceMessageCount: draft.messages.length,
+    };
+  }
+  if (legacySummary || draft.summaryProposal) {
+    draft.title = '';
+    draft.mood = undefined;
+    draft.tags = undefined;
+    draft.aiText = undefined;
+  }
+  return draft;
+}
+
 function validatePhoto(photo: LifeDraftPhoto): { mime: string; base64: string; size: number } {
   if (!photo || typeof photo.name !== 'string' || typeof photo.dataUrl !== 'string') {
     throw new Error('照片草稿结构无效');
@@ -26,13 +60,32 @@ export function validateLifeDraft(draft: LifeDraft): void {
   if (draft.sourceUpdatedAt != null && !Number.isFinite(draft.sourceUpdatedAt)) throw new Error('草稿来源版本无效');
   if (typeof draft.aiExcluded !== 'boolean' || [draft.aiText, draft.pendingReply, draft.mood, draft.originalBody].some(value => value != null && typeof value !== 'string')) throw new Error('草稿可选字段无效');
   if (draft.tags != null && (!Array.isArray(draft.tags) || draft.tags.some(tag => typeof tag !== 'string'))) throw new Error('草稿标签无效');
+  if (!Array.isArray(draft.existingPhotoRefs) || !Array.isArray(draft.photos) || !Array.isArray(draft.messages)) {
+    throw new Error('草稿结构无效');
+  }
+  if (draft.summaryProposal != null) {
+    const proposal = draft.summaryProposal;
+    if (typeof proposal !== 'object'
+      || typeof proposal.title !== 'string'
+      || typeof proposal.body !== 'string'
+      || !proposal.body.trim()
+      || proposal.title.trim().length > 120
+      || proposal.body.trim().length > 12_000
+      || (proposal.mood != null && typeof proposal.mood !== 'string')
+      || (proposal.mood?.trim().length ?? 0) > 60
+      || !Array.isArray(proposal.tags)
+      || proposal.tags.length > 12
+      || proposal.tags.some(tag => typeof tag !== 'string' || !tag.trim() || tag.trim().length > 60)
+      || !Number.isSafeInteger(proposal.sourceMessageCount)
+      || proposal.sourceMessageCount < 0
+      || proposal.sourceMessageCount > draft.messages.length) {
+      throw new Error('草稿摘要方案无效');
+    }
+  }
   if (draft.review != null && (typeof draft.review !== 'object'
     || (draft.review.verdict != null && !['again', 'neutral', 'not-for-me'].includes(draft.review.verdict))
     || (draft.review.text != null && typeof draft.review.text !== 'string')
     || [draft.review.revisitAt, draft.review.dismissedAt].some(value => value != null && !Number.isFinite(value)))) throw new Error('回访内容无效');
-  if (!Array.isArray(draft.existingPhotoRefs) || !Array.isArray(draft.photos) || !Array.isArray(draft.messages)) {
-    throw new Error('草稿结构无效');
-  }
   if (draft.noteId != null && (!Number.isSafeInteger(draft.noteId) || draft.noteId <= 0)) throw new Error('生活记录编号无效');
   if (draft.entryId != null && (!Number.isSafeInteger(draft.entryId) || draft.entryId <= 0)) throw new Error('账单编号无效');
   const refs = new Set(draft.existingPhotoRefs);
@@ -101,13 +154,16 @@ export async function saveLifeDraft(key: string): Promise<number> {
     db.entryAttachments, db.settings, db.lifeEditions,
   ];
   const result = await db.transaction('rw', tables, async () => {
-    const draft = await db.lifeDrafts.get(key);
-    if (!draft) throw new Error('草稿不存在');
-    validateLifeDraft(draft);
+    const storedDraft = await db.lifeDrafts.get(key);
+    if (!storedDraft) throw new Error('草稿不存在');
+    validateLifeDraft(storedDraft);
+    const hadStoredMessages = storedDraft.messages.length > 0;
+    const draft = migrateLifeDraft(storedDraft);
 
     const rawText = mergedUserText(draft);
-    const aiText = draft.aiText?.trim() ?? '';
-    if (!rawText && !aiText && draft.existingPhotoRefs.length === 0 && draft.photos.length === 0) {
+    const proposal = draft.summaryProposal;
+    const proposedBody = proposal?.body.trim() ?? '';
+    if (!rawText && !proposedBody && draft.existingPhotoRefs.length === 0 && draft.photos.length === 0) {
       throw new Error('请先写下内容或添加照片');
     }
 
@@ -140,35 +196,43 @@ export async function saveLifeDraft(key: string): Promise<number> {
       }) as Attachment));
     }
     const photoRefs = [...draft.existingPhotoRefs, ...newPhotoRefs];
-    const body = aiText || rawText || undefined;
-    const originalBody = aiText ? rawText : undefined;
+    const body = proposedBody || rawText || undefined;
+    const originalBody = proposal ? rawText : undefined;
+    const title = (proposal?.title ?? draft.title).trim() || undefined;
+    const mood = (proposal?.mood ?? draft.mood)?.trim() || undefined;
+    const tags = (proposal?.tags ?? draft.tags)?.map((tag) => tag.trim()).filter(Boolean);
     const changedAt = now();
     let noteId: number;
+    const conversation = hadStoredMessages
+      ? structuredClone(draft.messages)
+      : existing?.conversation ?? (draft.messages.length ? structuredClone(draft.messages) : undefined);
     if (existing) {
       noteId = existing.id;
       await db.lifeNotes.put({
         ...existing,
-        title: draft.title.trim() || undefined,
+        title,
         body,
         originalBody,
+        conversation,
         occurredAt: draft.occurredAt,
         photoRefs: photoRefs.length ? photoRefs : undefined,
-        mood: draft.mood?.trim() || undefined,
-        tags: draft.tags?.map((tag) => tag.trim()).filter(Boolean),
+        mood,
+        tags,
         review: draft.review,
         aiExcluded: draft.aiExcluded,
         updatedAt: changedAt,
       });
     } else {
       noteId = await db.lifeNotes.add(stamp({
-        kind: rawText || aiText ? 'diary' : 'photo',
-        title: draft.title.trim() || undefined,
+        kind: rawText || proposedBody ? 'diary' : 'photo',
+        title,
         body,
         originalBody,
+        conversation,
         occurredAt: draft.occurredAt,
         photoRefs: photoRefs.length ? photoRefs : undefined,
-        mood: draft.mood?.trim() || undefined,
-        tags: draft.tags?.map((tag) => tag.trim()).filter(Boolean),
+        mood,
+        tags,
         review: draft.review,
         aiExcluded: draft.aiExcluded,
         deletedAt: 0,

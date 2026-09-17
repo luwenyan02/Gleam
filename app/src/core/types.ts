@@ -288,6 +288,8 @@ export interface LifeNote extends Timestamps {
   aiExcluded?: boolean;
   /** 采用 AI 整理正文时，与整理稿配对保存的完整用户原话。 */
   originalBody?: string;
+  /** 用户确认保存记录时，一并留在本机的原始人机对话。 */
+  conversation?: LifeChatMessage[];
   /** 对这段经历的轻量回看。 */
   review?: LifeReview;
 }
@@ -302,6 +304,14 @@ export interface LifeReview {
 export interface LifeChatMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+export interface LifeSummaryProposal {
+  title: string;
+  body: string;
+  mood?: string;
+  tags: string[];
+  sourceMessageCount: number;
 }
 
 export interface LifeDraftPhoto {
@@ -322,6 +332,8 @@ export interface LifeDraft {
   existingPhotoRefs: number[];
   photos: LifeDraftPhoto[];
   messages: LifeChatMessage[];
+  /** AI 生成但尚未确认为正式记录的独立摘要方案。 */
+  summaryProposal?: LifeSummaryProposal;
   aiText?: string;
   pendingReply?: string;
   aiExcluded: boolean;

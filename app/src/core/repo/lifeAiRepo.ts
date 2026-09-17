@@ -2,7 +2,7 @@ import { getSetting } from './settingsRepo';
 import { requestAiChat } from './aiRepo';
 import { getLifeWeekSources, type LifeEditionInput } from './lifeEditionRepo';
 import { shiftLifeWeek } from '../lifeWeek';
-import type { LifeChatMessage } from '../types';
+import type { LifeChatMessage, LifeSummaryProposal } from '../types';
 import { getLifeNote } from './lifeRepo';
 
 const MAX_INPUT = 24_000;
@@ -28,6 +28,11 @@ export interface LifeAiInput {
   signal?: AbortSignal;
   noteId?: number;
   sourceUpdatedAt?: number;
+}
+
+export interface LifeChatTurnResult {
+  reply: string;
+  readyToSummarize: boolean;
 }
 
 async function checkSource(input: LifeAiInput): Promise<void> {
@@ -63,6 +68,129 @@ async function lifeText(input: LifeAiInput, organize: boolean): Promise<string> 
 
 export function askLifeQuestion(input: LifeAiInput): Promise<string> { return lifeText(input, false); }
 export function organizeLifeText(input: LifeAiInput): Promise<string> { return lifeText(input, true); }
+
+function parseLifeChatTurn(raw: string): LifeChatTurnResult {
+  const text = raw.trim();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
+  } catch {
+    if (text.startsWith('{') || text.startsWith('[') || /^```(?:json)?/i.test(text)) throw new Error('生活 AI 对话格式无效，请重试');
+    if (!text || text.length > 600) throw new Error('生活 AI 返回内容过长或为空，请重试');
+    return { reply: text, readyToSummarize: false };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('生活 AI 对话格式无效，请重试');
+  }
+  const value = parsed as { reply?: unknown; readyToSummarize?: unknown };
+  if (typeof value.reply !== 'string' || !value.reply.trim() || value.reply.trim().length > 600) {
+    throw new Error('生活 AI 对话格式无效，请重试');
+  }
+  return {
+    reply: value.reply.trim(),
+    readyToSummarize: typeof value.readyToSummarize === 'boolean' ? value.readyToSummarize : false,
+  };
+}
+
+/** 结构化多轮生活对话；不写草稿或正式记录。 */
+export async function continueLifeChat(input: LifeAiInput): Promise<LifeChatTurnResult> {
+  await checkEnabled(input.signal);
+  await checkSource(input);
+  if (typeof input.body !== 'string' || !Array.isArray(input.messages) || input.messages.length > 30) {
+    throw new Error('对话过长，请先记下这一段');
+  }
+  for (const message of input.messages) {
+    if (!message || (message.role !== 'user' && message.role !== 'assistant') || typeof message.content !== 'string') {
+      throw new Error('对话内容无效');
+    }
+  }
+  const source = JSON.stringify({ 原话: input.body, 对话: input.messages });
+  if (source.length > MAX_INPUT) throw new Error('本次内容过长，请减少文字后重试');
+  const photos = input.photos ?? [];
+  if (photos.length > 9 || photos.some(url => !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(url) || url.length > 15_000_000)) {
+    throw new Error('本次照片格式或大小不支持');
+  }
+  if (!input.body.trim() && !input.messages.some(message => message.role === 'user' && message.content.trim()) && !photos.length) {
+    throw new Error('先留一句话或选一张照片');
+  }
+  const reply = await requestAiChat({
+    privateContent: true,
+    signal: input.signal,
+    requireImageModel: photos.length > 0,
+    expectedDestination: input.expectedDestination,
+    messages: [
+      { role: 'system', content: `${BASE_PROMPT}\n回应保持简短、自然，一次最多问一个问题。优先追问可感知的小细节，不要要求感悟。用户想结束、拒绝回答或只想保存时停止追问。只返回JSON：{"reply":"回复","readyToSummarize":true或false}。只有已形成具体生活片段时才返回true。` },
+      { role: 'user', content: photos.length
+        ? [{ type: 'text', text: source }, ...photos.map(url => ({ type: 'image_url', image_url: { url } }))]
+        : source },
+    ],
+  });
+  await checkEnabled(input.signal, true);
+  await checkSource(input);
+  return parseLifeChatTurn(reply);
+}
+
+/** 根据当前对话生成独立摘要方案；调用方确认前不写入任何仓库。 */
+export async function generateLifeSummary(input: LifeAiInput): Promise<LifeSummaryProposal> {
+  await checkEnabled(input.signal);
+  await checkSource(input);
+  if (typeof input.body !== 'string' || !Array.isArray(input.messages) || input.messages.length > 30) {
+    throw new Error('对话过长，请先记下这一段');
+  }
+  for (const message of input.messages) {
+    if (!message || (message.role !== 'user' && message.role !== 'assistant') || typeof message.content !== 'string') {
+      throw new Error('对话内容无效');
+    }
+  }
+  const sourceMessageCount = input.messages.length;
+  const source = JSON.stringify({ 原话: input.body, 对话: input.messages, sourceMessageCount });
+  if (source.length > MAX_INPUT) throw new Error('本次内容过长，请减少文字后重试');
+  const photos = input.photos ?? [];
+  if (photos.length > 9 || photos.some(url => !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(url) || url.length > 15_000_000)) {
+    throw new Error('本次照片格式或大小不支持');
+  }
+  if (!input.body.trim() && !input.messages.some(message => message.role === 'user' && message.content.trim()) && !photos.length) {
+    throw new Error('先留一句话或选一张照片');
+  }
+  const reply = await requestAiChat({
+    privateContent: true,
+    signal: input.signal,
+    requireImageModel: photos.length > 0,
+    expectedDestination: input.expectedDestination,
+    messages: [
+      { role: 'system', content: `${BASE_PROMPT}\n只使用用户提供的事实，不虚构地点、人物、感受或因果。保留用户口吻，不鸡汤化或过度文学化；assistant 问句不是事实来源。只返回JSON：{"title":"标题","body":"正文","mood":"可选心情","tags":["标签"],"sourceMessageCount":${sourceMessageCount}}。sourceMessageCount必须原样返回。` },
+      { role: 'user', content: photos.length
+        ? [{ type: 'text', text: source }, ...photos.map(url => ({ type: 'image_url', image_url: { url } }))]
+        : source },
+    ],
+  });
+  await checkEnabled(input.signal, true);
+  await checkSource(input);
+  if (reply.length > 16_000) throw new Error('生活 AI 摘要内容过长，请重试');
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(reply.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')); }
+  catch { throw new Error('生活 AI 摘要格式无效，请重试'); }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('生活 AI 摘要格式无效，请重试');
+  }
+  const value = parsed as Record<string, unknown>;
+  if (value.sourceMessageCount !== sourceMessageCount) throw new Error('对话版本不匹配，请重新整理');
+  if (typeof value.title !== 'string' || !value.title.trim() || value.title.trim().length > 120
+    || typeof value.body !== 'string' || !value.body.trim() || value.body.trim().length > 12_000
+    || (value.mood != null && (typeof value.mood !== 'string' || value.mood.trim().length > 60))
+    || !Array.isArray(value.tags) || value.tags.length > 12
+    || value.tags.some(tag => typeof tag !== 'string' || !tag.trim() || tag.trim().length > 60)) {
+    throw new Error('生活 AI 摘要格式无效，请重试');
+  }
+  return {
+    title: value.title.trim(),
+    body: value.body.trim(),
+    mood: typeof value.mood === 'string' && value.mood.trim() ? value.mood.trim() : undefined,
+    tags: (value.tags as string[]).map(tag => tag.trim()),
+    sourceMessageCount,
+  };
+}
 
 /** 只读生成草案，不写周刊表。来源在请求前后双重校验，用户仍须预览确认。 */
 export async function generateLifeEdition(input: { weekKey: string; noteIds: number[]; sourceRefs?: { noteId: number; updatedAt: number }[]; signal?: AbortSignal; expectedDestination?: { baseUrl: string; model: string } }): Promise<LifeEditionInput> {

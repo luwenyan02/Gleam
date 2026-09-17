@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../src/core/db';
 import { addAccount } from '../src/core/repo/accountRepo';
 import { addEntry, softDeleteEntry } from '../src/core/repo/entryRepo';
-import { addAttachment, addLifeNote, getLifeNote, linkEntryToLifeNote, listLifeLinkedEntries, purgeLifeNote, softDeleteLifeNote } from '../src/core/repo/lifeRepo';
-import { deleteLifeDraft, getLifeDraft, putLifeDraft, saveLifeDraft } from '../src/core/repo/lifeDraftRepo';
+import { addAttachment, addLifeNote, getLifeNote, linkEntryToLifeNote, listLifeLinkedEntries, listLifeNotes, purgeLifeNote, softDeleteLifeNote } from '../src/core/repo/lifeRepo';
+import { deleteLifeDraft, getLifeDraft, migrateLifeDraft, putLifeDraft, saveLifeDraft } from '../src/core/repo/lifeDraftRepo';
 
 const occurredAt = new Date(2026, 8, 15, 12).getTime();
 const png = (bytes = 'AQID') => `data:image/png;base64,${bytes}`;
@@ -24,10 +24,83 @@ beforeEach(async () => {
 });
 
 describe('生活故事草稿仓库', () => {
+  it('公开迁移把旧对话与整理稿分开，且重复迁移不丢数据', () => {
+    const legacy = draft({
+      title: '公园的一天',
+      body: '先去公园。',
+      messages: [
+        { role: 'user', content: '先去公园。' },
+        { role: 'assistant', content: '有什么印象深刻的细节？' },
+        { role: 'user', content: '看到一只橘猫。' },
+      ],
+      aiText: '今天在公园看到了一只橘猫。',
+      mood: '轻松',
+      tags: ['散步'],
+    });
+
+    const migrated = migrateLifeDraft(legacy);
+    expect(migrated).toMatchObject({
+      title: '', body: '', mood: undefined, tags: undefined, aiText: undefined,
+      summaryProposal: {
+        title: '公园的一天',
+        body: '今天在公园看到了一只橘猫。',
+        mood: '轻松',
+        tags: ['散步'],
+        sourceMessageCount: 3,
+      },
+    });
+    expect(migrated.messages.filter(message => message.role === 'user' && message.content === '先去公园。')).toHaveLength(1);
+    expect(migrateLifeDraft(migrated)).toEqual(migrated);
+    expect(legacy).toMatchObject({ body: '先去公园。', aiText: '今天在公园看到了一只橘猫。' });
+  });
+
   it('纯照片整理稿保留空原话标记，不把 AI 文字冒充用户原话', async () => {
     await putLifeDraft(draft({ body: '', aiText: '照片里的公园。', photos: [{ name: '图.png', dataUrl: png() }] }));
     const noteId = await saveLifeDraft('composer');
     expect(await getLifeNote(noteId)).toMatchObject({ body: '照片里的公园。', originalBody: '' });
+  });
+  it('确认保存时才把摘要方案与完整会话原子写入正式记录', async () => {
+    const messages = [
+      { role: 'user' as const, content: '今天去了公园。' },
+      { role: 'assistant' as const, content: '有什么小细节想留下？' },
+      { role: 'user' as const, content: '池塘边有一只橘猫。' },
+    ];
+    await putLifeDraft(draft({
+      title: '', body: '', messages,
+      summaryProposal: {
+        title: '池塘边的橘猫', body: '今天去公园，在池塘边看到一只橘猫。',
+        mood: '轻松', tags: ['散步', '橘猫'], sourceMessageCount: 3,
+      },
+    }));
+    expect(await getLifeDraft('composer')).toMatchObject({ title: '', body: '', summaryProposal: { title: '池塘边的橘猫' } });
+    expect(await listLifeNotes()).toEqual([]);
+
+    const noteId = await saveLifeDraft('composer');
+    expect(await getLifeNote(noteId)).toMatchObject({
+      title: '池塘边的橘猫', body: '今天去公园，在池塘边看到一只橘猫。',
+      mood: '轻松', tags: ['散步', '橘猫'], conversation: messages,
+      originalBody: '今天去了公园。\n\n池塘边有一只橘猫。',
+    });
+    expect(await getLifeDraft('composer')).toBeUndefined();
+  });
+
+  it('草稿入口拒绝伪造或不完整的摘要方案', async () => {
+    await expect(putLifeDraft(draft({
+      summaryProposal: { title: '标题', body: '正文', tags: [], sourceMessageCount: -1 },
+    }))).rejects.toThrow('摘要');
+    await expect(putLifeDraft(draft({
+      summaryProposal: { title: '标题', body: '正文', tags: ['有效', 3], sourceMessageCount: 0 },
+    }))).rejects.toThrow('摘要');
+    await expect(putLifeDraft(draft({
+      messages: [], summaryProposal: { title: '标题', body: '正文', tags: [], sourceMessageCount: 1 },
+    }))).rejects.toThrow('摘要');
+    await expect(putLifeDraft(draft({
+      summaryProposal: { title: '标题', body: ' ', tags: [], sourceMessageCount: 0 },
+    }))).rejects.toThrow('摘要');
+    await expect(putLifeDraft(draft({
+      messages: null,
+      summaryProposal: { title: '标题', body: '正文', tags: [], sourceMessageCount: 0 },
+    }))).rejects.toThrow('草稿结构无效');
   });
   it('旧编辑草稿不得覆盖后来更新的原文或隐私设置', async () => {
     const noteId = await addLifeNote({ kind: 'diary', body: '新正文', occurredAt, aiExcluded: true });

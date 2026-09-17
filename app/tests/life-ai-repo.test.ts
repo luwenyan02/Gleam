@@ -2,8 +2,9 @@ import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../src/core/db';
 import { secretStore } from '../src/core/secretStore';
-import { addLifeNote } from '../src/core/repo/lifeRepo';
-import { getLifeAiDestination, askLifeQuestion, organizeLifeText, generateLifeEdition } from '../src/core/repo/lifeAiRepo';
+import { addLifeNote, listLifeNotes } from '../src/core/repo/lifeRepo';
+import { getLifeDraft } from '../src/core/repo/lifeDraftRepo';
+import { getLifeAiDestination, askLifeQuestion, continueLifeChat, generateLifeSummary, organizeLifeText, generateLifeEdition } from '../src/core/repo/lifeAiRepo';
 import { setSetting } from '../src/core/repo/settingsRepo';
 import { lifeWeekForTimestamp } from '../src/core/lifeWeek';
 
@@ -98,7 +99,101 @@ describe('生活 AI 显式授权边界', () => {
   });
 });
 
+describe('生活 AI 结构化多轮对话', () => {
+  it('返回简短回复与模型明确给出的摘要就绪状态', async () => {
+    const fetchSpy = vi.fn(async (_url: string, init: RequestInit) => {
+      const payload = JSON.parse(String(init.body)) as { messages: Array<{ content: unknown }> };
+      expect(JSON.stringify(payload.messages)).toContain('池塘边有一只橘猫');
+      return response(JSON.stringify({ reply: '还记得它当时在做什么吗？', readyToSummarize: true }));
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await expect(continueLifeChat({
+      body: '',
+      messages: [{ role: 'user', content: '池塘边有一只橘猫。' }],
+      expectedDestination: { baseUrl: 'https://example.invalid/v1', model: 'vision-model' },
+    })).resolves.toEqual({ reply: '还记得它当时在做什么吗？', readyToSummarize: true });
+  });
+
+  it('结构不完整时只保留可验证回复，绝不猜测摘要就绪', async () => {
+    const fetchSpy = vi.fn()
+      .mockResolvedValueOnce(response(JSON.stringify({ reply: '愿意的话，再讲一个小细节。' })))
+      .mockResolvedValueOnce(response(JSON.stringify({ reply: '我们可以先停在这里。', readyToSummarize: 'true' })))
+      .mockResolvedValueOnce(response('{"readyToSummarize":true}'));
+    vi.stubGlobal('fetch', fetchSpy);
+    const input = { body: '', messages: [{ role: 'user' as const, content: '今天散步。' }] };
+
+    await expect(continueLifeChat(input)).resolves.toEqual({ reply: '愿意的话，再讲一个小细节。', readyToSummarize: false });
+    await expect(continueLifeChat(input)).resolves.toEqual({ reply: '我们可以先停在这里。', readyToSummarize: false });
+    await expect(continueLifeChat(input)).rejects.toThrow('对话格式无效');
+  });
+});
+
+describe('生活 AI 独立摘要方案', () => {
+  it('只返回当前会话的结构化方案，不自动写入草稿或正式记录', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => response(JSON.stringify({
+      title: '池塘边的橘猫',
+      body: '今天去公园，在池塘边看到一只橘猫。',
+      mood: '轻松',
+      tags: ['散步', '橘猫'],
+      sourceMessageCount: 3,
+    }))));
+    const messages = [
+      { role: 'user' as const, content: '今天去了公园。' },
+      { role: 'assistant' as const, content: '有什么小细节想留下？' },
+      { role: 'user' as const, content: '池塘边有一只橘猫。' },
+    ];
+
+    await expect(generateLifeSummary({
+      body: '', messages,
+      expectedDestination: { baseUrl: 'https://example.invalid/v1', model: 'vision-model' },
+    })).resolves.toEqual({
+      title: '池塘边的橘猫', body: '今天去公园，在池塘边看到一只橘猫。',
+      mood: '轻松', tags: ['散步', '橘猫'], sourceMessageCount: 3,
+    });
+    expect(await getLifeDraft('chat')).toBeUndefined();
+    expect(await listLifeNotes()).toEqual([]);
+  });
+
+  it('拒绝消息数不匹配或字段伪造的摘要响应', async () => {
+    const fetchSpy = vi.fn()
+      .mockResolvedValueOnce(response(JSON.stringify({ title: '旧摘要', body: '内容', tags: [], sourceMessageCount: 1 })))
+      .mockResolvedValueOnce(response(JSON.stringify({ title: '错误标签', body: '内容', tags: '散步', sourceMessageCount: 2 })))
+      .mockResolvedValueOnce(response('not-json'));
+    vi.stubGlobal('fetch', fetchSpy);
+    const input = { body: '', messages: [
+      { role: 'user' as const, content: '今天散步。' },
+      { role: 'assistant' as const, content: '看到了什么？' },
+    ] };
+
+    await expect(generateLifeSummary(input)).rejects.toThrow('版本');
+    await expect(generateLifeSummary(input)).rejects.toThrow('摘要格式无效');
+    await expect(generateLifeSummary(input)).rejects.toThrow('摘要格式无效');
+  });
+});
+
 describe('生活周刊生成', () => {
+  it('周刊只发送用户确认的正式记录，不带出本地原始会话', async () => {
+    const noteId = await addLifeNote({
+      kind: 'diary', title: '正式标题', body: '正式正文', occurredAt,
+      conversation: [
+        { role: 'user', content: '不应进入周刊请求的原话' },
+        { role: 'assistant', content: '不应进入周刊请求的追问' },
+      ],
+    });
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      const sent = String(init.body);
+      expect(sent).toContain('正式标题');
+      expect(sent).toContain('正式正文');
+      expect(sent).not.toContain('不应进入周刊请求');
+      return response(JSON.stringify({ title: '本周', blocks: [{ noteId, text: '正式片段' }] }));
+    }));
+
+    await expect(generateLifeEdition({ weekKey: week.key, noteIds: [noteId] })).resolves.toMatchObject({
+      blocks: [{ noteId, text: '正式片段' }],
+    });
+  });
+
   it('只发送用户选中的有效来源，返回带版本快照但不自动保存', async () => {
     const selectedId = await addLifeNote({ kind: 'diary', body: '选中的虚构散步故事', occurredAt });
     await addLifeNote({ kind: 'diary', body: '绝不能发出的未选中内容', occurredAt });
