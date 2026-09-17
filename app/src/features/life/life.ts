@@ -26,6 +26,7 @@ import { showToast } from '../shell/toast';
 import { confirmDialog } from '../shell/dialog';
 import type { Habit, LifeNote } from '../../core/types';
 import { openLifeComposer } from './lifeComposer';
+import { initLifeChat, openLifeChat } from './lifeChat';
 import { initLifeEdition, openLifeEdition } from './lifeEdition';
 import { openLifeAiControls, renderLifeRevisits } from './lifeExtras';
 import './lifeAi.css';
@@ -82,6 +83,7 @@ function endOfMonth(monthStart: number): number {
 /** 注册生活一级页（覆盖 page-life 占位），main.ts 调用一次 */
 export function initLife(): void {
   initLifeEdition();
+  initLifeChat();
   // 右下角悬浮「+」（shell 挂载，mountShell 先于本函数）：直接绑定，
   // shell 不感知 life 模块；节点常驻，一次绑定永久有效
   document.getElementById('fab-life')?.addEventListener('click', () => openTypeSheet());
@@ -100,8 +102,8 @@ export function initLife(): void {
             <button class="icon-btn" id="lf-next" aria-label="查看下一月" hidden>${iconHtml('ic-right')}</button>
           </div>
         </header>
-        <div class="life-intro"><p>拾起生活的点点滴滴</p><button class="chip" data-life-capture>＋ 留一下</button></div>
-        <div class="life-tools"><button class="chip" data-life-edition>拾光周刊</button><button class="chip" data-life-ai-controls>AI 与隐私</button></div>
+        <div class="life-intro"><p>拾起生活的点点滴滴</p></div>
+        <div class="life-tools"><button class="chip" data-life-capture>快速记录</button><button class="chip life-chat-entry" data-life-chat>和拾光聊聊</button><button class="chip" data-life-edition>拾光周刊</button><button class="chip" data-life-ai-controls>AI 与隐私</button></div>
         <div id="lf-revisits"></div>
         <p class="sub" id="lf-today-sum" style="padding:0 4px 12px"></p>
         <div id="lf-feed"></div>`;
@@ -109,6 +111,7 @@ export function initLife(): void {
       el.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
         if (target.closest('[data-life-capture]')) { void openLifeComposer(); return; }
+        if (target.closest('[data-life-chat]')) { void openLifeChat(); return; }
         if (target.closest('[data-life-edition]')) { openLifeEdition(); return; }
         if (target.closest('[data-life-ai-controls]')) { void openLifeAiControls(); return; }
         if (target.closest('#lf-prev')) { shiftMonth(-1); return; }
