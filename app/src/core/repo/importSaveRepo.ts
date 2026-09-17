@@ -10,7 +10,7 @@ export async function saveImportAtomically<T>(operation: () => Promise<T>): Prom
     [
       db.entries, db.accounts, db.entryTags, db.importBatches,
       db.categories, db.tags, db.merchants, db.settings, db.attachments,
-      db.entryAttachments, db.lifeNotes,
+      db.entryAttachments, db.lifeNotes, db.lifeDrafts, db.lifeEditions,
     ],
     operation,
   );

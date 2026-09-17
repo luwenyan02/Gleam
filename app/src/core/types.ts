@@ -284,6 +284,72 @@ export interface LifeNote extends Timestamps {
   occurredAt: number;
   /** 软删除时间，0 表示未删除 */
   deletedAt: number;
+  /** 明确排除于生活 AI 与周刊素材之外。 */
+  aiExcluded?: boolean;
+  /** 采用 AI 整理正文时，与整理稿配对保存的完整用户原话。 */
+  originalBody?: string;
+  /** 对这段经历的轻量回看。 */
+  review?: LifeReview;
+}
+
+export interface LifeReview {
+  verdict?: 'again' | 'neutral' | 'not-for-me';
+  text?: string;
+  revisitAt?: number;
+  dismissedAt?: number;
+}
+
+export interface LifeChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface LifeDraftPhoto {
+  name: string;
+  /** 本地原图 data URL；只有 UI 明确勾选后才可传给 AI。 */
+  dataUrl: string;
+}
+
+/** 本地编辑草稿；照片原图内联以便 JSON 备份，不代表已授权上传。 */
+export interface LifeDraft {
+  key: string;
+  sourceUpdatedAt?: number;
+  title: string;
+  body: string;
+  occurredAt: number;
+  noteId?: number;
+  entryId?: number;
+  existingPhotoRefs: number[];
+  photos: LifeDraftPhoto[];
+  messages: LifeChatMessage[];
+  aiText?: string;
+  pendingReply?: string;
+  aiExcluded: boolean;
+  mood?: string;
+  tags?: string[];
+  review?: LifeReview;
+  /** 编辑既有 AI 整理稿时用于保留原始文本，保存时仍以当前 body/messages 为准。 */
+  originalBody?: string;
+}
+
+export interface LifeEditionBlock {
+  noteId: number;
+  text: string;
+}
+
+export interface LifeEditionSourceRef {
+  noteId: number;
+  updatedAt: number;
+}
+
+/** 周刊只保存文本与来源快照；封面引用共享附件，不复制 Blob。 */
+export interface LifeEdition extends Timestamps {
+  id?: number;
+  weekKey: string;
+  title: string;
+  blocks: LifeEditionBlock[];
+  sourceRefs: LifeEditionSourceRef[];
+  coverAttachmentId?: number;
 }
 
 /** 习惯 */
@@ -405,6 +471,8 @@ export const SETTING_DEFAULTS = {
   'ai.modelCatalogCache': null as { baseUrl: string; ids: string[] } | null,
   /** AI 收件箱待确认队列持久化（与 recurring.pendingConfirms 同模式，确认/忽略后移除） */
   'ai.pendingItems': [] as AiPendingItem[],
+  /** 生活 AI 必须由用户在本机显式开启；备份恢复不会继承开启状态。 */
+  'life.aiEnabled': false as boolean,
   /* ── [R06] 云备份设置键 ── */
   /** 云备份通道：无 / WebDAV / S3 兼容对象存储 */
   'cloud.provider': 'none' as 'none' | 'webdav' | 's3',

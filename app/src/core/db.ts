@@ -1,6 +1,6 @@
 /**
- * 拾光 · Dexie 数据库定义（schema v3）
- * 单库 GleamDB，21 张表。UI 模块不得直接操作 db，一律经 repo/ 仓库层。
+ * 拾光 · Dexie 数据库定义（schema v4）
+ * 单库 GleamDB。UI 模块不得直接操作 db，一律经 repo/ 仓库层。
  *
  * 索引约定：
  * - 软删除表（entries/lifeNotes）的 deletedAt 统一存 0 表示未删除，
@@ -10,7 +10,7 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type {
   Account, Attachment, BackupRecord, Budget, Category, CategoryBudget, Entry, EntryTag, EntryAttachment,
-  CreditPayment, CreditStatement, Habit, HabitCheck, ImportBatch, LifeNote, LoanContact, Merchant, QuickTemplate,
+  CreditPayment, CreditStatement, Habit, HabitCheck, ImportBatch, LifeDraft, LifeEdition, LifeNote, LoanContact, Merchant, QuickTemplate,
   RecurringRule, Setting, Tag,
 } from './types';
 
@@ -36,6 +36,8 @@ export const db = new Dexie('GleamDB') as Dexie & {
   settings: EntityTable<Setting, 'key'>;
   creditStatements: EntityTable<CreditStatement, 'id'>;
   creditPayments: EntityTable<CreditPayment, 'id'>;
+  lifeDrafts: EntityTable<LifeDraft, 'key'>;
+  lifeEditions: EntityTable<LifeEdition, 'id'>;
 };
 
 db.version(1).stores({
@@ -83,6 +85,12 @@ db.version(2).stores({
 
 db.version(3).stores({
   entryAttachments: '++id, entryId, attachmentId, &[entryId+attachmentId]',
+});
+
+/** v4：生活故事编辑草稿与按自然周唯一的本地周刊。 */
+db.version(4).stores({
+  lifeDrafts: '&key',
+  lifeEditions: '++id, &weekKey, createdAt, updatedAt',
 });
 
 /** 当前时间戳（毫秒），统一出口便于测试替换 */

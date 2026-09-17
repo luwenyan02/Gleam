@@ -25,6 +25,7 @@ TESTS = (
     'test_account_management_ui.py',
     'test_entry_receipts.py',
     'test_entity_details.py', 'test_accounting_period.py',
+    'test_life_ai.py',
     'test_browser_usability.py',
     'test_large_ledger.py',
 )

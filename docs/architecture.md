@@ -34,6 +34,8 @@ IndexedDB / Android WebView 存储
 - IndexedDB v3 增加 `entryAttachments`，以唯一的 `entryId + attachmentId` 建立普通流水与现有 Blob 附件的有序关联。
 - `entrySaveRepo` 将新图片、关系、账单、账户余额和可选生活记录置于同一个事务；取消时只释放内存草稿。
 - 附件回收同时检查普通流水、生活记录（包括回收站）与 AI 待确认队列，防止删除共享图片。
+- IndexedDB v4 增加 `lifeDrafts`（上下文 key）和 `lifeEditions`（自然周唯一 key）；附件回收也保护草稿照片与周刊封面。草稿、照片、生活记录与可选账单关系在同一事务保存。
+- `lifeAiRepo` 复用私密模式的 AI 请求边界，只接收显式选择的材料，支持取消与请求前后校验；周刊解析校验来源 ID 和版本，生成与收藏分离。UI 使用 `lifeComposer`、`lifeEdition`、`lifeAiConsent`，账单仍沿用 `Entry.lifeNoteId`，不新增余额对象。
 - Android `GleamEntry` 只发布系统快捷入口及小组件衍生摘要，不持有完整账本、不直接写入账务数据。应用锁启用时小组件缓存不包含明文金额，快捷模板使用泛化名称。
 - 外部入口严格解析 `shiguang://entry` 的白名单参数，解锁后才消费；已打开的草稿不被覆盖，失效模板回退普通支出。小组件缓存带周期与更新时间，周期过期后不继续显示旧金额。
 

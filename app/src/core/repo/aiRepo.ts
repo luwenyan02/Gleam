@@ -85,10 +85,35 @@ async function loadConfig(): Promise<{ baseUrl: string; model: string; apiKey: s
  * 发起一次 chat/completions 请求（30s 超时），返回首条回复文本。
  * 新模型参数由 aiChatOptions 适配，自定义接口保留原采样行为。
  */
-async function callChat(messages: unknown[]): Promise<string> {
+export interface AiChatRequest {
+  messages: unknown[];
+  expectedDestination?: { baseUrl: string; model: string };
+  signal?: AbortSignal;
+  requireImageModel?: boolean;
+  /** 生活记录等私密内容不得读取、记录或回显远端错误正文。 */
+  privateContent?: boolean;
+}
+
+function cancelledError(): Error {
+  return new Error('AI 请求已取消');
+}
+
+/**
+ * OpenAI 兼容对话的共享出站边界。私密内容模式不读取或记录错误响应正文。
+ */
+export async function requestAiChat({
+  messages, signal, requireImageModel = false, privateContent = false, expectedDestination,
+}: AiChatRequest): Promise<string> {
   const { baseUrl, model, apiKey } = await loadConfig();
+  if (expectedDestination && (baseUrl.trim() !== expectedDestination.baseUrl || model.trim() !== expectedDestination.model)) {
+    throw new Error('AI 配置已变化，请重新确认发送目的地');
+  }
+  if (requireImageModel) assertImageModel(baseUrl, model);
+  if (signal?.aborted) throw cancelledError();
   const ctrl = new AbortController();
-  const timer = window.setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT);
+  const abortFromCaller = () => ctrl.abort();
+  signal?.addEventListener('abort', abortFromCaller, { once: true });
+  const timer = globalThis.setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT);
   try {
     const res = await fetch(chatEndpoint(baseUrl), {
       method: 'POST',
@@ -96,24 +121,48 @@ async function callChat(messages: unknown[]): Promise<string> {
       body: JSON.stringify({ model, ...chatOptions(baseUrl, model), messages }),
       signal: ctrl.signal,
     });
+    if (signal?.aborted) throw cancelledError();
     if (!res.ok) {
-      // 响应体可能含请求回显等敏感细节：只截断打日志，不进入 UI 与持久化的 error 字段
-      const detail = (await res.text().catch(() => '')).slice(0, 200);
-      if (detail) console.warn(`AI 接口 ${res.status} 响应详情：${detail}`);
+      // 记账收件箱保留原诊断行为；生活记录等私密调用绝不读取远端正文。
+      if (!privateContent) {
+        const detail = (await res.text().catch(() => '')).slice(0, 200);
+        if (detail) console.warn(`AI 接口 ${res.status} 响应详情：${detail}`);
+      }
+      if (privateContent) {
+        if (res.status === 401 || res.status === 403) throw new Error('生活 AI 配置不可用，请检查设置');
+        throw new Error('生活 AI 暂时不可用，请稍后重试');
+      }
       if (res.status === 401) throw new Error('AI 接口认证失败（请检查 API Key）');
       if (res.status === 429) throw new Error('AI 接口限流，请稍后重试');
       throw new Error(`AI 接口返回状态码 ${res.status}`);
     }
-    const data = await res.json() as { choices?: { message?: { content?: string } }[] };
+    let data: { choices?: { message?: { content?: string } }[] };
+    try {
+      data = await res.json() as typeof data;
+    } catch {
+      throw new Error(privateContent ? '生活 AI 暂时不可用，请稍后重试' : 'AI 接口返回格式无效');
+    }
+    if (signal?.aborted) throw cancelledError();
     const content = data.choices?.[0]?.message?.content;
-    if (typeof content !== 'string' || !content.trim()) throw new Error('AI 接口未返回内容');
+    if (typeof content !== 'string' || !content.trim()) {
+      throw new Error(privateContent ? '生活 AI 未返回可用内容' : 'AI 接口未返回内容');
+    }
     return content;
   } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') throw new Error('AI 请求超时（30 秒）');
+    if (signal?.aborted) throw cancelledError();
+    if ((err instanceof DOMException && err.name === 'AbortError') || ctrl.signal.aborted) {
+      throw new Error('AI 请求超时（30 秒）');
+    }
+    if (privateContent && err instanceof TypeError) throw new Error('生活 AI 暂时不可用，请稍后重试');
     throw err;
   } finally {
-    window.clearTimeout(timer);
+    globalThis.clearTimeout(timer);
+    signal?.removeEventListener('abort', abortFromCaller);
   }
+}
+
+async function callChat(messages: unknown[]): Promise<string> {
+  return requestAiChat({ messages });
 }
 
 /**
@@ -485,7 +534,7 @@ export async function removeAiPendingItems(tempIds: string[]): Promise<void> {
     return kept;
   });
   if (orphanAttachmentIds.length) {
-    await db.transaction('rw', [db.attachments, db.entryAttachments, db.lifeNotes, db.settings],
+    await db.transaction('rw', [db.attachments, db.entryAttachments, db.lifeNotes, db.settings, db.lifeDrafts, db.lifeEditions],
       () => collectUnreferencedAttachments(orphanAttachmentIds));
   }
 }

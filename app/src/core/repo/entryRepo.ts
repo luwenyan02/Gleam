@@ -231,7 +231,7 @@ export async function restoreEntry(id: number): Promise<void> {
  * 同时清理标签关联。
  */
 export async function purgeEntry(id: number): Promise<void> {
-  await db.transaction('rw', [db.entries, db.entryTags, db.entryAttachments, db.attachments, db.lifeNotes, db.settings], async () => {
+  await db.transaction('rw', [db.entries, db.entryTags, db.entryAttachments, db.attachments, db.lifeNotes, db.settings, db.lifeDrafts, db.lifeEditions], async () => {
     const e = await db.entries.get(id);
     if (!e) return;
     if (e.deletedAt === 0) throw new Error('仅可物理删除回收站中的账单');

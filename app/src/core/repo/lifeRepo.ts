@@ -6,7 +6,7 @@
  */
 import { db, now, stamp } from '../db';
 import { emitAfterCommit as emit } from './transactionEvents';
-import type { Attachment, Habit, HabitCheck, LifeNote } from '../types';
+import type { Attachment, Entry, Habit, HabitCheck, LifeNote } from '../types';
 import { dayKey } from './entryRepo';
 import { collectUnreferencedAttachments } from './entryAttachmentRepo';
 
@@ -48,7 +48,7 @@ export async function restoreLifeNote(id: number): Promise<void> {
 
 /** 物理删除生活记录（仅回收站内允许），连带清除其照片附件 */
 export async function purgeLifeNote(id: number): Promise<void> {
-  await db.transaction('rw', [db.lifeNotes, db.attachments, db.entryAttachments, db.settings], async () => {
+  await db.transaction('rw', [db.lifeNotes, db.attachments, db.entryAttachments, db.settings, db.lifeDrafts, db.lifeEditions], async () => {
     const note = await db.lifeNotes.get(id);
     if (!note) return;
     if (!note.deletedAt) throw new Error('仅回收站中的记录可彻底删除');
@@ -61,6 +61,27 @@ export async function purgeLifeNote(id: number): Promise<void> {
 /** 单条记录 */
 export async function getLifeNote(id: number): Promise<LifeNote | undefined> {
   return db.lifeNotes.get(id);
+}
+
+/** 读取仍有效且关联到指定生活记录的账单。 */
+export async function listLifeLinkedEntries(noteId: number): Promise<Entry[]> {
+  if (!Number.isSafeInteger(noteId) || noteId <= 0) return [];
+  const rows = await db.entries.where('lifeNoteId').equals(noteId).toArray();
+  return rows.filter((entry) => entry.deletedAt === 0).sort((a, b) => b.occurredAt - a.occurredAt);
+}
+
+/**
+ * 把既有账单关联到既有生活记录。仅更新关系字段，不重放账户影响。
+ */
+export async function linkEntryToLifeNote(entryId: number, noteId: number): Promise<void> {
+  await db.transaction('rw', [db.entries, db.lifeNotes], async () => {
+    const [entry, note] = await Promise.all([db.entries.get(entryId), db.lifeNotes.get(noteId)]);
+    if (!entry || entry.deletedAt !== 0) throw new Error('账单不存在或已删除');
+    if (!note || note.deletedAt !== 0) throw new Error('生活记录不存在或已删除');
+    await db.entries.update(entryId, { lifeNoteId: noteId, updatedAt: now() });
+  });
+  emit('life-changed', { id: noteId });
+  emit('entries-changed', { id: entryId });
 }
 
 /**

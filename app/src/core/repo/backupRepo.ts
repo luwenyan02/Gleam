@@ -21,6 +21,7 @@ export const TABLE_NAMES = [
   'tags', 'merchants', 'lifeNotes', 'habits', 'habitChecks',
   'backupRecords', 'importBatches', 'attachments', 'settings',
   'creditStatements', 'creditPayments', 'entryAttachments',
+  'lifeDrafts', 'lifeEditions',
 ] as const;
 export type TableName = (typeof TABLE_NAMES)[number];
 
@@ -59,6 +60,7 @@ export function sanitizeDumpForBackup(dump: TableDump): TableDump {
   const settings = (dump.settings ?? []).map((row) => {
     const r = row as { key: string; value: unknown };
     if (r.key === 'ai.apiKey') return { ...r, value: '' };
+    if (r.key === 'life.aiEnabled') return { ...r, value: false };
     if (r.key === 'cloud.webdav') return { ...r, value: { ...(r.value as Record<string, unknown>), password: '' } };
     if (r.key === 'cloud.s3') return { ...r, value: { ...(r.value as Record<string, unknown>), accessKey: '', secretKey: '' } };
     return row;
@@ -79,6 +81,7 @@ export async function restoreAll(dump: Partial<TableDump>): Promise<void> {
       const rows = dump[name];
       if (rows?.length) await db.table(name).bulkAdd(rows as never[]);
     }
+    await db.settings.put({ key: 'life.aiEnabled', value: false, updatedAt: now() });
   });
   const events: AppEvent[] = [
     'entries-changed', 'accounts-changed', 'categories-changed',

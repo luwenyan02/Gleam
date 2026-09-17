@@ -47,6 +47,19 @@ async function archive({
 }
 
 describe('SKBAK v1 解析完整性', () => {
+  it('兼容 v3 无生活新表的旧包，并拒绝新表的畸形内容', async () => {
+    const data = emptyDump() as Record<string, unknown>;
+    delete data.lifeDrafts; delete data.lifeEditions;
+    const parsed = await parseSkbak(await archive({ data, mutateManifest: manifest => {
+      manifest.schemaVersion = 3;
+      delete (manifest.counts as Record<string, number>).lifeDrafts;
+      delete (manifest.counts as Record<string, number>).lifeEditions;
+    } }));
+    expect(parsed.dump.lifeDrafts).toEqual([]);
+    expect(parsed.dump.lifeEditions).toEqual([]);
+    await expect(parseSkbak(await archive({ data: { ...emptyDump(), lifeDrafts: [{ key: 'bad' }] } }))).rejects.toThrow('生活草稿');
+    await expect(parseSkbak(await archive({ data: { ...emptyDump(), lifeEditions: [{ weekKey: 'bad' }] } }))).rejects.toThrow('生活周刊');
+  });
   it('接受包含全部表和真实附件字节的合法 v2 包', async () => {
     const data = emptyDump();
     data.accounts = [{ id: 1, name: '虚构现金' }];
@@ -65,7 +78,7 @@ describe('SKBAK v1 解析完整性', () => {
       attachmentBytes: new Map([[7, new Uint8Array([1, 2, 3, 4])]]),
     }));
 
-    expect(TABLE_NAMES).toHaveLength(21);
+    expect(TABLE_NAMES).toHaveLength(23);
     expect(TABLE_NAMES.every((name) => Array.isArray(parsed.dump[name]))).toBe(true);
     expect(parsed.manifest.counts.accounts).toBe(1);
     expect([...new Uint8Array(await (parsed.dump.attachments[0] as { blob: Blob }).blob.arrayBuffer())])

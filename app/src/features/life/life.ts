@@ -25,6 +25,10 @@ import { openSheet, closeSheet } from '../shell/sheet';
 import { showToast } from '../shell/toast';
 import { confirmDialog } from '../shell/dialog';
 import type { Habit, LifeNote } from '../../core/types';
+import { openLifeComposer } from './lifeComposer';
+import { initLifeEdition, openLifeEdition } from './lifeEdition';
+import { openLifeAiControls, renderLifeRevisits } from './lifeExtras';
+import './lifeAi.css';
 
 /** 抽屉监听器控制：#sheet 为复用容器，重开前必须废止上一次绑定 */
 let sheetAbort: AbortController | undefined;
@@ -63,6 +67,7 @@ let photoUrls: string[] = [];
 /** 最近一次渲染的记录 / 习惯（点击回取） */
 let notes: LifeNote[] = [];
 let habits: Habit[] = [];
+let refreshVersion = 0;
 
 function startOfMonth(ts: number): number {
   const d = new Date(ts);
@@ -76,6 +81,7 @@ function endOfMonth(monthStart: number): number {
 
 /** 注册生活一级页（覆盖 page-life 占位），main.ts 调用一次 */
 export function initLife(): void {
+  initLifeEdition();
   // 右下角悬浮「+」（shell 挂载，mountShell 先于本函数）：直接绑定，
   // shell 不感知 life 模块；节点常驻，一次绑定永久有效
   document.getElementById('fab-life')?.addEventListener('click', () => openTypeSheet());
@@ -94,11 +100,17 @@ export function initLife(): void {
             <button class="icon-btn" id="lf-next" aria-label="查看下一月" hidden>${iconHtml('ic-right')}</button>
           </div>
         </header>
+        <div class="life-intro"><p>拾起生活的点点滴滴</p><button class="chip" data-life-capture>＋ 留一下</button></div>
+        <div class="life-tools"><button class="chip" data-life-edition>拾光周刊</button><button class="chip" data-life-ai-controls>AI 与隐私</button></div>
+        <div id="lf-revisits"></div>
         <p class="sub" id="lf-today-sum" style="padding:0 4px 12px"></p>
         <div id="lf-feed"></div>`;
 
       el.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
+        if (target.closest('[data-life-capture]')) { void openLifeComposer(); return; }
+        if (target.closest('[data-life-edition]')) { openLifeEdition(); return; }
+        if (target.closest('[data-life-ai-controls]')) { void openLifeAiControls(); return; }
         if (target.closest('#lf-prev')) { shiftMonth(-1); return; }
         if (target.closest('#lf-next')) { shiftMonth(1); return; }
         if (target.closest('#lf-empty')) { openTypeSheet(); return; }
@@ -120,7 +132,7 @@ export function initLife(): void {
           if (note?.kind === 'habit') {
             const habit = habits.find(h => h.id === note.habitId);
             if (habit) openHabitEdit(habit);
-          } else if (note) openNoteForm(note.kind === 'photo' ? 'photo' : 'diary', note);
+          } else if (note) void openLifeComposer({ noteId: note.id });
         }
       });
       el.addEventListener('keydown', (event) => {
@@ -160,6 +172,7 @@ export function focusLifeRecord(noteId: number, occurredAt: number): void {
 }
 
 async function refresh(): Promise<void> {
+  const version = ++refreshVersion;
   const el = root;
   if (!el?.isConnected) return;
   const isCurrent = viewMonth === startOfMonth(Date.now());
@@ -167,17 +180,14 @@ async function refresh(): Promise<void> {
   const to = endOfMonth(viewMonth);
 
   const [monthNotes, habitList] = await Promise.all([listLifeNotes({ from, to }), listHabits()]);
-  if (!el.isConnected) return;
+  if (!el.isConnected || version !== refreshVersion) return;
   habits = habitList;
   notes = monthNotes.filter(n => n.kind !== 'habit' || !isCurrent
     || dayKey(n.occurredAt) !== dayKey(Date.now()) || !habits.some(h => h.id === n.habitId));
 
-  /* 页头：月份 · 篇数 · 最长连续打卡 */
-  const streaks = await Promise.all(habits.map((h) => habitStreak(h.id)));
-  const maxStreak = streaks.length ? Math.max(...streaks) : 0;
-  const timelineCount = notes.length + (isCurrent ? habits.length : 0);
-  el.querySelector('#lf-sub')!.textContent =
-    `${new Date(viewMonth).getMonth() + 1}月 · ${timelineCount} 项生活记录${maxStreak > 0 ? ` · 连续打卡 ${maxStreak} 天` : ''}`;
+  el.querySelector('#lf-sub')!.textContent = `${new Date(viewMonth).getFullYear()}年 ${new Date(viewMonth).getMonth() + 1}月`;
+  await renderLifeRevisits(el.querySelector<HTMLElement>('#lf-revisits')!, isCurrent, () => version === refreshVersion);
+  if (!el.isConnected || version !== refreshVersion) return;
   el.querySelector<HTMLElement>('#lf-next')!.hidden = isCurrent;
 
   /* 今日支出摘要（仅当月视图） */
@@ -188,6 +198,7 @@ async function refresh(): Promise<void> {
     const countAsIncome = await getSetting('reimburse.countAsIncome');
     const todays = (await ledgerEntriesInRange(dayStart.getTime(), dayEnd.getTime(), countAsIncome))
       .filter((entry) => entry.type === 'expense');
+    if (!el.isConnected || version !== refreshVersion) return;
     const total = summarizeLedgerEntries(todays, {
       reimburseMode: countAsIncome ? 'income' : 'offset',
     }).expense;
@@ -198,11 +209,14 @@ async function refresh(): Promise<void> {
   }
 
   /* 习惯、日记、照片统一进入同一个时间流。 */
+  const streaks = await Promise.all(habits.map(h => habitStreak(h.id)));
+  if (!el.isConnected || version !== refreshVersion) return;
   const habitItems: { at: number; html: string }[] = [];
   if (isCurrent && habits.length) {
     const dotFrom = new Date(); dotFrom.setHours(0, 0, 0, 0);
     dotFrom.setDate(dotFrom.getDate() - 6);
     const habitNotes = await listLifeNotes({ kind: 'habit', from: dotFrom.getTime() });
+    if (!el.isConnected || version !== refreshVersion) return;
     const cards = await Promise.all(habits.map(async (h, i) => {
       const checkedDays = new Set(habitNotes.filter((n) => n.habitId === h.id).map((n) => dayKey(n.occurredAt)));
       const todayNote = habitNotes.find((n) => n.habitId === h.id && dayKey(n.occurredAt) === dayKey(Date.now()));
@@ -222,13 +236,13 @@ async function refresh(): Promise<void> {
           <button class="lf-check${checked ? ' on' : ''}" data-check="${h.id}">${checked ? '已打卡' : '打卡'}</button>
         </section>` };
     }));
+    if (!el.isConnected || version !== refreshVersion) return;
     habitItems.push(...cards);
   }
 
   /* 时间线（日记 + 照片 + 习惯） */
-  for (const url of photoUrls) URL.revokeObjectURL(url);
-  photoUrls = [];
   const feed = el.querySelector<HTMLElement>('#lf-feed')!;
+  const nextPhotoUrls: string[] = [];
   const noteItems = await Promise.all(notes.map(async (n) => {
     if (n.kind === 'habit') {
       const exists = habits.some(h => h.id === n.habitId);
@@ -236,11 +250,11 @@ async function refresh(): Promise<void> {
         <p class="ln-date">${lnDate(n.occurredAt)} · ${hm(n.occurredAt)}</p>
         <h3 class="ln-title">${esc(n.title ?? '习惯打卡')}</h3><p class="sub">已完成打卡</p></article>`};
     }
-    if (n.kind === 'photo') {
+    if (n.kind === 'photo' || n.photoRefs?.length) {
       const photos = await Promise.all((n.photoRefs ?? []).map((id) => getAttachment(id)));
       const imgs = photos.filter((p) => !!p).map((p) => {
         const url = URL.createObjectURL(p.blob);
-        photoUrls.push(url);
+        nextPhotoUrls.push(url);
         return `<img class="photo" src="${url}" alt="${esc(p.name ?? '照片')}">`;
       }).join('');
       return { at: n.occurredAt, html: `
@@ -264,6 +278,12 @@ async function refresh(): Promise<void> {
         ${tags ? `<p class="ln-tags">${tags}</p>` : ''}
       </article>` };
   }));
+  if (!el.isConnected || version !== refreshVersion) {
+    nextPhotoUrls.forEach(url => URL.revokeObjectURL(url));
+    return;
+  }
+  photoUrls.forEach(url => URL.revokeObjectURL(url));
+  photoUrls = nextPhotoUrls;
   const timeline = [...habitItems, ...noteItems].sort((a, b) => b.at - a.at);
   const fab = document.getElementById('fab-life');
   if (!timeline.length) {

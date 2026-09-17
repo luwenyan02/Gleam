@@ -10,7 +10,9 @@
  */
 import type JSZipType from 'jszip';
 import { countDump, TABLE_NAMES, type TableDump } from '../../core/repo/backupRepo';
-import type { Attachment } from '../../core/types';
+import type { Attachment, LifeDraft, LifeEdition } from '../../core/types';
+import { validateLifeDraft } from '../../core/repo/lifeDraftRepo';
+import { validateLifeEdition } from '../../core/repo/lifeEditionRepo';
 
 /** 按需加载 JSZip（仅备份/恢复时才需要） */
 async function loadJSZip(): Promise<typeof JSZipType> {
@@ -19,8 +21,8 @@ async function loadJSZip(): Promise<typeof JSZipType> {
 
 /** 应用版本（构建时从 package.json 注入，也是 Android versionName 的唯一来源） */
 export const APP_VERSION = __APP_VERSION__;
-/** 备份包数据结构版本；v3 增加凭证关系与附件内容哈希。 */
-export const SKBAK_SCHEMA_VERSION = 3;
+/** v4 增加生活草稿与周刊；仍兼容 v1–v3。 */
+export const SKBAK_SCHEMA_VERSION = 4;
 /** 加密包头 magic（8 字节 ASCII） */
 const MAGIC = 'SKBAK1E:';
 /** PBKDF2 迭代次数（≥100k） */
@@ -135,6 +137,7 @@ function parseManifest(text: string): SkbakManifest {
   }
   for (const name of TABLE_NAMES) {
     const count = value.counts[name];
+    if (count === undefined && value.schemaVersion < 4 && (name === 'lifeDrafts' || name === 'lifeEditions')) continue;
     if (count === undefined && value.schemaVersion < 3 && name === 'entryAttachments') continue;
     // v1 旧包 manifest 没有信用卡新表计数
     if (count === undefined && value.schemaVersion < 2 && (name === 'creditStatements' || name === 'creditPayments')) continue;
@@ -155,6 +158,10 @@ function parseTableDump(text: string, manifest: SkbakManifest): TableDump {
   if (!isRecord(value)) throw new Error('data.json 结构损坏');
   for (const name of TABLE_NAMES) {
     const rows = value[name];
+    if (rows === undefined && manifest.schemaVersion < 4 && (name === 'lifeDrafts' || name === 'lifeEditions')) {
+      value[name] = [];
+      continue;
+    }
     if (rows === undefined && manifest.schemaVersion < 3 && name === 'entryAttachments') {
       value[name] = [];
       continue;
@@ -260,6 +267,26 @@ export async function parseSkbak(
     if (relationKeys.has(key) || relationIds.has(relation.id as number)) throw new Error('备份包账单凭证关联重复');
     relationKeys.add(key);
     relationIds.add(relation.id as number);
+  }
+  const draftKeys = new Set<string>();
+  for (const row of dump.lifeDrafts) {
+    try {
+      const draft = row as LifeDraft;
+      validateLifeDraft(draft);
+      if (draftKeys.has(draft.key) || draft.existingPhotoRefs.some(id => !attachmentIds.has(id))) throw new Error('重复或缺少照片');
+      draftKeys.add(draft.key);
+    } catch { throw new Error('备份包生活草稿损坏'); }
+  }
+  const editionKeys = new Set<string>(), editionIds = new Set<number>();
+  for (const row of dump.lifeEditions) {
+    try {
+      const edition = row as LifeEdition;
+      validateLifeEdition(edition);
+      if (!Number.isSafeInteger(edition.id) || edition.id! <= 0 || editionIds.has(edition.id!)
+        || editionKeys.has(edition.weekKey) || !Number.isFinite(edition.createdAt) || !Number.isFinite(edition.updatedAt)
+        || (edition.coverAttachmentId != null && !attachmentIds.has(edition.coverAttachmentId))) throw new Error('重复或字段无效');
+      editionKeys.add(edition.weekKey); editionIds.add(edition.id!);
+    } catch { throw new Error('备份包生活周刊损坏'); }
   }
   return { manifest, dump };
 }

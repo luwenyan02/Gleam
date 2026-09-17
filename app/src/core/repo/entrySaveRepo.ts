@@ -22,7 +22,7 @@ export interface EntrySaveResult {
 }
 
 export async function saveEntryWithContext(request: EntrySaveRequest): Promise<EntrySaveResult> {
-  return db.transaction('rw', [db.entries, db.accounts, db.entryTags, db.lifeNotes, db.merchants, db.entryAttachments, db.attachments, db.settings], async () => {
+  return db.transaction('rw', [db.entries, db.accounts, db.entryTags, db.lifeNotes, db.merchants, db.entryAttachments, db.attachments, db.settings, db.lifeDrafts, db.lifeEditions], async () => {
     const entry = { ...request.entry };
     let attachmentIds = request.attachmentIds;
     if (request.receipts !== undefined) {
