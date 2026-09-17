@@ -1,5 +1,5 @@
 import { db, now, stamp } from '../db';
-import type { Attachment, LifeDraft, LifeDraftPhoto, LifeNote } from '../types';
+import type { Attachment, LifeChatMessage, LifeDraft, LifeDraftPhoto, LifeNote } from '../types';
 import { emitAfterCommit as emit } from './transactionEvents';
 import { collectUnreferencedAttachments, MAX_ENTRY_ATTACHMENTS, MAX_RECEIPT_BYTES } from './entryAttachmentRepo';
 
@@ -27,7 +27,7 @@ export function migrateLifeDraft(input: unknown): LifeDraft {
       title: draft.title.trim(),
       body: legacySummary,
       mood: draft.mood?.trim() || undefined,
-      tags: (draft.tags ?? []).map(tag => tag.trim()).filter(Boolean),
+      tags: [...(draft.tags ?? [])],
       sourceMessageCount: draft.messages.length,
     };
   }
@@ -71,13 +71,9 @@ export function validateLifeDraft(input: unknown): asserts input is LifeDraft {
       || typeof proposal.title !== 'string'
       || typeof proposal.body !== 'string'
       || !proposal.body.trim()
-      || proposal.title.trim().length > 120
-      || proposal.body.trim().length > 12_000
       || (proposal.mood != null && typeof proposal.mood !== 'string')
-      || (proposal.mood?.trim().length ?? 0) > 60
       || !Array.isArray(proposal.tags)
-      || proposal.tags.length > 12
-      || proposal.tags.some(tag => typeof tag !== 'string' || !tag.trim() || tag.trim().length > 60)
+      || proposal.tags.some(tag => typeof tag !== 'string')
       || !Number.isSafeInteger(proposal.sourceMessageCount)
       || proposal.sourceMessageCount < 0
       || proposal.sourceMessageCount > draft.messages.length) {
@@ -111,6 +107,22 @@ function mergedUserText(draft: LifeDraft): string {
     .map((part) => part.trim())
     .filter(Boolean)
     .join('\n\n');
+}
+
+function sameMessage(left: LifeChatMessage, right: LifeChatMessage): boolean {
+  return left.role === right.role && left.content === right.content;
+}
+
+function mergeConversation(
+  existing: LifeChatMessage[] | undefined,
+  storedMessages: LifeChatMessage[],
+  migratedMessages: LifeChatMessage[],
+): LifeChatMessage[] | undefined {
+  if (!existing?.length) return migratedMessages.length ? structuredClone(migratedMessages) : undefined;
+  if (!storedMessages.length) return structuredClone(existing);
+  const containsExistingPrefix = storedMessages.length >= existing.length
+    && existing.every((message, index) => sameMessage(message, storedMessages[index]));
+  return structuredClone(containsExistingPrefix ? storedMessages : [...existing, ...storedMessages]);
 }
 
 function bytesFromBase64(base64: string): Uint8Array<ArrayBuffer> {
@@ -159,7 +171,6 @@ export async function saveLifeDraft(key: string): Promise<number> {
     const storedDraft = await db.lifeDrafts.get(key);
     if (!storedDraft) throw new Error('草稿不存在');
     validateLifeDraft(storedDraft);
-    const hadStoredMessages = storedDraft.messages.length > 0;
     const draft = migrateLifeDraft(storedDraft);
 
     const rawText = mergedUserText(draft);
@@ -205,9 +216,7 @@ export async function saveLifeDraft(key: string): Promise<number> {
     const tags = (proposal?.tags ?? draft.tags)?.map((tag) => tag.trim()).filter(Boolean);
     const changedAt = now();
     let noteId: number;
-    const conversation = hadStoredMessages
-      ? structuredClone(draft.messages)
-      : existing?.conversation ?? (draft.messages.length ? structuredClone(draft.messages) : undefined);
+    const conversation = mergeConversation(existing?.conversation, storedDraft.messages, draft.messages);
     if (existing) {
       noteId = existing.id;
       await db.lifeNotes.put({

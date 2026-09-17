@@ -66,6 +66,18 @@ describe('生活故事草稿仓库', () => {
     expect(() => migrateLifeDraft(draft({ tags: ['有效', 3] }))).toThrow('草稿标签无效');
   });
 
+  it('超过 AI 新响应限制的历史标签仍可原样迁移、持久化且幂等', async () => {
+    const legacyTags = [...Array.from({ length: 13 }, (_, index) => `历史标签${index + 1}`), '长'.repeat(61)];
+    const migrated = migrateLifeDraft(draft({
+      body: '历史原话', messages: [], aiText: '历史整理稿', tags: legacyTags,
+    }));
+    expect(migrated.summaryProposal?.tags).toEqual(legacyTags);
+    expect(migrateLifeDraft(migrated)).toEqual(migrated);
+
+    await putLifeDraft(migrated);
+    expect((await getLifeDraft('composer'))?.summaryProposal?.tags).toEqual(legacyTags);
+  });
+
   it('纯照片整理稿保留空原话标记，不把 AI 文字冒充用户原话', async () => {
     await putLifeDraft(draft({ body: '', aiText: '照片里的公园。', photos: [{ name: '图.png', dataUrl: png() }] }));
     const noteId = await saveLifeDraft('composer');
@@ -94,6 +106,47 @@ describe('生活故事草稿仓库', () => {
       originalBody: '今天去了公园。\n\n池塘边有一只橘猫。',
     });
     expect(await getLifeDraft('composer')).toBeUndefined();
+  });
+
+  it('重新编辑只带新增一轮时追加旧会话，已完整初始化时不重复', async () => {
+    const firstConversation = [
+      { role: 'user' as const, content: '今天去了公园。' },
+      { role: 'assistant' as const, content: '看到了什么？' },
+    ];
+    await putLifeDraft(draft({
+      body: '', messages: firstConversation,
+      summaryProposal: { title: '第一版', body: '今天去了公园。', tags: [], sourceMessageCount: 2 },
+    }));
+    const noteId = await saveLifeDraft('composer');
+    const firstNote = (await getLifeNote(noteId))!;
+    expect(firstNote.conversation).toEqual(firstConversation);
+
+    const addedTurn = [
+      { role: 'user' as const, content: '池塘边有一只橘猫。' },
+      { role: 'assistant' as const, content: '它当时在做什么？' },
+    ];
+    await putLifeDraft(draft({
+      key: 'edit-delta', noteId, sourceUpdatedAt: firstNote.updatedAt,
+      title: firstNote.title ?? '', body: firstNote.body ?? '', messages: addedTurn,
+      summaryProposal: { title: '第二版', body: '今天在公园池塘边看到一只橘猫。', tags: [], sourceMessageCount: 2 },
+    }));
+    await saveLifeDraft('edit-delta');
+    const secondNote = (await getLifeNote(noteId))!;
+    const merged = [...firstConversation, ...addedTurn];
+    expect(secondNote.conversation).toEqual(merged);
+
+    const finalTurn = [
+      { role: 'user' as const, content: '它在晒太阳。' },
+      { role: 'assistant' as const, content: '这个片段已经很完整了。' },
+    ];
+    const completeConversation = [...merged, ...finalTurn];
+    await putLifeDraft(draft({
+      key: 'edit-full', noteId, sourceUpdatedAt: secondNote.updatedAt,
+      title: secondNote.title ?? '', body: secondNote.body ?? '', messages: completeConversation,
+      summaryProposal: { title: '最终版', body: '今天在公园看到一只晒太阳的橘猫。', tags: [], sourceMessageCount: completeConversation.length },
+    }));
+    await saveLifeDraft('edit-full');
+    expect((await getLifeNote(noteId))?.conversation).toEqual(completeConversation);
   });
 
   it('草稿入口拒绝伪造或不完整的摘要方案', async () => {
