@@ -122,15 +122,23 @@ function mergeConversation(
   migratedBodyMessage: string | undefined,
 ): LifeChatMessage[] | undefined {
   if (!existing?.length) return migratedMessages.length ? structuredClone(migratedMessages) : undefined;
-  const containsExistingPrefix = storedMessages.length >= existing.length
-    && existing.every((message, index) => sameMessage(message, storedMessages[index]));
-  if (containsExistingPrefix) return structuredClone(storedMessages);
+  const existingUserText = existing
+    .filter((message) => message.role === 'user')
+    .map((message) => message.content.trim())
+    .filter(Boolean)
+    .join('\n\n');
   const messages = migratedBodyMessage
     && migratedMessages[0]?.role === 'user'
     && migratedMessages[0].content === migratedBodyMessage
-    && existing.some(message => message.role === 'user' && message.content === migratedBodyMessage)
+    && existingUserText === migratedBodyMessage
     ? migratedMessages.slice(1)
     : migratedMessages;
+  const containsExistingPrefix = messages.length >= existing.length
+    && existing.every((message, index) => sameMessage(message, messages[index]));
+  if (containsExistingPrefix) return structuredClone(messages);
+  const storedContainsExistingPrefix = storedMessages.length >= existing.length
+    && existing.every((message, index) => sameMessage(message, storedMessages[index]));
+  if (storedContainsExistingPrefix) return structuredClone(storedMessages);
   if (!messages.length) return structuredClone(existing);
   return structuredClone([...existing, ...messages]);
 }

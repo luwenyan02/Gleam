@@ -153,11 +153,12 @@ describe('生活故事草稿仓库', () => {
 
   it('迁移后的旧增量草稿追加既有会话时不写入 synthetic body', async () => {
     const existingConversation = [
-      { role: 'user' as const, content: '旧起点\n\n我在公园散步。' },
+      { role: 'user' as const, content: '旧起点。' },
       { role: 'assistant' as const, content: '当时发生了什么？' },
+      { role: 'user' as const, content: '我在公园散步。' },
     ];
     const noteId = await addLifeNote({
-      kind: 'diary', body: '旧整理稿', originalBody: '旧起点\n\n我在公园散步。', conversation: existingConversation, occurredAt,
+      kind: 'diary', body: '旧整理稿', originalBody: '旧起点。\n\n我在公园散步。', conversation: existingConversation, occurredAt,
     });
     const note = (await getLifeNote(noteId))!;
     const addedTurn = [
@@ -167,7 +168,7 @@ describe('生活故事草稿仓库', () => {
 
     await putLifeDraft(migrateLifeDraft(draft({
       key: 'legacy-delta', noteId, sourceUpdatedAt: note.updatedAt,
-      body: '旧起点\n\n我在公园散步。', messages: addedTurn, aiText: '更新后的整理稿',
+      body: '旧起点。\n\n我在公园散步。', messages: addedTurn, aiText: '更新后的整理稿',
     })));
     await saveLifeDraft('legacy-delta');
 
@@ -176,11 +177,12 @@ describe('生活故事草稿仓库', () => {
 
   it('迁移后的旧完整会话草稿保存时不重复既有会话', async () => {
     const existingConversation = [
-      { role: 'user' as const, content: '旧起点\n\n我在公园散步。' },
+      { role: 'user' as const, content: '旧起点。' },
       { role: 'assistant' as const, content: '当时发生了什么？' },
+      { role: 'user' as const, content: '我在公园散步。' },
     ];
     const noteId = await addLifeNote({
-      kind: 'diary', body: '旧整理稿', originalBody: '旧起点\n\n我在公园散步。', conversation: existingConversation, occurredAt,
+      kind: 'diary', body: '旧整理稿', originalBody: '旧起点。\n\n我在公园散步。', conversation: existingConversation, occurredAt,
     });
     const note = (await getLifeNote(noteId))!;
     const addedTurn = [
@@ -191,7 +193,7 @@ describe('生活故事草稿仓库', () => {
 
     await putLifeDraft(migrateLifeDraft(draft({
       key: 'legacy-full', noteId, sourceUpdatedAt: note.updatedAt,
-      body: '旧起点\n\n我在公园散步。', messages: completeConversation, aiText: '更新后的整理稿',
+      body: '旧起点。\n\n我在公园散步。', messages: completeConversation, aiText: '更新后的整理稿',
     })));
     await saveLifeDraft('legacy-full');
 
