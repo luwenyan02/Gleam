@@ -21,8 +21,8 @@ async function loadJSZip(): Promise<typeof JSZipType> {
 
 /** 应用版本（构建时从 package.json 注入，也是 Android versionName 的唯一来源） */
 export const APP_VERSION = __APP_VERSION__;
-/** v4 增加生活草稿与周刊；仍兼容 v1–v3。 */
-export const SKBAK_SCHEMA_VERSION = 4;
+/** v5 扩展生活 AI 会话与摘要草稿；仍兼容 v1–v4。 */
+export const SKBAK_SCHEMA_VERSION = 5;
 /** 加密包头 magic（8 字节 ASCII） */
 const MAGIC = 'SKBAK1E:';
 /** PBKDF2 迭代次数（≥100k） */

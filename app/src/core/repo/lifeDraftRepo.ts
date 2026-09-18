@@ -42,6 +42,48 @@ export function migrateLifeDraft(input: unknown): LifeDraft {
   return draft;
 }
 
+/** 旧版“记录表单内聊两句”草稿须从快速记录入口分离出来。 */
+export function isLifeChatDraft(draft: LifeDraft | undefined): boolean {
+  return !!draft && (draft.messages.length > 0 || draft.aiText != null || draft.summaryProposal != null || !!draft.pendingReply?.trim());
+}
+
+/** 首次进入新版聊天时认领旧 key 下的混合草稿；普通快速记录草稿不移动。 */
+export async function claimLegacyLifeChatDraft(targetKey: string, legacyKeys: string[]): Promise<LifeDraft | undefined> {
+  return db.transaction('rw', db.lifeDrafts, async () => {
+    const current = await db.lifeDrafts.get(targetKey);
+    let claimed = current ? migrateLifeDraft(current) : undefined;
+    for (const key of legacyKeys) {
+      if (key === targetKey) continue;
+      const legacy = await db.lifeDrafts.get(key);
+      if (!isLifeChatDraft(legacy)) continue;
+      const migrated = migrateLifeDraft(legacy);
+      if (claimed) {
+        const currentClaimed = claimed;
+        const claimedIsPrefix = migrated.messages.length >= currentClaimed.messages.length
+          && currentClaimed.messages.every((message, index) => sameMessage(message, migrated.messages[index]));
+        const migratedIsPrefix = currentClaimed.messages.length >= migrated.messages.length
+          && migrated.messages.every((message, index) => sameMessage(message, currentClaimed.messages[index]));
+        currentClaimed.messages = claimedIsPrefix ? structuredClone(migrated.messages)
+          : migratedIsPrefix ? currentClaimed.messages
+            : [...currentClaimed.messages, ...structuredClone(migrated.messages)];
+        claimed.summaryProposal ??= migrated.summaryProposal;
+        claimed.pendingReply ||= migrated.pendingReply;
+        claimed.entryId ??= migrated.entryId;
+        claimed.existingPhotoRefs = [...new Set([...claimed.existingPhotoRefs, ...migrated.existingPhotoRefs])];
+        const seenPhotos = new Set(claimed.photos.map(photo => photo.dataUrl));
+        claimed.photos.push(...migrated.photos.filter(photo => !seenPhotos.has(photo.dataUrl)));
+      } else {
+        claimed = migrated;
+      }
+      claimed.key = targetKey;
+      validateLifeDraft(claimed);
+      await db.lifeDrafts.put(structuredClone(claimed));
+      await db.lifeDrafts.delete(key);
+    }
+    return claimed;
+  });
+}
+
 function validatePhoto(photo: LifeDraftPhoto): { mime: string; base64: string; size: number } {
   if (!photo || typeof photo.name !== 'string' || typeof photo.dataUrl !== 'string') {
     throw new Error('照片草稿结构无效');
@@ -93,13 +135,21 @@ export function validateLifeDraft(input: unknown): asserts input is LifeDraft {
     || draft.existingPhotoRefs.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
     throw new Error('既有照片引用无效');
   }
-  if (draft.existingPhotoRefs.length + draft.photos.length > MAX_ENTRY_ATTACHMENTS) {
+  const chatPhotos = draft.messages.flatMap(message => message.photos ?? []);
+  if (draft.existingPhotoRefs.length + draft.photos.length + chatPhotos.length > MAX_ENTRY_ATTACHMENTS) {
     throw new Error(`每篇故事最多 ${MAX_ENTRY_ATTACHMENTS} 张照片`);
   }
   for (const photo of draft.photos) validatePhoto(photo);
   for (const message of draft.messages) {
     if (!message || (message.role !== 'user' && message.role !== 'assistant') || typeof message.content !== 'string') {
       throw new Error('对话草稿结构无效');
+    }
+    if (message.photos != null && !Array.isArray(message.photos)) throw new Error('对话照片结构无效');
+    for (const photo of message.photos ?? []) validatePhoto(photo);
+    if (message.photoRefs != null && (!Array.isArray(message.photoRefs)
+      || new Set(message.photoRefs).size !== message.photoRefs.length
+      || message.photoRefs.some(id => !Number.isSafeInteger(id) || id <= 0 || !refs.has(id)))) {
+      throw new Error('对话照片引用无效');
     }
   }
 }
@@ -112,7 +162,8 @@ function mergedUserText(draft: LifeDraft): string {
 }
 
 function sameMessage(left: LifeChatMessage, right: LifeChatMessage): boolean {
-  return left.role === right.role && left.content === right.content;
+  return left.role === right.role && left.content === right.content
+    && JSON.stringify(left.photoRefs ?? []) === JSON.stringify(right.photoRefs ?? []);
 }
 
 function mergeConversation(
@@ -218,13 +269,28 @@ export async function saveLifeDraft(key: string): Promise<number> {
     }
 
     await Promise.all(draft.existingPhotoRefs.map(validateExistingAttachment));
-    const newPhotoRefs: number[] = [];
-    for (const photo of draft.photos) {
+    const addPhoto = async (photo: LifeDraftPhoto): Promise<number> => {
       const parsed = validatePhoto(photo);
       const blob = new Blob([bytesFromBase64(parsed.base64)], { type: parsed.mime });
-      newPhotoRefs.push(await db.attachments.add(stamp({
+      return db.attachments.add(stamp({
         mime: parsed.mime, name: photo.name || undefined, size: parsed.size, blob,
-      }) as Attachment));
+      }) as Attachment);
+    };
+    const newPhotoRefs: number[] = [];
+    for (const photo of draft.photos) newPhotoRefs.push(await addPhoto(photo));
+    const persistedMessages: LifeChatMessage[] = [];
+    for (const message of draft.messages) {
+      const messageRefs = [...(message.photoRefs ?? [])];
+      for (const photo of message.photos ?? []) {
+        const ref = await addPhoto(photo);
+        messageRefs.push(ref);
+        newPhotoRefs.push(ref);
+      }
+      persistedMessages.push({
+        role: message.role,
+        content: message.content,
+        ...(messageRefs.length ? { photoRefs: messageRefs } : {}),
+      });
     }
     const photoRefs = [...draft.existingPhotoRefs, ...newPhotoRefs];
     const body = proposedBody || rawText || undefined;
@@ -234,7 +300,10 @@ export async function saveLifeDraft(key: string): Promise<number> {
     const tags = (proposal?.tags ?? draft.tags)?.map((tag) => tag.trim()).filter(Boolean);
     const changedAt = now();
     let noteId: number;
-    const conversation = mergeConversation(existing?.conversation, storedDraft.messages, draft.messages, draft.migratedBodyMessage);
+    const persistedStoredMessages = draft.migratedBodyMessage && persistedMessages.length === storedDraft.messages.length + 1
+      ? persistedMessages.slice(1)
+      : persistedMessages;
+    const conversation = mergeConversation(existing?.conversation, persistedStoredMessages, persistedMessages, draft.migratedBodyMessage);
     if (existing) {
       noteId = existing.id;
       await db.lifeNotes.put({

@@ -47,7 +47,7 @@ async function lifeText(input: LifeAiInput, organize: boolean): Promise<string> 
   await checkSource(input);
   if (typeof input.body !== 'string' || !Array.isArray(input.messages) || input.messages.length > 30) throw new Error('对话过长，请先记下这一段');
   for (const m of input.messages) if (!m || !['user','assistant'].includes(m.role) || typeof m.content !== 'string') throw new Error('对话内容无效');
-  const source = JSON.stringify({ 原话: input.body, 对话: input.messages });
+  const source = JSON.stringify({ 原话: input.body, 对话: textMessages(input.messages) });
   if (source.length > MAX_INPUT) throw new Error('本次内容过长，请减少文字后重试');
   const photos = input.photos ?? [];
   if (photos.length > 9 || photos.some(url => !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(url) || url.length > 15_000_000)) throw new Error('本次照片格式或大小不支持');
@@ -71,24 +71,29 @@ export function organizeLifeText(input: LifeAiInput): Promise<string> { return l
 
 function parseLifeChatTurn(raw: string): LifeChatTurnResult {
   const text = raw.trim();
+  const safeReply = (value: unknown): string | undefined => typeof value === 'string' && value.trim() && value.trim().length <= 600 ? value.trim() : undefined;
   let parsed: unknown;
   try {
     parsed = JSON.parse(text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
   } catch {
+    if (!/^[{[]/.test(text) && safeReply(text)) return { reply: text, readyToSummarize: false };
     throw new Error('生活 AI 对话格式无效，请重试');
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('生活 AI 对话格式无效，请重试');
   }
   const value = parsed as { reply?: unknown; readyToSummarize?: unknown };
-  if (typeof value.reply !== 'string' || !value.reply.trim() || value.reply.trim().length > 600
-    || typeof value.readyToSummarize !== 'boolean') {
-    throw new Error('生活 AI 对话格式无效，请重试');
-  }
+  const reply = safeReply(value.reply);
+  if (!reply) throw new Error('生活 AI 对话格式无效，请重试');
   return {
-    reply: value.reply.trim(),
-    readyToSummarize: value.readyToSummarize,
+    reply,
+    readyToSummarize: typeof value.readyToSummarize === 'boolean' ? value.readyToSummarize : false,
   };
+}
+
+/** 照片由当次 photos 参数显式携带；历史消息只保留文字作为上下文。 */
+function textMessages(messages: LifeChatMessage[]): Array<Pick<LifeChatMessage, 'role' | 'content'>> {
+  return messages.map(({ role, content }) => ({ role, content }));
 }
 
 /** 结构化多轮生活对话；不写草稿或正式记录。 */
@@ -103,7 +108,7 @@ export async function continueLifeChat(input: LifeAiInput): Promise<LifeChatTurn
       throw new Error('对话内容无效');
     }
   }
-  const source = JSON.stringify({ 原话: input.body, 对话: input.messages });
+  const source = JSON.stringify({ 原话: input.body, 对话: textMessages(input.messages) });
   if (source.length > MAX_INPUT) throw new Error('本次内容过长，请减少文字后重试');
   const photos = input.photos ?? [];
   if (photos.length > 9 || photos.some(url => !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(url) || url.length > 15_000_000)) {
@@ -142,7 +147,7 @@ export async function generateLifeSummary(input: LifeAiInput): Promise<LifeSumma
     }
   }
   const sourceMessageCount = input.messages.length;
-  const source = JSON.stringify({ 原话: input.body, 对话: input.messages, sourceMessageCount });
+  const source = JSON.stringify({ 原话: input.body, 对话: textMessages(input.messages), sourceMessageCount });
   if (source.length > MAX_INPUT) throw new Error('本次内容过长，请减少文字后重试');
   const photos = input.photos ?? [];
   if (photos.length > 9 || photos.some(url => !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(url) || url.length > 15_000_000)) {

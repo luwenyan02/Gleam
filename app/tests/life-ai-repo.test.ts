@@ -115,7 +115,7 @@ describe('生活 AI 结构化多轮对话', () => {
     })).resolves.toEqual({ reply: '还记得它当时在做什么吗？', readyToSummarize: true });
   });
 
-  it('纯文本或缺失严格字段时安全拒绝，绝不猜测摘要就绪', async () => {
+  it('可安全降级的回复按普通文本展示且绝不猜测摘要就绪；畸形内容仍拒绝', async () => {
     const fetchSpy = vi.fn()
       .mockResolvedValueOnce(response(JSON.stringify({ reply: '愿意的话，再讲一个小细节。' })))
       .mockResolvedValueOnce(response(JSON.stringify({ reply: '我们可以先停在这里。', readyToSummarize: 'true' })))
@@ -124,10 +124,24 @@ describe('生活 AI 结构化多轮对话', () => {
     vi.stubGlobal('fetch', fetchSpy);
     const input = { body: '', messages: [{ role: 'user' as const, content: '今天散步。' }] };
 
+    await expect(continueLifeChat(input)).resolves.toEqual({ reply: '愿意的话，再讲一个小细节。', readyToSummarize: false });
+    await expect(continueLifeChat(input)).resolves.toEqual({ reply: '我们可以先停在这里。', readyToSummarize: false });
+    await expect(continueLifeChat(input)).resolves.toEqual({ reply: '这是一段非 JSON 纯文本', readyToSummarize: false });
     await expect(continueLifeChat(input)).rejects.toThrow('对话格式无效');
-    await expect(continueLifeChat(input)).rejects.toThrow('对话格式无效');
-    await expect(continueLifeChat(input)).rejects.toThrow('对话格式无效');
-    await expect(continueLifeChat(input)).rejects.toThrow('对话格式无效');
+  });
+
+  it('后续纯文字请求不会把会话中已发送照片重复带出设备', async () => {
+    const fetchSpy = vi.fn(async (_url: string, init: RequestInit) => {
+      expect(String(init.body)).toContain('带照片的第一句');
+      expect(String(init.body)).not.toContain('data:image/png;base64,AQ==');
+      return response(JSON.stringify({ reply: '这次只收到了文字。', readyToSummarize: false }));
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(continueLifeChat({ body: '', messages: [
+      { role: 'user', content: '带照片的第一句', photos: [{ name: '已发送.png', dataUrl: 'data:image/png;base64,AQ==' }] },
+      { role: 'assistant', content: '我看见了。' },
+      { role: 'user', content: '这次只补一句文字。' },
+    ] })).resolves.toEqual({ reply: '这次只收到了文字。', readyToSummarize: false });
   });
 });
 

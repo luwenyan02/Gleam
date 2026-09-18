@@ -304,6 +304,10 @@ export interface LifeReview {
 export interface LifeChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** 草稿中用户明确随本轮发送的本地照片；不会随之后的纯文字请求再次上传。 */
+  photos?: LifeDraftPhoto[];
+  /** 正式记录中该轮照片的本地附件引用，避免在会话里重复保存 base64。 */
+  photoRefs?: number[];
 }
 
 export interface LifeSummaryProposal {

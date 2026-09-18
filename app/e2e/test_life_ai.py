@@ -22,8 +22,10 @@ def configure(page):
     page.evaluate('''async () => {
       sessionStorage.setItem('gleam-secret:ai.apiKey', 'synthetic-test-key');
       const db = await new Promise(resolve => { const r = indexedDB.open('GleamDB'); r.onsuccess = () => resolve(r.result); });
-      const tx = db.transaction('settings', 'readwrite');
-      for (const [key,value] of [['ai.baseUrl','https://life-ai.invalid/v1'], ['ai.model','test-model'], ['life.aiEnabled',false]]) tx.objectStore('settings').put({key,value});
+      const tx = db.transaction(['settings','lifeNotes'], 'readwrite');
+      for (const [key,value] of [['ai.baseUrl','https://life-ai.invalid/v1'], ['ai.model','test-model'], ['life.aiEnabled',true]]) tx.objectStore('settings').put({key,value});
+      const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate() - (d.getDay()+6)%7 - 7);
+      tx.objectStore('lifeNotes').put({id:900001,kind:'diary',title:'虚构周末散步',body:'散步时看见一只橘猫。',occurredAt:d.getTime(),createdAt:1,updatedAt:1,deletedAt:0});
       await new Promise((resolve,reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); }); db.close();
     }''')
 
@@ -66,20 +68,26 @@ def run(page, width):
     turns = [
         {'reply': '那一刻还有什么声音吗？', 'readyToSummarize': False},
         {'reply': '热茶让这段时间慢了下来。', 'readyToSummarize': True},
+        {'reply': '同一张照片再次选择，也留在这一轮。', 'readyToSummarize': True},
         {'reply': '这句话也留在这里了。', 'readyToSummarize': False},
     ]
-    summary = {'title': '阳台上的阳光', 'body': '阳台上的阳光落在杯边，我喝着热茶坐了一会儿。', 'mood': '平静', 'tags': ['阳台', '热茶'], 'sourceMessageCount': 4}
-    failed = [False]
+    summary = {'title': '阳台上的阳光', 'body': '阳台上的阳光落在杯边，我喝着热茶坐了一会儿。', 'mood': '平静', 'tags': ['阳台', '热茶'], 'sourceMessageCount': 6}
+    failed, hold, held = [False], [False], []
 
     def mock(route):
         payload = route.request.post_data_json
         payloads.append(payload)
+        if hold[0]:
+            held.append(route)
+            return
         if failed[0]:
             failed[0] = False
             route.fulfill(status=500, body='provider private body')
             return
         system = payload['messages'][0]['content']
-        if 'sourceMessageCount必须' in system:
+        if '拾光周刊' in system:
+            route.fulfill(json={'choices': [{'message': {'content': json.dumps({'title':'橘猫经过的一周','blocks':[{'noteId':900001,'text':'散步时，看见了一只橘猫。'}]}, ensure_ascii=False)}}]})
+        elif 'sourceMessageCount必须' in system:
             route.fulfill(json={'choices': [{'message': {'content': json.dumps(summary, ensure_ascii=False)}}]})
         else:
             route.fulfill(json={'choices': [{'message': {'content': json.dumps(turns.pop(0), ensure_ascii=False)}}]})
@@ -92,16 +100,37 @@ def run(page, width):
     page.locator('[data-life-chat-send]').click()
     page.locator('#dialog-scrim.show').wait_for()
     assert '阳台有一小块阳光' in page.locator('#dialog-scrim').inner_text()
+    page.locator('#dialog-scrim [data-act="cancel"]').click()
+    page.locator('.life-chat-failed').wait_for()
+    assert not payloads
+    page.locator('[data-life-chat-retry]').click()
+    page.locator('#dialog-scrim.show').wait_for()
     page.locator('#dialog-scrim [data-act="ok"]').click()
     page.get_by_text('那一刻还有什么声音吗？').wait_for()
     assert len(payloads) == 1
     assert 'image_url' not in json.dumps(payloads[-1])
 
-    # 同页同目标的连续纯文字不重复询问授权。
+    # 同页新增照片和目标变化必须重新授权，且照片只随本轮发送。
+    same_photo = image(page, '虚构聊天首图.png', '#cfa66e')
+    page.locator('[data-life-chat-photo]').click()
+    page.locator('#lchat-file').set_input_files(same_photo)
+    page.evaluate('''async () => { const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)}); const tx=db.transaction('settings','readwrite');tx.objectStore('settings').put({key:'ai.model',value:'test-model-2'});await new Promise(r=>tx.oncomplete=r);db.close(); }''')
     page.locator('#life-chat-input').fill('还有一杯热茶。')
     page.locator('[data-life-chat-send]').click()
+    page.locator('#dialog-scrim.show').wait_for()
+    assert 'test-model-2' in page.locator('#dialog-scrim').inner_text()
+    assert '照片：1 张' in page.locator('#dialog-scrim').inner_text()
+    page.locator('#dialog-scrim [data-act="ok"]').click()
     page.get_by_text('热茶让这段时间慢了下来。').wait_for()
-    assert page.locator('#dialog-scrim.show').count() == 0
+    assert 'image_url' in json.dumps(payloads[-1])
+    page.locator('[data-life-chat-photo]').click()
+    page.locator('#lchat-file').set_input_files(same_photo)
+    page.locator('#life-chat-input').fill('我又选了同一张照片。')
+    page.locator('[data-life-chat-send]').click()
+    page.locator('#dialog-scrim.show').wait_for()
+    assert '照片：1 张' in page.locator('#dialog-scrim').inner_text()
+    page.locator('#dialog-scrim [data-act="ok"]').click()
+    page.get_by_text('同一张照片再次选择，也留在这一轮。').wait_for()
     page.get_by_text('已经有一个值得留下的片段了').wait_for()
     screenshot(page, 'chat-ready', width, '#sp-life-chat')
 
@@ -110,6 +139,8 @@ def run(page, width):
     page.locator('#sheet.open [data-life-summary-save]').wait_for()
     page.locator('#life-summary-title').fill('我改过的阳台片段')
     page.locator('#life-summary-body').fill('我改过的正文。')
+    page.locator('summary').filter(has_text='照片、日期与回访').click()
+    assert page.locator('#life-summary-photos img').count() == 2
     screenshot(page, 'summary-sheet', width, '#sheet')
     page.locator('[data-life-summary-return]').first.click()
     page.locator('#sheet.open').wait_for(state='hidden')
@@ -120,7 +151,25 @@ def run(page, width):
     page.locator('#sp-life-chat').wait_for(state='detached')
     saved = next(note for note in read_rows(page, 'lifeNotes') if note.get('title') == '我改过的阳台片段')
     assert saved['body'] == '我改过的正文。'
-    assert len(saved['conversation']) == 4
+    assert len(saved['conversation']) == 6
+    assert len(saved.get('photoRefs', [])) == 2
+    assert 'photos' not in saved['conversation'][2]
+    assert saved['conversation'][2]['photoRefs'] == [saved['photoRefs'][0]]
+    assert saved['conversation'][4]['photoRefs'] == [saved['photoRefs'][1]]
+    assert not any(row['key'] == 'chat:new' for row in read_rows(page, 'lifeDrafts'))
+
+    # 关闭动画尚未结束就重开时，旧页面的延迟写入不得覆盖新会话。
+    page.locator('[data-life-chat]').click()
+    page.locator('#life-chat-input').fill('立即重开也不能丢的草稿。')
+    page.locator('#sp-life-chat [data-act="back"]').click()
+    page.wait_for_timeout(50)
+    page.evaluate("document.querySelector('[data-life-chat]').click()")
+    page.locator('#sp-life-chat').last.wait_for()
+    page.wait_for_timeout(500)
+    assert page.locator('#sp-life-chat').count() == 1
+    assert page.locator('#sp-life-chat #life-chat-input').input_value() == '立即重开也不能丢的草稿。'
+    page.locator('#sp-life-chat [data-act="back"]').click()
+    page.locator('#sp-life-chat').wait_for(state='detached')
 
     # 正式记录可以找到原始对话并继续；失败不泄漏服务方正文，关闭后草稿会恢复。
     page.locator(f'[data-note="{saved["id"]}"]').click()
@@ -136,7 +185,10 @@ def run(page, width):
     page.locator('#dialog-scrim [data-act="ok"]').click()
     page.locator('.life-chat-failed').wait_for()
     assert 'provider private body' not in page.locator('#sp-life-chat').inner_text()
+    screenshot(page, 'chat-failed', width, '#sp-life-chat')
     page.locator('[data-life-chat-retry]').click()
+    page.locator('#dialog-scrim.show').wait_for()
+    page.locator('#dialog-scrim [data-act="ok"]').click()
     page.get_by_text('这句话也留在这里了。').wait_for()
     page.locator('[data-act="back"]').click()
     page.locator('#sp-life-chat').wait_for(state='detached')
@@ -147,6 +199,57 @@ def run(page, width):
     screenshot(page, 'chat-restored', width, '#sp-life-chat')
     page.locator('#life-chat-input').fill('很长的草稿内容' * 250)
     screenshot(page, 'chat-long-draft', width, '#sp-life-chat')
+    pending = page.locator('#life-chat-input').input_value()
+    page.locator('[data-act="back"]').click()
+    page.locator('#sp-life-chat').wait_for(state='detached')
+    page.locator(f'[data-note="{saved["id"]}"]').click()
+    page.locator('[data-lc-view-conversation]').click()
+    page.locator('#sp-life-chat').wait_for()
+    assert page.locator('#life-chat-input').input_value() == pending
+
+    # 在途请求可以停止，用户消息与本地草稿仍保留。
+    page.locator('#life-chat-input').fill('这条请求先停一下。')
+    hold[0] = True
+    page.locator('[data-life-chat-send]').click()
+    page.locator('#dialog-scrim.show').wait_for()
+    page.locator('#dialog-scrim [data-act="ok"]').click()
+    page.locator('[data-life-chat-stop]').wait_for(state='visible')
+    page.locator('[data-life-chat-stop]').click()
+    page.wait_for_function("document.querySelector('#life-chat-status').textContent.includes('已停止')")
+    for pending_route in held:
+        try:
+            pending_route.abort()
+        except Exception:
+            pass
+    held.clear()
+    hold[0] = False
+    page.locator('[data-act="back"]').click()
+    page.locator('#sp-life-chat').wait_for(state='detached')
+
+    # 周刊仍只使用用户选择的正式记录；预览不会自动收藏。
+    page.locator('[data-life-edition]').click()
+    page.locator('[data-le-source="900001"]').wait_for()
+    page.locator('[data-le-generate]').click()
+    page.locator('#dialog-scrim.show').wait_for()
+    assert '照片不发送，账单不发送' in page.locator('#dialog-scrim').inner_text()
+    page.locator('#dialog-scrim [data-act="ok"]').click()
+    page.locator('#le-title').wait_for()
+    assert read_rows(page, 'lifeEditions') == []
+    page.locator('#le-title').fill('我的橘猫小报')
+    page.locator('[data-le-save]').click()
+    page.locator('[data-le-edit]').wait_for()
+    assert len(read_rows(page, 'lifeEditions')) == 1
+    screenshot(page, 'weekly-paper', width, '#sp-life-edition')
+    page.locator('[data-act="back"]').click()
+    page.locator('#sp-life-edition').wait_for(state='detached')
+
+    # 历史回访保留并可明确忽略。
+    page.evaluate('''async id => { const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)});const tx=db.transaction('lifeNotes','readwrite'),s=tx.objectStore('lifeNotes'),q=s.get(id);q.onsuccess=()=>s.put({...q.result,review:{...(q.result.review||{}),revisitAt:Date.now()-86400000}});await new Promise(r=>tx.oncomplete=r);db.close(); }''', saved['id'])
+    page.reload(); page.locator('#fab').wait_for(); page.locator('[data-page="page-life"]').click()
+    page.locator(f'[data-revisit-dismiss="{saved["id"]}"]').wait_for()
+    page.locator(f'[data-revisit-dismiss="{saved["id"]}"]').click()
+    page.locator(f'[data-revisit-dismiss="{saved["id"]}"]').wait_for(state='detached')
+    assert next(note for note in read_rows(page, 'lifeNotes') if note['id'] == saved['id'])['review']['dismissedAt'] > 0
     assert not errors, errors
 
 
@@ -158,7 +261,7 @@ if __name__ == '__main__':
             for width in (360, 390, 430, 1280):
                 context = browser.new_context(viewport={'width': width, 'height': 900}, service_workers='block')
                 try:
-                    page = context.new_page(); page.set_default_timeout(7000)
+                    page = context.new_page(); page.set_default_timeout(12000)
                     run(page, width); print('PASS life AI', width, flush=True)
                 finally:
                     context.close()

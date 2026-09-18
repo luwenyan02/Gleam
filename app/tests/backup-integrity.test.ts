@@ -47,6 +47,23 @@ async function archive({
 }
 
 describe('SKBAK v1 解析完整性', () => {
+  it('当前格式升为 v5，同时兼容含旧生活草稿的 v4 包', async () => {
+    expect(SKBAK_SCHEMA_VERSION).toBe(5);
+    const data = emptyDump();
+    data.lifeDrafts = [{
+      key: 'legacy-v4', title: '', body: '', occurredAt: 1,
+      photos: [], existingPhotoRefs: [], aiExcluded: false,
+      messages: [{ role: 'user', content: '旧包里的一句话。' }],
+      summaryProposal: { title: '旧建议', body: '旧包里的整理稿。', tags: [], sourceMessageCount: 1 },
+    }];
+    const parsed = await parseSkbak(await archive({ data, mutateManifest: manifest => { manifest.schemaVersion = 4; } }));
+    expect(parsed.dump.lifeDrafts[0]).toMatchObject({
+      key: 'legacy-v4',
+      messages: [{ role: 'user', content: '旧包里的一句话。' }],
+      summaryProposal: { body: '旧包里的整理稿。' },
+    });
+  });
+
   it('兼容 v3 无生活新表的旧包，并拒绝新表的畸形内容', async () => {
     const data = emptyDump() as Record<string, unknown>;
     delete data.lifeDrafts; delete data.lifeEditions;

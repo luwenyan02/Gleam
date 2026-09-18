@@ -3,11 +3,12 @@ import type { LifeDraft, LifeNote } from '../../core/types';
 import { getEntry } from '../../core/repo/entryRepo';
 import { getAttachment, getLifeNote, softDeleteLifeNote, listLifeLinkedEntries } from '../../core/repo/lifeRepo';
 import { formatFenCny } from '../../core/money';
-import { getLifeDraft, putLifeDraft, deleteLifeDraft, saveLifeDraft } from '../../core/repo/lifeDraftRepo';
+import { claimLegacyLifeChatDraft, getLifeDraft, isLifeChatDraft, putLifeDraft, deleteLifeDraft, saveLifeDraft } from '../../core/repo/lifeDraftRepo';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { confirmDialog } from '../shell/dialog';
 import { showToast } from '../shell/toast';
 import { prepareReceipt } from '../entry/receiptEditor';
+import { openEntryDetail } from '../detail/entrySwipe';
 import { openDateWheel } from '../../shared/dateTimeWheel';
 import { openLifeChat } from './lifeChat';
 import './lifeAi.css';
@@ -41,7 +42,12 @@ export async function openLifeComposer(options: { noteId?: number; entryId?: num
     await queues.get(key)?.catch(() => {});
     const existing = noteId ? await getLifeNote(noteId) : undefined;
     if (noteId && (!existing || existing.deletedAt)) throw new Error('记录已移入回收站');
-    const stored = unsavedDrafts.get(key) ?? await getLifeDraft(key);
+    let stored = unsavedDrafts.get(key) ?? await getLifeDraft(key);
+    if (isLifeChatDraft(stored)) {
+      await claimLegacyLifeChatDraft(noteId ? `chat:note:${noteId}` : 'chat:new', [key]);
+      await openLifeChat(noteId ? { noteId } : {});
+      return;
+    }
     const draft: LifeDraft = stored ?? {
       key, noteId, sourceUpdatedAt: existing?.updatedAt, entryId: options.entryId,
       title: existing?.title ?? '', body: existing?.body ?? '', occurredAt: existing?.occurredAt ?? entry?.occurredAt ?? Date.now(),
@@ -145,7 +151,14 @@ function renderComposer(draft: LifeDraft, existing?: LifeNote): void {
   async function showLinked(): Promise<void> {
     if (!draft.noteId) return;
     const entries = await listLifeLinkedEntries(draft.noteId);
-    if (!disposed) host.querySelector('#lc-linked-entries')!.innerHTML = entries.length ? `<details class="lc-details"><summary>关联原账单 · ${entries.length} 笔</summary>${entries.map(e => `<button class="btn ghost" data-lc-entry="${e.id}">${dateText(e.occurredAt)} · ${e.refundFlag ? '退款' : e.type === 'expense' ? '支出' : e.type === 'income' ? '收入' : '资金往来'} ${formatFenCny(e.amount)} ›</button>`).join('')}</details>` : '';
+    if (disposed) return;
+    host.querySelector('#lc-linked-entries')!.innerHTML = entries.length ? `<details class="lc-details"><summary>关联原账单 · ${entries.length} 笔</summary>${entries.map(e => `<button class="btn ghost" data-lc-entry="${e.id}">${dateText(e.occurredAt)} · ${e.refundFlag ? '退款' : e.type === 'expense' ? '支出' : e.type === 'income' ? '收入' : '资金往来'} ${formatFenCny(e.amount)} ›</button>`).join('')}</details>` : '';
+    host.querySelectorAll<HTMLButtonElement>('[data-lc-entry]').forEach(button => { button.onclick = async () => {
+      try {
+        await persist(); if (disposed) return; closeSheet();
+        openEntryDetail(Number(button.dataset.lcEntry));
+      } catch { showToast('暂时无法打开账单，草稿已保留'); }
+    }; });
   }
   async function showPhotos(): Promise<void> {
     const attachments = await Promise.all(draft.existingPhotoRefs.map(id => getAttachment(id)));

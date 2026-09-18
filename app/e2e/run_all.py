@@ -11,7 +11,7 @@ from pathlib import Path
 
 APP_ROOT = Path(__file__).parents[1]
 PROJECT_ROOT = APP_ROOT.parent
-URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4601/')
+URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4617/')
 EXTERNAL_URL = 'GLEAM_E2E_URL' in os.environ
 TESTS = (
     'test_acceptance.py', 'test_refund.py', 'test_m3.py', 'test_ux_m1.py', 'test_ux_m2.py',
@@ -63,11 +63,14 @@ def main() -> int:
             if EXTERNAL_URL:
                 raise RuntimeError(f'指定的验收地址不可访问：{URL}')
             server = subprocess.Popen(
-                ['npm', 'run', 'preview', '--', '--host', '127.0.0.1', '--port', '4601'],
+                ['npm', 'run', 'preview', '--', '--host', '127.0.0.1', '--port', '4617'],
                 cwd=APP_ROOT,
                 env=env,
                 text=True,
-                stdout=subprocess.PIPE,
+                # The preview server stays alive for the whole suite.  Leaving its
+                # output attached to an unread pipe eventually fills the buffer and
+                # blocks asset responses near the end of a long regression run.
+                stdout=subprocess.DEVNULL,
                 stderr=subprocess.STDOUT,
             )
             wait_for_server(server)

@@ -4,7 +4,7 @@ import { db } from '../src/core/db';
 import { addAccount } from '../src/core/repo/accountRepo';
 import { addEntry, softDeleteEntry } from '../src/core/repo/entryRepo';
 import { addAttachment, addLifeNote, getLifeNote, linkEntryToLifeNote, listLifeLinkedEntries, listLifeNotes, purgeLifeNote, softDeleteLifeNote } from '../src/core/repo/lifeRepo';
-import { deleteLifeDraft, getLifeDraft, migrateLifeDraft, putLifeDraft, saveLifeDraft } from '../src/core/repo/lifeDraftRepo';
+import { claimLegacyLifeChatDraft, deleteLifeDraft, getLifeDraft, migrateLifeDraft, putLifeDraft, saveLifeDraft } from '../src/core/repo/lifeDraftRepo';
 
 const occurredAt = new Date(2026, 8, 15, 12).getTime();
 const png = (bytes = 'AQID') => `data:image/png;base64,${bytes}`;
@@ -108,6 +108,74 @@ describe('生活故事草稿仓库', () => {
       originalBody: '今天去了公园。\n\n池塘边有一只橘猫。',
     });
     expect(await getLifeDraft('composer')).toBeUndefined();
+  });
+
+  it('确认聊天摘要时把会话已发送照片与原始会话一并原子保存', async () => {
+    const messages = [
+      { role: 'user' as const, content: '窗边有一束光。', photos: [{ name: '窗边.png', dataUrl: png() }] },
+      { role: 'assistant' as const, content: '光落在哪里？' },
+    ];
+    await putLifeDraft(draft({
+      title: '', body: '', messages,
+      summaryProposal: { title: '窗边的光', body: '窗边有一束光。', tags: [], sourceMessageCount: 2 },
+    }));
+
+    const noteId = await saveLifeDraft('composer');
+    const note = (await getLifeNote(noteId))!;
+    expect(note.photoRefs).toHaveLength(1);
+    expect(note.conversation).toEqual([
+      { role: 'user', content: '窗边有一束光。', photoRefs: note.photoRefs },
+      { role: 'assistant', content: '光落在哪里？' },
+    ]);
+    expect(note.conversation?.[0].photos).toBeUndefined();
+    expect((await db.attachments.get(note.photoRefs![0]))?.size).toBe(3);
+
+    await putLifeDraft(draft({
+      key: 'edit-photo-chat', noteId, sourceUpdatedAt: note.updatedAt,
+      title: '', body: note.body ?? '', existingPhotoRefs: note.photoRefs,
+      messages: note.conversation,
+      summaryProposal: { title: '窗边的光', body: '窗边有一束光。', tags: [], sourceMessageCount: 2 },
+    }));
+    await saveLifeDraft('edit-photo-chat');
+    const edited = (await getLifeNote(noteId))!;
+    expect(edited.photoRefs).toEqual(note.photoRefs);
+    expect(await db.attachments.count()).toBe(1);
+  });
+
+  it('把旧混合草稿迁移到专用聊天 key，不让快速记录直接采用 AI 整理稿', async () => {
+    await putLifeDraft(draft({
+      key: 'new', body: '旧原话',
+      messages: [{ role: 'assistant', content: '旧追问' }],
+      aiText: '旧整理稿',
+    }));
+
+    const migrated = await claimLegacyLifeChatDraft('chat:new', ['new']);
+    expect(migrated).toMatchObject({
+      key: 'chat:new', body: '',
+      messages: [{ role: 'user', content: '旧原话' }, { role: 'assistant', content: '旧追问' }],
+      summaryProposal: { body: '旧整理稿', sourceMessageCount: 2 },
+    });
+    expect(await getLifeDraft('new')).toBeUndefined();
+    expect(await getLifeDraft('chat:new')).toMatchObject({ summaryProposal: { body: '旧整理稿' } });
+  });
+
+  it('目标聊天已有草稿时合并旧混合草稿并删除旧 key', async () => {
+    await putLifeDraft(draft({
+      key: 'chat:new', body: '',
+      messages: [{ role: 'user', content: '新版已经聊过一句。' }],
+    }));
+    await putLifeDraft(draft({
+      key: 'new', body: '旧入口的一句话。',
+      messages: [{ role: 'assistant', content: '旧版追问。' }],
+      aiText: '旧版整理稿。',
+    }));
+
+    const migrated = await claimLegacyLifeChatDraft('chat:new', ['new']);
+    expect(migrated?.messages.map(message => message.content)).toEqual([
+      '新版已经聊过一句。', '旧入口的一句话。', '旧版追问。',
+    ]);
+    expect(migrated?.summaryProposal?.body).toBe('旧版整理稿。');
+    expect(await getLifeDraft('new')).toBeUndefined();
   });
 
   it('重新编辑只带新增一轮时追加旧会话，已完整初始化时不重复', async () => {
