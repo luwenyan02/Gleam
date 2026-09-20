@@ -182,7 +182,7 @@ async function renderEntityInsight(body: HTMLElement): Promise<void> {
           <div><p>${isTag ? '标签' : '商家'}</p><h3>${isTag ? '#' : ''}${esc(entity.name)}</h3></div>
           <button class="chip" data-insight-edit>编辑</button>
         </section>
-        <p class="sub tm-range">${scope === 'month' ? '财务月' : scope === 'year' ? '自然年' : '全部'} · ${esc(formatAccountingRange(result.range))}</p>
+        <p class="sub tm-range">${scope === 'month' ? '' : scope === 'year' ? '自然年 · ' : '全部 · '}${esc(formatAccountingRange(result.range))}</p>
         <section class="tm-summary" aria-label="收支与笔数汇总">
           <div><span>支出</span><b class="num out">${formatFenCny(result.summary.expense)}</b></div>
           <div><span>收入</span><b class="num in">${formatFenCny(result.summary.income)}</b></div>

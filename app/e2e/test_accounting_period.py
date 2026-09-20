@@ -80,10 +80,11 @@ def run_width(page, width: int) -> None:
     page.locator('#page-mine [data-sub="sp-settings"]').first.click()
     page.wait_for_selector('#sp-settings.open #accounting-month-start')
     page.select_option('#accounting-month-start', '28')
-    page.wait_for_function("document.querySelector('#sp-settings section[aria-label=\"记账偏好\"]')?.textContent.includes('当前财务月')")
+    page.wait_for_function("document.querySelector('#sp-settings section[aria-label=\"记账偏好\"]')?.textContent.includes('当前周期')")
     expected = expected_period(page)
     settings_text = page.inner_text('#sp-settings section[aria-label="记账偏好"]')
     assert expected['key'] in settings_text and expected['longRange'] in settings_text, settings_text
+    assert '财务月' not in settings_text, settings_text
     assert page.locator('#accounting-month-start').input_value() == '28'
     assert_layout(page, '#sp-settings')
     page.locator('#sp-settings section[aria-label="记账偏好"]').screenshot(
@@ -92,17 +93,19 @@ def run_width(page, width: int) -> None:
     page.wait_for_selector('#sp-settings', state='detached')
 
     page.locator('.tab[data-page="page-home"]').click()
-    page.wait_for_function("document.querySelector('#hm-month .mc-label')?.textContent.includes('财务月')")
+    page.wait_for_function(f"document.querySelector('#hm-month .mc-label')?.textContent.includes('{expected['homeRange']}')")
     home_label = page.inner_text('#hm-month .mc-label')
     assert expected['homeRange'] in home_label, home_label
+    assert '财务月' not in home_label, home_label
     assert page.inner_text('#m-spend') == '123.45'
     assert_layout(page, '#page-home')
     page.locator('#hm-month').screenshot(path=str(OUT / f'home-{width}.png'), animations='disabled')
 
     page.locator('.tab[data-page="page-report"]').click()
-    page.wait_for_function("document.querySelector('#r-label')?.textContent.includes('财务月')")
+    page.wait_for_function(f"document.querySelector('#r-label')?.textContent.includes('{expected['longRange']}')")
     report_label = page.inner_text('#r-label')
     assert expected['key'] in report_label and expected['longRange'] in report_label, report_label
+    assert '财务月' not in report_label, report_label
     assert page.inner_text('#r-spend') == '¥123.45'
     ranges = page.locator('#trend [data-drill-from][data-drill-to]').evaluate_all(
         "els => els.map(el => [Number(el.dataset.drillFrom), Number(el.dataset.drillTo)])")
@@ -113,14 +116,16 @@ def run_width(page, width: int) -> None:
     page.locator('.tab[data-page="page-mine"]').click()
     page.locator('#page-mine [data-sub="sp-budget"]').click()
     page.wait_for_selector('#sp-budget.open')
-    page.wait_for_function("document.querySelector('#sp-budget')?.textContent.includes('财务月')")
+    page.wait_for_function(f"document.querySelector('#sp-budget')?.textContent.includes('{expected['longRange']}')")
     budget_text = page.inner_text('#sp-budget')
     assert expected['key'] in budget_text and expected['longRange'] in budget_text, budget_text
+    assert '财务月' not in budget_text, budget_text
     page.locator('#sp-budget [data-act="mode"]').click()
     page.wait_for_function("document.querySelector('#sp-budget')?.textContent.includes('年总预算')")
     assert f"{expected['naturalYear']}年总预算" in page.inner_text('#sp-budget')
     page.locator('#sp-budget [data-act="mode"]').click()
-    page.wait_for_function("document.querySelector('#sp-budget')?.textContent.includes('财务月')")
+    page.wait_for_function(f"document.querySelector('#sp-budget')?.textContent.includes('{expected['longRange']}')")
+    assert '财务月' not in page.inner_text('#sp-budget')
     assert_layout(page, '#sp-budget')
     page.locator('#sp-budget').screenshot(path=str(OUT / f'budget-{width}.png'), animations='disabled')
 

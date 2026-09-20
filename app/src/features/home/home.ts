@@ -81,7 +81,7 @@ function renderSkeleton(el: HTMLElement): void {
 
     <section class="card home-reminders" id="hm-reminders" aria-label="应用内提醒" hidden></section>
 
-    <section class="month-card" id="hm-month" aria-label="财务月收支总览" hidden>
+    <section class="month-card" id="hm-month" aria-label="本期收支总览" hidden>
       <div class="mc-heading"><p class="mc-label"></p><span class="mc-unit">单位：元</span></div>
       <p class="mc-amt num"><span id="m-spend">0.00</span></p>
       <div class="mc-row">
@@ -223,7 +223,7 @@ async function refreshMonthCard(el: HTMLElement): Promise<void> {
   const from = new Date(range.from);
   const to = new Date(range.to);
   to.setDate(to.getDate() - 1);
-  el.querySelector('.mc-label')!.textContent = `财务月 · ${from.getMonth() + 1}月${from.getDate()}日–${to.getMonth() + 1}月${to.getDate()}日支出`;
+  el.querySelector('.mc-label')!.textContent = `${from.getMonth() + 1}月${from.getDate()}日–${to.getMonth() + 1}月${to.getDate()}日支出`;
   el.querySelector('#m-spend')!.textContent = formatFen(sum.expense);
   el.querySelector('#m-income')!.textContent = formatFen(sum.income);
   el.querySelector('#m-balance')!.textContent = formatFen(sum.balance);

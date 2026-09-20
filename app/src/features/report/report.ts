@@ -110,7 +110,7 @@ function periodLabel(range: { from: number; to: number }): string {
     const to = new Date(customRange.to - 1);
     return `${from.getFullYear()}/${from.getMonth() + 1}/${from.getDate()} – ${to.getFullYear()}/${to.getMonth() + 1}/${to.getDate()}`;
   }
-  return `财务月 ${selectedAccountingMonth} · ${formatAccountingRange(range)}`;
+  return `${selectedAccountingMonth} · ${formatAccountingRange(range)}`;
 }
 
 /** 周期前后翻页（dir = ±1） */

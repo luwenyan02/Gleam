@@ -12,7 +12,7 @@ const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
 export function validateAccountingMonthStartDay(value: number): number {
   if (!Number.isSafeInteger(value) || value < 1 || value > 28) {
-    throw new Error('财务月起始日须为 1–28 的整数');
+    throw new Error('每月起始日须为 1–28 的整数');
   }
   return value;
 }
