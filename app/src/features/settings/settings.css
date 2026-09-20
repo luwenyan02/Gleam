@@ -28,5 +28,3 @@
 .ai-thres input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--primary)}
 .ai-thres input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;background:var(--primary);box-shadow:0 2px 6px rgba(0,0,0,.18);margin-top:-9px;cursor:pointer}
 .ai-thres .num{font-size:13px;font-weight:600;color:var(--fg);min-width:40px;text-align:right}
-.st-select{min-height:44px;max-width:150px;border:1px solid var(--border);border-radius:calc(var(--r) - 4px);background:var(--surface);padding:8px 34px 8px 12px;font:inherit;font-size:14px;color:var(--fg)}
-.st-select:focus{outline:none;border-color:var(--primary)}

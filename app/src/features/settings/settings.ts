@@ -111,11 +111,9 @@ async function refresh(): Promise<void> {
       <h3 class="card-title">记账偏好</h3>
       <div class="field"><span>报销到账记为收入</span>${switchHtml('reimburse', countAsIncome as boolean, '报销到账记为收入')}</div>
       <p class="tiny">开＝到账记一笔「报销」收入；关＝冲抵原支出。与报销页开关同步</p>
-      <label class="field" for="accounting-month-start"><span>每月起始日</span>
-        <select class="st-select" id="accounting-month-start" aria-label="每月起始日">
-          ${Array.from({ length: 28 }, (_, index) => index + 1).map(day => `<option value="${day}"${day === monthStartDay ? ' selected' : ''}>每月 ${day} 日</option>`).join('')}
-        </select>
-      </label>
+      <div class="field"><span>每月起始日</span>
+        <button class="pick-trigger" id="accounting-month-start" type="button" aria-haspopup="listbox">每月 ${monthStartDay} 日</button>
+      </div>
       <p class="tiny">当前周期 ${currentAccountingMonth}：${formatAccountingRange(currentAccountingRange)}。首页总览、月报表和月预算采用此范围；周与年仍按自然周期。</p>
       <div class="field"><span>预算自动延续到下月</span>${switchHtml('budget', autoRenew as boolean, '预算自动延续')}</div>
     </section>
@@ -325,6 +323,18 @@ export function initSettings(): void {
               },
             });
           })();
+        } else if (t.closest('#accounting-month-start')) {
+          openPickList({
+            container: el,
+            title: '选择每月起始日',
+            items: Array.from({ length: 28 }, (_, index) => ({ value: index + 1, label: `每月 ${index + 1} 日` })),
+            selected: Number(t.closest<HTMLButtonElement>('#accounting-month-start')?.textContent.match(/\d+/)?.[0] ?? 1),
+            onPick(value) {
+              void setAccountingMonthStartDay(Number(value))
+                .then(() => { showToast('每月起始日已更新'); return refresh(); })
+                .catch(err => showToast(err instanceof Error ? err.message : String(err)));
+            },
+          });
         } else if (sw === 'pin') {
           void getSetting('security.pin').then((pin) => openPinSheet(pin ? 'off' : 'set'));
         } else if (sw === 'bio') {
@@ -378,11 +388,6 @@ export function initSettings(): void {
             .catch(() => showToast('API Key 保存失败，请重新输入'));
         }
         else if (t.id === 'ai-thres') void setSetting('ai.autoConfirmThreshold', Number(t.value));
-        else if (t.id === 'accounting-month-start') {
-          void setAccountingMonthStartDay(Number(t.value))
-            .then(() => showToast('每月起始日已更新'))
-            .catch(err => showToast(err instanceof Error ? err.message : String(err)));
-        }
       });
       el.addEventListener('input', (e) => {
         const t = e.target as HTMLInputElement;

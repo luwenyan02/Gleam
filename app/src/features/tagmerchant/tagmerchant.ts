@@ -24,6 +24,7 @@ import { confirmDialog } from '../shell/dialog';
 import type { Category, Merchant, Tag } from '../../core/types';
 import { entryRowText } from '../detail/entryRowText';
 import { openEntryDetail } from '../detail/entrySwipe';
+import { openPickList } from '../../shared/pickList';
 
 const TAG_COLORS = ['#D84924', '#F79332', '#725BE8', '#18A999', '#3985D5', '#DF577E'] as const;
 const safeTagColor = (color?: string): string => color && /^#[0-9a-f]{6}$/i.test(color) ? color : 'var(--primary)';
@@ -289,6 +290,7 @@ function openNameSheet(kind: 'tag' | 'shop'): void {
 
 /** 编辑标签：改名 / 删除（删除会移除所有账单关联） */
 function openTagEdit(tag: Tag): void {
+  let color = tag.color ?? '';
   openSheet({
     ariaLabel: `编辑标签：${tag.name}`,
     onClose: () => sheetAbort?.abort(),
@@ -300,18 +302,34 @@ function openTagEdit(tag: Tag): void {
         </div>
         <div class="sheet-scroll">
           <div class="field"><span>名称</span><input class="note" id="tm-name" maxlength="12" value="${esc(tag.name)}" style="margin-bottom:0;flex:1"></div>
-          <label class="field"><span>颜色</span><select id="tm-color" aria-label="标签颜色"><option value="">跟随主题</option>${TAG_COLORS.map((color, index) => `<option value="${color}" ${tag.color === color ? 'selected' : ''}>${['橙红', '橙色', '紫色', '青绿', '蓝色', '粉红'][index]}</option>`).join('')}</select></label>
+          <div class="field"><span>颜色</span><button class="pick-trigger" id="tm-color" type="button" aria-haspopup="listbox">${color ? ['橙红', '橙色', '紫色', '青绿', '蓝色', '粉红'][TAG_COLORS.indexOf(color as typeof TAG_COLORS[number])] ?? '跟随主题' : '跟随主题'}</button></div>
           <button class="btn primary" data-act="save" style="margin-top:14px">保存修改</button>
           <button class="btn ghost" data-act="del" style="margin-top:10px;color:var(--over)">删除标签</button>
           <p class="tiny" style="text-align:center;margin-top:10px">删除后将从所有关联账单移除该标签 · 账单本身不受影响</p>
         </div>`;
       el.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('#tm-color')) {
+          openPickList({
+            container: el,
+            title: '选择标签颜色',
+            items: [
+              { value: '__default__', label: '跟随主题' },
+              ...TAG_COLORS.map((value, index) => ({ value, label: ['橙红', '橙色', '紫色', '青绿', '蓝色', '粉红'][index]! })),
+            ],
+            selected: color || '__default__',
+            onPick(value, label) {
+              color = value === '__default__' ? '' : String(value);
+              el.querySelector<HTMLButtonElement>('#tm-color')!.textContent = label;
+            },
+          });
+          return;
+        }
         const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
         if (act === 'close') closeSheet();
         else if (act === 'save') {
           const name = el.querySelector<HTMLInputElement>('#tm-name')!.value.trim();
           if (!name) { showToast('请填写标签名'); return; }
-          void renameTag(tag.id!, name, el.querySelector<HTMLSelectElement>('#tm-color')!.value)
+          void renameTag(tag.id!, name, color)
             .then(() => { closeSheet(); showToast(`已改名为「#${name}」`); })
             .catch((err: unknown) => showToast(err instanceof Error ? err.message : String(err)));
         } else if (act === 'del') {

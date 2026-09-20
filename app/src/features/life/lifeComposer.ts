@@ -10,6 +10,7 @@ import { showToast } from '../shell/toast';
 import { prepareReceipt } from '../entry/receiptEditor';
 import { openEntryDetail } from '../detail/entrySwipe';
 import { openDateWheel } from '../../shared/dateTimeWheel';
+import { openPickList } from '../../shared/pickList';
 import { openLifeChat } from './lifeChat';
 import './lifeAi.css';
 
@@ -17,6 +18,13 @@ const queues = new Map<string, Promise<void>>();
 const unsavedDrafts = new Map<string, LifeDraft>();
 let opening = 0;
 const dateText = (timestamp: number) => new Date(timestamp).toLocaleDateString('zh-CN');
+const MOOD_ITEMS = ['开心', '平静', '充实', '疲惫', '难过'].map(label => ({ value: label, label }));
+const VERDICT_ITEMS = [
+  { value: 'again', label: '值得再来' },
+  { value: 'neutral', label: '一般' },
+  { value: 'not-for-me', label: '不太适合我' },
+] as const;
+const verdictLabel = (value?: string) => VERDICT_ITEMS.find(item => item.value === value)?.label ?? '自己写，不选评价';
 
 function dataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -108,27 +116,46 @@ function renderComposer(draft: LifeDraft, existing?: LifeNote): void {
           <input type="file" id="lc-file" accept="image/jpeg,image/png,image/webp" multiple hidden><div class="lc-photos" id="lc-photos"></div>
           <details class="lc-details"><summary>标题与更多</summary>
             <label>标题<input class="note" id="lc-title" maxlength="60" placeholder="可以不填" value="${esc(draft.title)}"></label>
-            <label>心情<select id="lc-mood"><option value="">不选也可以</option>${['开心','平静','充实','疲惫','难过'].map(m => `<option ${draft.mood === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
+            <label>心情<button class="pick-trigger wide" type="button" id="lc-mood" aria-haspopup="listbox">${esc(draft.mood ?? '不选也可以')}</button></label>
             <label>标签<input class="note" id="lc-tags" placeholder="散步，朋友" value="${esc((draft.tags ?? []).join('，'))}"></label>
             <label class="lc-check"><input type="checkbox" id="lc-exclude" ${draft.aiExcluded ? 'checked' : ''}>不用于 AI 或周刊</label>
           </details>
           <details class="lc-details"><summary>这段经历，后来怎么样</summary>
-            <label>现在的感受<select id="lc-verdict"><option value="">自己写，不选评价</option><option value="again">值得再来</option><option value="neutral">一般</option><option value="not-for-me">不太适合我</option></select></label>
+            <label>现在的感受<button class="pick-trigger wide" type="button" id="lc-verdict" aria-haspopup="listbox">${verdictLabel(draft.review?.verdict)}</button></label>
             <label>补一句<textarea class="note" id="lc-review" maxlength="2000" placeholder="留下了什么，只有你知道">${esc(draft.review?.text ?? '')}</textarea></label>
             <div class="lc-row"><button class="chip" data-lc-revisit>${draft.review?.revisitAt ? `${dateText(draft.review.revisitAt)} 再看看` : '选一天再看看'}</button><button class="chip" data-lc-no-revisit>不提醒</button></div>
           </details>
           <p id="lc-status" class="sub" role="status"></p><button class="btn primary" data-lc-save>就这样记下</button>
           <div class="lc-row lc-footer"><button class="btn ghost" data-lc-discard>丢弃草稿</button>${existing ? '<button class="btn ghost" data-lc-delete>移入回收站</button>' : ''}</div>
         </div>`;
-      el.querySelector<HTMLSelectElement>('#lc-verdict')!.value = draft.review?.verdict ?? '';
       el.querySelector('[data-lc-close]')!.addEventListener('click', closeSheet);
       el.querySelector('[data-lc-detach]')?.addEventListener('click', () => { draft.entryId = undefined; el.querySelector('.lc-linked')!.textContent = '仅保存故事，不新增账单关联'; persistQuiet(); });
       el.querySelector<HTMLTextAreaElement>('#lc-body')!.oninput = event => { draft.body = (event.target as HTMLTextAreaElement).value; persistQuiet(); };
       el.querySelector<HTMLInputElement>('#lc-title')!.oninput = event => { draft.title = (event.target as HTMLInputElement).value; persistQuiet(); };
-      el.querySelector<HTMLSelectElement>('#lc-mood')!.onchange = event => { draft.mood = (event.target as HTMLSelectElement).value || undefined; persistQuiet(); };
+      el.querySelector('#lc-mood')!.addEventListener('click', () => openPickList({
+        container: el,
+        title: '选择心情',
+        items: [{ value: '__none__', label: '不选也可以' }, ...MOOD_ITEMS],
+        selected: draft.mood ?? '__none__',
+        onPick(value, label) {
+          draft.mood = value === '__none__' ? undefined : String(value);
+          el.querySelector<HTMLButtonElement>('#lc-mood')!.textContent = label;
+          persistQuiet();
+        },
+      }));
       el.querySelector<HTMLInputElement>('#lc-tags')!.oninput = event => { draft.tags = (event.target as HTMLInputElement).value.split(/[,，]/).map(s => s.trim()).filter(Boolean); persistQuiet(); };
       el.querySelector<HTMLInputElement>('#lc-exclude')!.onchange = event => { draft.aiExcluded = (event.target as HTMLInputElement).checked; persistQuiet(); };
-      el.querySelector<HTMLSelectElement>('#lc-verdict')!.onchange = event => { draft.review = { ...draft.review, verdict: (event.target as HTMLSelectElement).value as NonNullable<LifeDraft['review']>['verdict'] || undefined }; persistQuiet(); };
+      el.querySelector('#lc-verdict')!.addEventListener('click', () => openPickList({
+        container: el,
+        title: '选择现在的感受',
+        items: [{ value: '__none__', label: '自己写，不选评价' }, ...VERDICT_ITEMS],
+        selected: draft.review?.verdict ?? '__none__',
+        onPick(value, label) {
+          draft.review = { ...draft.review, verdict: value === '__none__' ? undefined : value as NonNullable<LifeDraft['review']>['verdict'] };
+          el.querySelector<HTMLButtonElement>('#lc-verdict')!.textContent = label;
+          persistQuiet();
+        },
+      }));
       el.querySelector<HTMLTextAreaElement>('#lc-review')!.oninput = event => { draft.review = { ...draft.review, text: (event.target as HTMLTextAreaElement).value }; persistQuiet(); };
       el.querySelector('[data-lc-date]')!.addEventListener('click', () => pickDate(draft.occurredAt, value => { draft.occurredAt = value; el.querySelector('[data-lc-date]')!.textContent = dateText(value); persistQuiet(); }));
       el.querySelector('[data-lc-revisit]')!.addEventListener('click', () => pickDate(draft.review?.revisitAt ?? Date.now() + 7 * 86400000, value => { draft.review = { ...draft.review, revisitAt: value, dismissedAt: undefined }; el.querySelector('[data-lc-revisit]')!.textContent = `${dateText(value)} 再看看`; persistQuiet(); }));

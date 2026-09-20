@@ -5,6 +5,7 @@ import { openSheet, closeSheet } from '../shell/sheet';
 import { showToast } from '../shell/toast';
 import { prepareReceipt } from '../entry/receiptEditor';
 import { openDateWheel } from '../../shared/dateTimeWheel';
+import { openPickList } from '../../shared/pickList';
 
 export interface LifeSummarySheetOptions {
   draft: LifeDraft;
@@ -15,6 +16,12 @@ export interface LifeSummarySheetOptions {
 }
 
 const dateText = (timestamp: number) => new Date(timestamp).toLocaleDateString('zh-CN');
+const VERDICT_ITEMS = [
+  { value: 'again', label: '值得再来' },
+  { value: 'neutral', label: '一般' },
+  { value: 'not-for-me', label: '不太适合我' },
+] as const;
+const verdictLabel = (value?: string) => VERDICT_ITEMS.find(item => item.value === value)?.label ?? '自己写，不选评价';
 function dataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -53,7 +60,7 @@ export function openLifeSummarySheet(options: LifeSummarySheetOptions): void {
             <p class="sub">已保留 ${options.draft.existingPhotoRefs.length + sentPhotoCount + options.draft.photos.length} 张照片；另外可补充照片，保存时一并留在本机。</p>
             <div class="lc-row"><button class="chip" data-life-summary-photo>＋ 添加照片</button><button class="chip" data-life-summary-date>${dateText(options.draft.occurredAt)}</button></div>
             <input id="life-summary-file" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden><div id="life-summary-photos" class="life-summary-photos"></div>
-            <label>现在的感受<select id="life-summary-verdict"><option value="">自己写，不选评价</option><option value="again">值得再来</option><option value="neutral">一般</option><option value="not-for-me">不太适合我</option></select></label>
+            <label>现在的感受<button class="pick-trigger wide" type="button" id="life-summary-verdict" aria-haspopup="listbox">${verdictLabel(options.draft.review?.verdict)}</button></label>
             <label>补一句<textarea id="life-summary-review" class="note" maxlength="2000" placeholder="留下了什么，只有你知道">${esc(options.draft.review?.text ?? '')}</textarea></label>
             <div class="lc-row"><button class="chip" data-life-summary-revisit>${options.draft.review?.revisitAt ? `${dateText(options.draft.review.revisitAt)} 再看看` : '选一天再看看'}</button><button class="chip" data-life-summary-no-revisit>不提醒</button></div>
           </details>
@@ -69,14 +76,22 @@ export function openLifeSummarySheet(options: LifeSummarySheetOptions): void {
         proposal.tags = el.querySelector<HTMLInputElement>('#life-summary-tags')!.value.split(/[,，]/).map(tag => tag.trim()).filter(Boolean);
         options.draft.review = {
           ...options.draft.review,
-          verdict: (el.querySelector<HTMLSelectElement>('#life-summary-verdict')!.value || undefined) as NonNullable<LifeDraft['review']>['verdict'],
           text: el.querySelector<HTMLTextAreaElement>('#life-summary-review')!.value,
         };
         void options.persist().catch(() => { el.querySelector('#life-summary-status')!.textContent = '编辑暂存在当前页面，请勿刷新'; });
       };
       el.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('#life-summary-title,#life-summary-body,#life-summary-mood,#life-summary-tags').forEach(input => input.oninput = update);
-      el.querySelector<HTMLSelectElement>('#life-summary-verdict')!.value = options.draft.review?.verdict ?? '';
-      el.querySelector<HTMLSelectElement>('#life-summary-verdict')!.onchange = update;
+      el.querySelector('#life-summary-verdict')!.addEventListener('click', () => openPickList({
+        container: el,
+        title: '选择现在的感受',
+        items: [{ value: '__none__', label: '自己写，不选评价' }, ...VERDICT_ITEMS],
+        selected: options.draft.review?.verdict ?? '__none__',
+        onPick(value, label) {
+          options.draft.review = { ...options.draft.review, verdict: value === '__none__' ? undefined : value as NonNullable<LifeDraft['review']>['verdict'] };
+          el.querySelector<HTMLButtonElement>('#life-summary-verdict')!.textContent = label;
+          update();
+        },
+      }));
       el.querySelector<HTMLTextAreaElement>('#life-summary-review')!.oninput = update;
       let existingPhotoSources: string[] = [];
       const renderPhotos = () => {

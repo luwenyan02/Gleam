@@ -11,6 +11,7 @@ import { showToast } from '../shell/toast';
 import { confirmDialog } from '../shell/dialog';
 import { confirmLifeAi } from './lifeAiConsent';
 import { openLifeComposer } from './lifeComposer';
+import { openPickList } from '../../shared/pickList';
 import './lifeAi.css';
 
 export function openLifeEdition(): void { openSubpage('sp-life-edition'); }
@@ -47,7 +48,7 @@ async function renderEdition(body: HTMLElement): Promise<void> {
   const status = (text: string) => { if (!closed) body.querySelector('#le-status')!.textContent = text; };
   const setBusy = (value: boolean) => {
     busy = value;
-    body.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement | HTMLSelectElement>('input,textarea,select,button').forEach(el => { if (!el.matches('[data-le-stop]')) el.disabled = value; });
+    body.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement>('input,textarea,button').forEach(el => { if (!el.matches('[data-le-stop]')) el.disabled = value; });
     body.querySelector<HTMLElement>('[data-le-stop]')?.toggleAttribute('hidden', !value);
     if (!value) body.querySelector<HTMLButtonElement>('[data-le-next]')!.disabled = week.key === previousLifeWeek().key;
   };
@@ -88,9 +89,20 @@ async function renderEdition(body: HTMLElement): Promise<void> {
     content.innerHTML = `<p class="le-hint">${esc(hint)}</p><article class="card le-paper"><p class="le-kicker">拾光周刊 · ${draft.blocks.length === 1 ? '一张小卡' : '生活的点点滴滴'}</p>
       ${readonly ? `<h2 class="le-title">${esc(draft.title)}</h2>` : `<label class="sr-only" for="le-title">周刊标题</label><input class="note le-title" id="le-title" maxlength="100" value="${esc(draft.title)}">`}
       ${coverUrl ? `<img class="le-cover" src="${coverUrl}" alt="自己选择的本周封面">` : ''}
-      ${!readonly && covers.length ? `<label class="le-cover-choice">本地封面<select id="le-cover"><option value="">不放封面</option>${covers.map((c,i) => `<option value="${c.id}" ${c.id === draft!.coverAttachmentId ? 'selected' : ''}>照片 ${i+1} · ${esc(c.name)}</option>`).join('')}</select></label>` : ''}
+      ${!readonly && covers.length ? `<div class="le-cover-choice"><span>本地封面</span><button class="pick-trigger" id="le-cover" type="button" aria-haspopup="listbox">${draft.coverAttachmentId == null ? '不放封面' : `照片 ${covers.findIndex(c => c.id === draft!.coverAttachmentId) + 1} · ${esc(covers.find(c => c.id === draft!.coverAttachmentId)?.name ?? '生活照片')}`}</button></div>` : ''}
       ${draft.blocks.map((block, index) => `<section class="le-block">${readonly ? `<p>${esc(block.text)}</p>` : `<label class="sr-only" for="le-block-${index}">片段 ${index + 1}</label><textarea class="note" id="le-block-${index}" data-le-text="${index}" maxlength="2000">${esc(block.text)}</textarea>`}<div class="lc-row"><button class="chip" data-le-view="${block.noteId}">回到原记录</button>${!readonly ? `<button class="chip" data-le-remove="${index}">不收录这段</button>` : ''}</div></section>`).join('')}
       </article><div class="lc-row">${readonly ? '<button class="btn ghost" data-le-edit>编辑这一期</button><button class="btn ghost" data-le-delete>清理这一期</button>' : '<button class="btn primary" data-le-save>收藏这一期</button><button class="btn ghost" data-le-reselect>重新选素材</button>'}</div>`;
+    content.querySelector('#le-cover')?.addEventListener('click', () => openPickList({
+      container: body,
+      title: '选择本地封面',
+      items: [{ value: '__none__', label: '不放封面' }, ...covers.map((cover, index) => ({ value: cover.id, label: `照片 ${index + 1} · ${cover.name}` }))],
+      selected: draft?.coverAttachmentId ?? '__none__',
+      onPick(value) {
+        if (!draft) return;
+        draft.coverAttachmentId = value === '__none__' ? undefined : Number(value);
+        void renderPaper();
+      },
+    }));
   }
   async function generate(): Promise<void> {
     if (busy || !selected.size) { if (!selected.size) status('选一个想留下的片段就好。'); return; }
@@ -140,7 +152,6 @@ async function renderEdition(body: HTMLElement): Promise<void> {
   body.addEventListener('change', event => {
     const el = event.target as HTMLInputElement;
     if (el.dataset.leSource) { const id = Number(el.dataset.leSource); if (el.checked) selected.add(id); else selected.delete(id); }
-    if (el.id === 'le-cover' && draft) { draft.coverAttachmentId = el.value ? Number(el.value) : undefined; void renderPaper(); }
   });
   body.addEventListener('input', event => {
     const el = event.target as HTMLInputElement;

@@ -79,13 +79,18 @@ def run_width(page, width: int) -> None:
     page.locator('.tab[data-page="page-mine"]').click()
     page.locator('#page-mine [data-sub="sp-settings"]').first.click()
     page.wait_for_selector('#sp-settings.open #accounting-month-start')
-    page.select_option('#accounting-month-start', '28')
+    page.locator('#accounting-month-start').click()
+    page.wait_for_selector('#sp-settings .picker-panel.open')
+    page.locator('#sp-settings .picker-panel').screenshot(
+        path=str(OUT / f'settings-picker-{width}.png'), animations='disabled')
+    page.locator('#sp-settings .picker-item[data-value="28"]').click()
     page.wait_for_function("document.querySelector('#sp-settings section[aria-label=\"记账偏好\"]')?.textContent.includes('当前周期')")
     expected = expected_period(page)
     settings_text = page.inner_text('#sp-settings section[aria-label="记账偏好"]')
     assert expected['key'] in settings_text and expected['longRange'] in settings_text, settings_text
     assert '财务月' not in settings_text, settings_text
-    assert page.locator('#accounting-month-start').input_value() == '28'
+    assert page.locator('#accounting-month-start').inner_text() == '每月 28 日'
+    assert page.locator('#sp-settings select').count() == 0
     assert_layout(page, '#sp-settings')
     page.locator('#sp-settings section[aria-label="记账偏好"]').screenshot(
         path=str(OUT / f'settings-{width}.png'), animations='disabled')

@@ -21,6 +21,7 @@ import { openSheet, closeSheet } from '../shell/sheet';
 import { confirmDialog } from '../shell/dialog';
 import { showToast } from '../shell/toast';
 import { openDateWheel } from '../../shared/dateTimeWheel';
+import { openPickList } from '../../shared/pickList';
 
 let body: HTMLElement | undefined;
 let refreshToken = 0;
@@ -112,6 +113,7 @@ function statementHtml(s: CreditStatementSummary, now: number): string {
 function openPaySheet(summary: CreditStatementSummary, cards: Map<number, Account>): void {
   const card = cards.get(summary.statement.accountId);
   let fromId: number | undefined;
+  let paymentAccounts: Account[] = [];
   let amount = summary.remaining;
   openSheet({
     ariaLabel: '记还款',
@@ -121,21 +123,34 @@ function openPaySheet(summary: CreditStatementSummary, cards: Map<number, Accoun
         <div class="sheet-head"><p class="sheet-title">记还款 · ${esc(card?.name ?? '')}</p><button class="icon-btn" data-act="close" aria-label="关闭">${iconHtml('ic-close')}</button></div>
         <div class="sheet-scroll">
           <p class="sub">剩余应还 <b class="num">${formatFenCny(summary.remaining)}</b> · 超出部分保留为未分配金额</p>
-          <div class="field"><span>付款账户</span><select class="note" id="cr-from" aria-label="付款账户"></select></div>
+          <div class="field"><span>付款账户</span><button class="pick-trigger" id="cr-from" type="button" data-act="from-account" aria-haspopup="listbox" disabled>正在读取账户…</button></div>
           <div class="field"><span>还款金额</span><input class="note num" id="cr-amount" inputmode="decimal" value="${formatFen(amount).replace(/,/g, '')}"></div>
           <button class="btn primary" data-act="save">生成转账并关联</button>
           <p class="tiny" style="margin-top:10px">资金变化记为普通转账，不重复记支出</p>
         </div>`;
       void (async () => {
-        const accounts = (await listAccounts()).filter(a => a.group !== 'credit' && a.group !== 'receivable' && !a.hidden);
-        const select = el.querySelector<HTMLSelectElement>('#cr-from')!;
-        select.innerHTML = accounts.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('');
-        fromId = accounts[0]?.id;
-        select.onchange = () => { fromId = Number(select.value); };
+        paymentAccounts = (await listAccounts()).filter(a => a.group !== 'credit' && a.group !== 'receivable' && !a.hidden);
+        const trigger = el.querySelector<HTMLButtonElement>('#cr-from')!;
+        fromId = paymentAccounts[0]?.id;
+        trigger.textContent = paymentAccounts[0]?.name ?? '没有可用付款账户';
+        trigger.disabled = !paymentAccounts.length;
       })();
       el.addEventListener('click', (e) => {
         const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
         if (act === 'close') closeSheet();
+        if (act === 'from-account') {
+          openPickList({
+            container: el,
+            title: '选择付款账户',
+            items: paymentAccounts.map(account => ({ value: account.id!, label: account.name })),
+            selected: fromId,
+            onPick(value, label) {
+              fromId = Number(value);
+              el.querySelector<HTMLButtonElement>('#cr-from')!.textContent = label;
+            },
+          });
+          return;
+        }
         if (act !== 'save') return;
         void (async () => {
           try {
