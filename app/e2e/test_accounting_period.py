@@ -50,6 +50,7 @@ def expected_period(page) -> dict:
       const key = `${keyStart.getFullYear()}-${String(keyStart.getMonth() + 1).padStart(2, '0')}`;
       return {
         key,
+        monthLabel: `${keyStart.getMonth() + 1}月`,
         longRange: `${keyStart.getFullYear()}/${keyStart.getMonth() + 1}/${keyStart.getDate()} – ${last.getFullYear()}/${last.getMonth() + 1}/${last.getDate()}`,
         homeRange: `${keyStart.getMonth() + 1}月${keyStart.getDate()}日–${last.getMonth() + 1}月${last.getDate()}日`,
         naturalYear: now.getFullYear(),
@@ -109,7 +110,8 @@ def run_width(page, width: int) -> None:
     page.locator('.tab[data-page="page-report"]').click()
     page.wait_for_function(f"document.querySelector('#r-label')?.textContent.includes('{expected['longRange']}')")
     report_label = page.inner_text('#r-label')
-    assert expected['key'] in report_label and expected['longRange'] in report_label, report_label
+    assert report_label == f"{expected['monthLabel']} · {expected['longRange']}", report_label
+    assert expected['key'] not in report_label, report_label
     assert '财务月' not in report_label, report_label
     assert page.inner_text('#r-spend') == '¥123.45'
     ranges = page.locator('#trend [data-drill-from][data-drill-to]').evaluate_all(
