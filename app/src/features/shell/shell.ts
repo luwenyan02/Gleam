@@ -6,9 +6,9 @@
  * FAB 规则（与原型一致）：
  * - 首页时中央为 FAB(+)，点击打开「记一笔」抽屉；
  * - 进入其他 Tab 后中央位置替换为「首页」Tab 按钮；
- * - 生活页右下角另挂 mini FAB(#fab-life，不进 tabbar)，
+ * - 拾光页另挂底部聊天入口(#fab-life，不进 tabbar)，
  *   仅 page-life 路由时显示；点击行为由 life 模块直接绑定，
- *   shell 不感知（样式 .fab.mini 在 life.css）。
+ *   shell 不感知（样式 .life-chat-dock 在 life.css）。
  */
 import { iconHtml } from '../../assets/icons';
 import { on } from '../../core/store';
@@ -32,7 +32,7 @@ const PAGE_META: { id: PageId; name: string; icon: string }[] = [
   { id: 'page-home', name: '首页', icon: 'ic-home' },
   { id: 'page-acct', name: '账户', icon: 'ic-wallet' },
   { id: 'page-report', name: '报表', icon: 'ic-chart' },
-  { id: 'page-life', name: '生活', icon: 'ic-book' },
+  { id: 'page-life', name: '拾光', icon: 'ic-book' },
   { id: 'page-mine', name: '我的', icon: 'ic-user' },
 ];
 
@@ -67,10 +67,10 @@ export function mountShell(root: HTMLElement): void {
         <button class="tab" data-page="page-report">${iconHtml('ic-chart')}报表</button>
         <button class="fab" id="fab" aria-label="记一笔">${iconHtml('ic-plus')}</button>
         <button class="tab" id="tab-home" data-page="page-home" hidden>${iconHtml('ic-home')}首页</button>
-        <button class="tab" data-page="page-life">${iconHtml('ic-book')}生活</button>
+        <button class="tab" data-page="page-life">${iconHtml('ic-book')}拾光</button>
         <button class="tab" data-page="page-mine">${iconHtml('ic-user')}我的</button>
       </nav>
-      <button class="fab mini" id="fab-life" aria-label="写一条生活记录" hidden>${iconHtml('ic-plus')}</button>
+      <button class="life-chat-dock" id="fab-life" data-life-chat aria-label="和拾光聊聊" hidden><span class="life-chat-mark" aria-hidden="true">✦</span><span class="life-chat-copy"><strong>和拾光聊聊</strong><span>这一刻，最想留下什么？</span></span>${iconHtml('ic-right', 18)}</button>
       <div id="scrim"></div>
       <section class="sheet" id="sheet" role="dialog" aria-modal="true"></section>
       <div class="dialog-scrim" id="dialog-scrim" aria-hidden="true" inert></div>
@@ -91,7 +91,7 @@ export function mountShell(root: HTMLElement): void {
   app.querySelector<HTMLElement>('#fab')!.addEventListener('click', () => fabAction());
 
   // FAB 规则与 tab 高亮：首页显示 FAB、隐藏「首页」tab；其他页反之；
-  // 生活页右下角 mini FAB 仅在 page-life 显示（初始 hidden，挂载即切首页无需闪现）
+  // 拾光页底部聊天入口仅在 page-life 显示
   on('route-changed', (payload) => {
     const pageId = (payload as { pageId: PageId }).pageId;
     const home = pageId === 'page-home';

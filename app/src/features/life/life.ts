@@ -1,7 +1,7 @@
 /**
  * 拾光 · 生活记录（features/life，PRD 4.14）
  * 一级页 page-life：日记、照片记录和习惯打卡统一按时间排序；照片 Blob 的 object URL
- * 统一回收。按月浏览；非空态使用右下角 #fab-life，空态只保留一个主操作。
+ * 统一回收。按月浏览；底部 #fab-life 始终提供 AI 对话入口。
  * 打卡时 checkHabit + addLifeNote 双写：打卡记录同时进首页时间线混排；
  * kind='habit' 的打卡记录用于重建连续天数，时间流由可操作的习惯卡呈现，避免重复展示。
  * 视觉结构与原型 index.html #page-life（L611-677）一致；数据一律经 lifeRepo。
@@ -30,6 +30,7 @@ import { initLifeChat, openLifeChat } from './lifeChat';
 import { initLifeEdition, openLifeEdition } from './lifeEdition';
 import { openLifeAiControls, renderLifeRevisits } from './lifeExtras';
 import './lifeAi.css';
+import { openMonthWheel } from '../../shared/dateTimeWheel';
 
 /** 抽屉监听器控制：#sheet 为复用容器，重开前必须废止上一次绑定 */
 let sheetAbort: AbortController | undefined;
@@ -84,29 +85,28 @@ function endOfMonth(monthStart: number): number {
 export function initLife(): void {
   initLifeEdition();
   initLifeChat();
-  // 右下角悬浮「+」（shell 挂载，mountShell 先于本函数）：直接绑定，
+  // 底部对话入口（shell 挂载，mountShell 先于本函数）：直接绑定，
   // shell 不感知 life 模块；节点常驻，一次绑定永久有效
-  document.getElementById('fab-life')?.addEventListener('click', () => openTypeSheet());
+  document.getElementById('fab-life')?.addEventListener('click', () => { void openLifeChat(); });
 
   registerPage('page-life', {
     render(el) {
       root = el;
       el.innerHTML = `
-        <header class="page-head">
-          <div>
-            <h2 class="brand sm">生活</h2>
-            <p class="sub" id="lf-sub"></p>
-          </div>
-          <div style="display:flex;gap:8px">
-            <button class="icon-btn" id="lf-prev" aria-label="查看上一月">${iconHtml('ic-left')}</button>
-            <button class="icon-btn" id="lf-next" aria-label="查看下一月" hidden>${iconHtml('ic-right')}</button>
+        <header class="lf-header">
+          <h2 class="brand sm">拾光</h2>
+          <div class="lf-month-nav" aria-label="浏览月份">
+            <button id="lf-prev" aria-label="查看上一月">${iconHtml('ic-left', 16)}</button>
+            <button id="lf-month" aria-label="选择拾光月份" aria-haspopup="dialog"><span id="lf-sub"></span><span class="lf-month-chevron" aria-hidden="true">⌄</span></button>
+            <button id="lf-next" aria-label="查看下一月">${iconHtml('ic-right', 16)}</button>
           </div>
         </header>
-        <div class="life-intro"><p>拾起生活的点点滴滴</p></div>
-        <div class="life-tools"><button class="chip" data-life-capture>快速记录</button><button class="chip life-chat-entry" data-life-chat>和拾光聊聊</button><button class="chip" data-life-edition>拾光周刊</button><button class="chip" data-life-ai-controls>AI 与隐私</button></div>
+        <p class="lf-tagline">拾起生活的点点滴滴</p>
+        <div class="lf-tools" aria-label="拾光工具"><button data-life-capture>${iconHtml('ic-pen', 16)}<span>快速记录</span></button><button data-life-edition>${iconHtml('ic-book', 16)}<span>拾光周刊</span></button><button data-life-ai-controls>${iconHtml('ic-set', 16)}<span>AI 与隐私</span></button></div>
         <div id="lf-revisits"></div>
         <p class="sub" id="lf-today-sum" style="padding:0 4px 12px"></p>
-        <div id="lf-feed"></div>`;
+        <div id="lf-feed"></div>
+        <button class="lf-more-records" id="lf-types" data-life-types>照片与习惯 ${iconHtml('ic-right', 14)}</button>`;
 
       el.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
@@ -116,7 +116,21 @@ export function initLife(): void {
         if (target.closest('[data-life-ai-controls]')) { void openLifeAiControls(); return; }
         if (target.closest('#lf-prev')) { shiftMonth(-1); return; }
         if (target.closest('#lf-next')) { shiftMonth(1); return; }
-        if (target.closest('#lf-empty')) { openTypeSheet(); return; }
+        if (target.closest('#lf-month')) {
+          const date = new Date(viewMonth);
+          const now = new Date();
+          document.body.appendChild(openMonthWheel({
+            title: '选择拾光月份',
+            initial: { year: date.getFullYear(), month: date.getMonth() + 1 },
+            maxDate: { year: now.getFullYear(), month: now.getMonth() + 1 },
+            onConfirm(result) {
+              viewMonth = new Date(result.year, result.month - 1, 1).getTime();
+              void refresh();
+            },
+          }));
+          return;
+        }
+        if (target.closest('[data-life-types]')) { openTypeSheet(); return; }
         const check = target.closest<HTMLElement>('[data-check]');
         if (check) {
           const habit = habits.find((h) => h.id === Number(check.dataset.check));
@@ -140,7 +154,7 @@ export function initLife(): void {
       });
       el.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
-        const actionable = (event.target as HTMLElement).closest<HTMLElement>('[data-note], [data-habit], #lf-empty');
+        const actionable = (event.target as HTMLElement).closest<HTMLElement>('[data-note], [data-habit]');
         if (!actionable || event.target instanceof HTMLButtonElement) return;
         event.preventDefault();
         actionable.click();
@@ -188,10 +202,10 @@ async function refresh(): Promise<void> {
   notes = monthNotes.filter(n => n.kind !== 'habit' || !isCurrent
     || dayKey(n.occurredAt) !== dayKey(Date.now()) || !habits.some(h => h.id === n.habitId));
 
-  el.querySelector('#lf-sub')!.textContent = `${new Date(viewMonth).getFullYear()}年 ${new Date(viewMonth).getMonth() + 1}月`;
+  el.querySelector('#lf-sub')!.textContent = `${new Date(viewMonth).getFullYear()}年${new Date(viewMonth).getMonth() + 1}月`;
   await renderLifeRevisits(el.querySelector<HTMLElement>('#lf-revisits')!, isCurrent, () => version === refreshVersion);
   if (!el.isConnected || version !== refreshVersion) return;
-  el.querySelector<HTMLElement>('#lf-next')!.hidden = isCurrent;
+  el.querySelector<HTMLButtonElement>('#lf-next')!.disabled = isCurrent;
 
   /* 今日支出摘要（仅当月视图） */
   const sumEl = el.querySelector<HTMLElement>('#lf-today-sum')!;
@@ -205,8 +219,8 @@ async function refresh(): Promise<void> {
     const total = summarizeLedgerEntries(todays, {
       reimburseMode: countAsIncome ? 'income' : 'offset',
     }).expense;
-    sumEl.hidden = false;
-    sumEl.textContent = todays.length ? `今天共花了 ¥${formatFen(total)} · ${todays.length} 笔` : '今天还没有支出 · 记一笔会显示在这里';
+    sumEl.hidden = !todays.length;
+    sumEl.textContent = todays.length ? `今天共花了 ¥${formatFen(total)} · ${todays.length} 笔` : '';
   } else {
     sumEl.hidden = true;
   }
@@ -289,15 +303,12 @@ async function refresh(): Promise<void> {
   photoUrls = nextPhotoUrls;
   const timeline = [...habitItems, ...noteItems].sort((a, b) => b.at - a.at);
   const fab = document.getElementById('fab-life');
+  if (fab) fab.hidden = !el.classList.contains('is-active');
   if (!timeline.length) {
-    if (fab) fab.hidden = true;
-    feed.innerHTML = isCurrent
-      ? `<section class="card lf-empty-state"><span class="e-ic life">${iconHtml('ic-book', 20)}</span><h3>留住今天的一点光</h3><p class="sub">可以写日记、记照片，或从一个小习惯开始</p><button class="btn primary" id="lf-empty">写下第一条</button></section>`
-      : '<p class="sub" style="padding:12px 4px">这个月没有生活记录</p>';
+    feed.innerHTML = `<section class="lf-quiet-empty"><span class="life-chat-mark" aria-hidden="true">✦</span><h3>${new Date(viewMonth).getMonth() + 1}月还没有留下片段</h3><p>不用补写，想记的时候再来</p></section>`;
     return;
   }
-  if (fab) fab.hidden = !el.classList.contains('is-active') || !isCurrent;
-  feed.innerHTML = timeline.map((item) => item.html).join('') + (isCurrent ? '<div class="lf-fab-space"></div>' : '');
+  feed.innerHTML = timeline.map((item) => item.html).join('');
 }
 
 /* ── 习惯打卡 ─────────────────── */

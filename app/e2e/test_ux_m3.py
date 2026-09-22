@@ -83,22 +83,22 @@ def main() -> int:
             assert page.evaluate("sessionStorage.getItem('gleam-secret:cloud.webdav.password') !== null")
 
             page.click('.tab[data-page="page-life"]')
-            page.wait_for_selector('#page-life.is-active #lf-empty')
+            page.wait_for_selector('#page-life.is-active #lf-types')
             assert page.locator('#lf-add').count() == 0
-            assert page.locator('#fab-life:visible').count() == 0, '空状态只能保留一个主操作'
+            assert page.locator('#fab-life:visible').count() == 1, '空状态也可从底部打开对话'
             assert page.get_attribute('#page-home', 'aria-hidden') == 'true'
             assert page.eval_on_selector('#page-home', 'el => el.inert') is True
 
-            page.click('#lf-empty')
+            page.click('#lf-types')
             page.wait_for_selector('#sheet.open')
             page.wait_for_timeout(350)
             assert page.eval_on_selector('#sheet', 'el => el.contains(document.activeElement)') is True
             page.keyboard.press('Escape')
             page.wait_for_selector('#sheet:not(.open)', state='attached')
             page.wait_for_timeout(100)
-            assert page.evaluate("document.activeElement?.id === 'lf-empty'"), '关闭弹层后焦点未回到触发按钮'
+            assert page.evaluate("document.activeElement?.id === 'lf-types'"), '关闭弹层后焦点未回到触发按钮'
 
-            page.click('#lf-empty')
+            page.click('#lf-types')
             page.click('#sheet [data-type="habit"]')
             page.fill('#lf-hname', '散步')
             page.click('#sheet [data-act="save"]')
@@ -106,7 +106,7 @@ def main() -> int:
             page.wait_for_selector('#lf-feed .habit')
             assert page.locator('#fab-life:visible').count() == 1
 
-            page.click('#fab-life')
+            page.click('#lf-types')
             page.click('#sheet [data-type="diary"]')
             page.fill('#lf-title', '今天的光')
             page.fill('#lf-body', '晚风很轻。')
