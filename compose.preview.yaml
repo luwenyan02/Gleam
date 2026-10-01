@@ -1,0 +1,40 @@
+name: gleam-preview
+services:
+  web:
+    build:
+      context: .
+      dockerfile: deploy/preview/Dockerfile
+    image: gleam-preview:local
+    init: true
+    restart: unless-stopped
+    # OrbStack forwards host-network loopback ports to macOS. Keeping Vite on
+    # 127.0.0.1 also preserves the voice bridge's strict loopback checks.
+    network_mode: host
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    env_file:
+      - path: ./app/.env.local
+        required: false
+    environment:
+      # Server-side only; never a build argument or a VITE_ variable.
+      - DASHSCOPE_API_KEY
+      - CHOKIDAR_USEPOLLING=true
+      - CHOKIDAR_INTERVAL=700
+    volumes:
+      - ./app/src:/app/src:ro
+      - ./app/public:/app/public:ro
+      - ./app/server:/app/server:ro
+      - ./app/index.html:/app/index.html:ro
+      - ./app/vite.config.ts:/app/vite.config.ts:ro
+      - ./app/tsconfig.json:/app/tsconfig.json:ro
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:5173/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'

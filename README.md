@@ -72,12 +72,21 @@
 
 ## 本地开发
 
+日常网页预览由 OrbStack 后台常驻提供，固定使用 <http://localhost:5173/>。在项目根目录运行：
+
+```sh
+sh scripts/preview-local.sh up
+```
+
+源码修改自动更新，不必保留终端窗口。依赖或环境配置变化后重新执行该命令；状态、停止和排错见[本地预览说明](docs/LOCAL_PREVIEW.md)。OrbStack 必须处于运行状态。不要同时启动另一份占用 5173 的临时服务。
+
 需要 Node.js 22、npm 10；运行端到端测试还需要 Python 3.11+ 和 Playwright。
 
 ```bash
 cd app
 npm ci
-npm run dev
+# 仅在未使用 OrbStack 常驻预览时手动启动：
+# npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
 提交前至少执行：

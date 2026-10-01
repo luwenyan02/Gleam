@@ -1,0 +1,10 @@
+# Build context is an allowlist: no ledger exports, screenshots, keys or Android signing files.
+**
+!app/
+!app/package.json
+!app/package-lock.json
+!app/vendor/
+!app/vendor/xlsx-0.20.3.tgz
+!deploy/
+!deploy/preview/
+!deploy/preview/Dockerfile
