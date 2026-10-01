@@ -243,14 +243,19 @@ def account_balances(page,width):
     fixture(page);before=ledger_snapshot(page)
     page.locator('.tab[data-page="page-acct"]').click();page.locator('[data-acct="1"]').click()
     page.locator('#account-months').wait_for();page.wait_for_timeout(400)
+    # 虚构流水发生在昨天，月初会落到上月；展开实际所属月份再测可见布局。
+    month=page.locator('#account-months .account-month').filter(has=page.locator('[data-eid="1"]'))
+    if month.locator('.account-month-head').get_attribute('aria-expanded') != 'true':
+        month.locator('.account-month-head').click()
+    page.locator('#account-months [data-eid="1"] .account-entry-balance').wait_for(state='visible')
     expected={7:'-48,698.25',6:'-48,758.25',5:'-48,706.25',3:'-48,696.25',2:'-48,638.25',1:'-48,650.25'}
     for ident,amount in expected.items():
         row=page.locator(f'#account-months [data-eid="{ident}"]')
         assert row.locator('.account-entry-balance').count()==1,f'账单 #{ident} 缺少交易后余额'
         assert row.locator('.account-entry-balance').inner_text()==f'余额 {amount}'
         assert row.locator('.account-entry-amounts').evaluate('e=>e.scrollWidth<=e.clientWidth+1'),'完整显示金额和余额'
-    # 模拟滚动到本月流水，检查最末一笔余额可完整移到固定记账按钮上方。
-    page.locator('.account-month.expanded').evaluate('e=>e.scrollIntoView({block:"start"})')
+    # 模拟滚动到流水所在月份，检查最末一笔余额不被固定记账按钮遮住。
+    month.evaluate('e=>e.scrollIntoView({block:"start"})')
     page.wait_for_timeout(150)
     last=page.locator('#account-months [data-eid="1"] .account-entry-balance').bounding_box()
     footer=page.locator('#account-detail-entry').bounding_box()

@@ -11,6 +11,7 @@ import os
 import sys
 import time
 import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 from playwright.sync_api import sync_playwright, Page
 
@@ -652,8 +653,11 @@ def test_6_batch_delete(page):
 def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        ctx = browser.new_context(service_workers='block', accept_downloads=True)
+        ctx = browser.new_context(service_workers='block', accept_downloads=True, timezone_id='Asia/Shanghai')
         page = ctx.new_page()
+        # 补账用例要求同月且早于今天；月初不存在这种日期，固定测试时钟。
+        # set_fixed_time 仅固定 Date，页面动画与异步定时器仍正常运行。
+        page.clock.set_fixed_time(datetime(2026, 10, 15, 4, tzinfo=timezone.utc).timestamp())
         page.on('pageerror', lambda e: print('PAGEERROR:', e))
 
         tests = [

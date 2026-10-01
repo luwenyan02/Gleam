@@ -45,11 +45,15 @@ def run(page,width):
     }''')
     if status_rects!=1:issues.append('已报销等短状态词不应拆成单字换行')
     page.locator('.tab[data-page="page-acct"]').click();page.locator('[data-acct="1"]').click()
+    # 昨天的虚构流水在月初属于上月，不能假定当前月份默认展开后就可见。
+    month=page.locator('#account-months .account-month').filter(has=page.locator('[data-eid="1"]'))
+    if month.locator('.account-month-head').get_attribute('aria-expanded') != 'true':
+        month.locator('.account-month-head').click()
     page.locator('.account-entry-balance').first.wait_for();page.wait_for_timeout(350)
     balance=text_style(page,'.account-entry-balance')
     if balance['size']<13:issues.append('逐笔余额小于13px')
     assert page.locator('.account-entry-amounts').evaluate_all('els=>els.every(e=>e.scrollWidth<=e.clientWidth+1)'), '金额/余额不能溢出'
-    page.locator('.account-month.expanded').evaluate('e=>e.scrollIntoView({block:"start"})')
+    month.evaluate('e=>e.scrollIntoView({block:"start"})')
     page.screenshot(path=str(OUT/f'account-{width}.png'))
     page.locator('#sp-account-detail [data-act="back"]').click();page.locator('#sp-account-detail').wait_for(state='detached')
     page.locator('#tab-home').click();page.locator('#fab').click()

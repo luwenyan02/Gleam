@@ -24,7 +24,7 @@ def assert_basic_workspace(page, width: int, height: int) -> None:
 
     labels = page.locator('.tabbar .tab, .tabbar #fab').all_inner_texts()
     joined = ''.join(item.replace('\n', '') for item in labels)
-    assert '账户' in joined and '报表' in joined and '生活' in joined and '我的' in joined
+    assert '账户' in joined and '报表' in joined and '拾光' in joined and '我的' in joined
 
     page.click('#fab')
     page.wait_for_selector('#sheet.open.entry-workspace #keypad', timeout=10_000)
