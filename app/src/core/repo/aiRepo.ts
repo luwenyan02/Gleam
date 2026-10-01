@@ -87,6 +87,7 @@ async function loadConfig(): Promise<{ baseUrl: string; model: string; apiKey: s
  */
 export interface AiChatRequest {
   messages: unknown[];
+  onDelta?: (text: string) => void;
   expectedDestination?: { baseUrl: string; model: string };
   signal?: AbortSignal;
   requireImageModel?: boolean;
@@ -102,7 +103,7 @@ function cancelledError(): Error {
  * OpenAI 兼容对话的共享出站边界。私密内容模式不读取或记录错误响应正文。
  */
 export async function requestAiChat({
-  messages, signal, requireImageModel = false, privateContent = false, expectedDestination,
+  messages, signal, requireImageModel = false, privateContent = false, expectedDestination, onDelta,
 }: AiChatRequest): Promise<string> {
   const { baseUrl, model, apiKey } = await loadConfig();
   if (expectedDestination && (baseUrl.trim() !== expectedDestination.baseUrl || model.trim() !== expectedDestination.model)) {
@@ -118,7 +119,7 @@ export async function requestAiChat({
     const res = await fetch(chatEndpoint(baseUrl), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, ...chatOptions(baseUrl, model), messages }),
+      body: JSON.stringify({ model, ...chatOptions(baseUrl, model), messages, ...(onDelta ? { stream: true } : {}) }),
       signal: ctrl.signal,
     });
     if (signal?.aborted) throw cancelledError();
@@ -135,6 +136,39 @@ export async function requestAiChat({
       if (res.status === 401) throw new Error('AI 接口认证失败（请检查 API Key）');
       if (res.status === 429) throw new Error('AI 接口限流，请稍后重试');
       throw new Error(`AI 接口返回状态码 ${res.status}`);
+    }
+    if (onDelta && res.headers.get('content-type')?.includes('text/event-stream')) {
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('AI 未返回可用内容');
+      const decoder = new TextDecoder();
+      let buffer = '', content = '', finished = false;
+      try {
+        while (!finished) {
+          const chunk = await reader.read();
+          if (signal?.aborted) throw cancelledError();
+          buffer += decoder.decode(chunk.value, { stream: !chunk.done }).replace(/\r/g, '');
+          if (buffer.length > 100_000) throw new Error('AI 返回内容过长');
+          let end: number;
+          while ((end = buffer.indexOf('\n\n')) >= 0) {
+            const event = buffer.slice(0, end); buffer = buffer.slice(end + 2);
+            const data = event.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
+            if (!data) continue;
+            if (data === '[DONE]') { finished = true; break; }
+            const parsed = JSON.parse(data);
+            if (parsed.error) throw new Error('生活 AI 暂时不可用，请重试');
+            const delta = parsed.choices?.[0]?.delta?.content;
+            if (typeof delta === 'string') {
+              content += delta;
+              if (content.length > 12_000) throw new Error('AI 返回内容过长');
+              onDelta(content);
+            }
+            if (parsed.choices?.[0]?.finish_reason) finished = true;
+          }
+          if (chunk.done) break;
+        }
+        if (!finished || !content.trim()) throw new Error('回复中断，请重试');
+        return content;
+      } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
     }
     let data: { choices?: { message?: { content?: string } }[] };
     try {

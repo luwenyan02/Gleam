@@ -88,7 +88,7 @@ describe('生活故事草稿仓库', () => {
   it('确认保存时才把摘要方案与完整会话原子写入正式记录', async () => {
     const messages = [
       { role: 'user' as const, content: '今天去了公园。' },
-      { role: 'assistant' as const, content: '有什么小细节想留下？' },
+      { role: 'assistant' as const, content: '有什么小细节想留下？', repliedAt: 1790749920000 },
       { role: 'user' as const, content: '池塘边有一只橘猫。' },
     ];
     await putLifeDraft(draft({

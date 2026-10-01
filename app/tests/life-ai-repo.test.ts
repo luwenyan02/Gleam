@@ -100,6 +100,43 @@ describe('生活 AI 显式授权边界', () => {
 });
 
 describe('生活 AI 结构化多轮对话', () => {
+  it('文字对话先识别当前意图，不默认陪聊、赞美或触发记录', async () => {
+    const fetchSpy = vi.fn(async (_url: string, _init: RequestInit) => response('可以从自由对话和按需整理两部分设计。'));
+    vi.stubGlobal('fetch', fetchSpy);
+    await continueLifeChat({ body: '', messages: [{ role: 'user', content: '我想设计一个陪聊记录产品，怎么做？' }], onDelta: () => {} });
+    const prompt = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body)).messages[0].content;
+    expect(prompt).toContain('先识别当前意图');
+    expect(prompt).toContain('不要默认用户是在请求你扮演');
+    expect(prompt).toContain('不要用固定夸赞开场');
+    expect(prompt).toContain('不必每次以问题结尾');
+    expect(prompt).toContain('只有用户主动要求');
+  });
+  it('以原生角色发送多轮对话，照片只附在最后一条用户消息上', async () => {
+    const fetchSpy = vi.fn(async (_url: string, _init: RequestInit) => response('直接回答当前问题。'));
+    vi.stubGlobal('fetch', fetchSpy);
+    const messages = [{ role: 'user' as const, content: '我在设计一个产品。' }, { role: 'assistant' as const, content: '可以从交互入手。' }, { role: 'user' as const, content: '看看这张界面。' }];
+    await continueLifeChat({ body: '', messages, photos: ['data:image/png;base64,AQ=='], onDelta: () => {} });
+    const sent = JSON.parse(String(fetchSpy.mock.calls[0][1].body)).messages;
+    expect(sent.map((m: { role: string }) => m.role)).toEqual(['system', 'user', 'assistant', 'user']);
+    expect(sent[1].content).toBe(messages[0].content);
+    expect(sent[2].content).toBe(messages[1].content);
+    expect(sent[3].content).toEqual([{ type: 'text', text: messages[2].content }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AQ==' } }]);
+    expect(messages[2].content).toBe('看看这张界面。');
+  });
+  it('流式对话按分片更新，兼容切断的 UTF-8 和多条 SSE 事件', async () => {
+    const payload = `data: ${JSON.stringify({ choices: [{ delta: { content: '你好' } }] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: { content: '，随便聊。' } }] })}\n\ndata: [DONE]\n\n`;
+    const bytes = new TextEncoder().encode(payload);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new ReadableStream({ start(controller) {
+      for (let i = 0; i < bytes.length; i += 3) controller.enqueue(bytes.slice(i, i + 3)); controller.close();
+    } }), { headers: { 'Content-Type': 'text/event-stream' } })));
+    const onDelta = vi.fn();
+    await expect(continueLifeChat({ body: '', messages: [{ role: 'user', content: '你好' }], onDelta })).resolves.toEqual({ reply: '你好，随便聊。', readyToSummarize: false });
+    expect(onDelta.mock.calls.map(call => call[0])).toEqual(['你好', '你好，随便聊。']);
+  });
+  it('中断的流不能被当成已完成回复', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('data: {"choices":[{"delta":{"content":"半句"}}]}\n\n', { headers: { 'Content-Type': 'text/event-stream' } })));
+    await expect(continueLifeChat({ body: '', messages: [{ role: 'user', content: '你好' }], onDelta: () => {} })).rejects.toThrow('中断');
+  });
   it('返回简短回复与模型明确给出的摘要就绪状态', async () => {
     const fetchSpy = vi.fn(async (_url: string, init: RequestInit) => {
       const payload = JSON.parse(String(init.body)) as { messages: Array<{ content: unknown }> };

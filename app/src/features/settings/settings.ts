@@ -12,7 +12,7 @@ import { getSetting, setSetting } from '../../core/repo/settingsRepo';
 import { testAiConnection, listAiModels } from '../../core/repo/aiRepo';
 import { AI_PROVIDERS, MODEL_CATALOG_CHECKED_ON, buildModelChoices, matchProviderId, modelPreset, recentModels } from './providers';
 import { ensurePermission } from '../../core/notify';
-import { registerSubpage } from '../shell/router';
+import { registerSubpage, openSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { showToast } from '../shell/toast';
 import { APP_VERSION } from '../backup/skbak';
@@ -28,6 +28,14 @@ import { formatAccountingRange } from '../../core/period';
 
 let body: HTMLElement | undefined;
 let sheetAbort: AbortController | undefined;
+let revealAiOnOpen = false;
+
+/** 复用设置页的接口配置；保留下层页面与草稿。 */
+export function openAiSettings(): void {
+  revealAiOnOpen = true;
+  openSubpage('sp-settings');
+  revealAiOnOpen = false;
+}
 
 function sheetSignal(): AbortSignal {
   sheetAbort?.abort();
@@ -172,6 +180,15 @@ async function refresh(): Promise<void> {
     const section = el.querySelector<HTMLElement>(`section[aria-label="${label}"]`);
     if (section) el.appendChild(section);
   }
+  if (el.dataset.revealAi) requestAnimationFrame(() => {
+    if (!el.isConnected || !el.dataset.revealAi) return;
+    delete el.dataset.revealAi;
+    const section = el.querySelector<HTMLElement>('section[aria-label="AI 记账"]');
+    // 只滚动设置内容，避免 scrollIntoView 同时移动外层、把返回栏卷走。
+    if (section) el.scrollTop += section.getBoundingClientRect().top - el.getBoundingClientRect().top;
+    const heading = section?.querySelector<HTMLElement>('h3');
+    if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
+  });
 }
 
 /* ── PIN 设置抽屉 ── */
@@ -236,6 +253,7 @@ export function initSettings(): void {
     title: '设置',
     render(el) {
       body = el;
+      if (revealAiOnOpen) el.dataset.revealAi = 'true';
       el.addEventListener('click', (e) => {
         const t = e.target as HTMLElement;
         const sw = t.closest<HTMLElement>('[data-sw]')?.dataset.sw;

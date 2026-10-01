@@ -103,6 +103,7 @@ export function validateLifeDraft(input: unknown): asserts input is LifeDraft {
   if (!draft || typeof draft.key !== 'string' || !draft.key.trim()) throw new Error('草稿 key 无效');
   if (typeof draft.title !== 'string' || typeof draft.body !== 'string') throw new Error('草稿文字无效');
   if (!Number.isFinite(draft.occurredAt)) throw new Error('草稿发生时间无效');
+  if (draft.chatUpdatedAt != null && !Number.isFinite(draft.chatUpdatedAt)) throw new Error('会话更新时间无效');
   if (draft.sourceUpdatedAt != null && !Number.isFinite(draft.sourceUpdatedAt)) throw new Error('草稿来源版本无效');
   if (typeof draft.aiExcluded !== 'boolean' || [draft.aiText, draft.pendingReply, draft.mood, draft.originalBody, draft.migratedBodyMessage].some(value => value != null && typeof value !== 'string')) throw new Error('草稿可选字段无效');
   if (draft.tags != null && (!Array.isArray(draft.tags) || draft.tags.some(tag => typeof tag !== 'string'))) throw new Error('草稿标签无效');
@@ -211,6 +212,22 @@ export async function getLifeDraft(key: string): Promise<LifeDraft | undefined> 
   return db.lifeDrafts.get(key);
 }
 
+export interface LifeChatSession { key: string; title: string; updatedAt: number; noteId?: number; saved: boolean; }
+
+/** 普通快速记录不混入聊天；已保存会话仍可从历史继续。 */
+export async function listLifeChatSessions(): Promise<LifeChatSession[]> {
+  const [drafts, notes] = await Promise.all([db.lifeDrafts.toArray(), db.lifeNotes.toArray()]);
+  const chats = drafts.filter(draft => draft.key.startsWith('chat:') && (isLifeChatDraft(draft) || draft.photos.length));
+  const sessions: LifeChatSession[] = chats.map(draft => ({ key: draft.key, noteId: draft.noteId,
+    title: draft.messages.find(message => message.role === 'user')?.content.slice(0, 80) || draft.pendingReply?.slice(0, 80) || '照片里的片刻',
+    updatedAt: draft.chatUpdatedAt ?? draft.occurredAt, saved: false }));
+  for (const note of notes) {
+    if (note.deletedAt || !note.conversation?.length || chats.some(draft => draft.noteId === note.id)) continue;
+    sessions.push({ key: `chat:note:${note.id}`, noteId: note.id, title: note.title || note.conversation[0].content.slice(0, 80), updatedAt: note.updatedAt, saved: true });
+  }
+  return sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
 export async function putLifeDraft(draft: LifeDraft): Promise<void> {
   validateLifeDraft(draft);
   await db.transaction('rw', [db.lifeDrafts, db.lifeNotes, db.lifeEditions, db.attachments, db.entryAttachments, db.settings], async () => {
@@ -289,6 +306,7 @@ export async function saveLifeDraft(key: string): Promise<number> {
       persistedMessages.push({
         role: message.role,
         content: message.content,
+        ...(message.repliedAt != null ? { repliedAt: message.repliedAt } : {}),
         ...(messageRefs.length ? { photoRefs: messageRefs } : {}),
       });
     }

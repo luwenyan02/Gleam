@@ -97,7 +97,7 @@ export function initLife(): void {
           <h2 class="brand sm">拾光</h2>
           <div class="lf-month-nav" aria-label="浏览月份">
             <button id="lf-prev" aria-label="查看上一月">${iconHtml('ic-left', 16)}</button>
-            <button id="lf-month" aria-label="选择拾光月份" aria-haspopup="dialog"><span id="lf-sub"></span><span class="lf-month-chevron" aria-hidden="true">⌄</span></button>
+            <button id="lf-month" aria-label="选择拾光月份" aria-haspopup="dialog" title="点击选择月份"><span id="lf-sub"></span></button>
             <button id="lf-next" aria-label="查看下一月">${iconHtml('ic-right', 16)}</button>
           </div>
         </header>

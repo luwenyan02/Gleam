@@ -131,11 +131,11 @@ def run(page, width):
     assert '照片：1 张' in page.locator('#dialog-scrim').inner_text()
     page.locator('#dialog-scrim [data-act="ok"]').click()
     page.get_by_text('同一张照片再次选择，也留在这一轮。').wait_for()
-    page.get_by_text('已经有一个值得留下的片段了').wait_for()
+    assert page.get_by_text('已经有一个值得留下的片段了').count() == 0
     screenshot(page, 'chat-ready', width, '#sp-life-chat')
 
     # 使用已形成的会话进入 A1；摘要可以编辑，保存会把完整对话留在本机。
-    page.locator('[data-life-chat-summary]').click()
+    page.locator('[data-chat-organize]').click()
     page.locator('#sheet.open [data-life-summary-save]').wait_for()
     page.locator('#life-summary-title').fill('我改过的阳台片段')
     page.locator('#life-summary-body').fill('我改过的正文。')

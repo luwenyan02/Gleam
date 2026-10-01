@@ -304,6 +304,8 @@ export interface LifeReview {
 export interface LifeChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** AI 回复完成的时间点；旧消息和语音转写可缺省。 */
+  repliedAt?: number;
   /** 草稿中用户明确随本轮发送的本地照片；不会随之后的纯文字请求再次上传。 */
   photos?: LifeDraftPhoto[];
   /** 正式记录中该轮照片的本地附件引用，避免在会话里重复保存 base64。 */
@@ -327,6 +329,7 @@ export interface LifeDraftPhoto {
 /** 本地编辑草稿；照片原图内联以便 JSON 备份，不代表已授权上传。 */
 export interface LifeDraft {
   key: string;
+  chatUpdatedAt?: number;
   sourceUpdatedAt?: number;
   title: string;
   body: string;
