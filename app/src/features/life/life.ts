@@ -93,15 +93,17 @@ export function initLife(): void {
     render(el) {
       root = el;
       el.innerHTML = `
-        <header class="lf-header">
-          <h2 class="brand sm">拾光</h2>
+        <header class="page-head lf-header">
+          <div class="lf-heading">
+            <h2 class="brand sm">拾光</h2>
+            <p class="lf-tagline">拾起生活的点点滴滴</p>
+          </div>
           <div class="lf-month-nav" aria-label="浏览月份">
             <button id="lf-prev" aria-label="查看上一月">${iconHtml('ic-left', 16)}</button>
             <button id="lf-month" aria-label="选择拾光月份" aria-haspopup="dialog" title="点击选择月份"><span id="lf-sub"></span></button>
             <button id="lf-next" aria-label="查看下一月">${iconHtml('ic-right', 16)}</button>
           </div>
         </header>
-        <p class="lf-tagline">拾起生活的点点滴滴</p>
         <div class="lf-tools" aria-label="拾光工具"><button data-life-capture>${iconHtml('ic-pen', 16)}<span>快速记录</span></button><button data-life-edition>${iconHtml('ic-book', 16)}<span>拾光周刊</span></button><button data-life-ai-controls>${iconHtml('ic-set', 16)}<span>AI 与隐私</span></button></div>
         <div id="lf-revisits"></div>
         <p class="sub" id="lf-today-sum" style="padding:0 4px 12px"></p>

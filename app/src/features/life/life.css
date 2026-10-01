@@ -65,13 +65,14 @@ textarea.note{width:100%;min-height:96px;resize:none;line-height:1.7}
 
 /* 拾光：紧凑月份栏、轻量工具栏与底部对话入口。 */
 #page-life{padding-bottom:110px}
-.lf-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:4px 0 8px}
+.lf-header{gap:8px}
+.lf-heading{min-width:0}
 .lf-header .brand{flex:none;margin:0}
 .lf-month-nav{display:grid;grid-template-columns:44px auto 44px;align-items:center;border:1px solid var(--border);border-radius:13px;background:var(--surface)}
 .lf-month-nav button{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;color:var(--muted)}
 .lf-month-nav button:disabled{opacity:.25}
 #lf-month{gap:5px;font-size:13px;font-weight:600;white-space:nowrap}
-.lf-tagline{font-size:13px;color:var(--muted);margin:0 0 14px}
+.lf-tagline{font-size:13px;color:var(--muted);margin:2px 0 0}
 .lf-tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:18px;border:1px solid var(--border);border-radius:13px;background:var(--surface);overflow:hidden}
 .lf-tools button{display:flex;align-items:center;justify-content:center;gap:6px;min-height:50px;padding:8px 4px;font-size:13px;color:var(--muted);white-space:nowrap}
 .lf-tools button+button{border-left:1px solid var(--border)}

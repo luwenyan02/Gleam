@@ -7,12 +7,34 @@ URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:5173/')
 OUT = Path(__file__).parents[2] / '.tmp/tests/e2e/life-layout'
 
 
+def heading_gap(page, title, subtitle):
+    page.locator(title).wait_for(state='visible')
+    page.wait_for_timeout(300)
+    title_box = page.locator(title).bounding_box()
+    subtitle_box = page.locator(subtitle).bounding_box()
+    return subtitle_box['y'] - title_box['y'] - title_box['height']
+
+
 def run(page, width):
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
     page.goto(URL)
+    home_gap = heading_gap(page, '#page-home .brand', '#page-home .page-head .sub')
+    page.locator('[data-page="page-acct"]').click()
+    account_gap = heading_gap(page, '#page-acct .brand', '#page-acct .page-head .sub')
     page.locator('[data-page="page-life"]').click()
     page.locator('#lf-month').wait_for()
+    life_gap = heading_gap(page, '.lf-header .brand', '.lf-tagline')
+    assert abs(life_gap - home_gap) < 0.5, (width, life_gap, home_gap)
+    assert abs(life_gap - account_gap) < 0.5, (width, life_gap, account_gap)
+    title_box = page.locator('.lf-header .brand').bounding_box()
+    tagline_box = page.locator('.lf-tagline').bounding_box()
+    month_box = page.locator('.lf-month-nav').bounding_box()
+    assert abs(title_box['x'] - tagline_box['x']) < 0.5
+    assert title_box['x'] + title_box['width'] + 8 <= month_box['x']
+    assert tagline_box['x'] + tagline_box['width'] + 8 <= month_box['x']
+    assert page.locator('.lf-tagline').evaluate('el => el.scrollWidth <= el.clientWidth + 1')
+    assert tagline_box['height'] < 21, (width, tagline_box)
     assert page.locator('[data-page="page-life"]').inner_text() == '拾光'
     assert page.locator('#lf-next').is_disabled()
     page.wait_for_timeout(300)
