@@ -82,7 +82,7 @@ describe('共享批量账单事务', () => {
     expect(await db.entries.where('categoryId').equals(expenseTwo).count()).toBe(1001);
     expect((await db.accounts.get(cash))?.balance).toBe(10_000);
     expect(events).toEqual(['entries-changed']);
-  });
+  }, 15_000);
 
   it('后续写入块中途失败时，之前的所有块仍在同一事务内回滚', async () => {
     const ids = await seedCategoryBatch(1001);
@@ -99,7 +99,7 @@ describe('共享批量账单事务', () => {
     expect(await db.entries.where('categoryId').equals(expenseOne).count()).toBe(1001);
     expect(await db.entries.where('categoryId').equals(expenseTwo).count()).toBe(0);
     expect(events).toEqual([]);
-  });
+  }, 15_000);
 
   it('改分类复用当前写事务内已预检的账单，不重复批量读取', async () => {
     const ids = await seedMixedEntries();

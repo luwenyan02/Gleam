@@ -157,6 +157,58 @@ def main() -> None:
             })'''),
         }, flush=True)
         page.screenshot(path=str(OUT / 'search-and-batch-390.png'), full_page=True)
+        if batch_elapsed >= 15:
+            print('FRESH_WRITE_QUEUE_DIAGNOSTIC', page.evaluate('''async ({ source, target }) => {
+              const open = (name, upgrade) => new Promise((resolve, reject) => {
+                const request = indexedDB.open(name, 1);
+                request.onupgradeneeded = () => upgrade?.(request.result);
+                request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+              });
+              const sourceDb = await new Promise((resolve, reject) => {
+                const request = indexedDB.open('GleamDB');
+                request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+              });
+              const sourceStore = sourceDb.transaction('entries').objectStore('entries');
+              const indexes = Array.from(sourceStore.indexNames).map(name => {
+                const index = sourceStore.index(name);
+                return { name, keyPath: index.keyPath, unique: index.unique, multiEntry: index.multiEntry };
+              });
+              const rows = await new Promise((resolve, reject) => {
+                const request = sourceStore.getAll();
+                request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+              });
+              sourceDb.close();
+              const results = [];
+              for (const chunkSize of [500, 100, 50]) {
+                const name = `GleamSyntheticWriteBenchmark-${chunkSize}-${Date.now()}`;
+                const db = await open(name, db => {
+                  const store = db.createObjectStore('entries', { keyPath: 'id', autoIncrement: true });
+                  for (const index of indexes) store.createIndex(index.name, index.keyPath, index);
+                  for (const name of ['accounts', 'entryTags', 'categories', 'tags']) db.createObjectStore(name, { keyPath: 'id' });
+                });
+                const seed = db.transaction('entries', 'readwrite');
+                const seeded = new Promise((resolve, reject) => { seed.oncomplete = resolve; seed.onabort = () => reject(seed.error); });
+                for (const row of rows) seed.objectStore('entries').put({ ...row, categoryId: source });
+                await seeded;
+                const ordered = [...rows].sort((a, b) => b.id - a.id);
+                const start = performance.now();
+                const tx = db.transaction(['entries', 'accounts', 'entryTags', 'categories', 'tags'], 'readwrite');
+                const complete = new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); });
+                for (let offset = 0; offset < ordered.length; offset += chunkSize) {
+                  await new Promise((resolve, reject) => {
+                    let last;
+                    for (const row of ordered.slice(offset, offset + chunkSize)) last = tx.objectStore('entries').put({ ...row, categoryId: target });
+                    last.addEventListener('success', resolve, { once: true });
+                    last.addEventListener('error', () => reject(last.error), { once: true });
+                  });
+                }
+                await complete;
+                results.push({ chunkSize, count: ordered.length, milliseconds: performance.now() - start });
+                db.close();
+                await new Promise((resolve, reject) => { const request = indexedDB.deleteDatabase(name); request.onsuccess = resolve; request.onerror = () => reject(request.error); });
+              }
+              return results;
+            }''', {'source': SOURCE_CATEGORY_ID, 'target': TARGET_CATEGORY_ID}), flush=True)
         assert batch_elapsed < 15, f'一万笔批量改分类耗时过长：{batch_elapsed:.2f}s'
         assert target_count == COUNT
         assert source_count == 0
