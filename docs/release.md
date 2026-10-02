@@ -2,7 +2,9 @@
 
 当前恢复通过 GitHub 维护源码与文档。本轮仅发布验证后合并到 `main` 的最新 Android 安装包，不补发历史版本或调整历史 Release。安装包与校验文件通过 GitHub Releases 分发，不进入源码历史。
 
-当前源码版本为 `1.8.0`（Android `versionCode` 为 `10800`）；这里列出发布流程，不代表安装包已经构建、通过验收或发布。
+当前源码版本为 `1.8.0`（Android `versionCode` 为 `10800`）。[v1.8.0 已于 2026-10-02 发布](https://github.com/luwenyan02/Gleam/releases/tag/v1.8.0)，对应源码提交 `8707ddc`；APK、SHA-256 校验文件及最终验证记录均在该发布页。
+
+本版作为普通 Release 发布；真机项目仍未完成，具体范围见发布说明。以下为一般构建与发布流程。
 
 ## 版本来源
 

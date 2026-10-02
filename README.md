@@ -4,16 +4,17 @@
 
 [![Android](https://img.shields.io/badge/Android-Capacitor-3DDC84)](https://capacitorjs.com/)
 [![PWA](https://img.shields.io/badge/PWA-offline--ready-D66A2C)](https://developer.mozilla.org/docs/Web/Progressive_web_apps)
+[![v1.8.0](https://img.shields.io/badge/release-v1.8.0-orange)](https://github.com/luwenyan02/Gleam/releases/tag/v1.8.0)
 
-拾光把日常账目、账户变化、生活随记和习惯记录放在同一个本地应用中。数据默认保存在设备内；云备份、AI 识别与生活 AI 均为用户主动配置的可选能力。
+记清每一笔钱，也留住日常的小片段。拾光把账目、账户、预算报表和生活记录放在同一个本地应用中：可以快速记一笔、写一句随记，也可以和拾光聊聊，再把选中的片段整理成周刊。数据默认保存在设备内；云备份、AI 识别与生活 AI 均为用户主动配置的可选能力。
 
-> 当前恢复通过 GitHub 维护源码与文档。本轮计划仅发布合并后的最新 Android 安装包，不补发历史版本。当前源码版本为 v1.8.0；安装包是否已发布、候选状态与验证范围以 [GitHub Releases](https://github.com/luwenyan02/Gleam/releases) 中的实际发布说明为准。
+> [v1.8.0 已于 2026-10-02 发布](https://github.com/luwenyan02/Gleam/releases/tag/v1.8.0)，提供 Android APK 与 SHA-256 校验文件。自动化检查已通过，真实设备的安装、输入法、返回手势和备份恢复等仍未验证；安装前请阅读发布说明与下方升级提示。
 
 ## 为什么是拾光
 
 - **本地优先**：无需注册账号即可使用，核心数据保存在本机。
 - **完整记账口径**：支持支出、收入、转账、借贷、退款和报销。
-- **记账与生活相连**：一笔账可以关联当天的日记、照片或习惯记录。
+- **记账与生活相连**：一笔账可以关联生活记录，补充照片、感受和回访。
 - **数据可带走**：支持加密备份、Excel 导入导出、WebDAV 与 S3 兼容备份。
 - **多端形态**：提供 Android 应用，并可作为离线 PWA 使用。
 
@@ -63,23 +64,27 @@
 
 ## 界面预览
 
-以下为 2026-09-07 及之前版本的历史截图，使用虚构演示数据生成，不包含真实账目或个人信息；未展示当前版本的聊天、周刊等新增界面。
+以下为 **v1.8.0 网页生产构建的真实浏览器截图**，于 2026-10-02 使用隔离环境中的虚构数据生成。聊天与周刊采用本地模拟回复，不调用真实外部模型，也不包含真实账目或个人信息。它们展示网页端界面，不代表 Android 真机验收已完成。
 
-界面现采用浅灰背景、白色卡片、深色文字和橙红重点；参考挖财的清晰布局，保留拾光的记账与生活双模块。
+浅灰背景、白色卡片、深色文字和橙红重点，配合固定的「账户｜报表｜记一笔／首页｜拾光｜我的」底部入口。下图可点击查看原尺寸。
 
 <!-- SCREENSHOTS_START -->
-| 快速总览 | 报表下钻 | 生活时间流 |
+| 首页 · 收支与预算 | 账户 · 余额与净资产 | 报表 · 分类与趋势 |
 | --- | --- | --- |
-| ![拾光首页虚构数据演示](docs/assets/screenshots/home-demo.png) | ![拾光分类报表虚构数据演示](docs/assets/screenshots/report-demo.png) | ![拾光生活时间流虚构数据演示](docs/assets/screenshots/life-demo.png) |
+| ![v1.8.0 首页：本月收支、预算剩余与日常流水，虚构数据](docs/assets/screenshots/home-demo.png) | ![v1.8.0 账户：资金账户、应收应付与净资产，虚构数据](docs/assets/screenshots/accounts-demo.png) | ![v1.8.0 报表：财务周期、分类占比与收支汇总，虚构数据](docs/assets/screenshots/report-demo.png) |
+
+| 拾光 · 随记与习惯 | 和拾光聊聊 · AI 对话 | 拾光周刊 · 收藏片段 |
+| --- | --- | --- |
+| ![v1.8.0 拾光：快速记录、生活时间流与习惯打卡，虚构数据](docs/assets/screenshots/life-demo.png) | ![v1.8.0 AI 聊天：新聊天、设置、会话与整理入口，本地模拟回复](docs/assets/screenshots/chat-demo.png) | ![v1.8.0 拾光周刊：经确认收藏的每周生活片段，本地模拟内容](docs/assets/screenshots/weekly-demo.png) |
 <!-- SCREENSHOTS_END -->
 
-[借贷双账户预览](docs/assets/screenshots/loan-demo.png)：资金账户与应收应付账户之间的本金划转。
+[借贷双账户预览](docs/assets/screenshots/loan-demo.png)：资金账户与应收应付账户之间的本金划转。截图来源、演示数据与复现方式见[预览说明](docs/assets/screenshots/README.md)。
 
 ## 安装与使用
 
-- Android 安装包发布后，可从 [GitHub Releases](https://github.com/luwenyan02/Gleam/releases) 下载 APK 与 SHA-256 校验文件；安装前阅读对应版本的验证范围和升级提示。
+- Android 7.0 及以上：从 [v1.8.0 发布页](https://github.com/luwenyan02/Gleam/releases/tag/v1.8.0) 下载 APK 与 SHA-256 校验文件；安装前阅读对应版本的验证范围和升级提示。
 - 本轮使用新发布证书，不能直接覆盖旧证书安装。旧版用户须先在“我的 → 数据与备份”导出并妥善保存加密备份，再卸载旧版、安装新版并恢复；卸载会删除本地数据，没有备份时不要卸载。设备上的重装与恢复仍待验证。
-- 未完成全部真机验收的包标记为候选版，具体待验项目以发布说明为准。
+- v1.8.0 已作为普通 GitHub Release 发布；这一发布状态不等同于完成真机验收，具体待验项目以发布说明为准。
 - PWA 通过网页生产构建和预览使用；实时语音仅在配置了本机中转的开发服务中可用。
 - 自行构建的方法见[发布指南](docs/release.md)；本地 APK 与校验文件保存在被 Git 忽略的 `release/` 目录，不进入源码历史。
 
@@ -116,7 +121,9 @@ npm run test:e2e
 
 ## 版本与验收
 
-完整功能变化和历史验证记录见[更新记录](CHANGELOG.md)。历史版本的通过记录不能代替当前合并提交的测试结果；发布前需重新完成适用检查，Android 产物还需核对当前授权证书、版本与网页资源一致性。构建通过不代表真机验收已完成。
+v1.8.0 发布提交 `8707ddc` 的[完整 CI](https://github.com/luwenyan02/Gleam/actions/runs/36982150269)已通过：321 项 TypeScript 单元测试、35 个浏览器回归套件与 7 项 Android 单元测试，并完成生产构建、依赖审计和敏感信息检查。APK 的签名、版本及内嵌网页资源另行核验，详见[发布说明](https://github.com/luwenyan02/Gleam/releases/tag/v1.8.0)。
+
+完整功能变化和历史验证记录见[更新记录](CHANGELOG.md)。这些结果对应明确的发布提交，不能代替后续版本或真实设备的验收。
 
 ## 参与维护
 
