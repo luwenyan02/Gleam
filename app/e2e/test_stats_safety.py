@@ -299,6 +299,29 @@ def home_dense_single_day_page(page):
     assert page.locator('#hm-today [data-entry-row]').count() == 60
     assert page.locator('#hm-more').inner_text() == '已展示全部流水'
 
+
+def home_dense_multi_page_day(page):
+    dates = page.evaluate('''() => {
+      const now = new Date();
+      return [0, -1].map(offset => new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, 12).getTime());
+    }''')
+    entries = [{
+        'id': index + 1, 'type': 'expense', 'amount': 100,
+        'occurredAt': dates[0], 'categoryId': 1, 'accountId': 1,
+        'note': f'虚构密集流水{index + 1}',
+    } for index in range(100)]
+    seed(page, [*entries, {
+        'id': 101, 'type': 'expense', 'amount': 200, 'occurredAt': dates[1],
+        'categoryId': 1, 'accountId': 1, 'note': '虚构更早流水',
+    }])
+    page.wait_for_function("document.querySelectorAll('#hm-today [data-entry-row]').length === 100")
+    assert page.locator('#hm-more').inner_text() == '下拉加载更早的流水…'
+    page.locator('#page-home').evaluate('element => { element.scrollTop = element.scrollHeight; }')
+    page.wait_for_function("document.querySelectorAll('#hm-days [data-entry-row]').length === 101")
+    assert page.locator('#hm-today [data-entry-row]').count() == 100
+    assert page.locator('#hm-more').inner_text() == '已展示全部流水'
+
+
 if __name__ == '__main__':
     cases = [
         (offset_consistency, 390),
@@ -307,6 +330,7 @@ if __name__ == '__main__':
         (calendar_refund_direction, 390),
         (calendar_picker_layered_back, 390),
         (home_dense_single_day_page, 390),
+        *((home_dense_multi_page_day, width) for width in (360, 390, 430, 1024)),
         *((signed_refund_trend, width) for width in (360, 390, 430, 1024)),
     ]
     if os.environ.get('GLEAM_E2E_CASE'):
@@ -327,6 +351,13 @@ if __name__ == '__main__':
             except Exception:
                 failures.append(f'{case.__name__}-{width}')
                 print('FAIL', case.__name__, width, traceback.format_exc(), flush=True)
+                print('HOME_METRICS', page.locator('#page-home').evaluate('''element => ({
+                  active: element.classList.contains('is-active'), inert: element.inert,
+                  top: element.scrollTop, height: element.clientHeight, total: element.scrollHeight,
+                  rows: element.querySelectorAll('[data-entry-row]').length,
+                  todayRows: element.querySelectorAll('#hm-today [data-entry-row]').length,
+                  more: element.querySelector('#hm-more')?.textContent,
+                })'''), flush=True)
                 page.screenshot(path=str(SHOTS / f'{case.__name__}-{width}-fail.png'))
             finally:
                 context.close()
