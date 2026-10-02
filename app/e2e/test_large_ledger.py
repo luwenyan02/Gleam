@@ -101,20 +101,37 @@ def main() -> None:
         page.set_default_timeout(20_000)
         page.add_init_script('''(() => {
           const trace = window.__gleamBatchMetrics = { transactions: [], homeRenders: [] };
+          const transactions = new WeakMap();
           const transaction = IDBDatabase.prototype.transaction;
           IDBDatabase.prototype.transaction = function(...args) {
             const tx = transaction.apply(this, args);
             const stores = Array.from(tx.objectStoreNames);
             if (tx.mode === 'readwrite' && stores.length === 5 &&
                 ['entries', 'accounts', 'entryTags', 'categories', 'tags'].every(name => stores.includes(name))) {
-              const row = { start: performance.now(), duration: null, state: 'running' };
+              const row = { start: performance.now(), duration: null, state: 'running', requests: {} };
               trace.transactions.push(row);
+              transactions.set(tx, row);
               for (const event of ['complete', 'abort']) tx.addEventListener(event, () => {
                 row.duration = performance.now() - row.start; row.state = event;
               }, { once: true });
             }
             return tx;
           };
+          for (const method of ['get', 'put']) {
+            const original = IDBObjectStore.prototype[method];
+            IDBObjectStore.prototype[method] = function(...args) {
+              const start = performance.now();
+              const request = original.apply(this, args);
+              const row = transactions.get(this.transaction);
+              if (row) {
+                const key = `${this.name}.${method}`;
+                const metrics = row.requests[key] ||= { count: 0, firstStart: start, lastStart: start, lastFinish: null };
+                metrics.count++; metrics.lastStart = start;
+                request.addEventListener('success', () => { metrics.lastFinish = performance.now(); }, { once: true });
+              }
+              return request;
+            };
+          }
           const html = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
           Object.defineProperty(Element.prototype, 'innerHTML', {
             ...html,
