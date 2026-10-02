@@ -69,6 +69,15 @@ def run(page, width):
     page.locator('[data-life-chat]').click()
     for removed in ('聊聊想法与日常', '不必每天来，想说的时候我都在。', 'AI 也会出错，请核实重要信息'):
         assert removed not in page.locator('#sp-life-chat').inner_text()
+    # 谈到收入的普通聊天不能被误判为查询账本，更不能被空账本拦住。
+    page.locator('#life-chat-input').fill('我今天没收入，有点难过')
+    page.locator('[data-life-chat-send]').click()
+    expect(page.locator('#dialog-scrim.show')).to_contain_text('我今天没收入，有点难过')
+    assert page.locator('[data-ledger-preview]').count() == 0
+    assert not payloads
+    page.locator('#dialog-scrim [data-act="cancel"]').click()
+    page.locator('[data-chat-start]').click()
+    page.locator('.chat-welcome').wait_for()
     page.get_by_role('button', name='分析消费', exact=True).click()
     assert page.locator('#life-chat-input').input_value() == '帮我分析一下我这个月的消费情况。'
     page.locator('[data-life-chat-send]').click()
