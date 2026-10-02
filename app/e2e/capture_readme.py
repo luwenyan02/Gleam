@@ -75,7 +75,8 @@ def seed(page):
       ]);
       put('habits', [{id: 1, name: '晚饭后散步', sortOrder: 1}]);
       put('habitChecks', ['09-29', '09-30', '10-01'].map((day, i) => ({id: i + 1, habitId: 1, day: `2026-${day}`, checkAt: at(day, '19:30')})));
-      for (const [key, value] of [['ai.baseUrl', 'https://showcase.invalid/v1'],
+      // A reload must not run first-launch seeding over these isolated fixtures.
+      for (const [key, value] of [['app.seeded', true], ['ai.baseUrl', 'https://showcase.invalid/v1'],
           ['ai.model', 'showcase-fixture'], ['life.aiEnabled', true]]) {
         tx.objectStore('settings').put({key, value});
       }
