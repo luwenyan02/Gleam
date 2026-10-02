@@ -137,6 +137,14 @@ export async function previewBatchEntries(
   entryIds: readonly number[],
   operation: BatchEntryOperation,
 ): Promise<BatchEntryPreview> {
+  return (await readBatchPreview(entryIds, operation)).preview;
+}
+
+/** 仅供当前调用复用读取结果；提交时仍须在写事务内重新执行全部预检。 */
+async function readBatchPreview(
+  entryIds: readonly number[],
+  operation: BatchEntryOperation,
+): Promise<{ preview: BatchEntryPreview; entriesById: Map<number, Entry> }> {
   const ids = normalizedIds(entryIds);
   const [entries, categoryKind, , tagIds] = await Promise.all([
     db.entries.bulkGet(ids),
@@ -167,7 +175,12 @@ export async function previewBatchEntries(
     if (skip) skipped.push(skip);
     else processableIds.push(entryId);
   });
-  return { operation, selectedCount: ids.length, processableIds, skipped };
+  const entriesById = new Map<number, Entry>();
+  for (const entry of entries) if (entry) entriesById.set(entry.id, entry);
+  return {
+    preview: { operation, selectedCount: ids.length, processableIds, skipped },
+    entriesById,
+  };
 }
 
 /**
@@ -181,13 +194,12 @@ export async function applyBatchEntries(
     'rw',
     [db.entries, db.accounts, db.entryTags, db.categories, db.tags],
     async () => {
-      const preview = await previewBatchEntries(entryIds, operation);
+      const { preview, entriesById } = await readBatchPreview(entryIds, operation);
       if (operation.kind === 'category' && preview.processableIds.length) {
-        const entries = await db.entries.bulkGet(preview.processableIds);
-        if (entries.some((entry) => entry == null)) throw new Error('批量提交前账单状态已变化');
+        // 当前写事务已锁定这些表，复用刚预检过的行，避免再次逐条读取整批账单。
         const updatedAt = now();
-        await db.entries.bulkPut(entries.map((entry) => ({
-          ...entry!,
+        await db.entries.bulkPut(preview.processableIds.map((id) => ({
+          ...entriesById.get(id)!,
           categoryId: operation.categoryId,
           updatedAt,
         })));
