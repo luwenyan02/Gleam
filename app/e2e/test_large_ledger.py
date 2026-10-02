@@ -204,6 +204,30 @@ def main() -> None:
             })'''),
         }, flush=True)
         page.screenshot(path=str(OUT / 'search-and-batch-390.png'), full_page=True)
+        if batch_elapsed >= 15:
+            print('WRITE_ORDER_DIAGNOSTIC', page.evaluate('''async ({ source, target }) => {
+              const db = await new Promise((resolve, reject) => {
+                const request = indexedDB.open('GleamDB');
+                request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+              });
+              const rows = await new Promise((resolve, reject) => {
+                const request = db.transaction('entries').objectStore('entries').getAll();
+                request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+              });
+              const results = [];
+              for (const [order, categoryId] of [['ascending', source], ['descending', target]]) {
+                const ordered = [...rows].sort((a, b) => order === 'ascending' ? a.id - b.id : b.id - a.id);
+                const start = performance.now();
+                await new Promise((resolve, reject) => {
+                  const tx = db.transaction(['entries', 'accounts', 'entryTags', 'categories', 'tags'], 'readwrite');
+                  tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
+                  for (const row of ordered) tx.objectStore('entries').put({ ...row, categoryId });
+                });
+                results.push({ order, count: ordered.length, milliseconds: performance.now() - start });
+              }
+              db.close(); return results;
+            }''', {'source': SOURCE_CATEGORY_ID, 'target': TARGET_CATEGORY_ID}), flush=True)
+            assert category_count(page, TARGET_CATEGORY_ID) == COUNT
         assert batch_elapsed < 15, f'一万笔批量改分类耗时过长：{batch_elapsed:.2f}s'
         assert target_count == COUNT
         assert source_count == 0
