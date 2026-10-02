@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 
 URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4601/')
@@ -85,8 +85,10 @@ def run_width(page, width: int) -> None:
     page.locator('#sp-settings .picker-panel').screenshot(
         path=str(OUT / f'settings-picker-{width}.png'), animations='disabled')
     page.locator('#sp-settings .picker-item[data-value="28"]').click()
-    page.wait_for_function("document.querySelector('#sp-settings section[aria-label=\"记账偏好\"]')?.textContent.includes('当前周期')")
     expected = expected_period(page)
+    # Wait for the asynchronous settings save and re-render, not the existing period label.
+    expect(page.locator('#accounting-month-start')).to_have_text('每月 28 日')
+    expect(page.locator('#sp-settings section[aria-label="记账偏好"]')).to_contain_text(expected['longRange'])
     settings_text = page.inner_text('#sp-settings section[aria-label="记账偏好"]')
     assert expected['key'] in settings_text and expected['longRange'] in settings_text, settings_text
     assert '财务月' not in settings_text, settings_text
