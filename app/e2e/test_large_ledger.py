@@ -205,7 +205,7 @@ def main() -> None:
         }, flush=True)
         page.screenshot(path=str(OUT / 'search-and-batch-390.png'), full_page=True)
         if batch_elapsed >= 15:
-            print('WRITE_ORDER_DIAGNOSTIC', page.evaluate('''async ({ source, target }) => {
+            print('WRITE_QUEUE_DIAGNOSTIC', page.evaluate('''async ({ source, target }) => {
               const db = await new Promise((resolve, reject) => {
                 const request = indexedDB.open('GleamDB');
                 request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
@@ -215,15 +215,24 @@ def main() -> None:
                 request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
               });
               const results = [];
-              for (const [order, categoryId] of [['ascending', source], ['descending', target]]) {
-                const ordered = [...rows].sort((a, b) => order === 'ascending' ? a.id - b.id : b.id - a.id);
+              const ordered = [...rows].sort((a, b) => b.id - a.id);
+              for (const [chunkSize, categoryId] of [[10000, source], [500, target], [500, source], [10000, target]]) {
                 const start = performance.now();
-                await new Promise((resolve, reject) => {
-                  const tx = db.transaction(['entries', 'accounts', 'entryTags', 'categories', 'tags'], 'readwrite');
+                const tx = db.transaction(['entries', 'accounts', 'entryTags', 'categories', 'tags'], 'readwrite');
+                const complete = new Promise((resolve, reject) => {
                   tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
-                  for (const row of ordered) tx.objectStore('entries').put({ ...row, categoryId });
                 });
-                results.push({ order, count: ordered.length, milliseconds: performance.now() - start });
+                for (let offset = 0; offset < ordered.length; offset += chunkSize) {
+                  await new Promise((resolve, reject) => {
+                    const chunk = ordered.slice(offset, offset + chunkSize);
+                    let last;
+                    for (const row of chunk) last = tx.objectStore('entries').put({ ...row, categoryId });
+                    last.addEventListener('success', resolve, { once: true });
+                    last.addEventListener('error', () => reject(last.error), { once: true });
+                  });
+                }
+                await complete;
+                results.push({ chunkSize, categoryId, count: ordered.length, milliseconds: performance.now() - start });
               }
               db.close(); return results;
             }''', {'source': SOURCE_CATEGORY_ID, 'target': TARGET_CATEGORY_ID}), flush=True)
