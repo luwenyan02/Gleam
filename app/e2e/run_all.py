@@ -83,7 +83,13 @@ def main() -> int:
             )
             if result.returncode != 0:
                 return result.returncode
-        return 0
+        # Publishable previews use their own fresh, fictional browser contexts.
+        # Keep this separate from the 35 regression suites and leave outputs in .tmp.
+        return subprocess.run(
+            [sys.executable, str(Path(__file__).parent / 'capture_readme.py')],
+            cwd=APP_ROOT,
+            env=env,
+        ).returncode
     finally:
         if server is not None and server.poll() is None:
             server.terminate()
