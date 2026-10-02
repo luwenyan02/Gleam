@@ -99,6 +99,35 @@ def main() -> None:
         context = browser.new_context(viewport={'width': 390, 'height': 844}, service_workers='block')
         page = context.new_page()
         page.set_default_timeout(20_000)
+        page.add_init_script('''(() => {
+          const trace = window.__gleamBatchMetrics = { transactions: [], homeRenders: [] };
+          const transaction = IDBDatabase.prototype.transaction;
+          IDBDatabase.prototype.transaction = function(...args) {
+            const tx = transaction.apply(this, args);
+            const stores = Array.from(tx.objectStoreNames);
+            if (tx.mode === 'readwrite' && stores.length === 5 &&
+                ['entries', 'accounts', 'entryTags', 'categories', 'tags'].every(name => stores.includes(name))) {
+              const row = { start: performance.now(), duration: null, state: 'running' };
+              trace.transactions.push(row);
+              for (const event of ['complete', 'abort']) tx.addEventListener(event, () => {
+                row.duration = performance.now() - row.start; row.state = event;
+              }, { once: true });
+            }
+            return tx;
+          };
+          const html = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+          Object.defineProperty(Element.prototype, 'innerHTML', {
+            ...html,
+            set(value) {
+              if (this.id !== 'hm-days') { html.set.call(this, value); return; }
+              const start = performance.now();
+              html.set.call(this, value);
+              trace.homeRenders.push({ start, duration: performance.now() - start,
+                rows: (String(value).match(/data-entry-row=/g) || []).length,
+                inert: this.closest('#page-home')?.inert });
+            },
+          });
+        })()''')
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(URL)
@@ -149,6 +178,7 @@ def main() -> None:
             'batch_total_seconds': round(batch_elapsed, 3),
             'target_count': target_count, 'source_count': source_count,
             'page_errors': errors,
+            'phase_trace': page.evaluate('window.__gleamBatchMetrics'),
             'dom': page.evaluate('''() => ({
               home_inert: document.querySelector('#page-home')?.inert,
               home_rows: document.querySelectorAll('#hm-days [data-entry-row]').length,
