@@ -304,6 +304,8 @@ export interface LifeReview {
 export interface LifeChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** 含已确认账本分析；后续携带此会话文字时必须再次展示并确认。不是授权凭据。 */
+  ledgerAnalysis?: boolean;
   /** AI 回复完成的时间点；旧消息和语音转写可缺省。 */
   repliedAt?: number;
   /** 草稿中用户明确随本轮发送的本地照片；不会随之后的纯文字请求再次上传。 */

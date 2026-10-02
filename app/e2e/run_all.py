@@ -14,6 +14,7 @@ PROJECT_ROOT = APP_ROOT.parent
 URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4617/')
 EXTERNAL_URL = 'GLEAM_E2E_URL' in os.environ
 TESTS = (
+    'test_entry_feedback.py', 'test_chat_ledger_context.py', 'test_chat_markdown.py',
     'test_acceptance.py', 'test_refund.py', 'test_m3.py', 'test_ux_m1.py', 'test_ux_m2.py',
     'test_ux_m3.py', 'test_acceptance_fixes.py', 'test_requested_refinements.py',
     'test_loan_accounts.py', 'test_list_rows_and_back.py', 'test_calculator_safety.py',
@@ -25,7 +26,7 @@ TESTS = (
     'test_account_management_ui.py',
     'test_entry_receipts.py',
     'test_entity_details.py', 'test_accounting_period.py',
-    'test_life_layout.py', 'test_life_ai.py', 'test_chat_experience.py', 'test_chat_ai_settings.py', 'test_chat_markdown.py',
+    'test_life_layout.py', 'test_life_ai.py', 'test_chat_experience.py', 'test_chat_ai_settings.py',
     'test_browser_usability.py',
     'test_large_ledger.py',
 )
@@ -84,7 +85,7 @@ def main() -> int:
             if result.returncode != 0:
                 return result.returncode
         # Publishable previews use their own fresh, fictional browser contexts.
-        # Keep this separate from the 35 regression suites and leave outputs in .tmp.
+        # Keep this separate from the regression suites and leave outputs in .tmp.
         return subprocess.run(
             [sys.executable, str(Path(__file__).parent / 'capture_readme.py')],
             cwd=APP_ROOT,

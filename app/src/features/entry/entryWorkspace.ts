@@ -16,13 +16,14 @@ function entryTimeSegment(timestamp: number): 'breakfast' | 'lunch' | 'afternoon
   if (hour >= 5 && hour < 11) return 'breakfast';
   if (hour >= 11 && hour < 14) return 'lunch';
   if (hour >= 14 && hour < 17) return 'afternoon';
-  if (hour >= 17 && hour < 21) return 'dinner';
+  if (hour >= 17 && hour < 22) return 'dinner';
   return 'night';
 }
 
 /**
  * 取最近 90 天同类型的常用分类：每次使用计 1 分，与草稿处于同时间段再加 2 分；
- * 同分依次比较同段次数、总次数、最近使用和分类原顺序，历史不足时按原顺序补齐。
+ * 同分依次比较同段次数、总次数、最近使用和分类原顺序。
+ * 支出在同段有效习惯之后补当前餐次，再补其它历史；避免冷启动或早餐高频使晚间默认早餐。
  */
 export function rankFrequentCategories(
   categories: readonly Category[],
@@ -65,7 +66,25 @@ export function rankFrequentCategories(
     });
   const usedIds = new Set(used.map((item) => item.id));
   const fallback = categories.filter((item) => !usedIds.has(item.id));
-  return [...used, ...fallback].slice(0, Math.max(0, limit));
+  const ranked = [...used, ...fallback];
+  const mealNames: Readonly<Record<string, readonly string[]>> = {
+    breakfast: ['早餐', '早饭'], lunch: ['午餐', '午饭'], afternoon: ['午餐', '午饭'],
+    dinner: ['晚餐', '晚饭'], night: ['夜宵', '宵夜', '晚餐', '晚饭'],
+  };
+  const preferredNames = mealNames[targetSegment];
+  const meal = options.entryType !== 'income'
+    ? preferredNames.flatMap(name => categories.filter(item => item.kind === 'expense' && item.name === name))[0]
+    : undefined;
+  if (!meal) return ranked.slice(0, Math.max(0, limit));
+
+  const allMealNames = new Set(Object.values(mealNames).flat());
+  const samePeriod = used.filter(item => (usage.get(item.id)?.sameSegmentCount ?? 0) > 0
+    && (!allMealNames.has(item.name) || item.name === meal.name));
+  const priority = [...samePeriod, meal];
+  const priorityIds = new Set(priority.map(item => item.id));
+  return [...new Map(priority.map(item => [item.id, item])).values(),
+    ...ranked.filter(item => !priorityIds.has(item.id)),
+  ].slice(0, Math.max(0, limit));
 }
 
 export interface AccountUsage {

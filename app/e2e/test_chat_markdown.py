@@ -48,8 +48,17 @@ def run(page, width):
     expect(page.locator('.assistant ol > li > ul > li > ul')).to_have_count(1)
     page.locator('#life-chat-messages').evaluate('el => el.scrollTop = 0')
     screenshot(page, 'markdown-list-table', width, '#sp-life-chat')
-    page.locator('[data-chat-jump]').click()
+    # 精简底部文案后，较宽屏幕可在当前可视区容纳更多内容。
+    # 距底部不足 100px 时回到底部按钮本就隐藏，不能无条件点击。
+    remaining = page.locator('#life-chat-messages').evaluate('el => el.scrollHeight - el.scrollTop - el.clientHeight')
+    jump = page.locator('[data-chat-jump]')
+    if remaining >= 100:
+        expect(jump).to_be_visible()
+        jump.click()
+    else:
+        expect(jump).to_be_hidden()
     wide = page.locator('.chat-table-scroll').last
+    wide.scroll_into_view_if_needed()
     if width < 768:
         assert wide.evaluate('el => el.scrollWidth > el.clientWidth')
         wide.evaluate('el => el.scrollLeft = el.scrollWidth')

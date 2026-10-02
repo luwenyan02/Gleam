@@ -63,8 +63,8 @@ export async function claimLegacyLifeChatDraft(targetKey: string, legacyKeys: st
           && currentClaimed.messages.every((message, index) => sameMessage(message, migrated.messages[index]));
         const migratedIsPrefix = currentClaimed.messages.length >= migrated.messages.length
           && migrated.messages.every((message, index) => sameMessage(message, currentClaimed.messages[index]));
-        currentClaimed.messages = claimedIsPrefix ? structuredClone(migrated.messages)
-          : migratedIsPrefix ? currentClaimed.messages
+        currentClaimed.messages = claimedIsPrefix ? structuredClone(preserveLedgerMarkers(migrated.messages, currentClaimed.messages))
+          : migratedIsPrefix ? preserveLedgerMarkers(currentClaimed.messages, migrated.messages)
             : [...currentClaimed.messages, ...structuredClone(migrated.messages)];
         claimed.summaryProposal ??= migrated.summaryProposal;
         claimed.pendingReply ||= migrated.pendingReply;
@@ -145,6 +145,7 @@ export function validateLifeDraft(input: unknown): asserts input is LifeDraft {
     if (!message || (message.role !== 'user' && message.role !== 'assistant') || typeof message.content !== 'string') {
       throw new Error('对话草稿结构无效');
     }
+    if (message.ledgerAnalysis != null && typeof message.ledgerAnalysis !== 'boolean') throw new Error('账本分析标记无效');
     if (message.photos != null && !Array.isArray(message.photos)) throw new Error('对话照片结构无效');
     for (const photo of message.photos ?? []) validatePhoto(photo);
     if (message.photoRefs != null && (!Array.isArray(message.photoRefs)
@@ -167,6 +168,12 @@ function sameMessage(left: LifeChatMessage, right: LifeChatMessage): boolean {
     && JSON.stringify(left.photoRefs ?? []) === JSON.stringify(right.photoRefs ?? []);
 }
 
+/** 去重/迁移可以补齐旧内容，但不能抹去相同消息已有的财务隐私标记。 */
+function preserveLedgerMarkers(preferred: LifeChatMessage[], known: LifeChatMessage[]): LifeChatMessage[] {
+  return preferred.map((message, index) => known[index]?.ledgerAnalysis && sameMessage(message, known[index])
+    ? { ...message, ledgerAnalysis: true } : message);
+}
+
 function mergeConversation(
   existing: LifeChatMessage[] | undefined,
   storedMessages: LifeChatMessage[],
@@ -187,10 +194,10 @@ function mergeConversation(
     : migratedMessages;
   const containsExistingPrefix = messages.length >= existing.length
     && existing.every((message, index) => sameMessage(message, messages[index]));
-  if (containsExistingPrefix) return structuredClone(messages);
+  if (containsExistingPrefix) return structuredClone(preserveLedgerMarkers(messages, existing));
   const storedContainsExistingPrefix = storedMessages.length >= existing.length
     && existing.every((message, index) => sameMessage(message, storedMessages[index]));
-  if (storedContainsExistingPrefix) return structuredClone(storedMessages);
+  if (storedContainsExistingPrefix) return structuredClone(preserveLedgerMarkers(storedMessages, existing));
   if (!messages.length) return structuredClone(existing);
   return structuredClone([...existing, ...messages]);
 }
@@ -307,6 +314,7 @@ export async function saveLifeDraft(key: string): Promise<number> {
         role: message.role,
         content: message.content,
         ...(message.repliedAt != null ? { repliedAt: message.repliedAt } : {}),
+        ...(message.ledgerAnalysis ? { ledgerAnalysis: true } : {}),
         ...(messageRefs.length ? { photoRefs: messageRefs } : {}),
       });
     }

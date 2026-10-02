@@ -19,6 +19,8 @@ import { chatIcon } from './chatIcons';
 import { formatChatReplyTime } from './chatReplyTime';
 import { openAiSettings } from '../settings/settings';
 import { AiConfigError } from '../../core/repo/aiRepo';
+import { isLifeLedgerQuestion } from '../../core/repo/lifeLedgerContextRepo';
+import { confirmLifeLedgerAi } from './lifeLedgerConsent';
 
 const needsAiConfig = (error: unknown): boolean => error instanceof AiConfigError
   || (error instanceof Error && error.message === '请先在设置中配置 AI 接口和模型');
@@ -99,6 +101,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   let summaryCardHidden = false;
   let saved = false;
   let failedMessageIndex: number | undefined;
+  let failedRegenerate = false;
   let controller: AbortController | undefined;
   let persistTimer: ReturnType<typeof setTimeout> | undefined;
   let authorisedDestination: Destination | undefined;
@@ -138,7 +141,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   host.classList.add('life-chat-page');
   const header = host.parentElement!.querySelector('.sub-head')!;
   header.querySelector('.chat-head-actions')?.remove();
-  header.querySelector('h2')!.innerHTML = '<span class="chat-brand"><span class="chat-brand-name">拾光</span><em>AI</em></span><small title="聊聊想法与日常">聊聊想法与日常</small>';
+  header.querySelector('h2')!.innerHTML = '<span class="chat-brand"><span class="chat-brand-name">拾光</span><em>AI</em></span>';
   header.insertAdjacentHTML('beforeend', `<div class="chat-head-actions"><button data-chat-start aria-label="新聊天" title="新聊天">${chatIcon('compose')}<span>新聊天</span></button><button data-chat-settings aria-label="AI 设置" title="AI 设置">${chatIcon('settings')}<span>AI 设置</span></button><button data-chat-history aria-label="历史会话" title="历史会话">${chatIcon('history')}<span>会话</span></button></div>`);
   host.innerHTML = `<div class="life-chat" aria-label="和拾光聊聊">
     <div id="life-chat-messages" class="life-chat-messages" aria-live="polite"></div>
@@ -151,7 +154,6 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       <label class="sr-only" for="life-chat-input">和拾光说说</label><textarea id="life-chat-input" rows="1" maxlength="8000" placeholder="想说什么，都可以…"></textarea>
       <div class="chat-compose-tools"><button data-life-chat-photo aria-label="添加照片" title="添加照片">${chatIcon('photo')}<span>照片</span></button><button data-chat-voice aria-label="实时语音" title="实时语音">${chatIcon('voice')}<span>语音聊</span></button><button data-chat-organize aria-label="整理成记录" title="整理成记录">${chatIcon('bookmark')}<span>整理</span></button><button class="btn primary life-chat-send" data-life-chat-send aria-label="发送" title="发送">${chatIcon('send')}</button><button class="btn ghost life-chat-stop" data-life-chat-stop aria-label="停止" title="停止" hidden>${chatIcon('stop')}</button></div>
     </div>
-    <p class="chat-footnote">AI 也会出错，请核实重要信息</p>
   </div>`;
   const messagesEl = host.querySelector<HTMLElement>('#life-chat-messages')!;
   const composerResize = new ResizeObserver(() => {
@@ -183,7 +185,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     syncComposer();
     const scrollTop = messagesEl.scrollTop;
     const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100;
-    const welcome = !draft.messages.length ? `<section class="chat-welcome"><div class="chat-welcome-heading"><div class="chat-emblem" aria-hidden="true">${chatIcon('spark')}</div><div><div class="chat-eyebrow">一处随时能坐坐的地方</div><h3>你好，我是拾光</h3></div></div><p>今天有什么小事，或突然冒出的想法？<br>可以一起琢磨，也可以只是聊聊。</p><div class="chat-starters"><button data-chat-prompt="今天有件小事，想和你聊聊。"><i>${chatIcon('chat')}</i>聊聊今天</button><button data-chat-prompt="我有一个想法，想请你帮我一起想想。"><i>${chatIcon('idea')}</i>帮我想想</button><button data-chat-prompt="我有个问题，想请你解释一下："><i>${chatIcon('question')}</i>解答问题</button><button data-chat-prompt="帮我润色下面这段话，保留我的意思："><i>${chatIcon('compose')}</i>润色文字</button></div><div class="chat-welcome-note">不必每天来，想说的时候我都在。</div></section>` : '';
+    const welcome = !draft.messages.length ? `<section class="chat-welcome"><div class="chat-welcome-heading"><div class="chat-emblem" aria-hidden="true">${chatIcon('spark')}</div><div><div class="chat-eyebrow">一处随时能坐坐的地方</div><h3>你好，我是拾光</h3></div></div><p>今天有什么小事，或突然冒出的想法？<br>可以一起琢磨，也可以只是聊聊。</p><div class="chat-starters"><button data-chat-prompt="今天有件小事，想和你聊聊。"><i>${chatIcon('chat')}</i>聊聊今天</button><button data-chat-prompt="我有一个想法，想请你帮我一起想想。"><i>${chatIcon('idea')}</i>帮我想想</button><button data-chat-prompt="我有个问题，想请你解释一下："><i>${chatIcon('question')}</i>解答问题</button><button data-chat-prompt="帮我分析一下我这个月的消费情况。"><i>${chatIcon('ledger')}</i>分析消费</button></div></section>` : '';
     const messages = draft.messages.map((message, index) => {
       const sources = [...(message.photos ?? []).map(photo => photo.dataUrl), ...(message.photoRefs ?? []).map(ref => messagePhotoUrls.get(ref)).filter((url): url is string => !!url)];
       const replyTime = formatChatReplyTime(message.repliedAt);
@@ -218,7 +220,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       }).catch(() => showToast('复制失败，可长按选择文字'));
     });
     messagesEl.querySelector('[data-chat-regenerate]')?.addEventListener('click', () => { void requestTurn(draft.messages.length - 2, true); });
-    messagesEl.querySelector('[data-life-chat-retry]')?.addEventListener('click', () => { if (failedMessageIndex != null) void requestTurn(failedMessageIndex); });
+    messagesEl.querySelector('[data-life-chat-retry]')?.addEventListener('click', () => { if (failedMessageIndex != null) void requestTurn(failedMessageIndex, failedRegenerate); });
     messagesEl.querySelector('[data-life-chat-summary]')?.addEventListener('click', () => { if (draft.summaryProposal) openSummary(); else void summarize(); });
     messagesEl.querySelector('[data-life-chat-continue]')?.addEventListener('click', () => { readyToSummarize = false; summaryCardHidden = true; render(); });
     messagesEl.scrollTop = forceBottom || nearBottom ? messagesEl.scrollHeight : scrollTop;
@@ -268,7 +270,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   async function authorise(preview: string, photos: string[], signal: AbortSignal): Promise<Destination | false> {
     const destination = await getLifeAiDestination();
     const unchanged = authorisedDestination?.baseUrl === destination.baseUrl && authorisedDestination.model === destination.model;
-    if (unchanged && !photos.length) return destination;
+    if (unchanged && !photos.length && !draft.messages.some(message => message.ledgerAnalysis)) return destination;
     const accepted = await confirmLifeAi(preview, signal);
     if (accepted) {
       authorisedDestination = accepted;
@@ -276,7 +278,9 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     return accepted;
   }
   function sourcePreview(photos: string[]): string {
-    return [...draft.messages.map(message => `${message.role === 'user' ? '我' : '拾光'}：${message.content}`), `照片：${photos.length} 张${photos.length ? '（仅本条消息附件）' : '，不发送图片'}`].join('\n');
+    return [
+      ...(draft.messages.some(message => message.ledgerAnalysis) ? ['本次会发送以下会话文字，其中含先前的账本分析；不会重新读取账本。'] : []),
+      ...draft.messages.map(message => `${message.role === 'user' ? '我' : '拾光'}：${message.content}`), `照片：${photos.length} 张${photos.length ? '（仅本条消息附件）' : '，不发送图片'}`].join('\n');
   }
   async function send(): Promise<void> {
     if (sending || disposed || (!input.value.trim() && !draft.photos.length)) return;
@@ -299,20 +303,24 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     if (sending || disposed) return;
     if (draft.aiExcluded || existing?.aiExcluded) { status('这条记录已排除 AI，不能发送对话。'); return; }
     controller = new AbortController();
+    failedRegenerate = regenerate;
     const signal = controller.signal;
     const photos = [...(draft.messages[messageIndex]?.photos ?? []).map(photo => photo.dataUrl)];
     setBusy(true);
     try {
-      const expectedDestination = await authorise(sourcePreview(photos), photos, signal);
-      if (!expectedDestination || disposed) { failedMessageIndex = messageIndex; status('未发送，消息和照片仍保存在本机。'); render(); return; }
+      const ledgerRequest = isLifeLedgerQuestion(draft.messages[messageIndex]?.content ?? '');
+      const ledger = ledgerRequest ? await confirmLifeLedgerAi(draft.messages[messageIndex].content, signal) : undefined;
+      const expectedDestination = ledgerRequest ? (ledger ? ledger.expectedDestination : false) : await authorise(sourcePreview(photos), photos, signal);
+      if (!expectedDestination || disposed || signal.aborted) { failedMessageIndex = messageIndex; status('未发送，消息和照片仍保存在本机。'); render(); return; }
       status('拾光正在想…');
-      const turn = await continueLifeChat({ body: '', messages: structuredClone(draft.messages.slice(0, messageIndex + 1)), photos, signal, noteId: draft.noteId, sourceUpdatedAt: draft.sourceUpdatedAt, expectedDestination,
+      const turn = await continueLifeChat({ body: '', messages: structuredClone(draft.messages.slice(0, messageIndex + 1)), photos: ledger ? [] : photos, ledgerGrant: ledger ? ledger.ledgerGrant : undefined, signal, noteId: draft.noteId, sourceUpdatedAt: draft.sourceUpdatedAt, expectedDestination,
         onDelta: text => { if (!disposed && !signal.aborted) { streamedReply = text; status('正在回复…'); render(false); } },
       });
       if (disposed || signal.aborted) return;
       streamedReply = '';
       if (regenerate) draft.messages.splice(messageIndex + 1);
-      draft.messages.push({ role: 'assistant', content: turn.reply, repliedAt: Date.now() });
+      if (ledger) { draft.messages[messageIndex].ledgerAnalysis = true; authorisedDestination = undefined; }
+      draft.messages.push({ role: 'assistant', content: turn.reply, repliedAt: Date.now(), ...(ledger ? { ledgerAnalysis: true } : {}) });
       failedMessageIndex = undefined;
       // 是否整理由用户决定，不因模型的旧版就绪标志弹出劝记卡片。
       readyToSummarize = false;

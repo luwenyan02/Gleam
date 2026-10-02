@@ -52,8 +52,9 @@ def run(page, width):
     page.locator('#sp-entry-view .sub-head [data-act=back]').click(); page.wait_for_timeout(300)
     page.locator('#fab').click()
     page.locator('#note').fill('虚构')
-    page.locator('[data-note-idx]').first.click()
-    assert page.locator('#note').input_value() == '虚构午餐'
+    page.locator('#note').blur()
+    assert page.locator('[data-note-idx],#note-suggest').count() == 0
+    assert page.locator('#note').input_value() == '虚构'
     page.locator('#sheet-close').click()
     assert not errors, errors
 
