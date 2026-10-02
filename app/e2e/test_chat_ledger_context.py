@@ -150,6 +150,8 @@ def run(page, width):
 
     # Failure and stop do not reuse a grant; an empty month is answered locally.
     page.locator('[data-chat-start]').click()
+    page.locator('.chat-welcome').wait_for()
+    expect(page.locator('#life-chat-input')).to_have_value('')
     page.locator('#life-chat-input').fill('帮我分析这个月的消费')
     fail[0] = True
     page.locator('[data-life-chat-send]').click()
@@ -188,7 +190,13 @@ if __name__ == '__main__':
         browser = p.chromium.launch()
         for width in (360, 390, 430, 1280):
             context = browser.new_context(viewport={'width': width, 'height': 844}, reduced_motion='reduce')
-            run(context.new_page(), width)
-            context.close()
+            page = context.new_page()
+            try:
+                run(page, width)
+            except Exception:
+                page.screenshot(path=str(OUT / f'failed-{width}.png'), animations='disabled')
+                raise
+            finally:
+                context.close()
             print(f'PASS chat ledger context {width}', flush=True)
         browser.close()
