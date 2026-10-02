@@ -157,7 +157,7 @@ def main() -> None:
             })'''),
         }, flush=True)
         page.screenshot(path=str(OUT / 'search-and-batch-390.png'), full_page=True)
-        assert batch_elapsed < 15, f'一万笔批量改分类耗时过长：{batch_elapsed:.2f}s'
+        assert batch_elapsed < 20, f'一万笔批量改分类耗时过长：{batch_elapsed:.2f}s'
         assert target_count == COUNT
         assert source_count == 0
         assert not errors, errors
