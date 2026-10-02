@@ -42,6 +42,8 @@ python3 -m playwright install chromium
 
 测试截图和下载文件写入仓库根目录 `.tmp/tests/`，不进入 Git。
 
+完整浏览器回归结束后会运行 `e2e/capture_readme.py`，在四种屏幕宽度下生成七组项目预览。它使用独立虚构数据库与本地模拟 AI，输出到 `.tmp/tests/e2e/readme/`；需逐张检查后才将选定图片更新到 `docs/assets/screenshots/`。复现与来源记录见[界面预览说明](assets/screenshots/README.md)。
+
 `test_large_ledger.py` 使用 10,000 笔虚构账单，筛选耗时须小于 10 秒；整批改分类从确认操作到结果列表恢复可用须小于 20 秒（2026-10-02 按用户决定由 15 秒调整）。两者均保留真实浏览器计时，整批修改仍须精确验证目标分类 10,000 笔、原分类 0 笔且无页面错误。调整的是该场景的验收预算，不代表运行速度提升，也不改变其他套件、正确性断言或测试顺序。
 
 ## 编码约定
