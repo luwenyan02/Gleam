@@ -28,6 +28,6 @@ if (!manifest.includes(`versionName='${version}'`) || !manifest.includes(`versio
   throw new Error('Android 与源码版本不一致');
 }
 const signature = execFileSync(join(bin, 'apksigner'), ['verify', '--print-certs', apk], { encoding: 'utf8' });
-const expected = 'f979d49ce586a7438bcaf44bcec4b4edaa9e80cba170a07f8f8895b757380012';
-if (!signature.toLowerCase().includes(`certificate sha-256 digest: ${expected}`)) throw new Error('APK 不是原发布证书签名，禁止覆盖发布');
-console.log(`通过：Android / 网页 v${version}，${count} 个网页文件逐字节一致，原发布证书签名有效。`);
+const expected = 'e8e6ca55e4bb1ae4c3085f130c25ccd4e937b70c745e3f657064b590fefa18dc';
+if (!signature.toLowerCase().includes(`certificate sha-256 digest: ${expected}`)) throw new Error('APK 不是当前授权发布证书签名，禁止发布');
+console.log(`通过：Android / 网页 v${version}，${count} 个网页文件逐字节一致，当前发布证书签名有效。`);
