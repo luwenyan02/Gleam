@@ -61,6 +61,19 @@ async function seedMixedEntries(): Promise<{
 }
 
 describe('共享批量账单事务', () => {
+  it('改分类复用当前写事务内已预检的账单，不重复批量读取', async () => {
+    const ids = await seedMixedEntries();
+    const before = await db.entries.get(ids.expenseId);
+    const read = vi.spyOn(db.entries, 'bulkGet');
+    const result = await applyBatchEntries(Object.values(ids), { kind: 'category', categoryId: expenseTwo });
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(result.appliedIds).toEqual([ids.expenseId]);
+    expect(await db.entries.get(ids.expenseId)).toEqual({
+      ...before, categoryId: expenseTwo, updatedAt: expect.any(Number),
+    });
+    expect((await db.entries.get(ids.incomeId))?.categoryId).toBe(incomeOne);
+  });
+
   it('改分类预览按目标分类类型筛选，并说明类型不符及不支持原因', async () => {
     const ids = await seedMixedEntries();
 

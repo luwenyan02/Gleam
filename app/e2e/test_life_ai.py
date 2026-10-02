@@ -3,7 +3,7 @@ import json
 import os
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 from test_entry_receipts import image
 
 URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4601/')
@@ -63,6 +63,11 @@ def run(page, width):
     page.locator('[data-lc-save]').click()
     page.locator('#sheet.open').wait_for(state='hidden')
     assert not requests
+    saved_quick_notes = [note for note in read_rows(page, 'lifeNotes')
+                         if note.get('body') == '虚构快速记录：阳台的一小块阳光。' and not note.get('deletedAt')]
+    assert len(saved_quick_notes) == 1, '快速记录必须已提交且只保存一次'
+    # Closing follows the committed save; the life-changed feed refresh is still asynchronous.
+    expect(page.locator('#lf-feed')).to_contain_text('阳台的一小块阳光')
     assert '阳台的一小块阳光' in page.locator('#lf-feed').inner_text()
 
     turns = [
@@ -263,6 +268,15 @@ if __name__ == '__main__':
                 try:
                     page = context.new_page(); page.set_default_timeout(12000)
                     run(page, width); print('PASS life AI', width, flush=True)
+                except Exception:
+                    page.screenshot(path=str(OUT / f'failure-{width}.png'), animations='disabled')
+                    print('LIFE_AI_FAILURE_STATE', {
+                        'width': width,
+                        'feed': page.locator('#lf-feed').inner_text(),
+                        'saved_quick_count': sum(note.get('body') == '虚构快速记录：阳台的一小块阳光。'
+                                                 and not note.get('deletedAt') for note in read_rows(page, 'lifeNotes')),
+                    }, flush=True)
+                    raise
                 finally:
                     context.close()
         finally:

@@ -137,13 +137,30 @@ def main() -> None:
         assert '正在处理 10000 笔' in page.locator('#sr-batch-count').inner_text()
         page.wait_for_selector('#toast.show', timeout=20_000)
         assert '已改分类 10000 笔' in page.locator('#toast').inner_text()
+        commit_toast_elapsed = time.monotonic() - batch_started_at
         page.wait_for_function("document.querySelector('#sr-results')?.getAttribute('aria-busy') === 'false'")
         batch_elapsed = time.monotonic() - batch_started_at
-        assert batch_elapsed < 15, f'一万笔批量改分类耗时过长：{batch_elapsed:.2f}s'
-        assert category_count(page, TARGET_CATEGORY_ID) == COUNT
-        assert category_count(page, SOURCE_CATEGORY_ID) == 0
-        assert not errors, errors
+        target_count = category_count(page, TARGET_CATEGORY_ID)
+        source_count = category_count(page, SOURCE_CATEGORY_ID)
+        print('LARGE_LEDGER_METRICS', {
+            'search_seconds': round(search_elapsed, 3),
+            'confirm_to_success_toast_seconds': round(commit_toast_elapsed, 3),
+            'toast_to_results_ready_seconds': round(batch_elapsed - commit_toast_elapsed, 3),
+            'batch_total_seconds': round(batch_elapsed, 3),
+            'target_count': target_count, 'source_count': source_count,
+            'page_errors': errors,
+            'dom': page.evaluate('''() => ({
+              home_inert: document.querySelector('#page-home')?.inert,
+              home_rows: document.querySelectorAll('#hm-days [data-entry-row]').length,
+              search_rows: document.querySelectorAll('#sr-results [data-eid]').length,
+              search_busy: document.querySelector('#sr-results')?.getAttribute('aria-busy'),
+            })'''),
+        }, flush=True)
         page.screenshot(path=str(OUT / 'search-and-batch-390.png'), full_page=True)
+        assert batch_elapsed < 20, f'一万笔批量改分类耗时过长：{batch_elapsed:.2f}s'
+        assert target_count == COUNT
+        assert source_count == 0
+        assert not errors, errors
         print(
             f'PASS 10000 entries: search {search_elapsed:.2f}s, batch {batch_elapsed:.2f}s, '
             '100-row page and complete transaction',

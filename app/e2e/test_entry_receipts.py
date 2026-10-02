@@ -2,7 +2,7 @@
 import base64
 import os
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 from test_acceptance_fixes import seed
 from test_save_atomic import fail_once
 
@@ -80,8 +80,10 @@ def run(page, width):
     page.locator('#sheet.open').wait_for(state='detached')
     assert [len(x) for x in counts(page)] == [1, 1, 1]
     page.locator('[data-view-action="edit"]').click()
+    # The closed sheet keeps stale inputs until the asynchronous editor reload completes.
+    expect(page.locator('#sheet.open #receipt-editor .receipt-item')).to_have_count(1)
     files = [image(page, f'虚构-{i}.png', '#36704b') for i in range(8)]
-    page.locator('#receipt-editor input[type=file]').set_input_files(files)
+    page.locator('#sheet.open #receipt-editor input[type=file]').set_input_files(files)
     page.wait_for_function("document.querySelectorAll('.receipt-item').length === 9")
     assert page.locator('[data-receipt-add]').is_disabled()
     assert page.locator('#receipt-editor .receipt-strip').evaluate('e => e.scrollWidth > e.clientWidth')

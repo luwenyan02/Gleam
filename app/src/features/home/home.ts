@@ -40,6 +40,8 @@ let limit = PAGE;
 let exhausted = false;
 let loading = false;
 let refreshTimer = 0;
+let refreshPending = false;
+let paginationPending = false;
 
 /** 注册首页（main.ts 调用一次） */
 export function initHome(): void {
@@ -139,13 +141,7 @@ function renderSkeleton(el: HTMLElement): void {
   bindEntrySwipeActions(el.querySelector<HTMLElement>('#hm-days')!);
 
   // 滚动到底加载更早（.page 即滚动容器）
-  el.addEventListener('scroll', () => {
-    if (loading || exhausted) return;
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) {
-      limit += PAGE;
-      void refresh();
-    }
-  });
+  el.addEventListener('scroll', () => loadMore(el));
 
   void refresh();
 }
@@ -167,9 +163,23 @@ async function openService(key: HomeService): Promise<void> {
 
 /* ── 数据刷新 ─────────────────────── */
 
+function loadMore(el: HTMLElement): void {
+  if (root !== el || !el.isConnected || el.inert || !el.classList.contains('is-active')
+    || !el.clientHeight || el.scrollTop + el.clientHeight < el.scrollHeight - 240) {
+    paginationPending = false;
+    return;
+  }
+  // 时间线可能先于总览和提醒完成；保留单次触底意图，不在查询中途改变 limit。
+  if (loading) { paginationPending = true; return; }
+  if (exhausted) return;
+  limit += PAGE;
+  void refresh();
+}
+
 async function refresh(): Promise<void> {
   const el = root;
-  if (!el?.isConnected || loading) return;
+  if (!el?.isConnected) return;
+  if (loading) { refreshPending = true; return; }
   loading = true;
   try {
     const [mods, layout] = await Promise.all([getSetting('home.modules'), getHomeLayout()]);
@@ -192,6 +202,14 @@ async function refresh(): Promise<void> {
     }
   } finally {
     loading = false;
+    if (refreshPending) {
+      refreshPending = false;
+      void refresh();
+    } else if (paginationPending) {
+      paginationPending = false;
+      // 刷新后再检查位置与 exhausted；用户已滚离底部或切页时不继续分页。
+      loadMore(el);
+    }
   }
 }
 
@@ -244,15 +262,16 @@ type TimelineItem =
   | { kind: 'life'; ts: number; note: LifeNote };
 
 async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: boolean): Promise<void> {
+  const pageLimit = limit;
   const [entries, cats, tree, accounts, countAsIncome] = await Promise.all([
-    listEntries({ limit }),
+    listEntries({ limit: pageLimit }),
     listCategories('income'), listExpenseTree(), listAccounts(true),
     getSetting('reimburse.countAsIncome'),
   ]);
   const oldestTs = entries.length ? entries[entries.length - 1].occurredAt : 0;
   const boundaryFrom = oldestTs ? startOfDay(oldestTs) : 0;
   // 事件查询会补齐边界日的全部实体；只有边界日前仍有账单时才需要继续分页。
-  const hasEarlierEntries = entries.length >= limit && boundaryFrom > 0
+  const hasEarlierEntries = entries.length >= pageLimit && boundaryFrom > 0
     ? (await listEntries({ to: boundaryFrom, limit: 1 })).length > 0
     : false;
   exhausted = !hasEarlierEntries;
@@ -271,6 +290,8 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
     listLifeNotes({ from }),
     ledgerEntriesInRange(from, Infinity, countAsIncome),
   ]);
+  // 边界日补齐后，下次分页从已展示的原始账单数继续；不计报销事件或生活记录。
+  limit = Math.max(pageLimit, ledgerEntries.filter(entry => entry.kind === 'entry').length);
 
   let items: TimelineItem[] = [
     ...ledgerEntries.map((entry): TimelineItem => ({ kind: 'entry', ts: entry.occurredAt, entry })),
