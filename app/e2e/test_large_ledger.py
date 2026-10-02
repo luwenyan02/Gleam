@@ -99,52 +99,6 @@ def main() -> None:
         context = browser.new_context(viewport={'width': 390, 'height': 844}, service_workers='block')
         page = context.new_page()
         page.set_default_timeout(20_000)
-        page.add_init_script('''(() => {
-          const trace = window.__gleamBatchMetrics = { transactions: [], homeRenders: [] };
-          const transactions = new WeakMap();
-          const transaction = IDBDatabase.prototype.transaction;
-          IDBDatabase.prototype.transaction = function(...args) {
-            const tx = transaction.apply(this, args);
-            const stores = Array.from(tx.objectStoreNames);
-            if (tx.mode === 'readwrite' && stores.length === 5 &&
-                ['entries', 'accounts', 'entryTags', 'categories', 'tags'].every(name => stores.includes(name))) {
-              const row = { start: performance.now(), duration: null, state: 'running', requests: {} };
-              trace.transactions.push(row);
-              transactions.set(tx, row);
-              for (const event of ['complete', 'abort']) tx.addEventListener(event, () => {
-                row.duration = performance.now() - row.start; row.state = event;
-              }, { once: true });
-            }
-            return tx;
-          };
-          for (const method of ['get', 'put']) {
-            const original = IDBObjectStore.prototype[method];
-            IDBObjectStore.prototype[method] = function(...args) {
-              const start = performance.now();
-              const request = original.apply(this, args);
-              const row = transactions.get(this.transaction);
-              if (row) {
-                const key = `${this.name}.${method}`;
-                const metrics = row.requests[key] ||= { count: 0, firstStart: start, lastStart: start, lastFinish: null };
-                metrics.count++; metrics.lastStart = start;
-                request.addEventListener('success', () => { metrics.lastFinish = performance.now(); }, { once: true });
-              }
-              return request;
-            };
-          }
-          const html = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
-          Object.defineProperty(Element.prototype, 'innerHTML', {
-            ...html,
-            set(value) {
-              if (this.id !== 'hm-days') { html.set.call(this, value); return; }
-              const start = performance.now();
-              html.set.call(this, value);
-              trace.homeRenders.push({ start, duration: performance.now() - start,
-                rows: (String(value).match(/data-entry-row=/g) || []).length,
-                inert: this.closest('#page-home')?.inert });
-            },
-          });
-        })()''')
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(URL)
@@ -195,7 +149,6 @@ def main() -> None:
             'batch_total_seconds': round(batch_elapsed, 3),
             'target_count': target_count, 'source_count': source_count,
             'page_errors': errors,
-            'phase_trace': page.evaluate('window.__gleamBatchMetrics'),
             'dom': page.evaluate('''() => ({
               home_inert: document.querySelector('#page-home')?.inert,
               home_rows: document.querySelectorAll('#hm-days [data-entry-row]').length,
@@ -204,39 +157,6 @@ def main() -> None:
             })'''),
         }, flush=True)
         page.screenshot(path=str(OUT / 'search-and-batch-390.png'), full_page=True)
-        if batch_elapsed >= 15:
-            print('WRITE_QUEUE_DIAGNOSTIC', page.evaluate('''async ({ source, target }) => {
-              const db = await new Promise((resolve, reject) => {
-                const request = indexedDB.open('GleamDB');
-                request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
-              });
-              const rows = await new Promise((resolve, reject) => {
-                const request = db.transaction('entries').objectStore('entries').getAll();
-                request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
-              });
-              const results = [];
-              const ordered = [...rows].sort((a, b) => b.id - a.id);
-              for (const [chunkSize, categoryId] of [[10000, source], [500, target], [500, source], [10000, target]]) {
-                const start = performance.now();
-                const tx = db.transaction(['entries', 'accounts', 'entryTags', 'categories', 'tags'], 'readwrite');
-                const complete = new Promise((resolve, reject) => {
-                  tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
-                });
-                for (let offset = 0; offset < ordered.length; offset += chunkSize) {
-                  await new Promise((resolve, reject) => {
-                    const chunk = ordered.slice(offset, offset + chunkSize);
-                    let last;
-                    for (const row of chunk) last = tx.objectStore('entries').put({ ...row, categoryId });
-                    last.addEventListener('success', resolve, { once: true });
-                    last.addEventListener('error', () => reject(last.error), { once: true });
-                  });
-                }
-                await complete;
-                results.push({ chunkSize, categoryId, count: ordered.length, milliseconds: performance.now() - start });
-              }
-              db.close(); return results;
-            }''', {'source': SOURCE_CATEGORY_ID, 'target': TARGET_CATEGORY_ID}), flush=True)
-            assert category_count(page, TARGET_CATEGORY_ID) == COUNT
         assert batch_elapsed < 15, f'一万笔批量改分类耗时过长：{batch_elapsed:.2f}s'
         assert target_count == COUNT
         assert source_count == 0
