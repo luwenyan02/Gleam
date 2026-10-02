@@ -5,21 +5,28 @@
 - Node.js 22
 - npm 10
 - Python 3.11+（仅端到端测试）
-- Android Studio / JDK 21（仅 Android）
+- JDK 21、Android SDK 平台 36 及包含 `aapt`、`apksigner` 的构建工具（仅 Android；可通过 Android Studio 安装）
 
-Android 命令行构建请通过 `JAVA_HOME` 选择 JDK 21；不要把 `org.gradle.java.home` 的机器绝对路径提交到 `gradle.properties`。
+Android 命令行构建请通过 `JAVA_HOME` 选择包含 `javac` 的完整 JDK 21，并设置 `ANDROID_HOME`；不要把 `org.gradle.java.home` 的机器绝对路径提交到 `gradle.properties`。项目使用 Gradle Wrapper，无需另装全局 Gradle。
 
 ## 启动
+
+日常本地预览固定使用 OrbStack 常驻服务。在项目根目录执行：
+
+```sh
+sh scripts/preview-local.sh up
+```
+
+打开 <http://localhost:5173/>；状态与排错见[本地预览说明](LOCAL_PREVIEW.md)，不要同时启动另一份占用该端口的服务。仅在未使用 OrbStack 常驻预览的环境中，可在 `app/` 安装依赖后运行 `npm run dev -- --host 127.0.0.1 --port 5173 --strictPort`。浏览器回归默认使用独立的 `127.0.0.1:4617` 生产预览，不占用日常预览地址。
+
+## 验证
+
+从项目根目录开始执行：
 
 ```bash
 cd app
 npm ci
-npm run dev
-```
-
-## 验证
-
-```bash
+npm audit --audit-level=high
 npm run check:secrets
 npm run test:unit
 npm run build
@@ -51,4 +58,5 @@ python3 -m playwright install chromium
 3. 运行相关回归及生产构建。
 4. 在真实浏览器检查手机和桌面状态。
 5. 更新说明文档和 `CHANGELOG.md`。
-6. 保存本地 Git 提交与验收记录。按 [AGENTS.md](../AGENTS.md) 的本地维护约定交付，不推送远端或创建 GitHub PR。
+6. 保存 Git 提交与验收记录，按 [AGENTS.md](../AGENTS.md) 的维护约定合入 `main`；远端推送或 PR 按用户授权范围执行，推送后核对提交与 GitHub CI。
+7. 发布 Android 时从最终合并提交执行完整构建和原证书核验，按[发布指南](release.md)单独上传 APK 与校验文件。本轮不补发历史版本；没有真机验收时保留候选标记。

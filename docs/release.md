@@ -1,6 +1,8 @@
-# 本地构建与交付指南
+# 构建与 GitHub 发布指南
 
-当前只在本地维护与交付，不创建 GitHub Release 或上传安装包。已有远端发布内容保持原样。
+当前恢复通过 GitHub 维护源码与文档。本轮仅发布验证后合并到 `main` 的最新 Android 安装包，不补发历史版本或调整历史 Release。安装包与校验文件通过 GitHub Releases 分发，不进入源码历史。
+
+当前源码版本为 `1.8.0`（Android `versionCode` 为 `10800`）；这里列出发布流程，不代表安装包已经构建、通过验收或发布。
 
 ## 版本来源
 
@@ -48,7 +50,9 @@ keyPassword=<由密码管理器生成>
 F9:79:D4:9C:E5:86:A7:43:8B:CA:F4:4B:CE:C4:B4:ED:AA:9E:80:CB:A1:70:A0:7F:8F:88:95:B7:57:38:00:12
 ```
 
-使用 JDK 21，设置 `ANDROID_HOME` 为本机 SDK 目录后，统一构建并验证：
+使用包含 `javac` 的完整 JDK 21，通过 `JAVA_HOME` 选择；设置 `ANDROID_HOME` 为本机 SDK 目录，并安装 Android SDK 平台 36 及包含 `aapt`、`apksigner` 的构建工具。项目使用 Gradle Wrapper 8.14.3、Android Gradle Plugin 8.13.0，最低支持 Android API 24，编译与目标 API 为 36。
+
+从最终合并提交统一构建并验证：
 
 ```bash
 cd app
@@ -57,7 +61,7 @@ npm run build:android
 
 该命令依次执行网页生产构建、Capacitor 同步、Gradle 单元测试、release 打包和 `verify:apk`。不要只执行 `assembleRelease` 后直接发包，否则可能带入旧网页。
 
-`dist/build-info.json` 由构建读取源码版本自动生成。校验脚本比较 APK 原生版本与源码版本，并将 APK 内每个网页文件与本次 `dist/` 逐字节比较，同时验证原发布证书。旧包、遗漏资源和被替换的 JS 会使校验失败。
+`dist/build-info.json` 由构建读取源码版本自动生成。校验脚本比较 APK 原生版本与源码版本，并检查本次 `dist/` 的每个网页文件都存在于 APK 且逐字节一致，同时验证原发布证书。版本不符、遗漏资源和被替换的 JS 会使校验失败。
 
 也可单独验证一个候选包：
 
@@ -67,9 +71,17 @@ npm run verify:apk -- /absolute/path/to/Gleam-vX.Y.Z.apk
 
 这只证明构建产物一致，不代表完成设备验收。发布前仍须在安装旧版本的设备上完成覆盖安装、输入法、返回手势、读屏、启动和备份恢复验证。没有设备时仅提供明确标记的候选包，不宣布正式验收通过。
 
-## 本地版本交付
+## GitHub 发布
 
-1. 完成本地测试与验收，保存源码和说明文档的 Git 提交。
-2. 构建并核验 APK，将候选包和 SHA-256 校验文件保存到项目根目录 `release/`（被 Git 忽略），提供本地路径。
-3. 真机验收通过后，按需创建与 `package.json` 一致的本地 `vX.Y.Z` 标签，并在 `CHANGELOG.md` 记录新增、修复和升级提示；未验收的包继续标记为候选版。
-4. 安装包和签名材料不进入 Git 历史；另行妥善保存重要版本的本地副本。保留的 `.github/` 配置仅供历史参考，不作为当前交付流程。
+1. 完成适用测试、浏览器验收与敏感信息检查，更新文档与验证记录，再将本轮分支合入 `main`。核对远端 `main` 的最终提交及该提交的 GitHub CI；合并后的相关检查须重跑，不能用旧提交的通过结果代替。
+2. 从同一最终提交执行 `npm run build:android`，将核验通过的 APK 保存为项目根目录 `release/Gleam-vX.Y.Z.apk`（`release/` 被 Git 忽略），生成对应 SHA-256 校验文件。签名材料只能留在受控构建环境中，不得上传为 Release 附件。
+3. 核对版本标签与 `package.json` 一致，并指向构建所用的最终提交。创建对应 GitHub Release，只附本轮 APK 与校验文件；发布说明列出源码提交、已运行检查、升级备份提示和仍待验证的项目。
+4. 若真机验收未完成，Release 标题与说明明确写“候选版”，并设为预发布；不得宣布正式验收通过。未完成或受阻的检查如实列出，不复用历史测试数量。
+5. 上传后核对 Release 标签、附件名称与大小，并下载附件复核 SHA-256，确认与本地已核验产物一致后再提供下载链接。候选预发布不保证出现在 GitHub 的 `/releases/latest`，交付时使用已验证的具体 Release 链接。
+
+当前 `.github/workflows/ci.yml` 运行网页检查、浏览器回归和 Android 单元测试，尚未自动生成、签名或上传安装包；CI 通过不能代替以上 Android 发布步骤。另行妥善保存已交付安装包的本地副本。
+
+## 功能边界
+
+- 当前 Android 交付流程针对 APK；PWA 可使用网页生产构建。仓库没有 iOS、Windows 或 macOS 原生安装包工程。
+- 实时语音仅在配置了本机中转的开发网页版中可用，Android 安装包与离线 PWA 不包含中转服务，见[实时语音说明](REALTIME_VOICE.md)。
