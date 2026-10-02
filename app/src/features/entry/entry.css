@@ -48,16 +48,6 @@
 .picker-new input:focus{border-color:var(--primary)}
 .picker-new .chip{flex:none}
 
-/* 备注历史建议 chip 行：仅备注编辑态可见，横向滑动不换行 */
-.note-suggest{display:none}
-#sheet.note-editing .note-suggest:not(:empty){
-  display:flex;gap:8px;flex:none;
-  overflow-x:auto;scrollbar-width:none;
-  padding:2px 1px 10px;
-}
-.note-suggest::-webkit-scrollbar{display:none}
-.note-suggest .chip{flex:none;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
-
 /* 键盘上方 meta chips：加大触控高度与字号（仅覆盖抽屉内这一行，不动全局 .chip）
    flex:none 防止分类宫格过高时 sheet 纵向 flex 把这一行压扁（滚动由 .sheet-scroll 吸收） */
 .meta-row{flex:none;gap:7px;padding:8px 0 3px}

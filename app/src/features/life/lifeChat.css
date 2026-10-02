@@ -6,7 +6,6 @@
 #sp-life-chat .sub-head h2{display:flex;align-items:flex-end;gap:8px;overflow:hidden}
 .chat-brand{display:flex;align-items:flex-start;gap:4px;flex:none}
 #sp-life-chat .chat-brand em{margin-left:0}
-#sp-life-chat .sub-head h2 small{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:11px;font-weight:400;color:var(--faint);line-height:1.4}
 #sp-life-chat .sub-head button,.chat-compose-tools>button{border:0;border-radius:12px;min-width:44px;min-height:44px;background:transparent;color:var(--fg);padding:10px;display:inline-flex;align-items:center;justify-content:center;font-size:22px}
 .chat-head-actions{display:flex;gap:2px;flex:none}
 #sp-life-chat .chat-head-actions button{flex-direction:column;gap:4px;padding:5px 8px;min-height:48px}
@@ -77,8 +76,7 @@
 .chat-starters button:nth-child(3) i{background:color-mix(in srgb,var(--income) 10%,var(--surface));color:var(--income)}
 .chat-starters button:nth-child(4) i{background:var(--bg);color:var(--muted)}
 .chat-starters svg{width:17px;height:17px}
-.chat-welcome-note{font-size:11px;line-height:1.6;color:var(--faint);margin-top:20px;text-align:center}
-.life-chat-input-wrap{display:flex;flex-direction:column;align-items:stretch;gap:2px;margin:4px 14px 0;padding:10px 10px 6px;border:1px solid var(--border);border-radius:22px;background:var(--surface);box-shadow:0 6px 24px rgb(20 28 40 / 5%);flex-shrink:0}
+.life-chat-input-wrap{display:flex;flex-direction:column;align-items:stretch;gap:2px;margin:4px 14px calc(8px + var(--safe-bottom));padding:10px 10px 6px;border:1px solid var(--border);border-radius:22px;background:var(--surface);box-shadow:0 6px 24px rgb(20 28 40 / 5%);flex-shrink:0}
 .life-chat-input-wrap textarea{flex:none;min-width:0;width:100%;border:0;background:transparent;border-radius:8px;resize:none;min-height:44px;max-height:150px;padding:7px 6px;font-size:16px;box-shadow:none;line-height:1.6}
 .life-chat-input-wrap textarea:focus{outline:0;box-shadow:none}
 .life-chat-input-wrap:focus-within{border-color:var(--input-focus)}
@@ -92,7 +90,6 @@
 .chat-compose-tools .life-chat-send,.chat-compose-tools .life-chat-stop{margin-left:auto;border-radius:14px;background:var(--primary);color:var(--on-accent);width:44px;min-width:44px;padding:8px;font-size:23px}
 .chat-compose-tools .life-chat-send:disabled{background:var(--bg);color:var(--faint);opacity:.65}
 .chat-compose-tools .life-chat-send:not(:disabled):hover,.chat-compose-tools .life-chat-stop:hover{background:var(--expense)}
-.chat-footnote{text-align:center;font-size:11px;line-height:1.5;color:var(--faint);margin:7px 14px calc(8px + var(--safe-bottom))}
 .life-chat-status{margin:4px 22px 8px;font-size:12px;line-height:1.6;color:var(--muted)}
 .chat-config-link{align-self:flex-start;display:flex;align-items:center;gap:8px;min-height:44px;margin:0 18px 8px;padding:0 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--primary);font:inherit;font-size:13px;cursor:pointer}
 .chat-config-link[hidden]{display:none}
@@ -119,3 +116,5 @@
 #sheet[aria-label="实时语音"] .icon-btn,#sheet[aria-label="历史会话"] .icon-btn{border-radius:12px}
 @media(min-width:768px){.life-chat-messages{padding-inline:max(22px,calc((100% - 720px)/2))}.life-chat-input-wrap{width:min(744px,calc(100% - 32px));align-self:center}.life-chat-bubble.user{max-width:82%}}
 @media(max-width:374px){.chat-welcome{padding:20px 16px 16px}.chat-starters{gap:8px}.chat-starters button{padding-inline:8px;gap:6px}.life-chat-messages{padding-inline:12px}.assistant .chat-message-content{padding:16px}.life-chat-input-wrap{margin-inline:12px}.chat-welcome-heading{gap:10px}.chat-welcome h3{font-size:20px}}
+
+.life-ledger-review{display:flex;flex-direction:column;gap:12px}.life-ledger-review>*{flex-shrink:0}.life-ledger-month{display:flex;align-items:center;gap:8px}.life-ledger-month .pick-trigger{flex:1;text-align:center;min-height:44px}.life-ledger-period{display:flex;gap:8px}.life-ledger-period .chip{flex:1;min-height:44px}.life-ledger-period .active{background:var(--accent-soft);color:var(--primary);border-color:var(--primary)}.life-ledger-preview{white-space:pre-wrap;overflow-wrap:anywhere;padding:14px;border:1px solid var(--border);border-radius:12px;line-height:1.8;font-size:14px;background:var(--bg)}.life-ledger-destination{font-size:13px;line-height:1.7;overflow-wrap:anywhere}.life-ledger-review .sub{font-size:13px;line-height:1.7}.life-ledger-actions{display:flex;gap:8px}.life-ledger-actions .btn{flex:1;min-height:44px}

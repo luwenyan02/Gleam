@@ -16,7 +16,7 @@ import {
 } from '../../core/types';
 import {
   getEntry, getEntryTagIds, dayKey, listEntries,
-  type NewEntry, type NoteFrequency,
+  type NewEntry,
 } from '../../core/repo/entryRepo';
 import { listExpenseTree, listCategories } from '../../core/repo/categoryRepo';
 import { getAccount, listAccounts } from '../../core/repo/accountRepo';
@@ -54,8 +54,9 @@ import {
 import { persistEntry } from './entrySaveService';
 import { listEntryAttachments } from '../../core/repo/entryAttachmentRepo';
 import { mountReceiptEditor, type ReceiptDraft } from './receiptEditor';
-import { rankMerchantSuggestions, rankNoteSuggestions } from '../../core/repo/entityInsightsRepo';
+import { rankMerchantSuggestions } from '../../core/repo/entityInsightsRepo';
 import { loanDirection, loanAccountId as relatedLoanAccountId, loanFundAccountId } from '../../core/loanLedger';
+import { bindNoteCompletion, matchNoteCategoryId } from './entryNoteMatching';
 import './entry.css';
 
 /**
@@ -152,6 +153,12 @@ interface SheetCtx {
   recommendationHistory: Entry[];
   recommendationNow: number;
   categorySelectionLocked: boolean;
+  /** 已完成备注明确命中的分类；日期推荐不能覆盖它。 */
+  noteCategoryId?: number;
+  categorySelections: Partial<Record<'expense' | 'income', {
+    categoryId?: number; locked: boolean; noteCategoryId?: number;
+  }>>;
+  disposeNoteCompletion?: () => void;
   accountSelectionLocked: boolean;
   showAllCategories: boolean;
   advancedOpen: boolean;
@@ -160,10 +167,6 @@ interface SheetCtx {
 
 let ctx: SheetCtx | null = null;
 let sheetEl: HTMLElement | null = null;
-
-/** 备注历史频率缓存（openEntrySheet 预载，建议 chip 纯前端过滤） */
-/** 当前展示的建议项（chip 用 data-note-idx 索引，避免备注原文进 HTML 属性） */
-let noteSuggestItems: NoteFrequency[] = [];
 
 /** 注册 FAB：首页「+」打开记一笔（main.ts 调用一次） */
 export function initEntry(): void {
@@ -250,6 +253,7 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     recommendationHistory: recentEntries,
     recommendationNow: openedAt,
     categorySelectionLocked: false,
+    categorySelections: {},
     accountSelectionLocked: hasPresetAccount,
     showAllCategories: false,
     advancedOpen: false,
@@ -304,8 +308,9 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     initialNote = editEntry.note ?? '';
   } else if (options.draft) {
     const draft = options.draft;
-    if (draft.type === 'expense' || draft.type === 'income') {
-      c.type = draft.type;
+    if (draft.occurredAt != null) c.date = draft.occurredAt;
+    if (draft.type === 'expense' || draft.type === 'income') c.type = draft.type;
+    if (c.type === 'expense' || c.type === 'income') {
       if (draft.categoryId != null) { c.categoryId = draft.categoryId; c.categorySelectionLocked = true; }
       if (draft.accountId != null) { c.accountId = draft.accountId; c.accountSelectionLocked = true; }
       if (draft.amount != null) c.amt = String(draft.amount / 100);
@@ -313,9 +318,8 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
         const found = merchants.find((m) => m.name === draft.merchantName);
         if (found) c.merchantId = found.id;
       }
-      refreshEntryRecommendations(c);
     }
-    if (draft.occurredAt != null) c.date = draft.occurredAt;
+    refreshEntryRecommendations(c);
     initialNote = draft.note ?? '';
   } else if (options.templateId != null) {
     const tpl = templates.find((t) => t.id === options.templateId);
@@ -329,6 +333,7 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     }
   }
 
+  applyNoteCategory(c, initialNote);
   const initialReceipts = c.editingId == null ? options.receiptDrafts ?? [] : await listEntryAttachments(c.editingId);
   if (initialReceipts.length) c.advancedOpen = true;
   ctx = c;
@@ -340,6 +345,7 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
       c.receipts = mountReceiptEditor(el.querySelector<HTMLElement>('#receipt-editor')!, initialReceipts);
     },
     onClose() {
+      c.disposeNoteCompletion?.();
       c.receipts?.dispose();
       sheetEl?.classList.remove('entry-workspace', 'note-editing', 'categories-expanded');
       ctx = null;
@@ -383,12 +389,11 @@ function renderSheet(el: HTMLElement, note: string): void {
     </div>
     <div class="sheet-scroll">
       <div class="entry-section-head" id="category-head">
-        <span>常用分类</span><small>按时段与历史推荐</small>
+        <span>常用分类</span><small></small>
       </div>
       <div id="cat-grid" class="cat-grid" role="listbox" aria-label="选择分类"></div>
       ${renderTypeForms()}
       <input class="note" id="note" type="text" placeholder="写点备注（可选）" aria-label="备注">
-      <div class="note-suggest" id="note-suggest" aria-label="备注历史建议"></div>
       <div class="meta-row primary-meta">
         <button class="chip" id="date-chip">${iconHtml('ic-cal', 16)}<span id="date-txt"></span></button>
         <button class="chip" id="acct-btn">${iconHtml('ic-wallet', 16)}<span id="acct-name"></span></button>
@@ -445,7 +450,8 @@ function refreshEntryRecommendations(c: SheetCtx): void {
 
   if (c.type !== 'expense' && c.type !== 'income') return;
   const ranked = c.type === 'expense' ? c.quickExpenseCats : c.quickIncomeCats;
-  c.categoryId = resolveRecommendedCategoryId(c.categoryId, ranked, c.categorySelectionLocked);
+  c.categoryId = resolveRecommendedCategoryId(c.categoryId, ranked,
+    c.categorySelectionLocked || c.noteCategoryId != null);
   const recommendedAccountId = recommendAccountId(c.accounts, c.recommendationHistory, {
     now: c.recommendationNow,
     entryType: c.type,
@@ -490,7 +496,8 @@ function renderCats(): void {
     : c.showAllCategories ? '全部分类' : '常用分类';
   categoryHead.querySelector('small')!.textContent = isLoan
     ? '选择这笔往来的资金方向'
-    : c.showAllCategories ? '选择后自动回到常用分类' : '按时段与历史推荐';
+    : c.showAllCategories ? '选择后自动回到常用分类' : '';
+  categoryHead.querySelector('small')!.hidden = !isLoan && !c.showAllCategories;
   q('#tpl-row').hidden = c.type !== 'expense';
   q('#cat-grid').hidden = isTransfer;
   q('#transfer-block').hidden = !isTransfer;
@@ -690,9 +697,17 @@ function switchEntryType(type: EntryType): void {
     showToast('退款记录必须保持为支出退款类型');
     return;
   }
+  if (c.type === 'expense' || c.type === 'income') {
+    c.categorySelections[c.type] = {
+      categoryId: c.categoryId, locked: c.categorySelectionLocked, noteCategoryId: c.noteCategoryId,
+    };
+  }
   c.type = type;
   c.showAllCategories = false;
-  c.categorySelectionLocked = false;
+  const previous = type === 'expense' || type === 'income' ? c.categorySelections[type] : undefined;
+  c.categoryId = previous?.categoryId;
+  c.categorySelectionLocked = previous?.locked ?? false;
+  c.noteCategoryId = previous?.noteCategoryId;
   for (const button of sheetEl.querySelectorAll<HTMLElement>('#seg button')) {
     const active = button.dataset.type === type;
     button.classList.toggle('active', active);
@@ -789,10 +804,43 @@ function bindEvents(el: HTMLElement): void {
   el.querySelector('#btn-voice')!.addEventListener('click', startVoiceInput);
 
   const noteInput = el.querySelector<HTMLInputElement>('#note')!;
-  noteInput.addEventListener('focus', () => el.classList.add('note-editing'));
-  noteInput.addEventListener('blur', () => el.classList.remove('note-editing'));
+  const boundContext = ctx!;
+  let noteSessionType = boundContext.type;
+  let categoryPointerDown = false;
+  const categoryControls = '#cat-grid .cat, #seg [data-type], #tpl-row [data-tpl]';
+  // 先让手选点击落到原按钮；备注失焦不能重绘并吞掉尚未派发的 click。
+  const pointerDown = (event: PointerEvent) => {
+    categoryPointerDown = !!(event.target as Element).closest(categoryControls);
+  };
+  const pointerEnd = () => { categoryPointerDown = false; };
+  el.addEventListener('pointerdown', pointerDown, true);
+  el.addEventListener('pointerup', pointerEnd, true);
+  el.addEventListener('pointercancel', pointerEnd, true);
+  const disposeNoteCompletion = bindNoteCompletion(noteInput, note => {
+    if (ctx !== boundContext || sheetEl !== el || boundContext.type !== noteSessionType || saving) return;
+    if (applyNoteCategory(boundContext, note)) {
+      renderCats();
+      refreshMeta();
+    }
+  }, nextFocus => !categoryPointerDown
+    && !(nextFocus instanceof Element && nextFocus.closest(categoryControls)));
+  boundContext.disposeNoteCompletion = () => {
+    disposeNoteCompletion();
+    el.removeEventListener('pointerdown', pointerDown, true);
+    el.removeEventListener('pointerup', pointerEnd, true);
+    el.removeEventListener('pointercancel', pointerEnd, true);
+  };
+  noteInput.addEventListener('focus', () => {
+    if (ctx !== boundContext || sheetEl !== el) return;
+    categoryPointerDown = false;
+    noteSessionType = boundContext.type;
+    el.classList.add('note-editing');
+  });
+  noteInput.addEventListener('blur', () => {
+    if (ctx === boundContext && sheetEl === el) el.classList.remove('note-editing');
+  });
   noteInput.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter') return;
+    if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
     event.preventDefault();
     noteInput.blur();
   });
@@ -931,8 +979,6 @@ function bindEvents(el: HTMLElement): void {
     else pushDigit(k);
     refreshAmt();
   });
-
-  bindNoteSuggest(el);
 }
 
 /* ── 选择浮层（适配共享 pickList） ── */
@@ -1358,52 +1404,23 @@ async function doSave(stay: boolean): Promise<void> {
   c.tagIds = repeat.tagIds ?? [];
   c.merchantId = repeat.merchantId;
   noteInput.value = repeat.note;
+  c.noteCategoryId = undefined;
   lifeToggle.classList.remove('on'); lifeToggle.setAttribute('aria-checked', 'false');
   refreshAmt();
   refreshMeta();
   if (c.type === 'loan') void updateLoanHint();
 }
 
-/* ── 备注历史建议（R01） ─────────────── */
-
-/**
- * 渲染备注建议 chip 行：按输入内容前端过滤，
- * 当前分类的历史备注排前、全局高频补足，最多 8 条。
- * 显隐由 entry.css 控制（仅 .note-editing 态可见）。
- */
-function renderNoteSuggest(el: HTMLElement): void {
-  const box = el.querySelector<HTMLElement>('#note-suggest');
-  const c = ctx;
-  if (!box || !c) return;
-  const kw = el.querySelector<HTMLInputElement>('#note')!.value.trim();
-  const recent = rankNoteSuggestions(c.recommendationHistory, { type: c.type, categoryId: c.categoryId, now: c.recommendationNow, limit: 50 });
-  const pool = recent.filter(item => !kw || (item.text.includes(kw) && item.text !== kw))
-    .map(item => ({ note: item.text, count: item.count, categoryIds: item.categoryCount && c.categoryId != null ? [c.categoryId] : [] }));
-  const catId = c.type === 'expense' || c.type === 'income' ? c.categoryId : undefined;
-  const sorted = catId != null
-    ? [...pool].sort((a, b) =>
-        Number(b.categoryIds.includes(catId)) - Number(a.categoryIds.includes(catId)) || b.count - a.count)
-    : pool;
-  noteSuggestItems = sorted.slice(0, 8);
-  box.innerHTML = noteSuggestItems
-    .map((f, i) => `<button class="chip" type="button" data-note-idx="${i}">${esc(f.note)}</button>`)
-    .join('');
-}
-
-/** 绑定备注建议行：聚焦/输入时刷新，点 chip 回填（bindEvents 尾部调用一次） */
-function bindNoteSuggest(el: HTMLElement): void {
-  const noteInput = el.querySelector<HTMLInputElement>('#note')!;
-  const box = el.querySelector<HTMLElement>('#note-suggest')!;
-  noteInput.addEventListener('focus', () => renderNoteSuggest(el));
-  noteInput.addEventListener('input', () => renderNoteSuggest(el));
-  // pointerdown + preventDefault：避免点 chip 触发 input blur 移除 .note-editing
-  box.addEventListener('pointerdown', (e) => {
-    const chip = (e.target as HTMLElement).closest<HTMLElement>('[data-note-idx]');
-    if (!chip) return;
-    e.preventDefault();
-    const item = noteSuggestItems[Number(chip.dataset.noteIdx)];
-    if (!item) return;
-    noteInput.value = item.note;
-    renderNoteSuggest(el);
-  });
+/** 只允许完整备注更新系统默认分类；没有命中时分类和账户均保持原样。 */
+function applyNoteCategory(c: SheetCtx, note: string): boolean {
+  if (c.categorySelectionLocked || (c.type !== 'expense' && c.type !== 'income')) return false;
+  const categories = c.type === 'income'
+    ? c.incomeCats
+    : c.expenseTree.flatMap(group => group.children.length ? group.children : [group.parent]);
+  const matchedId = matchNoteCategoryId(categories, note);
+  if (matchedId == null) return false;
+  c.categoryId = matchedId;
+  c.noteCategoryId = matchedId;
+  refreshEntryRecommendations(c);
+  return true;
 }

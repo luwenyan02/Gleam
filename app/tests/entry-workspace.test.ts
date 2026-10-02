@@ -93,6 +93,46 @@ describe('快速记账工作台', () => {
     }).map((item) => item.id)).toEqual([3, 1, 2]);
   });
 
+  it.each([
+    [4, 59, '晚餐'], [5, 0, '早餐'], [10, 59, '早餐'], [11, 0, '午餐'],
+    [13, 59, '午餐'], [14, 0, '午餐'], [16, 59, '午餐'], [17, 0, '晚餐'],
+    [20, 59, '晚餐'], [21, 8, '晚餐'], [21, 59, '晚餐'], [22, 0, '晚餐'],
+  ])('无历史时使用账单本地时间 %i:%i 推荐 %s，不取种子首项', (hour, minute, expected) => {
+    const categories = ['早餐', '午餐', '晚餐'].map((name, index) => ({ ...category(index + 1), name }));
+    const targetAt = new Date(2026, 9, 2, hour, minute).getTime();
+    const now = new Date(2026, 9, 3, 8).getTime();
+    expect(rankFrequentCategories(categories, [], { now, targetAt, entryType: 'expense' })[0]?.name).toBe(expected);
+  });
+
+  it('22 点后可选宵夜时优先宵夜，21:08 仍然晚餐', () => {
+    const categories = ['早餐', '午餐', '晚餐', '宵夜'].map((name, index) => ({ ...category(index + 1), name }));
+    for (const [hour, expected] of [[21, '晚餐'], [22, '宵夜'], [0, '宵夜']] as const) {
+      const targetAt = new Date(2026, 9, 2, hour, 8).getTime();
+      expect(rankFrequentCategories(categories, [], { now: targetAt, targetAt })[0]?.name).toBe(expected);
+    }
+  });
+
+  it('晚间默认不被大量早餐历史压过，同时间段非餐饮习惯仍可优先', () => {
+    const categories = ['早餐', '午餐', '晚餐', '地铁'].map((name, index) => ({ ...category(index + 1), name }));
+    const now = new Date(2026, 9, 2, 21, 8).getTime();
+    const rows = Array.from({ length: 30 }, (_, index) => ({
+      type: 'expense' as const, categoryId: 1, occurredAt: new Date(2026, 9, 1 - index, 8).getTime(),
+    }));
+    expect(rankFrequentCategories(categories, rows, { now, entryType: 'expense' })[0]?.name).toBe('晚餐');
+    // 即使历史的早餐记在晚间，也不据此选错餐次。
+    rows.push({ type: 'expense', categoryId: 1, occurredAt: new Date(2026, 9, 1, 21).getTime() });
+    expect(rankFrequentCategories(categories, rows, { now, entryType: 'expense' })[0]?.name).toBe('晚餐');
+    rows.push({ type: 'expense', categoryId: 4, occurredAt: new Date(2026, 9, 1, 21).getTime() });
+    expect(rankFrequentCategories(categories, rows, { now, entryType: 'expense' })[0]?.name).toBe('地铁');
+  });
+
+  it('收入不使用餐次规则；没有餐次分类时保留原历史排序与回退', () => {
+    const now = new Date(2026, 9, 2, 21, 8).getTime();
+    const categories = ['早餐', '晚餐'].map((name, index) => ({ ...category(index + 1), name, kind: 'income' as const }));
+    expect(rankFrequentCategories(categories, [], { now, entryType: 'income' })[0]?.id).toBe(1);
+    expect(rankFrequentCategories([category(1), category(2)], [{ categoryId: 2, occurredAt: now - 1000 }], { now })[0]?.id).toBe(2);
+  });
+
   it('默认账户按同类型同分类的使用次数推荐，次数相同取最近使用', () => {
     const now = new Date(2026, 8, 5, 12, 15).getTime();
     const day = 24 * 60 * 60 * 1000;

@@ -26,9 +26,10 @@ def run(page, width):
     assert page.locator('#sp-life-chat h2').evaluate('''el => {
       const brand = el.querySelector('.chat-brand').getBoundingClientRect(), name = el.querySelector('.chat-brand-name').getBoundingClientRect();
       const ai = el.querySelector('em').getBoundingClientRect();
-      const small = el.querySelector('small'), rect = small.getBoundingClientRect();
-      return small.textContent === '聊聊想法与日常' && getComputedStyle(small).fontSize === '11px' && rect.left >= brand.right && Math.abs(rect.bottom-name.bottom) < 1 && Math.abs(ai.top-name.top) < 1;
+      return !el.querySelector('small') && Math.abs(ai.top-name.top) < 1;
     }''')
+    for removed in ('聊聊想法与日常', '不必每天来，想说的时候我都在。', 'AI 也会出错，请核实重要信息'):
+        assert removed not in page.locator('#sp-life-chat').inner_text()
     assert page.locator('.chat-compose-tools').evaluate('''el => {
       const buttons = [...el.querySelectorAll('button')].filter(b => !b.hidden).map(b => b.getBoundingClientRect());
       return buttons.every((b,i) => b.width >= 44 && b.height >= 44 && (!i || b.left >= buttons[i-1].right) && Math.abs(b.top-buttons[0].top) < 1);
