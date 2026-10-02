@@ -42,9 +42,6 @@ export interface BatchEntryResult extends BatchEntryPreview {
   appliedIds: number[];
 }
 
-// 限制浏览器待处理写入请求数量；所有块仍由同一个外层事务统一提交或回滚。
-const CATEGORY_WRITE_BATCH_SIZE = 500;
-
 function normalizedIds(entryIds: readonly number[]): number[] {
   return [...new Set(entryIds.filter((id) => Number.isSafeInteger(id) && id > 0))];
 }
@@ -201,14 +198,11 @@ export async function applyBatchEntries(
       if (operation.kind === 'category' && preview.processableIds.length) {
         // 当前写事务已锁定这些表，复用刚预检过的行，避免再次逐条读取整批账单。
         const updatedAt = now();
-        const updates = preview.processableIds.map((id) => ({
+        await db.entries.bulkPut(preview.processableIds.map((id) => ({
           ...entriesById.get(id)!,
           categoryId: operation.categoryId,
           updatedAt,
-        }));
-        for (let offset = 0; offset < updates.length; offset += CATEGORY_WRITE_BATCH_SIZE) {
-          await db.entries.bulkPut(updates.slice(offset, offset + CATEGORY_WRITE_BATCH_SIZE));
-        }
+        })));
         emit('entries-changed');
         return { ...preview, appliedIds: [...preview.processableIds] };
       }

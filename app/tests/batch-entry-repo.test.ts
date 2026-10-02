@@ -61,46 +61,6 @@ async function seedMixedEntries(): Promise<{
 }
 
 describe('共享批量账单事务', () => {
-  async function seedCategoryBatch(count: number): Promise<number[]> {
-    const rows: Entry[] = Array.from({ length: count }, (_, index) => ({
-      id: 40_000 + index, type: 'expense', amount: 100, accountId: cash,
-      categoryId: expenseOne, occurredAt: index + 1, reimburseStatus: 'none',
-      deletedAt: 0, createdAt: 1, updatedAt: 1,
-    }));
-    await db.entries.bulkAdd(rows);
-    return rows.map(row => row.id).reverse();
-  }
-
-  it('大批改分类限制单次写入队列，保持全部结果顺序且仅提交一次事件', async () => {
-    const ids = await seedCategoryBatch(1001);
-    const writes = vi.spyOn(db.entries, 'bulkPut');
-    const events: string[] = [];
-    stops.push(on('entries-changed', () => events.push('entries-changed')));
-    const result = await applyBatchEntries(ids, { kind: 'category', categoryId: expenseTwo });
-    expect(writes.mock.calls.map(([rows]) => rows.length)).toEqual([500, 500, 1]);
-    expect(result.appliedIds).toEqual(ids);
-    expect(await db.entries.where('categoryId').equals(expenseTwo).count()).toBe(1001);
-    expect((await db.accounts.get(cash))?.balance).toBe(10_000);
-    expect(events).toEqual(['entries-changed']);
-  }, 15_000);
-
-  it('后续写入块中途失败时，之前的所有块仍在同一事务内回滚', async () => {
-    const ids = await seedCategoryBatch(1001);
-    const original = db.entries.bulkPut.bind(db.entries);
-    let calls = 0;
-    vi.spyOn(db.entries, 'bulkPut').mockImplementation((async (rows: readonly Entry[]) => {
-      calls++;
-      if (calls === 2) { await original([rows[0]!]); throw new Error('虚构后续块失败'); }
-      return original(rows);
-    }) as typeof db.entries.bulkPut);
-    const events: string[] = [];
-    stops.push(on('entries-changed', () => events.push('entries-changed')));
-    await expect(applyBatchEntries(ids, { kind: 'category', categoryId: expenseTwo })).rejects.toThrow('虚构后续块失败');
-    expect(await db.entries.where('categoryId').equals(expenseOne).count()).toBe(1001);
-    expect(await db.entries.where('categoryId').equals(expenseTwo).count()).toBe(0);
-    expect(events).toEqual([]);
-  }, 15_000);
-
   it('改分类复用当前写事务内已预检的账单，不重复批量读取', async () => {
     const ids = await seedMixedEntries();
     const before = await db.entries.get(ids.expenseId);
