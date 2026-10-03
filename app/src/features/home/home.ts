@@ -184,18 +184,23 @@ async function refresh(): Promise<void> {
   try {
     const [mods, layout] = await Promise.all([getSetting('home.modules'), getHomeLayout()]);
     el.querySelector<HTMLElement>('#hm-month')!.hidden = !mods.month;
-    el.querySelector<HTMLElement>('#hm-quick')!.hidden = !mods.quick;
+    const nav = el.querySelector<HTMLElement>('#hm-quick')!;
+    const nextKeys = [...layout.quick, 'all'];
+    const currentKeys = [...nav.children].map(button => (button as HTMLElement).dataset.qa);
+    // 初次显示前补齐已配置的入口；同布局刷新不移除按钮，保留焦点与正在进行的操作。
+    if (currentKeys.length !== nextKeys.length || currentKeys.some((key, index) => key !== nextKeys[index])) {
+      nav.innerHTML = layout.quick.map(key => {
+        const service = HOME_SERVICES.find(s => s.key === key)!;
+        return `<button class="qa" data-qa="${key}"><span class="qa-ic">${iconHtml(service.icon)}</span>${service.name}</button>`;
+      }).join('') + `<button class="hm-all" data-qa="all"><span class="qa-ic">${iconHtml('ic-file')}</span>全部</button>`;
+    }
+    nav.style.gridTemplateColumns = `repeat(${Math.max(1, layout.quick.length + 1)}, minmax(44px, 1fr))`;
+    nav.hidden = !mods.quick;
     await Promise.all([
       mods.month ? refreshMonthCard(el) : Promise.resolve(),
       refreshReminders(el),
       refreshTimeline(el, mods.today, mods.past),
     ]);
-    const nav = el.querySelector<HTMLElement>('#hm-quick')!;
-    nav.innerHTML = layout.quick.map(key => {
-      const service = HOME_SERVICES.find(s => s.key === key)!;
-      return `<button class="qa" data-qa="${key}"><span class="qa-ic">${iconHtml(service.icon)}</span>${service.name}</button>`;
-    }).join('') + `<button class="hm-all" data-qa="all"><span class="qa-ic">${iconHtml('ic-file')}</span>全部</button>`;
-    nav.style.gridTemplateColumns = `repeat(${Math.max(1, layout.quick.length + 1)}, minmax(44px, 1fr))`;
     for (const [index, key] of layout.order.entries()) {
       const selectors = { month: '#hm-month', quick: '#hm-quick', today: '#hm-today', past: '.hm-past' };
       for (const node of el.querySelectorAll<HTMLElement>(selectors[key])) node.style.order = String(index);
