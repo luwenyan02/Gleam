@@ -528,8 +528,8 @@ export type SettingKey = keyof typeof SETTING_DEFAULTS;
 export const AI_ITEM_STATUSES = ['pending', 'recognizing', 'ready', 'failed'] as const;
 export type AiItemStatus = (typeof AI_ITEM_STATUSES)[number];
 
-/** AI 素材来源：系统分享 / 收件箱粘贴文本 / 收件箱选图（二期相册、三期通知监听预留枚举位） */
-export const AI_ITEM_SOURCES = ['share', 'paste', 'pick'] as const;
+/** AI 素材来源：系统分享 / 粘贴 / 选图 / 短语音（始终人工确认）。 */
+export const AI_ITEM_SOURCES = ['share', 'paste', 'pick', 'voice'] as const;
 export type AiItemSource = (typeof AI_ITEM_SOURCES)[number];
 
 /**

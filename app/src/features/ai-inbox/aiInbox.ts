@@ -12,6 +12,7 @@ import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
 import { formatFen, formatFenCny, parseYuanToFen } from '../../core/money';
 import { entryIdentity } from '../../core/entryIdentity';
+import { canAutoConfirmAiItem } from '../../core/aiInboxPolicy';
 import type { AiPendingItem, Account, Category } from '../../core/types';
 import { on } from '../../core/store';
 import { getSetting } from '../../core/repo/settingsRepo';
@@ -234,7 +235,7 @@ async function confirmItems(items: AiPendingItem[], allowDup = false): Promise<C
 async function autoConfirm(): Promise<void> {
   const threshold = await getSetting('ai.autoConfirmThreshold');
   const items = (await listAiPendingItems())
-    .filter((it) => it.status === 'ready' && (it.confidence ?? 0) >= threshold);
+    .filter((it) => canAutoConfirmAiItem(it, threshold));
   if (!items.length) return;
   const r = await confirmItems(items);
   if (r.imported > 0) showToast(`AI 已入账 ${r.imported} 笔，可在收件箱「最近入账」撤销`);
