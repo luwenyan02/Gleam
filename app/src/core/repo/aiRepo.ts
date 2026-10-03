@@ -514,7 +514,8 @@ export async function prepareVoiceRecognition(text: string): Promise<VoiceRecogn
   if (/转账|借出|借入|借款|借贷|还款|还钱|还信用卡|退款|退货|报销|归还|结清/.test(clean)) {
     throw new Error('转账、借贷、还款、退款和报销请用手动记账，保留完整账务关联');
   }
-  const [{ baseUrl, model }, candidates] = await Promise.all([loadConfig(), billCandidates()]);
+  const [{ baseUrl, model }, allCandidates] = await Promise.all([loadConfig(), billCandidates()]);
+  const candidates = { ...allCandidates, accounts: allCandidates.accounts.filter(account => account.group !== 'receivable') };
   const preview = Object.freeze({ text: clean, destination: Object.freeze({ baseUrl: baseUrl.trim(), model: model.trim() }),
     categoryNames: Object.freeze([...expenseCandidateNames(candidates.expenseCats), ...candidates.incomeCats.map(c => c.name)]),
     accountNames: Object.freeze(candidates.accounts.map(a => a.name)),
@@ -570,7 +571,10 @@ export async function recognizeVoiceDraft(grant: VoiceRecognitionGrant, signal?:
     if (amountFen <= 0) throw new Error();
   } catch { throw new Error('识别金额无效，请核对金额后重试或手动记账'); }
   const bill = normalizeBill(raw[0], candidates.expenseCats, candidates.incomeCats, candidates.accounts);
-  return { ...bill, amount: amountFen };
+  const allowedCategories = bill.type === 'expense' ? expenseCandidateNames(candidates.expenseCats) : candidates.incomeCats.map(c => c.name);
+  const categoryName = allowedCategories.filter(name => name === bill.categoryName).length === 1 ? bill.categoryName : undefined;
+  const accountName = candidates.accounts.filter(account => account.name === bill.accountName).length === 1 ? bill.accountName : undefined;
+  return { ...bill, amount: amountFen, categoryName, accountName };
 }
 
 /**

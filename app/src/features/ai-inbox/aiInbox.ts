@@ -12,7 +12,7 @@ import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
 import { formatFen, formatFenCny, parseYuanToFen } from '../../core/money';
 import { entryIdentity } from '../../core/entryIdentity';
-import { canAutoConfirmAiItem } from '../../core/aiInboxPolicy';
+import { canAutoConfirmAiItem, voiceDraftItem } from '../../core/aiInboxPolicy';
 import type { AiPendingItem, Account, Category } from '../../core/types';
 import { on } from '../../core/store';
 import { getSetting } from '../../core/repo/settingsRepo';
@@ -34,6 +34,7 @@ import {
 import { registerSubpage, openSubpage } from '../shell/router';
 import { showToast } from '../shell/toast';
 import { openEntrySheet } from '../entry/entrySheet';
+import { openShortVoice } from '../entry/shortVoice';
 import { openDateTimeWheel } from '../../shared/dateTimeWheel';
 import { openPickList, type PickListItem } from '../../shared/pickList';
 
@@ -401,9 +402,10 @@ function confBadge(conf: number | undefined): string {
 
 /** 素材摘要（截图缩略图 / 文本片段） */
 function sourceHtml(item: AiPendingItem, imgUrl?: string): string {
+  const voice = item.source === 'voice' ? '<p class="tiny">短语音 · 须人工确认</p>' : '';
   if (imgUrl) return `<img class="ai-thumb" src="${imgUrl}" alt="截图素材">`;
-  if (item.rawText) return `<p class="ai-raw">${esc(item.rawText.slice(0, 80))}${item.rawText.length > 80 ? '…' : ''}</p>`;
-  return '';
+  if (item.rawText) return `${voice}<p class="ai-raw">${esc(item.rawText.slice(0, 80))}${item.rawText.length > 80 ? '…' : ''}</p>`;
+  return voice;
 }
 
 /* categoryOptions 已删除：分类选择改为 openPickList，数据由模块缓存 expCatItems/incCatItems 提供 */
@@ -506,6 +508,7 @@ async function refresh(): Promise<void> {
     if (e.importBatchId != null) liveCountByBatch.set(e.importBatchId, (liveCountByBatch.get(e.importBatchId) ?? 0) + 1);
   }
 
+  const textDraft = el.querySelector<HTMLTextAreaElement>('#ai-text')?.value ?? '';
   el.innerHTML = `
     ${configured ? '' : `
     <section class="card ai-guide">
@@ -517,6 +520,7 @@ async function refresh(): Promise<void> {
       <textarea id="ai-text" rows="3" placeholder="粘贴短信 / 扣款通知 / 账单文本，如：昨天午饭花了28元 支付宝"></textarea>
       <div class="ai-actions">
         <button class="btn ghost" data-act="pick-img">${iconHtml('ic-camera', 16)} 选择截图</button>
+        <button class="btn ghost" data-act="short-voice">${iconHtml('ic-mic', 16)} 短语音</button>
         <button class="btn primary" data-act="recognize-text">识别文本</button>
       </div>
       <input type="file" id="ai-file" accept="image/*" multiple hidden>
@@ -543,6 +547,8 @@ async function refresh(): Promise<void> {
   }).join('')}
       <p class="tiny">撤销后账单进回收站，30 天内可恢复</p>
     </section>` : ''}`;
+  const textInput = el.querySelector<HTMLTextAreaElement>('#ai-text');
+  if (textInput) textInput.value = textDraft;
 }
 
 /* ── 装配 ── */
@@ -632,6 +638,14 @@ export function initAiInbox(): void {
         if (!act) return;
         if (act === 'go-settings') openSubpage('sp-settings');
         else if (act === 'pick-img') el.querySelector<HTMLInputElement>('#ai-file')?.click();
+        else if (act === 'short-voice') openShortVoice({ container: el, applyLabel: '加入收件箱待确认',
+          applyNote: '只保存到本机待确认队列，语音草稿不会自动入账；可在卡片修改后确认。',
+          async onApply(bill, text) {
+            if (!el.isConnected) throw new Error('收件箱已关闭');
+            await addAiPendingItems([voiceDraftItem(bill, text)]);
+            showToast('语音草稿已加入待确认，尚未入账');
+          },
+        });
         else if (act === 'recognize-text') {
           const ta = el.querySelector<HTMLTextAreaElement>('#ai-text');
           const text = ta?.value.trim();

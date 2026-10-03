@@ -29,7 +29,7 @@ public class GleamSecretsPlugin extends Plugin {
     }
 
     private boolean validKey(String key) {
-        return key != null && key.matches("[A-Za-z0-9._-]{1,80}");
+        return key != null && !key.startsWith("voice.bailian.") && key.matches("[A-Za-z0-9._-]{1,80}");
     }
 
     private SecretKey encryptionKey() throws Exception {

@@ -113,3 +113,14 @@ it('语音即使置信度100且自动阈值0也必须人工确认，旧素材仍
   expect(canAutoConfirmAiItem({ ...item, source: 'paste', confidence: 100 }, 80)).toBe(true);
   expect(canAutoConfirmAiItem({ ...item, source: 'paste', status: 'pending', confidence: 100 }, 0)).toBe(false);
 });
+
+it('语音候选排除应收应付账户，模型返回非候选账户不能被模糊映射', async () => {
+  await db.accounts.put({ id: 2, name: '虚构应收应付', group: 'receivable', balance: 12345, hidden: false,
+    countInNetWorth: true, sortOrder: 2, createdAt: 1, updatedAt: 1 });
+  const preview = await prepareVoiceRecognition('午餐28元');
+  expect(preview.accountNames).not.toContain('虚构应收应付');
+  vi.stubGlobal('fetch', vi.fn(async () => response([{ ...valid, account: '虚构应收应付' }])));
+  const bill = await recognizeVoiceDraft(approveVoiceRecognition(preview));
+  expect(bill.accountName).toBeUndefined();
+  expect(JSON.stringify(JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string))).not.toContain('虚构应收应付');
+});

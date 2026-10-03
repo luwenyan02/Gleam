@@ -25,10 +25,12 @@ import {
   accountingMonthRange, getAccountingMonth, setAccountingMonthStartDay,
 } from '../../core/repo/periodRepo';
 import { formatAccountingRange } from '../../core/period';
+import { bailianVoiceSettingsHtml, handleVoiceSettingsChange, handleVoiceSettingsClick, isVoiceKeyWritePending } from './bailianVoiceSettings';
 
 let body: HTMLElement | undefined;
 let sheetAbort: AbortController | undefined;
 let revealAiOnOpen = false;
+let settingsRefreshToken = 0;
 
 /** 复用设置页的接口配置；保留下层页面与草稿。 */
 export function openAiSettings(): void {
@@ -51,6 +53,7 @@ const switchHtml = (key: string, on_: boolean, label: string, disabled = false) 
 async function refresh(): Promise<void> {
   const el = body;
   if (!el?.isConnected) return;
+  const token = ++settingsRefreshToken;
   const isNative = Capacitor.isNativePlatform();
   const [pin, webauthn, bioOk, countAsIncome, autoRenew, backupAuto, retention, themeMode, monthStartDay] = await Promise.all([
     getSetting('security.pin'), getSetting('security.webauthn'), biometricAvailable(),
@@ -59,6 +62,8 @@ async function refresh(): Promise<void> {
     getSetting('theme.mode'),
     getSetting('accounting.monthStartDay'),
   ]);
+  if (!el.isConnected) return;
+  const voiceSettings = await bailianVoiceSettingsHtml();
   if (!el.isConnected) return;
   const currentAccountingMonth = await getAccountingMonth();
   const currentAccountingRange = await accountingMonthRange(currentAccountingMonth);
@@ -88,6 +93,8 @@ async function refresh(): Promise<void> {
   const modelLabel = aiModel || '选择模型';
   const selectedModel = modelPreset(aiBase, aiModel);
 
+  if (token !== settingsRefreshToken || !el.isConnected) return;
+  const voiceKeyDraft = isVoiceKeyWritePending() ? '' : el.querySelector<HTMLInputElement>('#voice-bailian-key')?.value ?? '';
   el.innerHTML = `
     <section class="card" aria-label="安全">
       <h3 class="card-title">安全</h3>
@@ -167,6 +174,7 @@ async function refresh(): Promise<void> {
       <p class="tiny">识别请求直连你填写的接口；${secretStore.kind === 'android-keystore' ? 'Key 由 Android 系统 Keystore 加密保存' : '浏览器版 Key 仅保留在当前标签页会话，关闭后需重新输入'}。置信度达阈值且分类账户齐全时自动入账，否则进收件箱待确认</p>
     </section>
 
+    ${voiceSettings}
     <section class="card" aria-label="关于">
       <h3 class="card-title">关于拾光</h3>
       <div class="field"><span>版本</span><span class="sub">v${APP_VERSION}</span></div>
@@ -175,11 +183,13 @@ async function refresh(): Promise<void> {
     </section>`;
 
   // 固定信息架构：记账偏好 → 数据与备份 → 智能能力与通知 → 外观与安全 → 关于。
-  const order = ['记账偏好', '备份', '数据', 'AI 记账', '通知', '外观', '安全', '关于'];
+  const order = ['记账偏好', '备份', '数据', 'AI 记账', '百炼短语音', '通知', '外观', '安全', '关于'];
   for (const label of order) {
     const section = el.querySelector<HTMLElement>(`section[aria-label="${label}"]`);
     if (section) el.appendChild(section);
   }
+  const voiceInput = el.querySelector<HTMLInputElement>('#voice-bailian-key');
+  if (voiceInput && !voiceInput.disabled) voiceInput.value = voiceKeyDraft;
   if (el.dataset.revealAi) requestAnimationFrame(() => {
     if (!el.isConnected || !el.dataset.revealAi) return;
     delete el.dataset.revealAi;
@@ -256,6 +266,7 @@ export function initSettings(): void {
       if (revealAiOnOpen) el.dataset.revealAi = 'true';
       el.addEventListener('click', (e) => {
         const t = e.target as HTMLElement;
+        if (handleVoiceSettingsClick(t, el)) return;
         const sw = t.closest<HTMLElement>('[data-sw]')?.dataset.sw;
         const freq = t.closest<HTMLElement>('[data-freq]')?.dataset.freq as 'off' | 'daily' | 'weekly' | undefined;
         const themeMode = t.closest<HTMLElement>('[data-theme-mode]')?.dataset.themeMode as 'light' | 'dark' | 'system' | undefined;
@@ -397,6 +408,7 @@ export function initSettings(): void {
       // [AI] AI 记账配置：change 即持久化（settings-changed 重渲染后值不丢）；滑块拖动时实时回显百分比
       el.addEventListener('change', (e) => {
         const t = e.target as HTMLInputElement;
+        if (handleVoiceSettingsChange(t)) return;
         if (t.id === 'ai-base') void setSetting('ai.baseUrl', t.value.trim());
         else if (t.id === 'ai-model') void setSetting('ai.model', t.value.trim());
         else if (t.id === 'ai-key') {

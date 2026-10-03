@@ -2,7 +2,17 @@
 
 ## 实施范围
 
-本阶段将「短句转写」接到现有 AI 记账草稿和人工保存流程，不加入实时语音聊天、录音归档、多笔自动入账或新的收费语音接口。语音识别和文字账单解析是两个独立的同意步骤。
+本阶段将阿里云百炼「短句转写」接到现有 AI 记账草稿和人工保存流程。Android 使用个人自带 Key 的原生 WebSocket，不加入实时语音聊天、录音归档或多笔自动入账。语音识别和文字账单解析是两个独立的同意步骤。
+
+## 手机设置与使用
+
+1. 「我的 → 设置」中，在文字 AI 记账设置下方填写独立的「百炼短语音」Key、服务地域和业务空间 ID。首版固定支持 `qwen3.8-omni-flash-realtime`；Key 必须与地域、空间一致，账号需具备相应模型权限
+2. 点击「保存语音 Key」。Key 只进入本机 Android Keystore 加密存储，不读回到设置输入框，不进入普通 `.skbak` 备份、Git 或安装包。保存不等于验证模型连通性，也不会自动调用服务；可用「清除语音 Key」撤销并停止当前语音
+3. 「记一笔」麦克风或「AI 记账收件箱 → 短语音」打开浮层。核对声音接收方与费用提示，点「同意并开始说话」，首次使用再允许系统麦克风权限
+4. 说一句普通支出/收入，在30秒内点「说完了」。可取消、修改转写文字或直接手填；超限不会自动提交
+5. 预览文字 AI 的接口、模型、原文和候选名称，明确同意后生成一笔草稿。记一笔中点「填入当前草稿」再核对保存；收件箱中加入待确认卡片再明确入账
+
+网页版不接收或保存百炼语音 Key，没有系统语音服务回退；可在同一浮层手填文字。原有开发网页版生活实时语音仍是独立能力，见 [REALTIME_VOICE.md](REALTIME_VOICE.md)。
 
 已有能力核对（基线 `5e01b3a`，v1.9.0）：
 
@@ -14,7 +24,7 @@
 ## 交互与数据边界
 
 1. 打开语音浮层不申请权限、不录音、不发送任何内容，底层记账草稿保持不动
-2. 语音服务与鉴权路线尚未确定，不能把候选的系统转写方案当作已选方案。保留阿里云百炼路线时，开始前展示实际地域、模型与接收方，用户同意后才申请麦克风并发送，最长 30 秒
+2. 开始前展示阿里云百炼的实际地域、模型与业务空间域名，用户同意后才申请麦克风并发送，录音最长 30 秒。权限、建连和转写分别有独立超时，前端保底等待95秒不会挤占录音窗口
 3. 转写文字可修改、取消或改用手动输入。拾光不保存音频文件
 4. AI 识别前预览本次文字、已配置接口/模型和候选分类/账户名称，并由用户单次确认。只发送这些内容及识别规则，不发送旧账单、余额、生活记录、照片或历史聊天
 5. 只处理一笔普通支出/收入。转账、借贷、信用卡还款、退款与报销使用已有完整手动账务，不能降级成普通支出/收入
@@ -26,9 +36,11 @@
 
 百炼实时模型支持 Android；现有安装包的限制是没有打包 Vite 的本机中转，而非模型不支持手机。[Realtime API 概述](https://help.aliyun.com/zh/model-studio/realtime-api-overview)列出 AOQ 的 Android 支持、WebRTC 的移动端支持以及 WebSocket 的全平台支持。
 
-百炼 [WebRTC 接入](https://help.aliyun.com/zh/model-studio/realtime-webrtc-access)推荐由业务 AppServer 代理 SDP，避免长期 API Key 放在前端。[AOQ Android 实时语音示例](https://help.aliyun.com/zh/model-studio/real-time-voice-conversation-using-aoq-access-qwen-audio-3-0-realtime-plus)提供按连接生成凭证的方式；用户自带 Key 的个人版原生安全直连也是待评估路线，不能内置共享长期 Key。
+百炼 [WebRTC 接入](https://help.aliyun.com/zh/model-studio/realtime-webrtc-access)推荐由业务 AppServer 代理 SDP，避免长期 API Key 放在前端。[AOQ Android 实时语音示例](https://help.aliyun.com/zh/model-studio/real-time-voice-conversation-using-aoq-access-qwen-audio-3-0-realtime-plus)提供按连接生成凭证的方式。本阶段选择个人自带 Key 的原生安全直连，不内置共享长期 Key，也不部署额外后端。
 
-如果采用按住/松开精确控制的 Manual 模式，需使用 WebSocket 或 AOQ。[Qwen-Omni 文档](https://help.aliyun.com/zh/model-studio/realtime)明确 WebRTC 仅支持服务端 VAD；复用当前 WebRTC 时应采用点击开始、自动判停后结束的一次短句，不能简单改成 Manual 模式。具体接入和凭据方案仍待确定，未采集真实声音或调用模型。
+本阶段使用 WebSocket Manual：16kHz、16-bit little-endian 单声道 PCM，收到 `session.updated` 并核对文本输出、Manual、转写模型及音频格式后才打开麦克风。「说完了」提交输入，只接受对应本次 item 的最终输入转录；不发送 `response.create`，不启用模型语音播报、工具或联网搜索。[客户端事件](https://help.aliyun.com/zh/model-studio/client-events)与[服务端事件](https://help.aliyun.com/zh/model-studio/server-events)是协议依据。
+
+[Qwen-Omni 文档](https://help.aliyun.com/zh/model-studio/realtime)明确 WebRTC 仅支持服务端 VAD，不能直接改成 Manual。原生域名由北京/新加坡与安全的空间 ID 推导，固定 WSS/TLS；不接受任意 URL、重定向、不安全证书或第三方回退。凭据修改/清除、权限迟到、重复启动、页面后台、音频焦点/来电和设备录音静默都会隔离或取消会话。Capacitor 桥日志在 debug/release 都关闭，避免写入 Key 参数。
 
 ## 验收
 
@@ -38,8 +50,9 @@
 
 ## 当前检查点
 
-- 完成可被百炼转录复用的通用文字草稿安全链：本机预览快照、一次性授权、目的地变化拒绝、取消/超时后迟到结果拒绝、私密错误不记录正文、单笔 JSON 与精确整数分校验
-- `voice` 来源的 ready 草稿始终人工确认，不能被自动确认阈值绕过；尚无界面创建此来源素材
-- 新增 25 条合成单元用例；完整本地单元测试 61 个文件 / 751 条通过，TypeScript 与网页构建、敏感信息扫描通过
-- 尚未实现音频采集、Android 权限/插件、用户入口、转录与真机兼容验收；不构成可发布的短语音功能
-- 保持草稿 PR，等待百炼鉴权路线确定；不凭此检查点的 CI 合并或发布语音版本
+- 已实现 Android 原生短句、独立设置、记一笔浮层与收件箱入口；底层原账单/收件箱文本草稿在取消或刷新后保留
+- `voice` 来源的 ready 草稿始终人工确认，不能被自动确认阈值绕过。声音不含账本上下文；文字候选排除应收应付账户，只接受唯一精确名称，特殊账务保持完整手动关联
+- 完整本地单元测试64文件/766项（新增语音相关40项）、原生29项（新增22项）、TypeScript、网页构建、Capacitor同步、敏感扫描通过。既有三时区 oracle 726次全部通过，未修改账务正确性基准
+- 独立代码复核发现的桥日志、保存Key时刷新残留、阶段超时、应收应付候选和收件箱草稿保留均已修复并复核
+- 本地 Chromium因运行环境 socket限制未启动；真实浏览器4宽验收和截图须由同一授权 GitHub CI 完成。当前保持草稿 PR，完整最终提交 CI 及截图尚待核对
+- 未采集真实麦克风、未输入真实Key或调用百炼；设备权限、Keystore、来电/后台、实际转录质量、安装升级仍待手机验证，不能用单元测试代替真机验收

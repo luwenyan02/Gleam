@@ -59,7 +59,7 @@ export function countDump(dump: TableDump): Record<string, number> {
 export function sanitizeDumpForBackup(dump: TableDump): TableDump {
   const settings = (dump.settings ?? []).map((row) => {
     const r = row as { key: string; value: unknown };
-    if (r.key === 'ai.apiKey') return { ...r, value: '' };
+    if (r.key === 'ai.apiKey' || r.key === 'voice.bailian.apiKey') return { ...r, value: '' };
     if (r.key === 'life.aiEnabled') return { ...r, value: false };
     if (r.key === 'cloud.webdav') return { ...r, value: { ...(r.value as Record<string, unknown>), password: '' } };
     if (r.key === 'cloud.s3') return { ...r, value: { ...(r.value as Record<string, unknown>), accessKey: '', secretKey: '' } };
@@ -82,6 +82,8 @@ export async function restoreAll(dump: Partial<TableDump>): Promise<void> {
       if (rows?.length) await db.table(name).bulkAdd(rows as never[]);
     }
     await db.settings.put({ key: 'life.aiEnabled', value: false, updatedAt: now() });
+    // 语音凭据只属于原生安全存储；不采用任何备份中夹带的明文 Key。
+    await db.settings.delete('voice.bailian.apiKey');
   });
   const events: AppEvent[] = [
     'entries-changed', 'accounts-changed', 'categories-changed',

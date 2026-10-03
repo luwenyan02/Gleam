@@ -475,6 +475,10 @@ export const SETTING_DEFAULTS = {
   'security.webauthn': null as { credId: string } | null,
   /** 旧版 IndexedDB 明文凭据已迁移并清空。 */
   'security.secretsMigrated': false as boolean,
+  /** 百炼短语音独立于文字 AI；Key 只在 Android 原生安全存储，不进此设置表。 */
+  'voice.bailian.region': 'beijing' as 'beijing' | 'singapore',
+  'voice.bailian.workspace': '',
+  'voice.bailian.model': 'qwen3.8-omni-flash-realtime' as const,
   /** 周期账 amountConfirm 待确认项持久化（刷新不丢失，确认/入账后移除） */
   'recurring.pendingConfirms': [] as {
     ruleId: number; name: string; type?: CategoryKind; amount: number; dueAt: number; accountId: number; categoryId: number;
