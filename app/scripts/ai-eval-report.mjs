@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 
-export const ORACLE_VERSION = 'synthetic-ledger-v1';
+export const ORACLE_VERSION = 'synthetic-ledger-v2';
 export const TIMEZONES = ['UTC', 'Asia/Shanghai', 'America/New_York'];
 
 const integer = value => Number.isSafeInteger(value) && value >= 0;

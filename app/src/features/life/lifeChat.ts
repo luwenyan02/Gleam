@@ -19,8 +19,9 @@ import { chatIcon } from './chatIcons';
 import { formatChatReplyTime } from './chatReplyTime';
 import { openAiSettings } from '../settings/settings';
 import { AiConfigError } from '../../core/repo/aiRepo';
-import { isLifeLedgerQuestion } from '../../core/repo/lifeLedgerContextRepo';
+import { isLifeLedgerQuestion, type LifeLedgerReview, type LifeLedgerScope } from '../../core/repo/lifeLedgerContextRepo';
 import { confirmLifeLedgerAi } from './lifeLedgerConsent';
+import { bindLifeLedgerResults, lifeLedgerResultHtml } from './lifeLedgerResult';
 
 const needsAiConfig = (error: unknown): boolean => error instanceof AiConfigError
   || (error instanceof Error && error.message === '请先在设置中配置 AI 接口和模型');
@@ -108,6 +109,8 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   let streamedReply = '';
   let stopVoice: (() => void) | undefined;
   const messagePhotoUrls = new Map<number, string>();
+  const ledgerResults = new Map<number, LifeLedgerReview>();
+  const ledgerScopes = new Map<number, LifeLedgerScope>();
   const isCurrentSession = () => chatSessionVersions.get(draft.key) === sessionVersion;
   const stageDraft = (): LifeDraft => {
     draft.chatUpdatedAt = Date.now();
@@ -190,7 +193,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       const sources = [...(message.photos ?? []).map(photo => photo.dataUrl), ...(message.photoRefs ?? []).map(ref => messagePhotoUrls.get(ref)).filter((url): url is string => !!url)];
       const replyTime = formatChatReplyTime(message.repliedAt);
       const actions = message.role === 'assistant' ? `<div class="chat-message-actions"><button data-chat-copy="${index}" aria-label="复制第 ${index + 1} 条消息" title="复制">${chatIcon('copy')}</button>${index === draft.messages.length - 1 ? `<button data-chat-regenerate aria-label="重新回答" title="重新回答">${chatIcon('retry')}</button>` : ''}${replyTime ? `<time class="chat-reply-time" datetime="${new Date(message.repliedAt!).toISOString()}" title="${esc(new Date(message.repliedAt!).toLocaleString())}" aria-label="回复时间 ${replyTime}">${replyTime}</time>` : ''}</div>` : '';
-      return `<article class="life-chat-bubble ${message.role}">${message.role === 'assistant' ? `<div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div>` : ''}<div class="chat-message-content"><div class="chat-message-text">${message.role === 'user' ? esc(message.content) : renderChatText(message.content)}</div>${sources.length ? `<div class="life-chat-message-photos">${sources.map((src, photoIndex) => `<img src="${src}" alt="本轮照片 ${photoIndex + 1}">`).join('')}</div>` : ''}</div>${actions}${failedMessageIndex === index ? '<div class="life-chat-failed">未完成 <button class="chip" data-life-chat-retry>重试</button></div>' : ''}</article>`;
+      return `<article class="life-chat-bubble ${message.role}">${message.role === 'assistant' ? `<div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div>` : ''}<div class="chat-message-content"><div class="chat-message-text">${message.role === 'user' ? esc(message.content) : renderChatText(message.content)}</div>${sources.length ? `<div class="life-chat-message-photos">${sources.map((src, photoIndex) => `<img src="${src}" alt="本轮照片 ${photoIndex + 1}">`).join('')}</div>` : ''}</div>${ledgerResults.has(index) ? lifeLedgerResultHtml(ledgerResults.get(index)!, index, sending) : ''}${actions}${failedMessageIndex === index ? '<div class="life-chat-failed">未完成 <button class="chip" data-life-chat-retry>重试</button></div>' : ''}</article>`;
     }).join('');
     const proposalStale = !!draft.summaryProposal && (draft.summaryProposal.sourceMessageCount < draft.messages.length || draft.photos.length > 0);
     const card = !summaryCardHidden && (readyToSummarize || draft.summaryProposal) ? `<section class="life-summary-card"><strong>${proposalStale ? '已有建议稿，对话已有新内容' : draft.summaryProposal ? '已有一版建议稿' : '已经有一个值得留下的片段了'}</strong><p>${proposalStale ? '建议稿不会自动覆盖你的修改；需要时可手动重新整理。' : '想把这段话整理成一条记录吗？'}</p><div><button class="btn primary" data-life-chat-summary>${draft.summaryProposal ? '查看建议稿' : '生成记录'}</button><button class="btn ghost" data-life-chat-continue>再聊聊</button></div></section>` : '';
@@ -218,6 +221,11 @@ function renderChat(host: HTMLElement, launch: Launch): void {
         button.innerHTML = chatIcon('check'); button.title = '已复制'; showToast('已复制');
         setTimeout(() => { if (button.isConnected) { button.innerHTML = chatIcon('copy'); button.title = '复制'; } }, 1600);
       }).catch(() => showToast('复制失败，可长按选择文字'));
+    });
+    bindLifeLedgerResults(messagesEl, ledgerResults, {
+      isActive: () => !disposed && !sending,
+      onError: message => status(message),
+      onFollowup: (question, scope) => { void sendLedgerFollowup(question, scope); },
     });
     messagesEl.querySelector('[data-chat-regenerate]')?.addEventListener('click', () => { void requestTurn(draft.messages.length - 2, true); });
     messagesEl.querySelector('[data-life-chat-retry]')?.addEventListener('click', () => { if (failedMessageIndex != null) void requestTurn(failedMessageIndex, failedRegenerate); });
@@ -254,6 +262,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     host.querySelector<HTMLButtonElement>('[data-life-chat-photo]')!.disabled = value;
     host.querySelector<HTMLButtonElement>('[data-chat-voice]')!.disabled = value;
     header.querySelectorAll<HTMLButtonElement>('button:not([data-act="back"])').forEach(button => { button.disabled = value; });
+    messagesEl.querySelectorAll<HTMLButtonElement>('[data-ledger-evidence],[data-ledger-followup]').forEach(button => { button.disabled = value; });
   }
   async function addPhotos(files: FileList | null): Promise<void> {
     if (!files?.length || sending) return;
@@ -295,9 +304,23 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     readyToSummarize = false; summaryCardHidden = false;
     failedMessageIndex = undefined;
     renderPhotos(); render();
+    // 同步取得请求锁，再异步保存草稿，避免连续点击插入未配对的问题。
+    const turn = requestTurn(draft.messages.length - 1);
     try { await persist(); }
     catch { status('草稿暂存在当前页面，请勿刷新；可重试保存。'); }
-    await requestTurn(draft.messages.length - 1);
+    await turn;
+  }
+  async function sendLedgerFollowup(question: string, scope: LifeLedgerScope): Promise<void> {
+    if (sending || disposed || draft.aiExcluded || existing?.aiExcluded) return;
+    const messageIndex = draft.messages.length;
+    draft.messages.push({ role: 'user', content: question });
+    ledgerScopes.set(messageIndex, { ...scope });
+    failedMessageIndex = undefined;
+    readyToSummarize = false; summaryCardHidden = false;
+    render();
+    const turn = requestTurn(messageIndex);
+    try { await persist(); } catch { status('草稿暂存在当前页面，请勿刷新；可重试保存。'); }
+    await turn;
   }
   async function requestTurn(messageIndex: number, regenerate = false): Promise<void> {
     if (sending || disposed) return;
@@ -308,8 +331,10 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     const photos = [...(draft.messages[messageIndex]?.photos ?? []).map(photo => photo.dataUrl)];
     setBusy(true);
     try {
-      const ledgerRequest = isLifeLedgerQuestion(draft.messages[messageIndex]?.content ?? '');
-      const ledger = ledgerRequest ? await confirmLifeLedgerAi(draft.messages[messageIndex].content, signal) : undefined;
+      const ledgerRequest = ledgerScopes.has(messageIndex) || isLifeLedgerQuestion(draft.messages[messageIndex]?.content ?? '');
+      const ledger = ledgerRequest ? await confirmLifeLedgerAi(draft.messages[messageIndex].content, signal, {
+        scope: ledgerScopes.get(messageIndex), onScopeChange: scope => ledgerScopes.set(messageIndex, scope),
+      }) : undefined;
       const expectedDestination = ledgerRequest ? (ledger ? ledger.expectedDestination : false) : await authorise(sourcePreview(photos), photos, signal);
       if (!expectedDestination || disposed || signal.aborted) { failedMessageIndex = messageIndex; status('未发送，消息和照片仍保存在本机。'); render(); return; }
       status('拾光正在想…');
@@ -318,9 +343,14 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       });
       if (disposed || signal.aborted) return;
       streamedReply = '';
-      if (regenerate) draft.messages.splice(messageIndex + 1);
+      if (regenerate) {
+        draft.messages.splice(messageIndex + 1);
+        for (const key of ledgerResults.keys()) if (key > messageIndex) ledgerResults.delete(key);
+        for (const key of ledgerScopes.keys()) if (key > messageIndex) ledgerScopes.delete(key);
+      }
       if (ledger) { draft.messages[messageIndex].ledgerAnalysis = true; authorisedDestination = undefined; }
       draft.messages.push({ role: 'assistant', content: turn.reply, repliedAt: Date.now(), ...(ledger ? { ledgerAnalysis: true } : {}) });
+      if (ledger) ledgerResults.set(draft.messages.length - 1, ledger.review);
       failedMessageIndex = undefined;
       // 是否整理由用户决定，不因模型的旧版就绪标志弹出劝记卡片。
       readyToSummarize = false;
@@ -333,7 +363,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       status(signal.aborted ? '已停止，消息仍保留在本机。' : error instanceof Error ? error.message : '发送失败，可重试。', !signal.aborted && needsAiConfig(error));
       render();
     } finally {
-      if (!disposed) setBusy(false);
+      if (!disposed) { setBusy(false); render(false); }
       controller = undefined;
     }
   }

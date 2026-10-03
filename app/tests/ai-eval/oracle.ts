@@ -54,3 +54,48 @@ export function oracleBalances(accounts: readonly Account[], entries: readonly E
   }
   return Object.fromEntries([...result].map(([id, value]) => [id, number(value)]));
 }
+
+/** Calendar indices avoid production month/date helpers and keep year rollover explicit. */
+export function oracleMonths(lastMonth: string, count: number): string[] {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(lastMonth) || !Number.isInteger(count) || count < 1) throw new Error('invalid oracle months');
+  const [year, month] = lastMonth.split('-').map(Number);
+  const last = year * 12 + month - 1;
+  return Array.from({ length: count }, (_, index) => {
+    const position = last - count + index + 1;
+    return `${String(Math.floor(position / 12)).padStart(4, '0')}-${String(position % 12 + 1).padStart(2, '0')}`;
+  });
+}
+
+/** Percent with exact integer rounding: nearest .01 percentage point, ties away from zero. */
+function oraclePercentHundredths(numerator: number, denominator: number): bigint {
+  const value = cents(numerator), divisor = cents(denominator);
+  if (divisor <= 0n) throw new Error('invalid oracle percent denominator');
+  const unsigned = (value < 0n ? -value : value) * 10000n;
+  let hundredths = unsigned / divisor;
+  if ((unsigned % divisor) * 2n >= divisor) hundredths++;
+  return value < 0n ? -hundredths : hundredths;
+}
+
+export function oraclePercent(numerator: number, denominator: number): number {
+  const scaled = oraclePercentHundredths(numerator, denominator);
+  const absolute = scaled < 0n ? -scaled : scaled;
+  return Number(`${scaled < 0n ? '-' : ''}${absolute / 100n}.${String(absolute % 100n).padStart(2, '0')}`);
+}
+
+/** First versus last is deliberate for both 2-month comparison and 6-month trend. */
+export function oracleChange(first: ReturnType<typeof oracleSummary>, last: ReturnType<typeof oracleSummary>) {
+  const baseline = first.totals.expenseFen, current = last.totals.expenseFen;
+  const expenseChangeFen = number(cents(current) - cents(baseline));
+  let reason = first.totals.expenseCount + first.totals.refundCount === 0 ? 'empty-baseline'
+    : baseline === 0 ? 'zero-baseline' : baseline < 0 ? 'negative-baseline'
+      : current < 0 ? 'negative-current' : 'comparable';
+  let expenseChangePercent: number | null = null;
+  if (reason === 'comparable') {
+    const scaled = oraclePercentHundredths(expenseChangeFen, baseline);
+    const result = oraclePercent(expenseChangeFen, baseline);
+    if (scaled > BigInt(Number.MAX_SAFE_INTEGER) || scaled < -BigInt(Number.MAX_SAFE_INTEGER)
+      || BigInt(result.toFixed(2).replace('.', '')) !== scaled) reason = 'unsafe-percentage';
+    else expenseChangePercent = result;
+  }
+  return { expenseChangeFen, expenseChangePercent, reason };
+}

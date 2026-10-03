@@ -61,3 +61,9 @@ IndexedDB / Android WebView 存储
 新增能力优先扩展已有仓库和内部类型；只有持久化实体确实需要新增字段时才升级 Dexie schema，并同时提供迁移、回滚与备份恢复测试。
 
 本地 v1.4.0 测试阶段经用户确认不迁移旧独立借贷对象。既有 schema 中的 `loanContacts` 仅保留为未使用的历史容器，页面、导入及新流水均不读写该表；不自动清除旧账本。新借贷复用现有双账户字段，无需新增表或 schema 升级。
+
+## 本机可核对的账本分析
+
+`lifeLedgerContextRepo` 在同一只读事务中构造固定 1／2／6 月聚合，复用 `ledgerEntriesInRange` 与 `summarizeLedgerEntries`。公开 review 只有问题与聚合；原始事件、分类身份及快照留在 WeakMap，grant 克隆保留私有来源验证能力。请求前后和本机下钻都复核摘要与原始快照，防止同额替换绕过过期判断。
+
+`lifeLedgerConsent` 负责手选范围与单次发送确认，`lifeLedgerResult` 只用本机聚合渲染核对卡、限定明细选择器与两项规则追问，`lifeChat` 在请求成功后才把卡片留在当前页面内存。模型文字没有操作执行入口。没有数据库结构、账户余额、自动入账或生活记录流程变更。详见 [功能与边界](AI_LEDGER_ANALYSIS.md)。
