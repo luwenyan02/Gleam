@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
 import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
-import { verifyWebAssets } from '../scripts/release-integrity.mjs';
+import { RELEASE_CERTIFICATE_SHA256, verifyReleaseCertificate, verifyWebAssets } from '../scripts/release-integrity.mjs';
 
 const files = new Map([
   ['build-info.json', Buffer.from(JSON.stringify({ version: '1.3.1' }))],
@@ -143,4 +143,30 @@ describe('Android 启动图标', () => {
     }
   });
 
+});
+
+
+describe('用户确认的本地发布证书', () => {
+  const local = 'f979d49ce586a7438bcaf44bcec4b4edaa9e80cba170a07f8f8895b757380012';
+  const cloud = 'e8e6ca55e4bb1ae4c3085f130c25ccd4e937b70c745e3f657064b590fefa18dc';
+  const line = (fingerprint: string) => `Signer #1 certificate SHA-256 digest: ${fingerprint}`;
+
+  it('固定为用户提供的原本地证书，接受 apksigner 的唯一实际签名者', () => {
+    expect(RELEASE_CERTIFICATE_SHA256).toBe(local);
+    expect(() => verifyReleaseCertificate(`${line(local)}\n`)).not.toThrow();
+    expect(() => verifyReleaseCertificate(line(local.toUpperCase()))).not.toThrow();
+  });
+
+  it.each([
+    ['已发布云端证书', line(cloud)],
+    ['缺少签名者', 'Verified'],
+    ['普通文字夹带指纹', `note: ${line(local)}`],
+    ['来源戳不能代替签名者', `Source Stamp Signer certificate SHA-256 digest: ${local}`],
+    ['截断指纹', line(local.slice(0, -1))],
+    ['延长指纹', line(local + 'f')],
+    ['未知双签名', `${line(local)}\nSigner #2 certificate SHA-256 digest: ${cloud}`],
+    ['重复签名者输出', `${line(local)}\n${line(local)}`],
+  ])('拒绝 %s', (_label, output) => {
+    expect(() => verifyReleaseCertificate(output)).toThrow('当前授权发布证书');
+  });
 });
