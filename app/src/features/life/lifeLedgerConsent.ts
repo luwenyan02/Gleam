@@ -1,20 +1,21 @@
 import { esc } from '../../core/esc';
 import { monthKey, shiftMonthKey } from '../../core/period';
 import { getLifeAiDestination } from '../../core/repo/lifeAiRepo';
-import { approveLifeLedgerReview, getLifeLedgerReview, lifeLedgerReviewText, suggestLifeLedgerScope, type LifeLedgerGrant, type LifeLedgerReview } from '../../core/repo/lifeLedgerContextRepo';
+import { approveLifeLedgerReview, getLifeLedgerReview, lifeLedgerReviewText, suggestLifeLedgerScope, type LifeLedgerGrant, type LifeLedgerReview, type LifeLedgerScope, lifeLedgerReviewCount } from '../../core/repo/lifeLedgerContextRepo';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
 import { openMonthWheel } from '../../shared/dateTimeWheel';
 import { closeSheet, openSheet } from '../shell/sheet';
 
 export interface ConfirmedLifeLedger {
   ledgerGrant: LifeLedgerGrant;
+  review: LifeLedgerReview;
   expectedDestination: { baseUrl: string; model: string };
 }
 
 /** 月份与汇总始终先在设备上预览；本次确认不成为后续请求的长期授权。 */
-export async function confirmLifeLedgerAi(question: string, signal: AbortSignal): Promise<ConfirmedLifeLedger | false> {
+export async function confirmLifeLedgerAi(question: string, signal: AbortSignal, options: { scope?: LifeLedgerScope; onScopeChange?: (scope: LifeLedgerScope) => void } = {}): Promise<ConfirmedLifeLedger | false> {
   const [destination, initialScope, enabled] = await Promise.all([
-    getLifeAiDestination(), suggestLifeLedgerScope(question), getSetting('life.aiEnabled'),
+    getLifeAiDestination(), options.scope ? Promise.resolve({ ...options.scope }) : suggestLifeLedgerScope(question), getSetting('life.aiEnabled'),
   ]);
   if (signal.aborted) return false;
   if (!document.getElementById('sheet')) return false;
@@ -39,8 +40,9 @@ export async function confirmLifeLedgerAi(question: string, signal: AbortSignal)
         <div class="sheet-scroll life-ledger-review">
           <div class="life-ledger-month"><button class="icon-btn" data-ledger-prev aria-label="上个月">‹</button><button class="pick-trigger" data-ledger-month aria-label="选择分析月份"></button><button class="icon-btn" data-ledger-next aria-label="下个月">›</button></div>
           <div class="life-ledger-period" role="group" aria-label="月份口径"><button class="chip" data-ledger-period="calendar">自然月</button><button class="chip" data-ledger-period="accounting">财务月</button></div>
+          <div class="life-ledger-period life-ledger-modes" role="group" aria-label="分析方式"><button class="chip" data-ledger-analysis="month">单月分类</button><button class="chip" data-ledger-analysis="compare">对比上月</button><button class="chip" data-ledger-analysis="trend">近 6 月</button></div>
           <label class="lc-check"><input type="checkbox" data-ledger-income ${scope.includeIncome ? 'checked' : ''}>同时包含收入汇总</label>
-          <p class="sub">本次仅分析所选月份。自然月从 1 日开始；财务月使用设置中的月起始日。</p>
+          <p class="sub">以所选月份为截止月。自然月从 1 日开始；财务月使用设置中的月起始日。</p>
           <div class="life-ledger-preview" data-ledger-preview aria-live="polite">正在本机汇总…</div>
           <p class="life-ledger-destination">服务：${esc(destination.baseUrl)}<br>模型：${esc(destination.model)}</p>
           <p class="sub">同意后，仅以上问题和汇总会离开设备，服务方的数据处理规则适用。每次分析、重试或重新回答都需要重新确认。</p>
@@ -52,10 +54,15 @@ export async function confirmLifeLedgerAi(question: string, signal: AbortSignal)
       const approve = el.querySelector<HTMLButtonElement>('[data-ledger-approve]')!;
       const refresh = async () => {
         const currentVersion = ++version;
+        options.onScopeChange?.({ ...scope });
         review = undefined; approve.disabled = true; error.textContent = ''; preview.textContent = '正在本机汇总…';
         el.querySelector<HTMLElement>('[data-ledger-month]')!.textContent = scope.month.replace('-', ' 年 ') + ' 月';
         el.querySelectorAll<HTMLButtonElement>('[data-ledger-period]').forEach(button => {
           const selected = button.dataset.ledgerPeriod === scope.period;
+          button.classList.toggle('active', selected); button.setAttribute('aria-pressed', String(selected));
+        });
+        el.querySelectorAll<HTMLButtonElement>('[data-ledger-analysis]').forEach(button => {
+          const selected = button.dataset.ledgerAnalysis === (scope.analysis ?? 'month');
           button.classList.toggle('active', selected); button.setAttribute('aria-pressed', String(selected));
         });
         try {
@@ -63,7 +70,7 @@ export async function confirmLifeLedgerAi(question: string, signal: AbortSignal)
           if (settled || signal.aborted || currentVersion !== version) return;
           review = next;
           preview.textContent = lifeLedgerReviewText(next);
-          const count = next.summary.totals.expenseCount + next.summary.totals.refundCount + (next.summary.income?.count ?? 0);
+          const count = lifeLedgerReviewCount(next);
           approve.disabled = count === 0;
           if (!count) error.textContent = '所选范围暂无账单，不会发送 AI 请求。可以换个月份查看。';
         } catch (reason) { if (!settled && currentVersion === version) { preview.textContent = ''; error.textContent = reason instanceof Error ? reason.message : '账本汇总暂时不可用'; } }
@@ -83,6 +90,11 @@ export async function confirmLifeLedgerAi(question: string, signal: AbortSignal)
       el.querySelectorAll<HTMLButtonElement>('[data-ledger-period]').forEach(button => button.addEventListener('click', () => {
         scope = { ...scope, period: button.dataset.ledgerPeriod as 'calendar' | 'accounting' }; void refresh();
       }));
+      el.querySelectorAll<HTMLButtonElement>('[data-ledger-analysis]').forEach(button => button.addEventListener('click', () => {
+        const { analysis: _old, ...base } = scope;
+        scope = button.dataset.ledgerAnalysis === 'month' ? base : { ...base, analysis: button.dataset.ledgerAnalysis as 'compare' | 'trend' };
+        void refresh();
+      }));
       el.querySelector<HTMLInputElement>('[data-ledger-income]')!.onchange = event => {
         scope = { ...scope, includeIncome: (event.target as HTMLInputElement).checked }; void refresh();
       };
@@ -93,7 +105,7 @@ export async function confirmLifeLedgerAi(question: string, signal: AbortSignal)
         try {
           if (!enabled) await setSetting('life.aiEnabled', true);
           if (settled || signal.aborted) return;
-          finish({ ledgerGrant: approveLifeLedgerReview(selected, destination), expectedDestination: destination });
+          finish({ ledgerGrant: approveLifeLedgerReview(selected, destination), review: selected, expectedDestination: destination });
         } catch { if (!settled) { error.textContent = '暂时无法启用 AI，请重试'; approve.disabled = false; } }
       };
       void refresh();

@@ -1,7 +1,7 @@
 import type { Account, Category, Entry } from '../../src/core/types';
 
 /** Fictional fixture with independently checked deterministic constants. No user data. */
-export const ORACLE_VERSION = 'synthetic-ledger-v1';
+export const ORACLE_VERSION = 'synthetic-ledger-v2';
 export const FIXED_NOW = Date.parse('2026-10-10T12:00:00+08:00');
 export const localNoon = (month: number, day: number) => new Date(2026, month - 1, day, 12).getTime();
 export const initialAccounts: Account[] = [

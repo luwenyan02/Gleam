@@ -95,7 +95,7 @@ describe('offline AI eval report is fail-closed', () => {
   it('requires the full timezone matrix and valid Git identity without claiming model evaluation', () => {
     const runs = TIMEZONES.map(timezone => evaluate({ timezone }));
     const report = buildReport({ startedAt: timestamp, completedAt: timestamp, git, runs });
-    expect(report).toMatchObject({ status: 'passed', oracleVersion: 'synthetic-ledger-v1', offline: true, actualModel: 'untested', toolSelection: 'N/A', counts: { executed: 3 } });
+    expect(report).toMatchObject({ status: 'passed', oracleVersion: 'synthetic-ledger-v2', offline: true, actualModel: 'untested', toolSelection: 'N/A', counts: { executed: 3 } });
     expect(buildReport({ startedAt: timestamp, completedAt: timestamp, git, runs: runs.slice(1) }).status).toBe('failed');
     expect(buildReport({ startedAt: timestamp, completedAt: timestamp, git: { sha: null, dirty: null }, runs }).status).toBe('failed');
     runs[2].suites[0].groups[0].cases[0].fullName = 'timezone-dependent replacement case';
