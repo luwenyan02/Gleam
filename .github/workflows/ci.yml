@@ -29,6 +29,16 @@ jobs:
       - run: npm audit --audit-level=high
       - run: npm run check:secrets
       - run: npm run test:unit
+      - run: npm run test:ai-eval
+      - name: Preserve offline AI ledger eval report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ai-eval-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/ai-eval/**
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
       - run: npm run build
 
   e2e:
