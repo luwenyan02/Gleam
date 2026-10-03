@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import JSZip from 'jszip';
-import { verifyWebAssets } from './release-integrity.mjs';
+import { verifyReleaseCertificate, verifyWebAssets } from './release-integrity.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
@@ -28,6 +28,5 @@ if (!manifest.includes(`versionName='${version}'`) || !manifest.includes(`versio
   throw new Error('Android 与源码版本不一致');
 }
 const signature = execFileSync(join(bin, 'apksigner'), ['verify', '--print-certs', apk], { encoding: 'utf8' });
-const expected = 'e8e6ca55e4bb1ae4c3085f130c25ccd4e937b70c745e3f657064b590fefa18dc';
-if (!signature.toLowerCase().includes(`certificate sha-256 digest: ${expected}`)) throw new Error('APK 不是当前授权发布证书签名，禁止发布');
+verifyReleaseCertificate(signature);
 console.log(`通过：Android / 网页 v${version}，${count} 个网页文件逐字节一致，当前发布证书签名有效。`);
