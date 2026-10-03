@@ -63,7 +63,8 @@ describe('统一账单查询', () => {
   it('汇总与分组复用同一结果集，退款冲抵支出且转账不计收支', () => {
     const summary = summarizeLedgerEntries(rows);
     expect(summary).toEqual({ expense: 800, income: 3_000, balance: 2_200, expenseCount: 2, incomeCount: 1 });
-    expect(groupLedgerEntries(rows).map((group) => group.day)).toEqual(['1970-01-01']);
+    const localDateRows = rows.map(row => ({ ...row, occurredAt: new Date(2026, 8, 1, 12).getTime() + row.occurredAt }));
+    expect(groupLedgerEntries(localDateRows).map((group) => group.day)).toEqual(['2026-09-01']);
   });
 
   it('报销口径可在冲抵支出与计入收入之间切换', () => {
