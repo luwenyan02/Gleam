@@ -95,7 +95,7 @@ def run(page, width):
     page.route('https://short-voice.invalid/**', model)
     page.on('request', lambda req: requests.append(req.url) if req.url.startswith('https://') else None)
     page.goto(URL); page.locator('#fab').wait_for(); seed_config(page)
-    page.locator('[data-page="page-mine"]').click(); page.locator('[data-sub="sp-settings"]').click()
+    page.locator('[data-page="page-mine"]').click(); page.get_by_role('button', name='应用设置', exact=True).click()
     page.locator('#voice-bailian-key').wait_for(); page.locator('#voice-bailian-key').scroll_into_view_if_needed()
     expect(page.locator('#voice-bailian-key')).to_be_enabled()
     expect(page.locator('#voice-bailian-key')).to_have_value('')
@@ -110,6 +110,7 @@ def run(page, width):
     page.wait_for_function("document.querySelector('#voice-bailian-key')!==window.__oldVoiceInput")
     expect(page.locator('#voice-bailian-key')).to_be_disabled()
     expect(page.locator('#voice-bailian-key')).to_have_value('')
+    page.wait_for_function("typeof window.__resolveVoiceKey === 'function'")
     page.evaluate('window.__delayVoiceKey=false;window.__resolveVoiceKey()')
     expect(page.locator('[data-voice-key-status]')).to_contain_text('已保存')
     expect(page.locator('#voice-bailian-key')).to_have_value('')
@@ -127,7 +128,8 @@ def run(page, width):
     page.locator('[data-page="page-home"]').click()
 
     # Opening never captures/sends; dismiss keeps every underlying draft field.
-    page.locator('#fab').click(); page.locator('#note').fill('原本的虚构草稿');
+    page.locator('#fab').click(); page.locator('#note').fill('原本的虚构草稿')
+    page.locator('#note').blur()
     page.locator('#keypad [data-k="9"]').click(); page.locator('#btn-voice').click()
     expect(page.locator('[data-sv-start]')).to_be_enabled()
     expect(page.locator('[data-sv-consent]')).to_contain_text('阿里云百炼')
@@ -135,7 +137,7 @@ def run(page, width):
     assert page.evaluate("window.__voiceCalls.filter(x=>x.method==='start').length") == 0
     image(page, 'consent', width)
     page.locator('[data-sv-close]').click(); expect(page.locator('#note')).to_have_value('原本的虚构草稿')
-    expect(page.locator('#amt')).to_contain_text('9.00'); page.locator('#sheet-close').click()
+    expect(page.locator('#amt')).to_have_text('9'); page.locator('#sheet-close').click()
 
     open_entry_voice(page)
     page.locator('[data-sv-start]').click(); expect(page.locator('[data-sv-status]')).to_contain_text('正在听')
@@ -198,7 +200,7 @@ def web_mode(page,width):
     expect(page.locator('[data-sv-start]')).to_be_disabled()
     image(page,'web-fallback',width)
     page.locator('[data-sv-close]').click();page.locator('#sheet-close').click()
-    page.locator('[data-page="page-mine"]').click();page.locator('[data-sub="sp-settings"]').click()
+    page.locator('[data-page="page-mine"]').click();page.get_by_role('button', name='应用设置', exact=True).click()
     expect(page.locator('#voice-bailian-key')).to_be_disabled()
     expect(page.locator('[data-voice-key-status]')).to_contain_text('不接收或保存')
 
