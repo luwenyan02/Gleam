@@ -57,6 +57,8 @@ import { mountReceiptEditor, type ReceiptDraft } from './receiptEditor';
 import { rankMerchantSuggestions } from '../../core/repo/entityInsightsRepo';
 import { loanDirection, loanAccountId as relatedLoanAccountId, loanFundAccountId } from '../../core/loanLedger';
 import { bindNoteCompletion, matchNoteCategoryId } from './entryNoteMatching';
+import { openShortVoice } from './shortVoice';
+import { mapCategoryNameToId } from '../../core/repo/aiRepo';
 import './entry.css';
 
 /**
@@ -159,6 +161,7 @@ interface SheetCtx {
     categoryId?: number; locked: boolean; noteCategoryId?: number;
   }>>;
   disposeNoteCompletion?: () => void;
+  disposeVoice?: () => void;
   accountSelectionLocked: boolean;
   showAllCategories: boolean;
   advancedOpen: boolean;
@@ -345,6 +348,7 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
       c.receipts = mountReceiptEditor(el.querySelector<HTMLElement>('#receipt-editor')!, initialReceipts);
     },
     onClose() {
+      c.disposeVoice?.();
       c.disposeNoteCompletion?.();
       c.receipts?.dispose();
       sheetEl?.classList.remove('entry-workspace', 'note-editing', 'categories-expanded');
@@ -718,83 +722,31 @@ function switchEntryType(type: EntryType): void {
   refreshMeta();
 }
 
-interface VoiceResultEvent {
-  results: { [index: number]: { [index: number]: { transcript: string } } };
-}
-
-interface VoiceRecognition {
-  lang: string;
-  interimResults: boolean;
-  maxAlternatives: number;
-  start(): void;
-  onstart: (() => void) | null;
-  onend: (() => void) | null;
-  onresult: ((event: VoiceResultEvent) => void) | null;
-  onerror: ((event: { error?: string }) => void) | null;
-}
-
-type VoiceRecognitionCtor = new () => VoiceRecognition;
-
 function startVoiceInput(): void {
-  const host = window as typeof window & {
-    SpeechRecognition?: VoiceRecognitionCtor;
-    webkitSpeechRecognition?: VoiceRecognitionCtor;
-  };
-  const Recognition = host.SpeechRecognition ?? host.webkitSpeechRecognition;
-  if (!Recognition) {
-    showToast('当前设备暂不支持语音输入，可使用速记模板快速记录');
+  const c = ctx, el = sheetEl;
+  if (!c || !el || saving) return;
+  if (c.editingId || !['expense', 'income'].includes(c.type) || c.bx || c.tk || c.refundOfEntryId || c.reimbursedDone) {
+    showToast('编辑、转账、借贷、退款和报销请用手动记账，保留原账务关联');
     return;
   }
-  const button = q<HTMLButtonElement>('#btn-voice');
-  const recognition = new Recognition();
-  recognition.lang = 'zh-CN';
-  recognition.interimResults = false;
-  recognition.maxAlternatives = 1;
-  recognition.onstart = () => {
-    button.classList.add('listening');
-    button.setAttribute('aria-label', '正在聆听，点击系统提示后说出账单');
-    showToast('请说，例如「午餐 28 元」');
-  };
-  recognition.onend = () => {
-    button.classList.remove('listening');
-    button.setAttribute('aria-label', '语音输入');
-  };
-  recognition.onerror = () => showToast('没有听清，请再试一次');
-  recognition.onresult = (event) => applyVoiceText(event.results[0]?.[0]?.transcript ?? '');
-  try {
-    recognition.start();
-  } catch {
-    showToast('语音输入暂时不可用，请稍后重试');
-  }
-}
-
-function applyVoiceText(text: string): void {
-  const c = ctx;
-  if (!c || !text) return;
-  const isIncome = /收入|工资|奖金|兼职|赚了|收到/.test(text);
-  switchEntryType(isIncome ? 'income' : 'expense');
-  const amount = text.match(/(\d+(?:\.\d{1,2})?)/)?.[1];
-  if (amount) c.amt = amount;
-
-  const aliases: Record<string, string> = {
-    早饭: '早餐', 午饭: '午餐', 夜宵: '晚餐', 水果: '饮料水果',
-    打的: '打车', 房租: '住宿房租', 水电: '水电燃气', 买菜: '超市',
-  };
-  const categories = c.type === 'income'
-    ? c.incomeCats
-    : c.expenseTree.flatMap((group) => [group.parent, ...group.children]);
-  const aliasName = Object.entries(aliases).find(([word]) => text.includes(word))?.[1];
-  const category = categories.find((item) => text.includes(item.name) || item.name === aliasName);
-  if (category) {
-    c.categoryId = category.id;
-    c.categorySelectionLocked = true;
-    refreshEntryRecommendations(c);
-  }
-  q<HTMLInputElement>('#note').value = text;
-  renderCats();
-  refreshMeta();
-  refreshAmt();
-  showToast(amount ? `已识别「${text}」，确认分类后保存` : `已记下「${text}」，请输入金额后保存`);
+  c.disposeVoice?.();
+  c.disposeVoice = openShortVoice({ container: el, applyLabel: '填入当前草稿',
+    applyNote: '填入后替换当前草稿的类型、金额、分类、账户、时间和备注；确认保存才入账。标签和凭证保持原选择。',
+    onApply(bill) {
+      if (ctx !== c || sheetEl !== el || saving) throw new Error('草稿已关闭');
+      switchEntryType(bill.type);
+      c.amt = formatFen(bill.amount).replace(/,/g, ''); c.prev = null; c.prevAmount = null; c.op = null;
+      const expenseCats = c.expenseTree.flatMap(group => [group.parent, ...group.children]);
+      c.categoryId = mapCategoryNameToId(bill.type, bill.categoryName ?? '', expenseCats, c.incomeCats);
+      c.categorySelectionLocked = true; c.noteCategoryId = undefined;
+      c.accountId = c.accounts.find(account => account.name === bill.accountName)?.id;
+      c.accountSelectionLocked = true; c.date = bill.occurredAt;
+      c.merchantId = c.merchants.find(merchant => merchant.name === bill.merchantName)?.id;
+      q<HTMLInputElement>('#note').value = bill.note ?? '';
+      renderCats(); refreshMeta(); refreshAmt();
+      showToast('草稿已填入，请核对分类、账户与金额后保存');
+    },
+  });
 }
 
 /* ── 事件绑定 ─────────────────────── */

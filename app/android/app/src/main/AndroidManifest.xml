@@ -3,6 +3,7 @@
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -59,6 +60,8 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 仅在用户确认百炼说明并主动开始短语音后申请，不在启动时申请。 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- R07 本地通知：Android 13+ 发送通知运行时权限 + 闹钟提醒排期（@capacitor/local-notifications） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />

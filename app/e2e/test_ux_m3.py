@@ -129,7 +129,7 @@ def main() -> int:
             labels = page.locator('#sp-settings .sub-body>section.card').evaluate_all(
                 "els => els.map(el => el.getAttribute('aria-label'))"
             )
-            assert labels[:8] == ['记账偏好', '备份', '数据', 'AI 记账', '通知', '外观', '安全', '关于']
+            assert labels == ['记账偏好', '备份', '数据', 'AI 记账', '百炼短语音', '通知', '外观', '安全', '关于'], f'设置分组或顺序不符：{labels}'
             assert '当前标签页会话' in page.inner_text('#sp-settings section[aria-label="AI 记账"]')
             page.click('#sp-settings [data-act="back"]')
             page.wait_for_selector('#sp-settings', state='detached')

@@ -1,0 +1,13 @@
+.short-voice-mask{position:fixed;inset:0;z-index:620;background:rgba(0,0,0,.36);display:flex;align-items:flex-end;justify-content:center;padding-top:16px}
+.short-voice-panel{width:min(100%,520px);max-height:94dvh;background:var(--surface);border-radius:20px 20px 0 0;display:flex;flex-direction:column;box-shadow:var(--shadow);overflow:hidden}
+.short-voice-panel .sheet-head{flex-shrink:0;padding:12px 16px;justify-content:space-between}.short-voice-panel h3{font-size:18px}.short-voice-panel h4{font-size:15px;margin:0 0 8px}
+.short-voice-content{overflow:auto;overscroll-behavior:contain;padding:0 16px max(20px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
+.short-voice-consent{font-size:13px;line-height:1.65;overflow-wrap:anywhere;margin:0;color:var(--muted)}
+.short-voice-actions{display:flex;flex-wrap:wrap;gap:8px}.short-voice-actions .btn{flex:1;white-space:normal;min-height:44px}
+.short-voice-status{font-size:14px;line-height:1.5;margin:0;color:var(--fg)}.short-voice-label{display:flex;flex-direction:column;gap:6px;font-size:14px}
+.short-voice-label textarea{resize:vertical;min-height:84px;max-height:180px;border:1px solid var(--border);border-radius:12px;padding:10px 12px;background:var(--surface);font:inherit;line-height:1.6;color:var(--fg)}
+.short-voice-label textarea:focus{outline:none;border-color:var(--primary)}
+.short-voice-send,.short-voice-result{padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--bg)}
+.short-voice-send p,.short-voice-send details{font-size:13px;line-height:1.6;overflow-wrap:anywhere;white-space:pre-wrap}.short-voice-send summary{min-height:44px;cursor:pointer;display:flex;align-items:center}.short-voice-quote{color:var(--fg);font-weight:500}
+.short-voice-send .btn,.short-voice-result .btn{width:100%;min-height:44px}.short-voice-result dl{margin:0 0 10px}.short-voice-result dl div{display:grid;grid-template-columns:40px 1fr;gap:10px;padding:5px 0;font-size:14px}.short-voice-result dt{color:var(--muted)}.short-voice-result dd{margin:0;overflow-wrap:anywhere}.short-voice-result .tiny{line-height:1.6}
+.short-voice-mask [hidden]{display:none!important}

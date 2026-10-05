@@ -475,6 +475,10 @@ export const SETTING_DEFAULTS = {
   'security.webauthn': null as { credId: string } | null,
   /** 旧版 IndexedDB 明文凭据已迁移并清空。 */
   'security.secretsMigrated': false as boolean,
+  /** 百炼短语音独立于文字 AI；Key 只在 Android 原生安全存储，不进此设置表。 */
+  'voice.bailian.region': 'beijing' as 'beijing' | 'singapore',
+  'voice.bailian.workspace': '',
+  'voice.bailian.model': 'qwen3.8-omni-flash-realtime' as const,
   /** 周期账 amountConfirm 待确认项持久化（刷新不丢失，确认/入账后移除） */
   'recurring.pendingConfirms': [] as {
     ruleId: number; name: string; type?: CategoryKind; amount: number; dueAt: number; accountId: number; categoryId: number;
@@ -528,8 +532,8 @@ export type SettingKey = keyof typeof SETTING_DEFAULTS;
 export const AI_ITEM_STATUSES = ['pending', 'recognizing', 'ready', 'failed'] as const;
 export type AiItemStatus = (typeof AI_ITEM_STATUSES)[number];
 
-/** AI 素材来源：系统分享 / 收件箱粘贴文本 / 收件箱选图（二期相册、三期通知监听预留枚举位） */
-export const AI_ITEM_SOURCES = ['share', 'paste', 'pick'] as const;
+/** AI 素材来源：系统分享 / 粘贴 / 选图 / 短语音（始终人工确认）。 */
+export const AI_ITEM_SOURCES = ['share', 'paste', 'pick', 'voice'] as const;
 export type AiItemSource = (typeof AI_ITEM_SOURCES)[number];
 
 /**
