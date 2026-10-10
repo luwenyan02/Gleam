@@ -17,8 +17,6 @@ import okhttp3.Response;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 import okio.ByteString;
-import org.json.JSONArray;
-import org.json.JSONObject;
 
 /** Personal BYOK only. Runtime microphone access follows consent plus one explicit start. */
 @CapacitorPlugin(name = "GleamSpeech", permissions = { @Permission(alias = "microphone", strings = { Manifest.permission.RECORD_AUDIO }) })
@@ -34,11 +32,13 @@ public final class GleamSpeechPlugin extends Plugin {
     private static final class Session {
         final PluginCall call;
         final String id, revision, region, workspace, model;
+        final boolean connectionOnly;
+        GleamSpeechSession.Phase phase = GleamSpeechSession.Phase.VALIDATION;
         volatile WebSocket socket;
         GleamSpeechSession engine;
         Runnable permissionDeadline;
-        Session(PluginCall call) {
-            this.call = call; id = call.getString("sessionId"); revision = call.getString("expectedCredentialRevision");
+        Session(PluginCall call, boolean connectionOnly) {
+            this.connectionOnly = connectionOnly; this.call = call; id = call.getString("sessionId"); revision = call.getString("expectedCredentialRevision");
             region = call.getString("region"); workspace = call.getString("workspace"); model = call.getString("model");
         }
     }
@@ -60,11 +60,13 @@ public final class GleamSpeechPlugin extends Plugin {
     @PluginMethod public void clearKey(PluginCall call) {
         main.post(() -> { cancelActive("SPEECH_KEY_CHANGED"); try { credentials.clear(); call.resolve(readiness()); } catch (Exception ignored) { reject(call, "SPEECH_KEY_STORAGE"); } });
     }
-    @PluginMethod public void start(PluginCall call) {
+    @PluginMethod public void start(PluginCall call) { begin(call, false); }
+    @PluginMethod public void testConnection(PluginCall call) { begin(call, true); }
+    private void begin(PluginCall call, boolean connectionOnly) {
         main.post(() -> {
             if (destroyed || !foreground) { reject(call, "SPEECH_INTERRUPTED"); return; }
             if (!Boolean.TRUE.equals(call.getBoolean("consent")) || !Boolean.TRUE.equals(call.getBoolean("userInitiated"))) { reject(call, "SPEECH_CONSENT_REQUIRED"); return; }
-            Session session = new Session(call);
+            Session session = new Session(call, connectionOnly);
             if (!GleamSpeechTransport.validSessionId(session.id) || identity.isEnded(session.id)) { reject(call, "SPEECH_SESSION_INVALID"); return; }
             if (active != null || permissionRequest != null) { reject(call, "SPEECH_BUSY"); return; }
             try { GleamSpeechTransport.endpoint(session.region, session.workspace, session.model); }
@@ -73,8 +75,10 @@ public final class GleamSpeechPlugin extends Plugin {
             if (!credentials.revision().equals(session.revision)) { reject(call, "SPEECH_KEY_CHANGED"); return; }
             if (!identity.reserve(session.id, session.revision, credentials.revision())) { reject(call, "SPEECH_SESSION_INVALID"); return; }
             active = session;
-            if (getPermissionState("microphone") == PermissionState.GRANTED) connect(session);
+            // Short-circuit before even inspecting microphone permission during a diagnostic.
+            if (session.connectionOnly || getPermissionState("microphone") == PermissionState.GRANTED) connect(session);
             else {
+                session.phase = GleamSpeechSession.Phase.PERMISSION;
                 permissionRequest = session;
                 session.permissionDeadline = () -> terminate(session, "SPEECH_PERMISSION_CANCELLED");
                 main.postDelayed(session.permissionDeadline, 30000);
@@ -85,11 +89,11 @@ public final class GleamSpeechPlugin extends Plugin {
     @PermissionCallback private void microphonePermission(PluginCall call) {
         main.post(() -> {
             Session session = permissionRequest;
+            // An old OS permission result cannot consume or cancel a newer request.
+            if (session == null || session.call != call) return;
             permissionRequest = null;
-            if (session == null) return;
             if (session.permissionDeadline != null) main.removeCallbacks(session.permissionDeadline);
             if (active != session) return; // A grant after release/cancel/key rotation can never restart capture.
-            if (session.call != call) { terminate(session, "SPEECH_PERMISSION_CANCELLED"); return; }
             if (destroyed || !foreground) { terminate(session, "SPEECH_INTERRUPTED"); return; }
             if (getPermissionState("microphone") != PermissionState.GRANTED) { terminate(session, "SPEECH_PERMISSION_DENIED"); return; }
             connect(session);
@@ -98,6 +102,7 @@ public final class GleamSpeechPlugin extends Plugin {
     private void connect(Session session) {
         if (active != session || destroyed || !foreground) { terminate(session, "SPEECH_INTERRUPTED"); return; }
         if (!credentials.revision().equals(session.revision)) { terminate(session, "SPEECH_KEY_CHANGED"); return; }
+        session.phase = GleamSpeechSession.Phase.CONNECTING;
         final String key;
         try { key = credentials.readForNativeTransport(); }
         catch (Exception ignored) { terminate(session, "SPEECH_KEY_STORAGE"); return; }
@@ -106,63 +111,65 @@ public final class GleamSpeechPlugin extends Plugin {
             public boolean send(String message) { WebSocket ws = session.socket; return ws != null && ws.queueSize() <= 128 * 1024 && ws.send(message); }
             public void close() { WebSocket ws = session.socket; session.socket = null; if (ws != null) ws.cancel(); }
         };
-        GleamSpeechAudio audio = new GleamSpeechAudio(getContext(), () -> active == session && identity.mayContinue(session.id, credentials.revision(), foreground, destroyed), new GleamSpeechAudio.Sink() {
-            public void pcm(byte[] pcm, int length) { session.engine.audio(pcm, length); }
-            public void failure(String code) { main.post(() -> terminate(session, code)); }
-        });
-        session.engine = new GleamSpeechSession(transport, audio, new GleamSpeechSession.Listener() {
+        GleamSpeechSession.Listener listener = new GleamSpeechSession.Listener() {
             public void state(String value) { main.post(() -> { if (active == session && !session.engine.isClosed()) { JSObject event = new JSObject(); event.put("sessionId", session.id); event.put("state", value); notifyListeners("state", event); } }); }
-            public void complete(String text) { main.post(() -> { if (active != session) return; end(session); JSObject result = new JSObject(); result.put("sessionId", session.id); result.put("text", text); session.call.resolve(result); }); }
-            public void fail(String code) { main.post(() -> { if (active != session) return; end(session); reject(session.call, code); }); }
-        }, (ms, work) -> { main.postDelayed(work, ms); return () -> main.removeCallbacks(work); });
+            public void complete(String text) { main.post(() -> resolve(session, text)); }
+            public void connected() { main.post(() -> resolve(session, null)); }
+            public void fail(String code) {
+                GleamSpeechSession.Phase phase = session.engine.phase();
+                main.post(() -> { if (active != session) return; end(session); reject(session.call, code, phase); });
+            }
+        };
+        GleamSpeechSession.Clock clock = (ms, work) -> { main.postDelayed(work, ms); return () -> main.removeCallbacks(work); };
+        if (session.connectionOnly) {
+            session.engine = GleamSpeechSession.connectionTest(transport, listener, clock);
+        } else {
+            GleamSpeechAudio audio = new GleamSpeechAudio(getContext(), () -> active == session && identity.mayContinue(session.id, credentials.revision(), foreground, destroyed), new GleamSpeechAudio.Sink() {
+                public void pcm(byte[] pcm, int length) { session.engine.audio(pcm, length); }
+                public void failure(String code) { main.post(() -> terminate(session, code)); }
+            });
+            session.engine = new GleamSpeechSession(transport, audio, listener, clock);
+        }
         session.engine.begin();
         try {
             session.socket = client.newWebSocket(GleamSpeechTransport.request(session.region, session.workspace, session.model, key), new WebSocketListener() {
                 @Override public void onMessage(WebSocket ws, String message) {
-                    if (message.length() > GleamSpeechSession.MAX_EVENT_CHARS) main.post(() -> terminate(session, "SPEECH_PROTOCOL"));
+                    if (message.length() > GleamSpeechSession.MAX_EVENT_CHARS) main.post(() -> transportEnded(session, "SPEECH_PROTOCOL"));
                     else main.post(() -> receive(session, message));
                 }
-                @Override public void onMessage(WebSocket ws, ByteString data) { main.post(() -> terminate(session, "SPEECH_PROTOCOL")); }
-                @Override public void onClosing(WebSocket ws, int code, String reason) { ws.cancel(); main.post(() -> terminate(session, "SPEECH_NETWORK")); }
-                @Override public void onClosed(WebSocket ws, int code, String reason) { main.post(() -> terminate(session, "SPEECH_NETWORK")); }
+                @Override public void onMessage(WebSocket ws, ByteString data) { main.post(() -> transportEnded(session, "SPEECH_PROTOCOL")); }
+                @Override public void onClosing(WebSocket ws, int code, String reason) { ws.cancel(); main.post(() -> transportEnded(session, "SPEECH_NETWORK")); }
+                @Override public void onClosed(WebSocket ws, int code, String reason) { main.post(() -> transportEnded(session, "SPEECH_NETWORK")); }
                 @Override public void onFailure(WebSocket ws, Throwable error, Response response) {
                     String code = error instanceof SSLException ? "SPEECH_TLS" : response != null ? GleamSpeechTransport.statusCode(response.code()) : "SPEECH_NETWORK";
                     if (response != null && response.body() != null) response.body().close();
-                    main.post(() -> terminate(session, code));
+                    main.post(() -> transportEnded(session, code));
                 }
             });
         } catch (RuntimeException ignored) { terminate(session, "SPEECH_NETWORK"); }
     }
     private void receive(Session session, String message) {
         if (active != session || session.engine == null || session.engine.isClosed()) return;
-        if (message.length() > GleamSpeechSession.MAX_EVENT_CHARS) { terminate(session, "SPEECH_PROTOCOL"); return; }
-        try {
-            JSONObject event = new JSONObject(message); String type = event.optString("type");
-            if ("error".equals(type)) { terminate(session, providerCode(event.optJSONObject("error"))); return; }
-            boolean safe = !"session.updated".equals(type) || safeAck(event.optJSONObject("session"));
-            session.engine.event(type, event.optString("item_id", null), event.optString("transcript", null), event.optInt("content_index", -1), safe);
-        } catch (Exception ignored) { terminate(session, "SPEECH_PROTOCOL"); }
+        if (!identity.mayContinue(session.id, credentials.revision(), foreground, destroyed)) {
+            terminate(session, credentials.revision().equals(session.revision) ? "SPEECH_INTERRUPTED" : "SPEECH_KEY_CHANGED"); return;
+        }
+        GleamSpeechProtocol.receive(session.engine, message);
     }
-    static boolean safeAck(JSONObject session) {
-        if (session == null || (session.has("model") && !GleamSpeechTransport.MODEL.equals(session.optString("model"))) || !session.has("turn_detection") || !session.isNull("turn_detection")) return false;
-        JSONArray modalities = session.optJSONArray("modalities");
-        if (modalities == null || modalities.length() != 1 || !"text".equals(modalities.optString(0))) return false;
-        JSONObject transcription = session.optJSONObject("input_audio_transcription");
-        if (transcription == null || !"qwen3-asr-flash-realtime".equals(transcription.optString("model"))) return false;
-        JSONObject audio = session.optJSONObject("audio"), input = audio == null ? null : audio.optJSONObject("input"), format = input == null ? null : input.optJSONObject("format");
-        if (format == null || !"pcm".equals(format.optString("type")) || format.optInt("sample_rate", -1) != 16000) return false;
-        return !session.optBoolean("enable_search", false)
-            && (!session.has("tools") || (session.optJSONArray("tools") != null && session.optJSONArray("tools").length() == 0))
-            && (!format.has("channels") || format.optInt("channels", -1) == 1)
-            && (!format.has("sample_format") || "s16le".equals(format.optString("sample_format")))
-            && (!format.has("packing") || "interleaved".equals(format.optString("packing")))
-            && (!format.has("channel_layout") || "mono".equals(format.optString("channel_layout")));
+    private void transportEnded(Session session, String code) {
+        // finish() deliberately cancels the socket before posting its result.
+        // The resulting late close/failure callback must not turn that success into a failure.
+        if (active != session || session.engine == null || session.engine.isClosed()) return;
+        terminate(session, code);
     }
-    private static String providerCode(JSONObject error) {
-        String code = error == null ? "" : error.optString("code");
-        if ("invalid_api_key".equals(code) || "InvalidApiKey".equals(code) || "Unauthorized".equals(code)) return "SPEECH_AUTH";
-        if ("rate_limit_exceeded".equals(code) || "Throttling".equals(code)) return "SPEECH_RATE_LIMIT";
-        return "SPEECH_PROVIDER";
+    private void resolve(Session session, String text) {
+        if (active != session) return;
+        if (!identity.mayContinue(session.id, credentials.revision(), foreground, destroyed)) {
+            terminate(session, credentials.revision().equals(session.revision) ? "SPEECH_INTERRUPTED" : "SPEECH_KEY_CHANGED"); return;
+        }
+        end(session);
+        JSObject result = new JSObject(); result.put("sessionId", session.id);
+        if (session.connectionOnly) result.put("connected", true); else result.put("text", text);
+        session.call.resolve(result);
     }
     @PluginMethod public void stop(PluginCall call) {
         main.post(() -> { String id = call.getString("sessionId"); if (!GleamSpeechTransport.validSessionId(id)) { reject(call, "SPEECH_SESSION_INVALID"); return; }
@@ -175,12 +182,14 @@ public final class GleamSpeechPlugin extends Plugin {
     private void cancelActive(String code) { Session session = active; if (session != null) terminate(session, code); }
     private void terminate(Session session, String code) {
         if (active != session) return;
+        GleamSpeechSession.Phase phase = session.engine == null ? session.phase : session.engine.phase();
         if (session.engine != null) session.engine.cancel(code);
         // Clear identity synchronously: queued successful results cannot win over cancellation.
-        end(session); reject(session.call, code);
+        end(session); reject(session.call, code, phase);
     }
     private void end(Session session) {
         if (session.permissionDeadline != null) main.removeCallbacks(session.permissionDeadline);
+        if (permissionRequest == session) permissionRequest = null;
         if (active == session) active = null;
         rememberEnded(session.id);
     }
@@ -189,7 +198,11 @@ public final class GleamSpeechPlugin extends Plugin {
     @Override protected void handleOnPause() { foreground = false; if (active != null && active.engine != null) cancelActive("SPEECH_INTERRUPTED"); }
     @Override protected void handleOnStop() { foreground = false; cancelActive("SPEECH_INTERRUPTED"); }
     @Override protected void handleOnDestroy() { destroyed = true; foreground = false; cancelActive("SPEECH_INTERRUPTED"); client.dispatcher().executorService().shutdown(); client.connectionPool().evictAll(); }
-    private static void reject(PluginCall call, String code) { call.reject(safeMessage(code), code); }
+    private static void reject(PluginCall call, String code) { reject(call, code, GleamSpeechSession.Phase.VALIDATION); }
+    private static void reject(PluginCall call, String code, GleamSpeechSession.Phase phase) {
+        JSObject data = new JSObject(); data.put("phase", phase.value);
+        call.reject(safeMessage(code), code, data);
+    }
     private static String safeMessage(String code) {
         switch (code) {
             case "SPEECH_CONSENT_REQUIRED": return "请先确认百炼短语音说明，再点击开始";

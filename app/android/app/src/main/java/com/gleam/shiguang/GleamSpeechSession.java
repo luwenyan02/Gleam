@@ -12,43 +12,59 @@ final class GleamSpeechSession {
     static final String SESSION_UPDATE = "{\"type\":\"session.update\",\"session\":{\"modalities\":[\"text\"],\"turn_detection\":null,\"input_audio_transcription\":{\"model\":\"qwen3-asr-flash-realtime\"},\"enable_search\":false,\"tools\":[],\"audio\":{\"input\":{\"format\":{\"type\":\"pcm\",\"sample_rate\":16000,\"sample_format\":\"s16le\",\"channels\":1,\"packing\":\"interleaved\",\"channel_layout\":\"mono\"}}}}}";
     interface Transport { boolean send(String message); void close(); }
     interface Audio { void start() throws Exception; void stop(); }
-    interface Listener { void state(String value); void complete(String text); void fail(String code); }
+    interface Listener { void state(String value); void complete(String text); void fail(String code); default void connected() {} }
     interface Timer { void cancel(); }
     interface Clock { Timer after(long ms, Runnable work); }
+    enum Phase {
+        VALIDATION("validation"), PERMISSION("permission"), CONNECTING("connecting"), CONFIGURING("configuring"), MICROPHONE("microphone"), TRANSCRIBING("transcribing");
+        final String value;
+        Phase(String value) { this.value = value; }
+    }
     private enum State { NEW, CONNECTING, CONFIGURING, LISTENING, TRANSCRIBING, CLOSED }
     private final Transport transport;
     private final Audio audio;
+    private final boolean connectionOnly;
     private final Listener listener;
     private final Clock clock;
     private State state = State.NEW;
+    private Phase phase = Phase.VALIDATION;
+    private long deadlineGeneration;
     private Timer deadline;
     private int bytes;
     private String committedItem, pendingItem, pendingText;
     private boolean audioStarted;
 
     GleamSpeechSession(Transport transport, Audio audio, Listener listener, Clock clock) {
-        this.transport = transport; this.audio = audio; this.listener = listener; this.clock = clock;
+        this(transport, audio, listener, clock, false);
+    }
+    private GleamSpeechSession(Transport transport, Audio audio, Listener listener, Clock clock, boolean connectionOnly) {
+        this.transport = transport; this.audio = audio; this.listener = listener; this.clock = clock; this.connectionOnly = connectionOnly;
+    }
+    /** A diagnostic cannot acquire an Audio dependency, even before the configuration is acknowledged. */
+    static GleamSpeechSession connectionTest(Transport transport, Listener listener, Clock clock) {
+        return new GleamSpeechSession(transport, null, listener, clock, true);
     }
     synchronized void begin() {
         if (state != State.NEW) return;
-        state = State.CONNECTING;
+        state = State.CONNECTING; phase = Phase.CONNECTING;
         listener.state("connecting");
-        deadline = clock.after(15000, () -> cancel("SPEECH_TIMEOUT"));
+        armDeadline(15000, "SPEECH_TIMEOUT");
     }
     synchronized void event(String type, String itemId, String text, int contentIndex, boolean safeConfiguration) {
         if (state == State.CLOSED || state == State.NEW) return;
         if ("session.created".equals(type) && state == State.CONNECTING) {
-            state = State.CONFIGURING;
+            state = State.CONFIGURING; phase = Phase.CONFIGURING;
             send(SESSION_UPDATE);
         } else if ("session.updated".equals(type) && state == State.CONFIGURING) {
             if (!safeConfiguration) { cancel("SPEECH_PROTOCOL"); return; }
             clearDeadline();
-            state = State.LISTENING;
+            if (connectionOnly) { finish(); listener.connected(); return; }
+            state = State.LISTENING; phase = Phase.MICROPHONE;
             try { audioStarted = true; audio.start(); }
             catch (Exception ignored) { cancel("SPEECH_AUDIO_UNAVAILABLE"); return; }
             if (state != State.LISTENING) return;
             listener.state("listening");
-            deadline = clock.after(30000, () -> cancel("SPEECH_LIMIT"));
+            armDeadline(30000, "SPEECH_LIMIT");
         } else if ("input_audio_buffer.committed".equals(type) && state == State.TRANSCRIBING) {
             if (!validItem(itemId) || (committedItem != null && !committedItem.equals(itemId))) { cancel("SPEECH_PROTOCOL"); return; }
             committedItem = itemId;
@@ -83,16 +99,17 @@ final class GleamSpeechSession {
         if (state != State.LISTENING) { cancel("SPEECH_CANCELLED"); return; }
         stopAudio(); clearDeadline();
         if (bytes == 0) { cancel("SPEECH_AUDIO_EMPTY"); return; }
-        state = State.TRANSCRIBING;
+        state = State.TRANSCRIBING; phase = Phase.TRANSCRIBING;
         if (!send("{\"type\":\"input_audio_buffer.commit\"}")) return;
         listener.state("transcribing");
-        deadline = clock.after(15000, () -> cancel("SPEECH_TIMEOUT"));
+        armDeadline(15000, "SPEECH_TIMEOUT");
     }
     synchronized void cancel(String code) {
         if (state == State.CLOSED) return;
         finish(); listener.fail(code);
     }
     synchronized boolean isClosed() { return state == State.CLOSED; }
+    synchronized Phase phase() { return phase; }
     private boolean send(String message) {
         boolean accepted;
         try { accepted = transport.send(message); }
@@ -100,7 +117,16 @@ final class GleamSpeechSession {
         if (!accepted) cancel("SPEECH_NETWORK");
         return accepted;
     }
-    private void clearDeadline() { if (deadline != null) { deadline.cancel(); deadline = null; } }
+    private void armDeadline(long ms, String code) {
+        clearDeadline();
+        final long generation = deadlineGeneration;
+        deadline = clock.after(ms, () -> {
+            synchronized (GleamSpeechSession.this) {
+                if (generation == deadlineGeneration && state != State.CLOSED) cancel(code);
+            }
+        });
+    }
+    private void clearDeadline() { deadlineGeneration++; if (deadline != null) { deadline.cancel(); deadline = null; } }
     private void stopAudio() { if (audioStarted) { audioStarted = false; try { audio.stop(); } catch (RuntimeException ignored) {} } }
     private void finish() { state = State.CLOSED; clearDeadline(); stopAudio(); try { transport.close(); } catch (RuntimeException ignored) {} committedItem = null; pendingItem = null; pendingText = null; bytes = 0; }
 }

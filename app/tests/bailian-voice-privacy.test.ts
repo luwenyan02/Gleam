@@ -17,6 +17,8 @@ it('Web语音接口没有凭据存储或麦克风回退，不接受或读回Key'
   await expect(nativeSpeech.setKey({ value: 'synthetic-voice-key' })).rejects.toMatchObject({ code: 'SPEECH_UNSUPPORTED' });
   await expect(nativeSpeech.start({ sessionId: 'synthetic', expectedCredentialRevision: '', region: 'beijing', workspace: 'synthetic',
     model: 'qwen3.8-omni-flash-realtime', consent: true, userInitiated: true })).rejects.toMatchObject({ code: 'SPEECH_UNSUPPORTED' });
+  await expect(nativeSpeech.testConnection({ sessionId: 'synthetic', expectedCredentialRevision: '', region: 'beijing', workspace: 'synthetic',
+    model: 'qwen3.8-omni-flash-realtime', consent: true, userInitiated: true })).rejects.toMatchObject({ code: 'SPEECH_UNSUPPORTED' });
   expect(await db.settings.toArray()).toEqual([]);
 });
 

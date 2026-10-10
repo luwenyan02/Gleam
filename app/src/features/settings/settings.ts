@@ -25,7 +25,9 @@ import {
   accountingMonthRange, getAccountingMonth, setAccountingMonthStartDay,
 } from '../../core/repo/periodRepo';
 import { formatAccountingRange } from '../../core/period';
-import { bailianVoiceSettingsHtml, handleVoiceSettingsChange, handleVoiceSettingsClick, isVoiceKeyWritePending } from './bailianVoiceSettings';
+import { bailianVoiceSettingsHtml, handleVoiceSettingsChange, handleVoiceSettingsInput, handleVoiceSettingsClick, isVoiceKeyWritePending } from './bailianVoiceSettings';
+
+import { getVoiceSettingsEpoch, mountVoiceConnectionTest, syncVoiceConnectionTest } from './bailianVoiceTestSettings';
 
 let body: HTMLElement | undefined;
 let sheetAbort: AbortController | undefined;
@@ -54,6 +56,7 @@ async function refresh(): Promise<void> {
   const el = body;
   if (!el?.isConnected) return;
   const token = ++settingsRefreshToken;
+  const voiceEpoch = getVoiceSettingsEpoch();
   const isNative = Capacitor.isNativePlatform();
   const [pin, webauthn, bioOk, countAsIncome, autoRenew, backupAuto, retention, themeMode, monthStartDay] = await Promise.all([
     getSetting('security.pin'), getSetting('security.webauthn'), biometricAvailable(),
@@ -94,6 +97,10 @@ async function refresh(): Promise<void> {
   const selectedModel = modelPreset(aiBase, aiModel);
 
   if (token !== settingsRefreshToken || !el.isConnected) return;
+  // A slow settings read must never restore stale readiness, consent, or test success.
+  if (voiceEpoch !== getVoiceSettingsEpoch()) { void refresh(); return; }
+  const voiceWorkspaceInput = el.querySelector<HTMLInputElement>('#voice-bailian-workspace');
+  const voiceWorkspaceDraft = voiceWorkspaceInput?.dataset.voiceDirty ? voiceWorkspaceInput.value : undefined;
   const voiceKeyDraft = isVoiceKeyWritePending() ? '' : el.querySelector<HTMLInputElement>('#voice-bailian-key')?.value ?? '';
   el.innerHTML = `
     <section class="card" aria-label="安全">
@@ -190,6 +197,9 @@ async function refresh(): Promise<void> {
   }
   const voiceInput = el.querySelector<HTMLInputElement>('#voice-bailian-key');
   if (voiceInput && !voiceInput.disabled) voiceInput.value = voiceKeyDraft;
+  const workspaceInput = el.querySelector<HTMLInputElement>('#voice-bailian-workspace');
+  if (workspaceInput && voiceWorkspaceDraft !== undefined) { workspaceInput.value = voiceWorkspaceDraft; workspaceInput.dataset.voiceDirty = 'true'; }
+  syncVoiceConnectionTest(el);
   if (el.dataset.revealAi) requestAnimationFrame(() => {
     if (!el.isConnected || !el.dataset.revealAi) return;
     delete el.dataset.revealAi;
@@ -263,6 +273,7 @@ export function initSettings(): void {
     title: '设置',
     render(el) {
       body = el;
+      mountVoiceConnectionTest(el);
       if (revealAiOnOpen) el.dataset.revealAi = 'true';
       el.addEventListener('click', (e) => {
         const t = e.target as HTMLElement;
@@ -421,6 +432,7 @@ export function initSettings(): void {
       });
       el.addEventListener('input', (e) => {
         const t = e.target as HTMLInputElement;
+        if (handleVoiceSettingsInput(t)) return;
         if (t.id !== 'ai-thres') return;
         const label = el.querySelector('#ai-thres-val');
         if (label) label.textContent = `${t.value}%`;

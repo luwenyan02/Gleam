@@ -15,6 +15,7 @@ export interface NativeSpeechStartOptions {
   consent: true;
   userInitiated: true;
 }
+export interface NativeSpeechConnectionResult { sessionId: string; connected: true }
 export interface NativeSpeechResult { sessionId: string; text: string }
 export interface NativeSpeechStateEvent {
   sessionId: string;
@@ -24,6 +25,7 @@ export interface NativeSpeechPlugin {
   configuration(): Promise<NativeSpeechConfiguration>;
   setKey(options: { value: string }): Promise<NativeSpeechConfiguration>;
   clearKey(): Promise<NativeSpeechConfiguration>;
+  testConnection(options: NativeSpeechStartOptions): Promise<NativeSpeechConnectionResult>;
   start(options: NativeSpeechStartOptions): Promise<NativeSpeechResult>;
   stop(options: { sessionId: string }): Promise<void>;
   cancel(options: { sessionId: string }): Promise<void>;
@@ -44,6 +46,7 @@ export const nativeSpeech: NativeSpeechPlugin = {
     : Promise.resolve({ supported: false, hasKey: false, credentialRevision: '' }),
   setKey: async options => { if (!isNativeSpeechSupported()) unsupported(); return nativePlugin.setKey(options); },
   clearKey: async () => { if (!isNativeSpeechSupported()) unsupported(); return nativePlugin.clearKey(); },
+  testConnection: async options => { if (!isNativeSpeechSupported()) unsupported(); return nativePlugin.testConnection(options); },
   start: async options => { if (!isNativeSpeechSupported()) unsupported(); return nativePlugin.start(options); },
   stop: async options => { if (!isNativeSpeechSupported()) unsupported(); return nativePlugin.stop(options); },
   cancel: async options => { if (!isNativeSpeechSupported()) unsupported(); return nativePlugin.cancel(options); },

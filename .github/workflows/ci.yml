@@ -95,3 +95,24 @@ jobs:
       - run: npx cap sync android
       - run: ./gradlew testDebugUnitTest
         working-directory: app/android
+
+      # Private diagnostic artifact only. Signing stays on the user's authorized build host.
+      - name: Assemble unsigned diagnostic candidate
+        run: ./gradlew assembleRelease -PgleamUnsignedTestApk=true
+        working-directory: app/android
+      - name: Require exactly one unsigned diagnostic APK
+        run: |
+          shopt -s nullglob
+          apks=(android/app/build/outputs/apk/release/*-unsigned.apk)
+          test "${#apks[@]}" -eq 1
+          test -s "${apks[0]}"
+      - name: Preserve unsigned diagnostic candidate and exact web resources
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-diagnostic-${{ github.sha }}
+          path: |
+            app/android/app/build/outputs/apk/release/*-unsigned.apk
+            app/dist/**
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
