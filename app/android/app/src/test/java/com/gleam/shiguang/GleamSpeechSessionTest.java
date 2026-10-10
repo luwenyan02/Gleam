@@ -23,10 +23,13 @@ public class GleamSpeechSessionTest {
         public void connected() { connections++; }
         public void fail(String value) { errors++; code = value; }
         public GleamSpeechSession.Timer after(long ms, Runnable work) { scheduled.add(work); return () -> {}; }
-        void ready() { session.begin(); session.event("session.created", null, null, -1, true); session.event("session.updated", null, null, -1, true); }
+        void created() { GleamSpeechProtocol.receive(session, "{\"type\":\"session.created\"}"); }
+        void ack() { GleamSpeechProtocol.receive(session, GleamSpeechSession.SESSION_UPDATE.replace("\"session.update\"", "\"session.updated\"")); }
+        void unsafeAck() { GleamSpeechProtocol.receive(session, "{\"type\":\"session.updated\",\"session\":{}}"); }
+        void ready() { session.begin(); created(); ack(); }
         void pcm() { session.audio(new byte[3200], 3200); }
-        void committed() { session.event("input_audio_buffer.committed", "item-fictional", null, -1, true); }
-        void finalText(String value) { session.event("conversation.item.input_audio_transcription.completed", "item-fictional", value, 0, true); }
+        void committed() { session.event("input_audio_buffer.committed", "item-fictional", null, -1); }
+        void finalText(String value) { session.event("conversation.item.input_audio_transcription.completed", "item-fictional", value, 0); }
     }
     @Test public void manualStopCommitsExactlyOneUtteranceWithoutAssistantGeneration() {
         Fixture f = new Fixture(); f.ready(); f.pcm(); f.session.stop(); f.session.stop(); f.committed(); f.finalText("午饭二十八元"); f.finalText("重复");
@@ -37,7 +40,7 @@ public class GleamSpeechSessionTest {
         assertTrue(f.sent.get(0).contains("\"modalities\":[\"text\"]"));
     }
     @Test public void earlyStopAndLateAckNeverStartMicrophone() {
-        Fixture f = new Fixture(); f.session.begin(); f.session.stop(); f.session.event("session.updated", null, null, -1, true);
+        Fixture f = new Fixture(); f.session.begin(); f.session.stop(); f.ack();
         assertEquals(0, f.starts); assertEquals("SPEECH_CANCELLED", f.code); assertEquals(0, f.results);
     }
     @Test public void cancelRejectsLateFinalAndAudio() {
@@ -45,8 +48,8 @@ public class GleamSpeechSessionTest {
         assertEquals(0, f.results); assertEquals(1, f.errors); assertEquals(count, f.sent.size());
     }
     @Test public void onlyCommittedInputTranscriptionBecomesResult() {
-        Fixture f = new Fixture(); f.ready(); f.pcm(); f.session.event("response.text.done", "assistant-item", "伪助手答复", 0, true); f.finalText("早到结果");
-        assertEquals(0, f.results); f.session.stop(); f.committed(); f.session.event("conversation.item.input_audio_transcription.completed", "wrong-item", "错误轮次", 0, true); assertEquals(0, f.results); f.finalText("正确短句"); assertEquals("正确短句", f.text);
+        Fixture f = new Fixture(); f.ready(); f.pcm(); f.session.event("response.text.done", "assistant-item", "伪助手答复", 0); f.finalText("早到结果");
+        assertEquals(0, f.results); f.session.stop(); f.committed(); f.session.event("conversation.item.input_audio_transcription.completed", "wrong-item", "错误轮次", 0); assertEquals(0, f.results); f.finalText("正确短句"); assertEquals("正确短句", f.text);
     }
     @Test public void reorderedPostStopTranscriptionWaitsForMatchingCommitAck() {
         Fixture f = new Fixture(); f.ready(); f.pcm(); f.session.stop(); f.finalText("确认过的短句"); assertEquals(0, f.results); f.committed(); assertEquals(1, f.results); assertEquals("确认过的短句", f.text);
@@ -55,7 +58,7 @@ public class GleamSpeechSessionTest {
         Fixture f = new Fixture(); f.ready(); f.pcm(); f.session.stop(); f.finalText("不应返回"); f.session.cancel("SPEECH_CANCELLED"); f.committed(); assertEquals(0, f.results); assertEquals(1, f.errors);
     }
     @Test public void unsafeSessionAckFailsBeforeCapture() {
-        Fixture f = new Fixture(); f.session.begin(); f.session.event("session.created", null, null, -1, true); f.session.event("session.updated", null, null, -1, false);
+        Fixture f = new Fixture(); f.session.begin(); f.created(); f.unsafeAck();
         assertEquals(0, f.starts); assertEquals("SPEECH_PROTOCOL", f.code);
     }
     @Test public void noAudioAndOversizedTranscriptFailWithoutTruncation() {
@@ -74,11 +77,11 @@ public class GleamSpeechSessionTest {
         }
     }
     @Test public void thirtySecondDeadlineCancelsWithoutCommitOrFutureRestart() {
-        Fixture f = new Fixture(); f.ready(); f.pcm(); f.scheduled.get(1).run(); f.session.event("session.updated", null, null, -1, true);
+        Fixture f = new Fixture(); f.ready(); f.pcm(); f.scheduled.get(1).run(); f.ack();
         assertEquals("SPEECH_LIMIT", f.code); assertEquals(1, f.starts); assertFalse(f.sent.stream().anyMatch(v -> v.contains("input_audio_buffer.commit")));
     }
     @Test public void transportFailureAndInvalidPcmFailSafely() {
-        Fixture network = new Fixture(); network.session.begin(); network.sendOk = false; network.session.event("session.created", null, null, -1, true); assertEquals("SPEECH_NETWORK", network.code);
+        Fixture network = new Fixture(); network.session.begin(); network.sendOk = false; network.created(); assertEquals("SPEECH_NETWORK", network.code);
         Fixture pcm = new Fixture(); pcm.ready(); pcm.session.audio(new byte[3], 3); assertEquals("SPEECH_AUDIO_UNAVAILABLE", pcm.code);
     }
     private Fixture diagnostic() {
@@ -97,10 +100,12 @@ public class GleamSpeechSessionTest {
     }
     @Test public void connectionTestRequiresCreatedThenFullSafeAcknowledgement() {
         Fixture f = diagnostic(); f.session.begin();
-        f.session.event("session.updated", null, null, -1, true);
+        f.ack();
         assertEquals(0, f.connections); assertTrue(f.sent.isEmpty());
-        f.session.event("session.created", null, null, -1, true);
-        f.session.event("session.updated", null, null, -1, false);
+        assertEquals("SPEECH_PROTOCOL", f.code);
+        f = diagnostic(); f.session.begin();
+        f.created();
+        f.unsafeAck();
         assertEquals("SPEECH_PROTOCOL", f.code); assertEquals("configuring", f.session.phase().value);
         assertEquals(0, f.connections); assertEquals(0, f.starts);
     }
@@ -108,10 +113,10 @@ public class GleamSpeechSessionTest {
         for (boolean configured : new boolean[]{false, true}) {
             for (String code : new String[]{"SPEECH_CANCELLED", "SPEECH_INTERRUPTED", "SPEECH_KEY_CHANGED", "SPEECH_NETWORK", "SPEECH_TLS", "SPEECH_AUTH", "SPEECH_PROVIDER", "SPEECH_PROTOCOL"}) {
                 Fixture f = diagnostic(); f.session.begin();
-                if (configured) f.session.event("session.created", null, null, -1, true);
+                if (configured) f.created();
                 f.session.cancel(code); f.session.cancel(code);
-                f.session.event("session.created", null, null, -1, true);
-                f.session.event("session.updated", null, null, -1, true); f.pcm(); f.session.stop();
+                f.created();
+                f.ack(); f.pcm(); f.session.stop();
                 assertEquals(code, f.code); assertEquals(1, f.errors); assertEquals(1, f.closes);
                 assertEquals(configured ? "configuring" : "connecting", f.session.phase().value);
                 assertEquals(0, f.connections); assertEquals(0, f.results); assertEquals(0, f.starts);
@@ -122,13 +127,13 @@ public class GleamSpeechSessionTest {
     @Test public void diagnosticTimeoutAndRejectedUpdateNeverStartOrCommitAudio() {
         for (boolean configuring : new boolean[]{false, true}) {
             Fixture f = diagnostic(); f.session.begin();
-            if (configuring) f.session.event("session.created", null, null, -1, true);
+            if (configuring) f.created();
             f.scheduled.get(0).run();
-            f.session.event("session.updated", null, null, -1, true);
+            f.ack();
             assertEquals("SPEECH_TIMEOUT", f.code); assertEquals(0, f.connections); assertEquals(0, f.starts);
         }
         Fixture rejected = diagnostic(); rejected.session.begin(); rejected.sendOk = false;
-        rejected.session.event("session.created", null, null, -1, true);
+        rejected.created();
         assertEquals("SPEECH_NETWORK", rejected.code); assertEquals("configuring", rejected.session.phase().value);
         assertEquals(0, rejected.starts);
     }
@@ -141,8 +146,8 @@ public class GleamSpeechSessionTest {
     @Test public void recordingFailurePhasesRemainAvailableAfterTeardown() {
         Fixture f = new Fixture(); assertEquals("validation", f.session.phase().value);
         f.session.begin(); assertEquals("connecting", f.session.phase().value);
-        f.session.event("session.created", null, null, -1, true); assertEquals("configuring", f.session.phase().value);
-        f.session.event("session.updated", null, null, -1, true); assertEquals("microphone", f.session.phase().value);
+        f.created(); assertEquals("configuring", f.session.phase().value);
+        f.ack(); assertEquals("microphone", f.session.phase().value);
         f.pcm(); f.session.stop(); assertEquals("transcribing", f.session.phase().value);
         f.session.cancel("SPEECH_NETWORK"); assertEquals("transcribing", f.session.phase().value);
     }
@@ -150,9 +155,9 @@ public class GleamSpeechSessionTest {
     @Test public void stoppingDiagnosticHandshakeOnlyCancelsAndNeverCommits() {
         for (boolean configuring : new boolean[]{false, true}) {
             Fixture f = diagnostic(); f.session.begin();
-            if (configuring) f.session.event("session.created", null, null, -1, true);
+            if (configuring) f.created();
             f.pcm(); f.session.stop(); f.session.stop();
-            f.session.event("session.updated", null, null, -1, true);
+            f.ack();
             assertEquals("SPEECH_CANCELLED", f.code); assertEquals(1, f.errors); assertEquals(0, f.starts); assertEquals(0, f.connections);
             assertFalse(f.sent.stream().anyMatch(value -> value.contains("input_audio_buffer") || value.contains("response.create")));
         }

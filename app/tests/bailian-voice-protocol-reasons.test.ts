@@ -17,6 +17,8 @@ const nativeReasons = [
   'ACK_CHANNEL_LAYOUT_TYPE', 'ACK_CHANNEL_LAYOUT_MISMATCH', 'ACK_UNSAFE_CONFIGURATION',
   'FRAME_MALFORMED_JSON', 'FRAME_OVERSIZED', 'FRAME_BINARY', 'FRAME_PROCESSING_FAILED',
   'COMMIT_ITEM_ID_INVALID', 'COMMIT_ITEM_ID_CONFLICT', 'TRANSCRIPT_ITEM_ID_CONFLICT', 'PROTOCOL_UNCLASSIFIED',
+  'ACK_SERVER_SESSION_ID_TYPE', 'ACK_SERVER_SESSION_ID_INVALID', 'ACK_SERVER_SESSION_ID_MISMATCH',
+  'ACK_UNEXPECTED_SESSION_EVENT', 'ACK_NESTED_TURN_DETECTION', 'UNEXPECTED_VAD_EVENT', 'UNEXPECTED_RESPONSE_EVENT',
 ];
 
 it.each(nativeReasons)('maps native reason %s to a fixed Chinese description without raw fields', reason => {
@@ -64,4 +66,24 @@ it('covers the exact native enum vocabulary so Android/frontend diagnostics cann
   expect(declaration).not.toBeNull();
   const nativeVocabulary = declaration![1].match(/\b[A-Z][A-Z0-9_]+\b/g);
   expect(nativeVocabulary).toEqual(nativeReasons);
+});
+
+it.each([
+  ['ACK_SERVER_SESSION_ID_TYPE', '服务端会话标识的字段类型不符'],
+  ['ACK_SERVER_SESSION_ID_INVALID', '服务端会话标识格式无效'],
+  ['ACK_SERVER_SESSION_ID_MISMATCH', '服务端会话标识前后不一致'],
+  ['ACK_UNEXPECTED_SESSION_EVENT', '会话事件顺序或确认状态不符'],
+  ['ACK_NESTED_TURN_DETECTION', '嵌套音频配置的轮次检测未关闭'],
+  ['UNEXPECTED_VAD_EVENT', '手动模式收到自动语音检测事件'],
+  ['UNEXPECTED_RESPONSE_EVENT', '收到未经请求的模型响应事件'],
+])('manual-ACK diagnostic %s keeps server identifiers and configuration values private', (reason, description) => {
+  const message = shortVoiceError({ code: 'SPEECH_PROTOCOL', data: {
+    phase: 'configuring', reason, reasons: [reason, 'fixture-PRIVATE_REASON'],
+    sessionId: 'fixture-PRIVATE_SESSION', actual: { id: 'fixture-PRIVATE_ACTUAL', turn_detection: 'fixture-PRIVATE_MODE' },
+    expected: 'fixture-PRIVATE_EXPECTED',
+  } });
+  expect(message).toContain(description);
+  expect(message).toContain(reason);
+  expect(message).not.toContain('PRIVATE');
+  expect(message).not.toContain('核对模型');
 });

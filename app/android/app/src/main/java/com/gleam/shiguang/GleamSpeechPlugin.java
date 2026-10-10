@@ -138,32 +138,32 @@ public final class GleamSpeechPlugin extends Plugin {
         try {
             session.socket = client.newWebSocket(GleamSpeechTransport.request(session.region, session.workspace, session.model, key), new WebSocketListener() {
                 @Override public void onMessage(WebSocket ws, String message) {
-                    if (message.length() > GleamSpeechSession.MAX_EVENT_CHARS) main.post(() -> transportEnded(session, "SPEECH_PROTOCOL", Collections.singletonList(GleamSpeechProtocolReason.FRAME_OVERSIZED)));
-                    else main.post(() -> receive(session, message));
+                    if (message.length() > GleamSpeechSession.MAX_EVENT_CHARS) main.post(() -> transportEnded(session, ws, "SPEECH_PROTOCOL", Collections.singletonList(GleamSpeechProtocolReason.FRAME_OVERSIZED)));
+                    else main.post(() -> receive(session, ws, message));
                 }
-                @Override public void onMessage(WebSocket ws, ByteString data) { main.post(() -> transportEnded(session, "SPEECH_PROTOCOL", Collections.singletonList(GleamSpeechProtocolReason.FRAME_BINARY))); }
-                @Override public void onClosing(WebSocket ws, int code, String reason) { ws.cancel(); main.post(() -> transportEnded(session, "SPEECH_NETWORK")); }
-                @Override public void onClosed(WebSocket ws, int code, String reason) { main.post(() -> transportEnded(session, "SPEECH_NETWORK")); }
+                @Override public void onMessage(WebSocket ws, ByteString data) { main.post(() -> transportEnded(session, ws, "SPEECH_PROTOCOL", Collections.singletonList(GleamSpeechProtocolReason.FRAME_BINARY))); }
+                @Override public void onClosing(WebSocket ws, int code, String reason) { ws.cancel(); main.post(() -> transportEnded(session, ws, "SPEECH_NETWORK")); }
+                @Override public void onClosed(WebSocket ws, int code, String reason) { main.post(() -> transportEnded(session, ws, "SPEECH_NETWORK")); }
                 @Override public void onFailure(WebSocket ws, Throwable error, Response response) {
                     String code = error instanceof SSLException ? "SPEECH_TLS" : response != null ? GleamSpeechTransport.statusCode(response.code()) : "SPEECH_NETWORK";
                     if (response != null && response.body() != null) response.body().close();
-                    main.post(() -> transportEnded(session, code));
+                    main.post(() -> transportEnded(session, ws, code));
                 }
             });
         } catch (RuntimeException ignored) { terminate(session, "SPEECH_NETWORK"); }
     }
-    private void receive(Session session, String message) {
-        if (active != session || session.engine == null || session.engine.isClosed()) return;
+    private void receive(Session session, WebSocket socket, String message) {
+        if (active != session || session.socket != socket || session.engine == null || session.engine.isClosed()) return;
         if (!identity.mayContinue(session.id, credentials.revision(), foreground, destroyed)) {
             terminate(session, credentials.revision().equals(session.revision) ? "SPEECH_INTERRUPTED" : "SPEECH_KEY_CHANGED"); return;
         }
         GleamSpeechProtocol.receive(session.engine, message);
     }
-    private void transportEnded(Session session, String code) { transportEnded(session, code, Collections.emptyList()); }
-    private void transportEnded(Session session, String code, List<GleamSpeechProtocolReason> reasons) {
+    private void transportEnded(Session session, WebSocket socket, String code) { transportEnded(session, socket, code, Collections.emptyList()); }
+    private void transportEnded(Session session, WebSocket socket, String code, List<GleamSpeechProtocolReason> reasons) {
         // finish() deliberately cancels the socket before posting its result.
         // The resulting late close/failure callback must not turn that success into a failure.
-        if (active != session || session.engine == null || session.engine.isClosed()) return;
+        if (active != session || session.socket != socket || session.engine == null || session.engine.isClosed()) return;
         terminate(session, code, reasons);
     }
     private void resolve(Session session, String text) {

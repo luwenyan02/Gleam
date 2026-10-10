@@ -25,9 +25,9 @@ final class GleamSpeechProtocol {
         try {
             String type = event.optString("type");
             if ("error".equals(type)) { engine.cancel(providerCode(event.optJSONObject("error"))); return; }
-            boolean safe = !"session.updated".equals(type) || safeAck(event.optJSONObject("session"));
-            List<GleamSpeechProtocolReason> reasons = safe ? Collections.emptyList() : ackReasons(event);
-            engine.event(type, event.optString("item_id", null), event.optString("transcript", null), event.optInt("content_index", -1), safe, reasons);
+            if ("session.created".equals(type)) { engine.sessionCreated(event); return; }
+            if ("session.updated".equals(type)) { engine.sessionUpdated(event); return; }
+            engine.event(type, event.optString("item_id", null), event.optString("transcript", null), event.optInt("content_index", -1));
         } catch (Exception ignored) { engine.protocolFailure(FRAME_PROCESSING_FAILED); }
     }
     /** Describe only checks rejected by the unchanged acceptance predicate below. */

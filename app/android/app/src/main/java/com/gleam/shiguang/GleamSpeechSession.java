@@ -1,6 +1,10 @@
 package com.gleam.shiguang;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
+import static com.gleam.shiguang.GleamSpeechProtocolReason.*;
+import org.json.JSONObject;
 import java.util.List;
 import okio.ByteString;
 
@@ -36,6 +40,8 @@ final class GleamSpeechSession {
     private int bytes;
     private String committedItem, pendingItem, pendingText;
     private boolean audioStarted;
+    private boolean manualUpdatePending;
+    private String serverSessionId;
 
     GleamSpeechSession(Transport transport, Audio audio, Listener listener, Clock clock) {
         this(transport, audio, listener, clock, false);
@@ -53,25 +59,70 @@ final class GleamSpeechSession {
         listener.state("connecting");
         armDeadline(15000, "SPEECH_TIMEOUT");
     }
-    synchronized void event(String type, String itemId, String text, int contentIndex, boolean safeConfiguration) {
-        event(type, itemId, text, contentIndex, safeConfiguration, Collections.singletonList(GleamSpeechProtocolReason.ACK_UNSAFE_CONFIGURATION));
-    }
-    synchronized void event(String type, String itemId, String text, int contentIndex, boolean safeConfiguration, List<GleamSpeechProtocolReason> reasons) {
+    synchronized void sessionCreated(JSONObject event) {
         if (state == State.CLOSED || state == State.NEW) return;
-        if ("session.created".equals(type) && state == State.CONNECTING) {
-            state = State.CONFIGURING; phase = Phase.CONFIGURING;
-            send(SESSION_UPDATE);
-        } else if ("session.updated".equals(type) && state == State.CONFIGURING) {
-            if (!safeConfiguration) { cancel("SPEECH_PROTOCOL", reasons); return; }
-            clearDeadline();
-            if (connectionOnly) { finish(); listener.connected(); return; }
-            state = State.LISTENING; phase = Phase.MICROPHONE;
-            try { audioStarted = true; audio.start(); }
-            catch (Exception ignored) { cancel("SPEECH_AUDIO_UNAVAILABLE"); return; }
-            if (state != State.LISTENING) return;
-            listener.state("listening");
-            armDeadline(30000, "SPEECH_LIMIT");
-        } else if ("input_audio_buffer.committed".equals(type) && state == State.TRANSCRIBING) {
+        if (state != State.CONNECTING || manualUpdatePending) { protocolFailure(ACK_UNEXPECTED_SESSION_EVENT); return; }
+        JSONObject session = event.optJSONObject("session");
+        if (event.has("session") && session == null) { protocolFailure(event.isNull("session") ? ACK_SESSION_NULL : ACK_SESSION_TYPE); return; }
+        if (!serverIdentityMatches(session, true)) return;
+        state = State.CONFIGURING; phase = Phase.CONFIGURING;
+        // Only this fixed successful send grants one acknowledgement on this engine/transport.
+        // Reentrant ACK/cancel during send cannot gain or restore that authority.
+        if (send(SESSION_UPDATE) && state == State.CONFIGURING) manualUpdatePending = true;
+    }
+    synchronized void sessionUpdated(JSONObject event) throws Exception {
+        if (state == State.CLOSED || state == State.NEW) return;
+        if (state != State.CONFIGURING || !manualUpdatePending) { protocolFailure(ACK_UNEXPECTED_SESSION_EVENT); return; }
+        manualUpdatePending = false; // Consume before examining any acknowledgement fields.
+        JSONObject session = event.optJSONObject("session");
+        if (!serverIdentityMatches(session, false)) return;
+        if (nestedTurnDetection(session)) { protocolFailure(ACK_NESTED_TURN_DETECTION); return; }
+        boolean safe = GleamSpeechProtocol.safeAck(session);
+        boolean omitted = session != null && !session.has("turn_detection");
+        if (omitted) {
+            // The sole compatibility delta: this pending manual request explicitly set null.
+            // A shallow local copy preserves every other strict check without mutating the ACK.
+            JSONObject manual = new JSONObject();
+            for (Iterator<String> keys = session.keys(); keys.hasNext();) { String key = keys.next(); manual.put(key, session.opt(key)); }
+            manual.put("turn_detection", JSONObject.NULL);
+            safe = GleamSpeechProtocol.safeAck(manual);
+        }
+        if (!safe) {
+            List<GleamSpeechProtocolReason> reasons = new ArrayList<>(GleamSpeechProtocol.ackReasons(event));
+            if (omitted) reasons.remove(ACK_TURN_DETECTION_MISSING);
+            if (reasons.isEmpty()) reasons.add(ACK_UNSAFE_CONFIGURATION);
+            cancel("SPEECH_PROTOCOL", reasons); return;
+        }
+        clearDeadline();
+        if (connectionOnly) { finish(); listener.connected(); return; }
+        state = State.LISTENING; phase = Phase.MICROPHONE;
+        try { audioStarted = true; audio.start(); }
+        catch (Exception ignored) { cancel("SPEECH_AUDIO_UNAVAILABLE"); return; }
+        if (state != State.LISTENING) return;
+        listener.state("listening");
+        armDeadline(30000, "SPEECH_LIMIT");
+    }
+    private boolean serverIdentityMatches(JSONObject session, boolean created) {
+        if (session == null || !session.has("id")) return true;
+        Object value = session.opt("id");
+        if (!(value instanceof String)) { protocolFailure(ACK_SERVER_SESSION_ID_TYPE); return false; }
+        String id = (String) value;
+        if (!validItem(id)) { protocolFailure(ACK_SERVER_SESSION_ID_INVALID); return false; }
+        if (!created && serverSessionId != null && !serverSessionId.equals(id)) { protocolFailure(ACK_SERVER_SESSION_ID_MISMATCH); return false; }
+        if (created) serverSessionId = id;
+        return true;
+    }
+    private static boolean nestedTurnDetection(JSONObject session) {
+        JSONObject audio = session == null ? null : session.optJSONObject("audio");
+        JSONObject input = audio == null ? null : audio.optJSONObject("input");
+        return (audio != null && audio.has("turn_detection") && !audio.isNull("turn_detection"))
+            || (input != null && input.has("turn_detection") && !input.isNull("turn_detection"));
+    }
+    synchronized void event(String type, String itemId, String text, int contentIndex) {
+        if (state == State.CLOSED || state == State.NEW) return;
+        if ("input_audio_buffer.speech_started".equals(type) || "input_audio_buffer.speech_stopped".equals(type)) { protocolFailure(UNEXPECTED_VAD_EVENT); return; }
+        if ("response.created".equals(type)) { protocolFailure(UNEXPECTED_RESPONSE_EVENT); return; }
+        if ("input_audio_buffer.committed".equals(type) && state == State.TRANSCRIBING) {
             if (!validItem(itemId)) { protocolFailure(GleamSpeechProtocolReason.COMMIT_ITEM_ID_INVALID); return; }
             if (committedItem != null && !committedItem.equals(itemId)) { protocolFailure(GleamSpeechProtocolReason.COMMIT_ITEM_ID_CONFLICT); return; }
             committedItem = itemId;
@@ -87,7 +138,7 @@ final class GleamSpeechSession {
         } else if ("conversation.item.input_audio_transcription.failed".equals(type)) {
             cancel("SPEECH_TRANSCRIPTION_FAILED");
         }
-        // response.* and partial input transcription are deliberately ignored.
+        // Non-creation response output and partial input transcription never become input results.
     }
     private void acceptTranscript(String text) {
         if (text == null || text.trim().isEmpty()) { cancel("SPEECH_AUDIO_EMPTY"); return; }
@@ -139,5 +190,5 @@ final class GleamSpeechSession {
     }
     private void clearDeadline() { deadlineGeneration++; if (deadline != null) { deadline.cancel(); deadline = null; } }
     private void stopAudio() { if (audioStarted) { audioStarted = false; try { audio.stop(); } catch (RuntimeException ignored) {} } }
-    private void finish() { state = State.CLOSED; clearDeadline(); stopAudio(); try { transport.close(); } catch (RuntimeException ignored) {} committedItem = null; pendingItem = null; pendingText = null; bytes = 0; }
+    private void finish() { state = State.CLOSED; manualUpdatePending = false; serverSessionId = null; clearDeadline(); stopAudio(); try { transport.close(); } catch (RuntimeException ignored) {} committedItem = null; pendingItem = null; pendingText = null; bytes = 0; }
 }

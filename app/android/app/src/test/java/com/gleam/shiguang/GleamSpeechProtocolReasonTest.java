@@ -30,7 +30,7 @@ public class GleamSpeechProtocolReasonTest {
     private GleamSpeechSessionTest.Fixture diagnostic() {
         GleamSpeechSessionTest.Fixture f = new GleamSpeechSessionTest.Fixture();
         f.session = GleamSpeechSession.connectionTest(f, f, f); f.session.begin();
-        f.session.event("session.created", null, null, -1, true); return f;
+        f.created(); return f;
     }
     private List<GleamSpeechProtocolReason> reject(JSONObject event) {
         GleamSpeechSessionTest.Fixture f = diagnostic(); GleamSpeechProtocol.receive(f.session, event.toString());
@@ -85,7 +85,8 @@ public class GleamSpeechProtocolReasonTest {
     }
     @Test public void everyAcknowledgementReasonHasAnExactSyntheticFailureCase() throws Exception {
         for (Object[] c : ackCases()) {
-            List<GleamSpeechProtocolReason> reasons = reject(changed((String) c[0], c[1]));
+            JSONObject event = changed((String) c[0], c[1]);
+            List<GleamSpeechProtocolReason> reasons = c[2].equals("ACK_TURN_DETECTION_MISSING") ? GleamSpeechProtocol.ackReasons(event) : reject(event);
             assertEquals(c[0].toString(), Collections.singletonList(GleamSpeechProtocolReason.valueOf((String) c[2])), reasons);
         }
     }
@@ -145,16 +146,16 @@ public class GleamSpeechProtocolReasonTest {
         assertEquals(Collections.singletonList(GleamSpeechProtocolReason.FRAME_PROCESSING_FAILED), processing.session.protocolReasons());
     }
     @Test public void engineProtocolFailuresHaveFixedReasonsAndNoItemIds() {
-        GleamSpeechSessionTest.Fixture unsafe = diagnostic(); unsafe.session.event("session.updated", null, null, -1, false);
+        GleamSpeechSessionTest.Fixture unsafe = diagnostic(); unsafe.session.protocolFailure(GleamSpeechProtocolReason.ACK_UNSAFE_CONFIGURATION);
         assertEquals(Collections.singletonList(GleamSpeechProtocolReason.ACK_UNSAFE_CONFIGURATION), unsafe.session.protocolReasons());
         GleamSpeechSessionTest.Fixture unknown = diagnostic(); unknown.session.cancel("SPEECH_PROTOCOL");
         assertEquals(Collections.singletonList(GleamSpeechProtocolReason.PROTOCOL_UNCLASSIFIED), unknown.session.protocolReasons());
-        GleamSpeechSessionTest.Fixture invalid = recording(); invalid.session.event("input_audio_buffer.committed", null, null, -1, true);
+        GleamSpeechSessionTest.Fixture invalid = recording(); invalid.session.event("input_audio_buffer.committed", null, null, -1);
         assertEquals(Collections.singletonList(GleamSpeechProtocolReason.COMMIT_ITEM_ID_INVALID), invalid.session.protocolReasons());
-        GleamSpeechSessionTest.Fixture commit = recording(); commit.committed(); commit.session.event("input_audio_buffer.committed", PRIVATE_MARKER, null, -1, true);
+        GleamSpeechSessionTest.Fixture commit = recording(); commit.committed(); commit.session.event("input_audio_buffer.committed", PRIVATE_MARKER, null, -1);
         assertEquals(Collections.singletonList(GleamSpeechProtocolReason.COMMIT_ITEM_ID_CONFLICT), commit.session.protocolReasons());
         GleamSpeechSessionTest.Fixture transcript = recording(); transcript.finalText("synthetic text");
-        transcript.session.event("conversation.item.input_audio_transcription.completed", PRIVATE_MARKER, "synthetic other text", 0, true);
+        transcript.session.event("conversation.item.input_audio_transcription.completed", PRIVATE_MARKER, "synthetic other text", 0);
         assertEquals(Collections.singletonList(GleamSpeechProtocolReason.TRANSCRIPT_ITEM_ID_CONFLICT), transcript.session.protocolReasons());
     }
     private GleamSpeechSessionTest.Fixture recording() {
@@ -173,8 +174,8 @@ public class GleamSpeechProtocolReasonTest {
     @Test public void everyAllowlistedEnumIsCoveredAndNoExtraReasonCanBeEchoed() throws Exception {
         EnumSet<GleamSpeechProtocolReason> covered = EnumSet.noneOf(GleamSpeechProtocolReason.class);
         for (Object[] c : ackCases()) covered.add(GleamSpeechProtocolReason.valueOf((String)c[2]));
-        for (String reason : new String[]{"ACK_UNSAFE_CONFIGURATION", "FRAME_MALFORMED_JSON", "FRAME_OVERSIZED", "FRAME_BINARY", "FRAME_PROCESSING_FAILED", "COMMIT_ITEM_ID_INVALID", "COMMIT_ITEM_ID_CONFLICT", "TRANSCRIPT_ITEM_ID_CONFLICT", "PROTOCOL_UNCLASSIFIED"}) covered.add(GleamSpeechProtocolReason.valueOf(reason));
-        assertEquals(49, covered.size()); assertEquals(EnumSet.allOf(GleamSpeechProtocolReason.class), covered);
+        for (String reason : new String[]{"ACK_UNSAFE_CONFIGURATION", "FRAME_MALFORMED_JSON", "FRAME_OVERSIZED", "FRAME_BINARY", "FRAME_PROCESSING_FAILED", "COMMIT_ITEM_ID_INVALID", "COMMIT_ITEM_ID_CONFLICT", "TRANSCRIPT_ITEM_ID_CONFLICT", "PROTOCOL_UNCLASSIFIED", "ACK_SERVER_SESSION_ID_TYPE", "ACK_SERVER_SESSION_ID_INVALID", "ACK_SERVER_SESSION_ID_MISMATCH", "ACK_UNEXPECTED_SESSION_EVENT", "ACK_NESTED_TURN_DETECTION", "UNEXPECTED_VAD_EVENT", "UNEXPECTED_RESPONSE_EVENT"}) covered.add(GleamSpeechProtocolReason.valueOf(reason));
+        assertEquals(56, covered.size()); assertEquals(EnumSet.allOf(GleamSpeechProtocolReason.class), covered);
         try { GleamSpeechProtocolReason.valueOf(PRIVATE_MARKER); fail("Unknown string must not become a reason"); } catch (IllegalArgumentException expected) {}
     }
     @Test public void classifierAndHandshakeMatchLegacyAcceptanceAcrossFieldShapes() throws Exception {
@@ -186,7 +187,8 @@ public class GleamSpeechProtocolReasonTest {
             assertEquals(path, legacy, GleamSpeechProtocol.safeAck(event.optJSONObject("session")));
             assertEquals(path, legacy, GleamSpeechProtocol.ackReasons(event).isEmpty());
             GleamSpeechSessionTest.Fixture f = diagnostic(); GleamSpeechProtocol.receive(f.session, event.toString());
-            assertEquals(path, legacy ? 1 : 0, f.connections); assertEquals(path, legacy ? 0 : 1, f.errors); assertEquals(0, f.starts);
+            boolean contextual = legacy || (path.equals("session.turn_detection") && value == MISSING);
+            assertEquals(path, contextual ? 1 : 0, f.connections); assertEquals(path, contextual ? 0 : 1, f.errors); assertEquals(0, f.starts);
         }
     }
     @Test public void maximumIndependentAcknowledgementFailuresFitWithoutTruncation() throws Exception {

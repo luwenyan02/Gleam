@@ -1,6 +1,12 @@
-# v1.10.2 私有语音诊断候选包
+# v1.10.3 私有语音诊断候选包
 
 基线为正式 v1.10.0（f70eb46b1edad54c7e5332ac96670320d7467059）。本分支不包含消费节奏卡，未经真机验证，不合并 main 或发布正式 Release。
+
+## 第三轮限定兼容修复
+
+用户在1.10.2确认唯一失败原因为 ACK_TURN_DETECTION_MISSING。本轮保留无上下文的严格 safeAck，仅在当前连接已成功发送唯一、明确 turn_detection:null 的固定手动配置后，依据 session.updated 的成功语义兼容缺失回显；不是把任何缺失字段视为 null。显式 VAD、类型错误或矛盾配置仍拒绝，其他核验保留。此兼容依赖服务端协议契约，不能独立证明实际 VAD 已关闭，仍待真机验收。
+
+依据：[官方最小 WebSocket Manual 示例](https://help.aliyun.com/zh/model-studio/realtime)发送明确 null 后等待 session.updated；[服务端事件规范](https://help.aliyun.com/zh/model-studio/server-events)规定成功更新返回 session.updated、失败返回 error。Omni 文档未明确保证禁用字段一定省略。
 
 ## 第二轮诊断
 
@@ -17,7 +23,7 @@
 
 ## 构建与安全
 
-版本号1.10.2（Android11002）仅用于让已安装1.10.0的用户辨认测试包。遵循原 F979…0012 完整证书，不生成新签名。
+版本号1.10.3（Android11003）仅用于让已安装1.10.0的用户辨认测试包。遵循原 F979…0012 完整证书，不生成新签名。
 
 为通过安全检查，本分支仅复用之前已批准的锁文件升级：@capacitor/android8.5.0→8.5.1、source-map-js1.2.1→1.2.2。协议解析 JVM 测试新增 testImplementation org.json:json:20240303，不改变运行时依赖。
 

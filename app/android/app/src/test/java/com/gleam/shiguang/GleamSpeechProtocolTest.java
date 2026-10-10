@@ -39,7 +39,7 @@ public class GleamSpeechProtocolTest {
     @Test public void missingOrWrongSessionModelTurnDetectionAndModalitiesFailClosed() throws Exception {
         JSONObject event = acknowledgement(); event.remove("session"); rejectAck(event);
         event = acknowledgement(); event.getJSONObject("session").put("model", "unverified-model"); rejectAck(event);
-        event = acknowledgement(); event.getJSONObject("session").remove("turn_detection"); rejectAck(event);
+        event = acknowledgement(); event.getJSONObject("session").remove("turn_detection"); assertFalse(GleamSpeechProtocol.safeAck(event.getJSONObject("session")));
         event = acknowledgement(); event.getJSONObject("session").put("turn_detection", new JSONObject().put("type", "server_vad")); rejectAck(event);
         event = acknowledgement(); event.getJSONObject("session").remove("modalities"); rejectAck(event);
         for (JSONArray modalities : new JSONArray[]{new JSONArray(), new JSONArray("[\"audio\"]"), new JSONArray("[\"text\",\"audio\"]")}) {
@@ -83,7 +83,7 @@ public class GleamSpeechProtocolTest {
         GleamSpeechProtocol.receive(f.session, "{\"type\":\"response.text.done\",\"text\":\"synthetic assistant output\"}");
         GleamSpeechProtocol.receive(f.session, "{\"type\":\"conversation.item.input_audio_transcription.completed\",\"item_id\":\"item_synthetic\",\"content_index\":0,\"transcript\":\"虚构转录\"}");
         assertEquals(0, f.connections); assertEquals(0, f.results); assertEquals(0, f.starts); assertTrue(f.sent.isEmpty());
-        GleamSpeechProtocol.receive(f.session, CREATED); GleamSpeechProtocol.receive(f.session, UPDATED); assertEquals(1, f.connections);
+        GleamSpeechProtocol.receive(f.session, CREATED); GleamSpeechProtocol.receive(f.session, UPDATED); assertEquals(0, f.connections); assertEquals("SPEECH_PROTOCOL", f.code);
     }
     @Test public void malformedAndOversizedFramesUseSafeProtocolCodeWithoutEchoing() {
         for (String message : new String[]{null, "not JSON", "[]", "{", new String(new char[GleamSpeechSession.MAX_EVENT_CHARS + 1]).replace('\0', 'x')}) {
