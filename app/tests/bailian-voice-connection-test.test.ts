@@ -41,3 +41,24 @@ it('frontend guard excludes normal recording and connection tests in both direct
 it('missing native readiness and invalid local configuration never start a request',async()=>{
  const s=setup();await s.test.start(config,{...readiness,supported:false});await s.test.start(config,{...readiness,hasKey:false});await s.test.start({...config,workspace:'evil/path'},readiness);expect(s.bridge.testConnection).not.toHaveBeenCalled();
 });
+
+it.each([
+  ['BRIDGE_RESULT_TYPE', () => null],
+  ['BRIDGE_RESULT_TYPE', () => ['SYNTHETIC_PRIVATE_VALUE']],
+  ['BRIDGE_RESULT_SESSION_ID_MISSING', () => ({ connected: true })],
+  ['BRIDGE_RESULT_SESSION_ID_TYPE', () => ({ sessionId: 42, connected: true })],
+  ['BRIDGE_RESULT_SESSION_ID_MISMATCH', () => ({ sessionId: 'SYNTHETIC_PRIVATE_ID', connected: true })],
+  ['BRIDGE_RESULT_CONNECTED_MISSING', (id: string) => ({ sessionId: id })],
+  ['BRIDGE_RESULT_CONNECTED_TYPE', (id: string) => ({ sessionId: id, connected: 'SYNTHETIC_PRIVATE_VALUE' })],
+  ['BRIDGE_RESULT_CONNECTED_FALSE', (id: string) => ({ sessionId: id, connected: false })],
+] as const)('malformed bridge success has its own safe reason: %s', async (reason, result) => {
+  const s = setup();
+  const run = s.test.start(config, readiness);
+  s.pending[0].resolve(result(s.id()) as NativeSpeechConnectionResult);
+  await run;
+  expect(s.test.state).toBe('error');
+  expect(s.test.message).toContain(reason);
+  expect(s.test.message).not.toContain('SYNTHETIC_PRIVATE');
+  expect(s.bridge.cancel).toHaveBeenCalledOnce();
+  expect(s.bridge.start).not.toHaveBeenCalled();
+});

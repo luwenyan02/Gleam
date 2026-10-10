@@ -3,6 +3,7 @@ package com.gleam.shiguang;
 import android.Manifest;
 import android.os.Handler;
 import android.os.Looper;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
@@ -11,6 +12,8 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
+import java.util.Collections;
+import java.util.List;
 import javax.net.ssl.SSLException;
 import okhttp3.OkHttpClient;
 import okhttp3.Response;
@@ -117,7 +120,8 @@ public final class GleamSpeechPlugin extends Plugin {
             public void connected() { main.post(() -> resolve(session, null)); }
             public void fail(String code) {
                 GleamSpeechSession.Phase phase = session.engine.phase();
-                main.post(() -> { if (active != session) return; end(session); reject(session.call, code, phase); });
+                List<GleamSpeechProtocolReason> reasons = session.engine.protocolReasons();
+                main.post(() -> { if (active != session) return; end(session); reject(session.call, code, phase, reasons); });
             }
         };
         GleamSpeechSession.Clock clock = (ms, work) -> { main.postDelayed(work, ms); return () -> main.removeCallbacks(work); };
@@ -134,10 +138,10 @@ public final class GleamSpeechPlugin extends Plugin {
         try {
             session.socket = client.newWebSocket(GleamSpeechTransport.request(session.region, session.workspace, session.model, key), new WebSocketListener() {
                 @Override public void onMessage(WebSocket ws, String message) {
-                    if (message.length() > GleamSpeechSession.MAX_EVENT_CHARS) main.post(() -> transportEnded(session, "SPEECH_PROTOCOL"));
+                    if (message.length() > GleamSpeechSession.MAX_EVENT_CHARS) main.post(() -> transportEnded(session, "SPEECH_PROTOCOL", Collections.singletonList(GleamSpeechProtocolReason.FRAME_OVERSIZED)));
                     else main.post(() -> receive(session, message));
                 }
-                @Override public void onMessage(WebSocket ws, ByteString data) { main.post(() -> transportEnded(session, "SPEECH_PROTOCOL")); }
+                @Override public void onMessage(WebSocket ws, ByteString data) { main.post(() -> transportEnded(session, "SPEECH_PROTOCOL", Collections.singletonList(GleamSpeechProtocolReason.FRAME_BINARY))); }
                 @Override public void onClosing(WebSocket ws, int code, String reason) { ws.cancel(); main.post(() -> transportEnded(session, "SPEECH_NETWORK")); }
                 @Override public void onClosed(WebSocket ws, int code, String reason) { main.post(() -> transportEnded(session, "SPEECH_NETWORK")); }
                 @Override public void onFailure(WebSocket ws, Throwable error, Response response) {
@@ -155,11 +159,12 @@ public final class GleamSpeechPlugin extends Plugin {
         }
         GleamSpeechProtocol.receive(session.engine, message);
     }
-    private void transportEnded(Session session, String code) {
+    private void transportEnded(Session session, String code) { transportEnded(session, code, Collections.emptyList()); }
+    private void transportEnded(Session session, String code, List<GleamSpeechProtocolReason> reasons) {
         // finish() deliberately cancels the socket before posting its result.
         // The resulting late close/failure callback must not turn that success into a failure.
         if (active != session || session.engine == null || session.engine.isClosed()) return;
-        terminate(session, code);
+        terminate(session, code, reasons);
     }
     private void resolve(Session session, String text) {
         if (active != session) return;
@@ -180,12 +185,13 @@ public final class GleamSpeechPlugin extends Plugin {
             Session session = active; if (session != null && session.id.equals(id)) terminate(session, "SPEECH_CANCELLED"); else rememberEnded(id); call.resolve(); });
     }
     private void cancelActive(String code) { Session session = active; if (session != null) terminate(session, code); }
-    private void terminate(Session session, String code) {
+    private void terminate(Session session, String code) { terminate(session, code, Collections.emptyList()); }
+    private void terminate(Session session, String code, List<GleamSpeechProtocolReason> reasons) {
         if (active != session) return;
         GleamSpeechSession.Phase phase = session.engine == null ? session.phase : session.engine.phase();
-        if (session.engine != null) session.engine.cancel(code);
+        if (session.engine != null) session.engine.cancel(code, reasons);
         // Clear identity synchronously: queued successful results cannot win over cancellation.
-        end(session); reject(session.call, code, phase);
+        end(session); reject(session.call, code, phase, reasons);
     }
     private void end(Session session) {
         if (session.permissionDeadline != null) main.removeCallbacks(session.permissionDeadline);
@@ -199,8 +205,15 @@ public final class GleamSpeechPlugin extends Plugin {
     @Override protected void handleOnStop() { foreground = false; cancelActive("SPEECH_INTERRUPTED"); }
     @Override protected void handleOnDestroy() { destroyed = true; foreground = false; cancelActive("SPEECH_INTERRUPTED"); client.dispatcher().executorService().shutdown(); client.connectionPool().evictAll(); }
     private static void reject(PluginCall call, String code) { reject(call, code, GleamSpeechSession.Phase.VALIDATION); }
-    private static void reject(PluginCall call, String code, GleamSpeechSession.Phase phase) {
+    private static void reject(PluginCall call, String code, GleamSpeechSession.Phase phase) { reject(call, code, phase, Collections.emptyList()); }
+    private static void reject(PluginCall call, String code, GleamSpeechSession.Phase phase, List<GleamSpeechProtocolReason> reasons) {
         JSObject data = new JSObject(); data.put("phase", phase.value);
+        if ("SPEECH_PROTOCOL".equals(code)) {
+            List<GleamSpeechProtocolReason> safe = GleamSpeechProtocolReason.bounded(reasons);
+            JSArray values = new JSArray();
+            for (GleamSpeechProtocolReason reason : safe) values.put(reason.name());
+            data.put("reason", safe.get(0).name()); data.put("reasons", values);
+        }
         call.reject(safeMessage(code), code, data);
     }
     private static String safeMessage(String code) {

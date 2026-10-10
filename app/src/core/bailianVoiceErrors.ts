@@ -1,4 +1,4 @@
-/** Only these internal codes and phases may cross into user-facing diagnostics. */
+/** Only these internal codes, phases and reason enums may cross into user-facing diagnostics. */
 const SAFE_ERRORS: Record<string, string> = {
   SPEECH_UNSUPPORTED: '百炼短语音仅支持 Android 安装包，可使用文字输入',
   SPEECH_CONSENT_REQUIRED: '请先核对接收方与费用说明，再明确同意开始',
@@ -22,18 +22,92 @@ const SAFE_ERRORS: Record<string, string> = {
   SPEECH_CANCELLED: '语音已取消，文字未发送给记账 AI',
   SPEECH_SESSION_INVALID: '本次语音会话已失效，请重新核对后开始',
   SPEECH_TRANSCRIPTION_FAILED: '百炼转写失败，请重试或使用文字输入',
-  SPEECH_PROTOCOL: '百炼返回的会话配置或消息不符合要求，已安全停止，请核对模型后重试',
+  SPEECH_PROTOCOL: '会话配置核验未通过，已安全停止',
   SPEECH_PROVIDER: '百炼服务未接受请求，请核对模型可用性、地域与业务空间后重试',
 };
 const SAFE_PHASES: Record<string, string> = {
   validation: '检查设置', permission: '麦克风授权', connecting: '连接服务',
   configuring: '确认配置', microphone: '麦克风采集', transcribing: '语音转写',
 };
+// Keep aligned with GleamSpeechProtocolReason; never display field values or provider text.
+const SAFE_REASONS: Record<string, string> = {
+  ACK_SESSION_MISSING: '确认消息缺少会话配置',
+  ACK_SESSION_NULL: '确认消息的会话配置为空',
+  ACK_SESSION_TYPE: '会话配置的字段类型不符',
+  ACK_MODEL_TYPE: '会话模型的字段类型不符',
+  ACK_MODEL_MISMATCH: '会话模型与本次请求不一致',
+  ACK_TURN_DETECTION_MISSING: '缺少轮次检测配置',
+  ACK_TURN_DETECTION_TYPE: '轮次检测的字段类型不符',
+  ACK_TURN_DETECTION_MISMATCH: '轮次检测未关闭',
+  ACK_MODALITIES_MISSING: '缺少输出模式配置',
+  ACK_MODALITIES_TYPE: '输出模式的字段类型不符',
+  ACK_MODALITIES_MISMATCH: '输出模式未限定为仅文本',
+  ACK_TRANSCRIPTION_MISSING: '缺少输入音频转写配置',
+  ACK_TRANSCRIPTION_TYPE: '输入音频转写配置的类型不符',
+  ACK_TRANSCRIPTION_MODEL_MISSING: '缺少输入音频转写模型',
+  ACK_TRANSCRIPTION_MODEL_TYPE: '转写模型的字段类型不符',
+  ACK_TRANSCRIPTION_MODEL_MISMATCH: '转写模型与本次请求不一致',
+  ACK_AUDIO_MISSING: '缺少音频配置',
+  ACK_AUDIO_TYPE: '音频配置的字段类型不符',
+  ACK_AUDIO_INPUT_MISSING: '缺少音频输入配置',
+  ACK_AUDIO_INPUT_TYPE: '音频输入配置的类型不符',
+  ACK_AUDIO_FORMAT_MISSING: '缺少音频输入格式',
+  ACK_AUDIO_FORMAT_TYPE: '音频输入格式的字段类型不符',
+  ACK_AUDIO_ENCODING_MISSING: '缺少音频编码类型',
+  ACK_AUDIO_ENCODING_TYPE: '音频编码类型的字段类型不符',
+  ACK_AUDIO_ENCODING_MISMATCH: '音频编码与本次请求不一致',
+  ACK_SAMPLE_RATE_MISSING: '缺少音频采样率',
+  ACK_SAMPLE_RATE_TYPE: '音频采样率的字段类型不符',
+  ACK_SAMPLE_RATE_MISMATCH: '音频采样率与本次请求不一致',
+  ACK_SEARCH_TYPE: '搜索开关的字段类型不符',
+  ACK_SEARCH_ENABLED: '搜索功能未关闭',
+  ACK_TOOLS_TYPE: '工具配置的字段类型不符',
+  ACK_TOOLS_NONEMPTY: '工具列表未清空',
+  ACK_CHANNELS_TYPE: '音频声道数的字段类型不符',
+  ACK_CHANNELS_MISMATCH: '音频声道数与本次请求不一致',
+  ACK_SAMPLE_FORMAT_TYPE: '音频样本格式的字段类型不符',
+  ACK_SAMPLE_FORMAT_MISMATCH: '音频样本格式与本次请求不一致',
+  ACK_PACKING_TYPE: '音频排列方式的字段类型不符',
+  ACK_PACKING_MISMATCH: '音频排列方式与本次请求不一致',
+  ACK_CHANNEL_LAYOUT_TYPE: '声道布局的字段类型不符',
+  ACK_CHANNEL_LAYOUT_MISMATCH: '声道布局与本次请求不一致',
+  ACK_UNSAFE_CONFIGURATION: '会话配置未通过安全核验',
+  FRAME_MALFORMED_JSON: '服务消息无法解析为规定格式',
+  FRAME_OVERSIZED: '服务消息超过大小上限',
+  FRAME_BINARY: '收到了不支持的二进制消息',
+  FRAME_PROCESSING_FAILED: '服务消息处理未完成',
+  COMMIT_ITEM_ID_INVALID: '音频提交标识无效',
+  COMMIT_ITEM_ID_CONFLICT: '音频提交标识发生冲突',
+  TRANSCRIPT_ITEM_ID_CONFLICT: '转写条目标识发生冲突',
+  PROTOCOL_UNCLASSIFIED: '协议核验失败，未提供具体检查项',
+  BRIDGE_RESULT_TYPE: '原生桥返回结果的类型不符',
+  BRIDGE_RESULT_SESSION_ID_MISSING: '原生桥结果缺少会话标识',
+  BRIDGE_RESULT_SESSION_ID_TYPE: '原生桥会话标识的类型不符',
+  BRIDGE_RESULT_SESSION_ID_MISMATCH: '原生桥结果不属于本次会话',
+  BRIDGE_RESULT_CONNECTED_MISSING: '原生桥结果缺少连接确认',
+  BRIDGE_RESULT_CONNECTED_TYPE: '原生桥连接确认的类型不符',
+  BRIDGE_RESULT_CONNECTED_FALSE: '原生桥未确认连接成功',
+};
+const MAX_REASONS = 24;
+
 export function shortVoiceError(error: unknown): string {
   const value = error && typeof error === 'object' ? error as { code?: unknown; data?: unknown } : {};
-  const data = value.data && typeof value.data === 'object' ? value.data as { phase?: unknown } : {};
+  const data = value.data && typeof value.data === 'object' ? value.data as { phase?: unknown; reason?: unknown; reasons?: unknown } : {};
   const code = typeof value.code === 'string' && Object.hasOwn(SAFE_ERRORS, value.code) ? value.code : undefined;
   const phase = typeof data.phase === 'string' && Object.hasOwn(SAFE_PHASES, data.phase) ? SAFE_PHASES[data.phase] : '未确定';
-  // Never stringify the error, its message, an unknown code, or other provider fields.
-  return `${code ? SAFE_ERRORS[code] : '语音未完成，请检查权限、网络、Key 与业务空间，或改用手动输入'}（${code ?? 'SPEECH_UNKNOWN'}；阶段：${phase}）`;
+  const reasons: string[] = [];
+  let truncated = false;
+  // Bound both examined input and rendered output. Unknown strings never reach the DOM or clipboard.
+  const candidates = [data.reason, ...(Array.isArray(data.reasons) ? data.reasons.slice(0, MAX_REASONS + 1) : [])];
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string' || !Object.hasOwn(SAFE_REASONS, candidate) || reasons.includes(candidate)) continue;
+    if (reasons.length === MAX_REASONS) { truncated = true; break; }
+    reasons.push(candidate);
+  }
+  const includeReasons = code === 'SPEECH_PROTOCOL' || data.reason !== undefined || data.reasons !== undefined;
+  const detail = includeReasons ? `；原因：${reasons.length
+    ? reasons.map(reason => `${SAFE_REASONS[reason]} [${reason}]`).join('；') + (truncated ? '；仅显示前24项' : '')
+    : '未能确定具体检查项 [PROTOCOL_REASON_UNKNOWN]'}` : '';
+  // Never stringify the error, its message, unknown metadata, or actual/expected provider values.
+  return `${code ? SAFE_ERRORS[code] : '语音未完成，请检查权限、网络、Key 与业务空间，或改用手动输入'}（${code ?? 'SPEECH_UNKNOWN'}；阶段：${phase}${detail}）`;
 }

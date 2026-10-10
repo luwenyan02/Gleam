@@ -7,7 +7,7 @@ import { on } from '../../core/store';
 interface ConsentSnapshot { config: BailianVoiceConfig; readiness: NativeSpeechConfiguration }
 interface TestView {
   container: HTMLElement; test: BailianVoiceConnectionTest; sequence: number; pending: boolean;
-  consent?: ConsentSnapshot; error?: string; pendingTimer?: ReturnType<typeof setTimeout>; disposed: boolean; dispose(): void;
+  consent?: ConsentSnapshot; error?: string; copyMessage?: string; copying?: boolean; pendingTimer?: ReturnType<typeof setTimeout>; disposed: boolean; dispose(): void;
 }
 let view: TestView | undefined;
 let epoch = 0;
@@ -26,7 +26,9 @@ export function voiceConnectionTestHtml(supported: boolean, hasKey: boolean): st
       <p class="tiny">同意后将使用已安全保存的语音 Key，向以上阿里云百炼地址发送鉴权与会话配置请求，可能产生服务商费用。本次不请求麦克风权限、不录音、不发送音频、文字或账本数据。</p>
       <button class="chip" data-voice-test-confirm>同意并测试连接</button>
     </section>
-    <p class="tiny" data-voice-test-status data-state="idle" role="status" aria-live="polite">尚未测试连接；保存 Key 不会调用服务</p>`;
+    <p class="tiny" data-voice-test-status data-state="idle" role="status" aria-live="polite">尚未测试连接；保存 Key 不会调用服务</p>
+    <div class="ai-actions"><button class="chip" data-voice-test-copy hidden>复制诊断结果</button></div>
+    <p class="tiny" data-voice-test-copy-status role="status" aria-live="polite" hidden></p>`;
 }
 
 export function mountVoiceConnectionTest(container: HTMLElement): () => void {
@@ -66,7 +68,7 @@ export function mountVoiceConnectionTest(container: HTMLElement): () => void {
 export function invalidateVoiceConnectionTest(message?: string): void {
   epoch++;
   if (!view || view.disposed) return;
-  view.sequence++; clearTimeout(view.pendingTimer); view.pending = false; view.consent = undefined; view.error = undefined;
+  view.sequence++; clearTimeout(view.pendingTimer); view.pending = false; view.consent = undefined; view.error = undefined; view.copyMessage = undefined; view.copying = false;
   view.test.invalidate(message);
 }
 
@@ -82,6 +84,11 @@ export function syncVoiceConnectionTest(container: HTMLElement): void {
   const confirm = q<HTMLButtonElement>('[data-voice-test-confirm]'); if (confirm) confirm.disabled = !current.consent || current.pending;
   const recipient = q('[data-voice-test-recipient]');
   if (recipient) recipient.textContent = current.consent ? recipientText(current.consent.config) : '';
+  const hasDiagnostic = !!current.error || current.test.state === 'error';
+  const copy = q<HTMLButtonElement>('[data-voice-test-copy]');
+  if (copy) { copy.hidden = !hasDiagnostic; copy.disabled = !!current.copying; }
+  const copyStatus = q('[data-voice-test-copy-status]');
+  if (copyStatus) { copyStatus.hidden = !hasDiagnostic || !current.copyMessage; copyStatus.textContent = current.copyMessage ?? ''; }
   const status = q('[data-voice-test-status]');
   if (status) {
     status.dataset.state = current.error ? 'error' : current.pending ? 'preparing' : current.consent ? 'consent' : current.test.state;
@@ -117,6 +124,7 @@ function boundPreflight(current: TestView, sequence: number): void {
 }
 async function prepare(current: TestView): Promise<void> {
   const sequence = ++current.sequence;
+  current.copyMessage = undefined; current.copying = false;
   current.test.invalidate(); current.pending = true; current.error = undefined; epoch++; syncVoiceConnectionTest(current.container);
   boundPreflight(current, sequence);
   try {
@@ -144,13 +152,27 @@ async function confirm(current: TestView): Promise<void> {
     void current.test.start(config, readiness);
   } catch { if (isCurrent(current, sequence)) failure(current, 'SPEECH_CONFIG_INVALID'); }
 }
+async function copyDiagnostic(current: TestView): Promise<void> {
+  // Copy only our fixed sanitized error, never DOM text or configuration/snapshot data.
+  const diagnostic = current.error ?? (current.test.state === 'error' ? current.test.message : undefined);
+  if (!diagnostic || current.copying || current.pending || current.consent || current.test.busy) return;
+  const sequence = current.sequence;
+  current.copying = true; current.copyMessage = undefined; epoch++; syncVoiceConnectionTest(current.container);
+  let message = '诊断结果已复制';
+  try { await navigator.clipboard.writeText(diagnostic); }
+  catch { message = '复制失败，可截图保存诊断结果'; }
+  if (!isCurrent(current, sequence)) return;
+  current.copying = false; current.copyMessage = message; epoch++; syncVoiceConnectionTest(current.container);
+}
 export function handleVoiceConnectionTestClick(target: HTMLElement, container: HTMLElement): boolean {
   const test = target.closest<HTMLButtonElement>('[data-voice-test]');
   const agree = target.closest<HTMLButtonElement>('[data-voice-test-confirm]');
   const cancel = target.closest<HTMLButtonElement>('[data-voice-test-cancel]');
-  if (!test && !agree && !cancel) return false;
+  const copy = target.closest<HTMLButtonElement>('[data-voice-test-copy]');
+  if (!test && !agree && !cancel && !copy) return false;
   const current = view;
   if (!current || current.container !== container || current.disposed || credentialWritePending) return true;
+  if (copy) { if (!copy.disabled) void copyDiagnostic(current); return true; }
   if (cancel) { invalidateVoiceConnectionTest('测试已取消，重新测试需要再次同意'); return true; }
   if (test && !test.disabled && !current.pending && !current.test.busy && !current.consent) void prepare(current);
   else if (agree && !agree.disabled && current.consent) void confirm(current);

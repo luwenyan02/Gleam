@@ -28,11 +28,20 @@ export class BailianVoiceConnectionTest {
       this.cancelActive(); this.fail('SPEECH_TIMEOUT', 'connecting');
     }, 35_000);
     try {
-      const result = await this.bridge.testConnection({ ...config, sessionId: run.id,
+      const result: unknown = await this.bridge.testConnection({ ...config, sessionId: run.id,
         expectedCredentialRevision: readiness.credentialRevision, consent: true, userInitiated: true });
       if (this.active !== run || this.disposed) return;
-      if (result?.sessionId !== run.id) throw { code: 'SPEECH_SESSION_INVALID', data: { phase: 'configuring' } };
-      if (result.connected !== true) throw { code: 'SPEECH_PROTOCOL', data: { phase: 'configuring' } };
+      const bridgeFailure = (reason: string, code = 'SPEECH_PROTOCOL'): never => {
+        throw { code, data: { phase: 'configuring', reason } };
+      };
+      if (!result || typeof result !== 'object' || Array.isArray(result)) bridgeFailure('BRIDGE_RESULT_TYPE');
+      const fields = result as { sessionId?: unknown; connected?: unknown };
+      if (!Object.hasOwn(fields, 'sessionId')) bridgeFailure('BRIDGE_RESULT_SESSION_ID_MISSING', 'SPEECH_SESSION_INVALID');
+      if (typeof fields.sessionId !== 'string') bridgeFailure('BRIDGE_RESULT_SESSION_ID_TYPE', 'SPEECH_SESSION_INVALID');
+      if (fields.sessionId !== run.id) bridgeFailure('BRIDGE_RESULT_SESSION_ID_MISMATCH', 'SPEECH_SESSION_INVALID');
+      if (!Object.hasOwn(fields, 'connected')) bridgeFailure('BRIDGE_RESULT_CONNECTED_MISSING');
+      if (typeof fields.connected !== 'boolean') bridgeFailure('BRIDGE_RESULT_CONNECTED_TYPE');
+      if (fields.connected !== true) bridgeFailure('BRIDGE_RESULT_CONNECTED_FALSE');
       this.finish(run);
       this.update('success', '连接与会话配置验证通过；未测试麦克风或转写，也未发送音频');
     } catch (error) {

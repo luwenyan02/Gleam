@@ -1,5 +1,7 @@
 package com.gleam.shiguang;
 
+import java.util.Collections;
+import java.util.List;
 import okio.ByteString;
 
 /** Single Manual-mode utterance. No Android APIs, credentials, files, or assistant output. */
@@ -28,6 +30,7 @@ final class GleamSpeechSession {
     private final Clock clock;
     private State state = State.NEW;
     private Phase phase = Phase.VALIDATION;
+    private List<GleamSpeechProtocolReason> protocolReasons = Collections.emptyList();
     private long deadlineGeneration;
     private Timer deadline;
     private int bytes;
@@ -51,12 +54,15 @@ final class GleamSpeechSession {
         armDeadline(15000, "SPEECH_TIMEOUT");
     }
     synchronized void event(String type, String itemId, String text, int contentIndex, boolean safeConfiguration) {
+        event(type, itemId, text, contentIndex, safeConfiguration, Collections.singletonList(GleamSpeechProtocolReason.ACK_UNSAFE_CONFIGURATION));
+    }
+    synchronized void event(String type, String itemId, String text, int contentIndex, boolean safeConfiguration, List<GleamSpeechProtocolReason> reasons) {
         if (state == State.CLOSED || state == State.NEW) return;
         if ("session.created".equals(type) && state == State.CONNECTING) {
             state = State.CONFIGURING; phase = Phase.CONFIGURING;
             send(SESSION_UPDATE);
         } else if ("session.updated".equals(type) && state == State.CONFIGURING) {
-            if (!safeConfiguration) { cancel("SPEECH_PROTOCOL"); return; }
+            if (!safeConfiguration) { cancel("SPEECH_PROTOCOL", reasons); return; }
             clearDeadline();
             if (connectionOnly) { finish(); listener.connected(); return; }
             state = State.LISTENING; phase = Phase.MICROPHONE;
@@ -66,7 +72,8 @@ final class GleamSpeechSession {
             listener.state("listening");
             armDeadline(30000, "SPEECH_LIMIT");
         } else if ("input_audio_buffer.committed".equals(type) && state == State.TRANSCRIBING) {
-            if (!validItem(itemId) || (committedItem != null && !committedItem.equals(itemId))) { cancel("SPEECH_PROTOCOL"); return; }
+            if (!validItem(itemId)) { protocolFailure(GleamSpeechProtocolReason.COMMIT_ITEM_ID_INVALID); return; }
+            if (committedItem != null && !committedItem.equals(itemId)) { protocolFailure(GleamSpeechProtocolReason.COMMIT_ITEM_ID_CONFLICT); return; }
             committedItem = itemId;
             if (pendingItem != null && pendingItem.equals(committedItem)) acceptTranscript(pendingText);
             pendingItem = null; pendingText = null;
@@ -74,7 +81,7 @@ final class GleamSpeechSession {
             if (!validItem(itemId) || contentIndex != 0) return;
             if (text != null && text.length() > MAX_TRANSCRIPT_CHARS) { cancel("SPEECH_TRANSCRIPT_LIMIT"); return; }
             if (committedItem == null) {
-                if (pendingItem != null && !pendingItem.equals(itemId)) { cancel("SPEECH_PROTOCOL"); return; }
+                if (pendingItem != null && !pendingItem.equals(itemId)) { protocolFailure(GleamSpeechProtocolReason.TRANSCRIPT_ITEM_ID_CONFLICT); return; }
                 pendingItem = itemId; pendingText = text;
             } else if (committedItem.equals(itemId)) acceptTranscript(text);
         } else if ("conversation.item.input_audio_transcription.failed".equals(type)) {
@@ -104,10 +111,14 @@ final class GleamSpeechSession {
         listener.state("transcribing");
         armDeadline(15000, "SPEECH_TIMEOUT");
     }
-    synchronized void cancel(String code) {
+    synchronized void cancel(String code) { cancel(code, Collections.emptyList()); }
+    synchronized void protocolFailure(GleamSpeechProtocolReason reason) { cancel("SPEECH_PROTOCOL", Collections.singletonList(reason)); }
+    synchronized void cancel(String code, List<GleamSpeechProtocolReason> reasons) {
         if (state == State.CLOSED) return;
+        protocolReasons = "SPEECH_PROTOCOL".equals(code) ? GleamSpeechProtocolReason.bounded(reasons) : Collections.emptyList();
         finish(); listener.fail(code);
     }
+    synchronized List<GleamSpeechProtocolReason> protocolReasons() { return protocolReasons; }
     synchronized boolean isClosed() { return state == State.CLOSED; }
     synchronized Phase phase() { return phase; }
     private boolean send(String message) {

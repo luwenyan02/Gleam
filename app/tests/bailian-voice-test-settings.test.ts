@@ -61,3 +61,42 @@ it('pending credential writes block testing until a new explicit click after com
 it('a stalled local preflight times out and cannot restore consent later',async()=>{
  vi.useFakeTimers();let resolve!:(value:unknown)=>void;mocks.configuration.mockImplementationOnce(()=>new Promise(done=>resolve=done));click('[data-voice-test]');await vi.advanceTimersByTimeAsync(10_000);expect(status().dataset.state).toBe('error');expect(status().textContent).toContain('SPEECH_TIMEOUT');resolve(readiness);await flush();expect(status().dataset.state).toBe('error');expect(mocks.testConnection).not.toHaveBeenCalled();
 });
+
+it('copies only the sanitized diagnostic after an explicit click, never recipient/config/keys or upstream values', async () => {
+  const writeText = vi.fn(async () => {});
+  vi.stubGlobal('navigator', { clipboard: { writeText } });
+  mocks.testConnection.mockRejectedValueOnce({ code: 'SPEECH_PROTOCOL', message: 'PRIVATE_PROVIDER_BODY', data: {
+    phase: 'configuring', reason: 'ACK_AUDIO_FORMAT_MISSING', reasons: ['ACK_AUDIO_FORMAT_MISSING', 'ACK_TOOLS_NONEMPTY', 'fixture-PRIVATE_KEY'],
+    actual: 'PRIVATE_VALUE', workspace: 'PRIVATE_WORKSPACE',
+  } });
+  click('[data-voice-test]'); await flush();
+  expect(writeText).not.toHaveBeenCalled();
+  click('[data-voice-test-confirm]'); await flush();
+  expect(writeText).not.toHaveBeenCalled();
+  expect(container.querySelector('[data-voice-test-copy]').hidden).toBe(false);
+  const diagnostic = status().textContent;
+  // Never copy editable DOM text, even if other code mutates it.
+  status().textContent = 'PRIVATE_DOM_TEXT';
+  click('[data-voice-test-copy]'); await flush();
+  expect(writeText).toHaveBeenCalledExactlyOnceWith(diagnostic);
+  expect(diagnostic).toContain('ACK_AUDIO_FORMAT_MISSING');
+  expect(diagnostic).toContain('ACK_TOOLS_NONEMPTY');
+  for (const privateValue of ['PRIVATE', config.workspace, config.model, readiness.credentialRevision]) expect(diagnostic).not.toContain(privateValue);
+  expect(container.querySelector('[data-voice-test-copy-status]').textContent).toContain('已复制');
+});
+
+it('idle/consent states cannot copy anything and clipboard failures never echo their exception', async () => {
+  const writeText = vi.fn().mockRejectedValue(new Error('PRIVATE_CLIPBOARD_ERROR'));
+  vi.stubGlobal('navigator', { clipboard: { writeText } });
+  click('[data-voice-test-copy]'); await flush(); expect(writeText).not.toHaveBeenCalled();
+  click('[data-voice-test]'); await flush();
+  click('[data-voice-test-copy]'); await flush(); expect(writeText).not.toHaveBeenCalled();
+  mocks.testConnection.mockRejectedValueOnce({ code: 'SPEECH_PROTOCOL', data: { phase: 'configuring', reason: 'ACK_SAMPLE_RATE_MISMATCH' } });
+  click('[data-voice-test-confirm]'); await flush();
+  click('[data-voice-test-copy]'); await flush();
+  expect(writeText).toHaveBeenCalledOnce();
+  expect(container.querySelector('[data-voice-test-copy-status]').textContent).toContain('复制失败');
+  expect(container.querySelector('[data-voice-test-copy-status]').textContent).not.toContain('PRIVATE');
+  invalidateVoiceConnectionTest();
+  expect(container.querySelector('[data-voice-test-copy]').hidden).toBe(true);
+});

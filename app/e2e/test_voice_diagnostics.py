@@ -10,11 +10,16 @@ OUT = Path(__file__).parents[2] / '.tmp/tests/e2e/voice-diagnostics'
 MOCK = MOCK_NATIVE.replace("'clearKey','start'", "'clearKey','testConnection','start'").replace(
     "if (method === 'start') {", """
       if (method === 'testConnection') {
-        if (window.__testError) throw {code:window.__testError,data:{phase:'configuring'},message:'PRIVATE_PROVIDER_BODY'};
+        if (window.__testError) throw {code:window.__testError,data:{phase:'configuring',reason:'ACK_MODEL_MISMATCH',reasons:['ACK_MODEL_MISMATCH','ACK_AUDIO_FORMAT_MISSING','PRIVATE_UNKNOWN_REASON']},message:'PRIVATE_PROVIDER_BODY'};
         if (window.__holdTest) return new Promise(resolve => { window.__finishTest=()=>resolve({sessionId:options.sessionId,connected:true}); });
         return {sessionId:options.sessionId,connected:true};
       }
       if (method === 'start') {""")
+
+MOCK += r""";(() => {
+  window.__copiedDiagnostics = [];
+  Object.defineProperty(navigator, 'clipboard', {configurable:true, value:{writeText:async text => {window.__copiedDiagnostics.push(text);}}});
+})()"""
 
 
 def run(page, width):
@@ -63,6 +68,15 @@ def run(page, width):
     expect(page.locator('[data-voice-test-status]')).to_have_attribute('data-state', 'error')
     expect(page.locator('[data-voice-test-status]')).to_contain_text('SPEECH_PROTOCOL')
     expect(page.locator('[data-voice-test-status]')).not_to_contain_text('PRIVATE_PROVIDER_BODY')
+    expect(page.locator('[data-voice-test-status]')).not_to_contain_text('PRIVATE_UNKNOWN_REASON')
+    expect(page.locator('[data-voice-test-status]')).to_contain_text('ACK_MODEL_MISMATCH')
+    expect(page.locator('[data-voice-test-status]')).to_contain_text('ACK_AUDIO_FORMAT_MISSING')
+    assert page.evaluate('window.__copiedDiagnostics.length') == 0
+    page.locator('[data-voice-test-copy]').click()
+    expect(page.locator('[data-voice-test-copy-status]')).to_contain_text('复制')
+    copied = page.evaluate('window.__copiedDiagnostics')
+    assert len(copied) == 1 and 'ACK_MODEL_MISMATCH' in copied[0] and 'ACK_AUDIO_FORMAT_MISSING' in copied[0]
+    assert not any(secret in copied[0] for secret in ['PRIVATE_PROVIDER_BODY', 'PRIVATE_UNKNOWN_REASON', 'synthetic-workspace', 'synthetic-diagnostic-key'])
     page.locator('[data-voice-test-status]').scroll_into_view_if_needed()
     page.screenshot(path=str(OUT / f'error-{width}.png'), animations='disabled')
 
