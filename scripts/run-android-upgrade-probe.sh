@@ -13,7 +13,15 @@ printf 'no\n' | avdmanager create avd --name gleam_upgrade_probe --package 'syst
 ls -la "$ANDROID_AVD_HOME"
 test -s "$ANDROID_AVD_HOME/gleam_upgrade_probe.ini"
 emulator -list-avds | tee "$OUT/avd-list.txt"
-emulator -avd gleam_upgrade_probe -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader -accel on -cores 2 -memory 2048 -camera-back none -camera-front none >"$OUT/emulator.log" 2>&1 &
+# The isolated probe needs only a small synthetic ledger, not the default 6 GiB data disk.
+python3 - "$ANDROID_AVD_HOME/gleam_upgrade_probe.avd/config.ini" <<'PYCONFIG'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+lines = [line for line in p.read_text().splitlines() if not line.startswith('disk.dataPartition.size=')]
+p.write_text('\n'.join(lines + ['disk.dataPartition.size=2G']) + '\n')
+PYCONFIG
+df -h "$ANDROID_AVD_HOME"
+emulator -avd gleam_upgrade_probe -partition-size 2048 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader -accel on -cores 2 -memory 2048 -camera-back none -camera-front none >"$OUT/emulator.log" 2>&1 &
 EMULATOR_PID=$!
 trap 'adb -s emulator-5554 emu kill >/dev/null 2>&1 || true; kill "$EMULATOR_PID" 2>/dev/null || true' EXIT
 booted=false
