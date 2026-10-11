@@ -6,6 +6,7 @@ import { showToast } from '../shell/toast';
 
 const MODULES = {
   month: { icon: 'ic-coin', name: '本月概览' }, quick: { icon: 'ic-bolt', name: '快捷入口' },
+  rhythm: { icon: 'ic-pulse', name: '消费节奏' },
   today: { icon: 'ic-book', name: '今日流水' }, past: { icon: 'ic-cal', name: '往日回顾' },
 } as const;
 function arrows(key: string, name: string, index: number, total: number, group: string): string {

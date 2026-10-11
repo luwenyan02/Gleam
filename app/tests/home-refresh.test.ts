@@ -3,8 +3,11 @@ import type { Entry } from '../src/core/types';
 
 const mocks = vi.hoisted(() => ({
   registerPage: vi.fn(), on: vi.fn(), listEntries: vi.fn(),
-  ledgerEntriesInRange: vi.fn(), monthSummary: vi.fn(),
+  ledgerEntriesInRange: vi.fn(), monthSummary: vi.fn(), refreshRhythm: vi.fn(),
   modules: { month: true, quick: true, today: true, past: true },
+}));
+vi.mock('../src/features/home/spendingRhythm', () => ({
+  spendingRhythmHtml: () => '', bindSpendingRhythm: vi.fn(), refreshSpendingRhythm: mocks.refreshRhythm,
 }));
 vi.mock('../src/assets/icons', () => ({ iconHtml: () => '' }));
 vi.mock('../src/core/store', () => ({ on: mocks.on }));
@@ -90,6 +93,7 @@ function holdMonth(): () => void {
 beforeEach(() => {
   vi.resetModules(); vi.clearAllMocks(); vi.useFakeTimers();
   vi.stubGlobal('window', { setTimeout, clearTimeout });
+  vi.stubGlobal('document', { hidden: false, addEventListener: vi.fn() });
   mocks.modules = { month: true, quick: true, today: true, past: true };
   entries = fixture();
   mocks.monthSummary.mockResolvedValue(summary);
@@ -191,4 +195,19 @@ it('报销展示事件不扩大原始账单的下一页范围', async () => {
   el.scrollToBottom(); await flush();
   expect(el.rowCount()).toBe(121);
   expect(mocks.listEntries.mock.calls.filter(([query]) => query.to == null).map(([query]) => query.limit)).toEqual([40, 100]);
+});
+
+
+it('本地午夜重新查询消费节奏；回到前台也更新日期窗口', async () => {
+  vi.setSystemTime(new Date(2026, 9, 3, 23, 59, 59));
+  await mount();
+  expect(mocks.refreshRhythm).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(1050);
+  await flush();
+  expect(mocks.refreshRhythm).toHaveBeenCalledTimes(2);
+  const listener = vi.mocked(document.addEventListener).mock.calls.find(([event]) => event === 'visibilitychange')![1] as () => void;
+  listener();
+  await vi.advanceTimersByTimeAsync(50);
+  await flush();
+  expect(mocks.refreshRhythm).toHaveBeenCalledTimes(3);
 });
