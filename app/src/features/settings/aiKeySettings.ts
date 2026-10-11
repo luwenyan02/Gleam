@@ -28,18 +28,21 @@ export function handleAiKeyInput(input: HTMLInputElement): boolean {
   return true;
 }
 
-/** Preserve the user's live draft node through unrelated full-page settings refreshes. */
+/** Preserve the user's focused editor or live draft through full-page settings refreshes. */
 export function preserveAiKeyDraft(container: HTMLElement): () => void {
   const input = container.querySelector<HTMLInputElement>('#ai-key');
-  if (!input || !dirtyInputs.has(input)) return () => {};
+  if (!input) return () => {};
   const focused = typeof document !== 'undefined' && document.activeElement === input;
+  // A new edit may have focused the empty field before its first input event.
+  // Keep that node too, or a pending save refresh can steal focus before typing/paste.
+  if (!focused && !dirtyInputs.has(input)) return () => {};
   // Removing a focused input may synchronously dispatch change/focusout. This is
   // a render transaction, not the user's decision to finish editing their key.
   renderingInputs.add(input);
   return () => {
     try {
       const replacement = container.querySelector<HTMLInputElement>('#ai-key');
-      if (!replacement || !dirtyInputs.has(input)) return;
+      if (!replacement || (!focused && !dirtyInputs.has(input))) return;
       input.placeholder = replacement.placeholder;
       replacement.replaceWith(input);
       if (focused && container.isConnected) input.focus({ preventScroll: true });

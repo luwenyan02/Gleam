@@ -1,0 +1,248 @@
+{
+  "format": 1,
+  "source_prefix": "assets/public/",
+  "versions": {
+    "1.10.5": {
+      "source_apk": "Gleam-v1.10.5-private-ui.apk",
+      "source_apk_sha256": "8a96117c98a6b62e5597e8e9cd6efd99a9d413c55f630fd0d665aef4ed063265",
+      "fixture": "gleam-1.10.5-public.zip",
+      "fixture_sha256": "c6411b17b13e9cd495662f88a607dfbd848c2c06d7c3713f2c5b5c96b16c996e",
+      "module_url": "/assets/index-Cp2pgZ4U.js",
+      "assets": {
+        "assets/index-B1amzS7y.js": {
+          "bytes": 333,
+          "sha256": "45563319ad2f1661e492f537e3957dd816fe6ffe4720630f6369c927c9f68fae"
+        },
+        "assets/index-BbW3CdiI.js": {
+          "bytes": 1408,
+          "sha256": "022051a96ba0a7bf96e0a30bb60a8f0b3950d6b2f0b889c26f0e9770929a6a49"
+        },
+        "assets/index-Cp2pgZ4U.js": {
+          "bytes": 755637,
+          "sha256": "517cb59681b9e9d403f1843bddd15462bac26e71843c8e9d549bb4a0824b6d2f"
+        },
+        "assets/index-D5O-w8aj.css": {
+          "bytes": 126303,
+          "sha256": "16ed3bd5a8e19ad501d334642e6d7bef32974c1c191f629202c504f9cc139eac"
+        },
+        "assets/jszip.min-Bh6YFoxt.js": {
+          "bytes": 97535,
+          "sha256": "a2cec5fa364989d435be96695375f632ac21930d7e8383fb3cb008d160bdbbbf"
+        },
+        "assets/s3-B0Pcei51.js": {
+          "bytes": 9428,
+          "sha256": "d7215aff30e1308cb689d3d90b4fa1c945ba13d15fe9daa0af2ed0e5e282145c"
+        },
+        "assets/web-C4GbF5Eu.js": {
+          "bytes": 144,
+          "sha256": "e5036cc0792dea574623281cb915cfcc03ae9f62c8f86225540d40e931613e75"
+        },
+        "assets/web-CMI-WZAf.js": {
+          "bytes": 842,
+          "sha256": "a2b07f3e9084a9126f0c0e542a24e41b82232e4f0022008997cc17fd2099e018"
+        },
+        "assets/web-DJihq30V.js": {
+          "bytes": 361,
+          "sha256": "6a5fc923a3d0d5c953eae3c22f9e0b98964a89387364417c9fe9e6ad03741570"
+        },
+        "assets/web-DbraWosE.js": {
+          "bytes": 8773,
+          "sha256": "39900172b8e224dc5fea19c30ac6fcec8754b6c5be048ff20580b5f76f552be7"
+        },
+        "assets/web-Ex7VIe0A.js": {
+          "bytes": 4591,
+          "sha256": "0f7feaa414c8025367688bec1c650937c2be7cbf4e6989cf9ed3cede6ff647f7"
+        },
+        "assets/xlsx-BGhuli8m.js": {
+          "bytes": 500059,
+          "sha256": "9884e2dba31195badb157ab848744211c04fa7b62b9f7031670cd7a5b96d25a9"
+        },
+        "build-info.json": {
+          "bytes": 20,
+          "sha256": "e3f236ee829a047946d2d1bd619986814d1df2c7295115f95475ea7b2e2d4fb5"
+        },
+        "cordova.js": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "cordova_plugins.js": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "icons/icon-192.png": {
+          "bytes": 31911,
+          "sha256": "62563e4f0b8a768b513e6671233fd8a2fac671c24204b93282b1afe03c183143"
+        },
+        "icons/icon-512.png": {
+          "bytes": 182421,
+          "sha256": "abe9df0d337a1253c1e05b923567220208a0f686321c62b6cf11cc7b1e9cceee"
+        },
+        "index.html": {
+          "bytes": 1447,
+          "sha256": "41e734024cf167e0bb190ff35c6bf14748296133aeee497388ba2dbb2edf2078"
+        },
+        "manifest.webmanifest": {
+          "bytes": 472,
+          "sha256": "7a737b9336661ed1e0f54a3cc3195101438b38e0f0228832b4e71bc1ab1b5492"
+        },
+        "manual/manual-entry.png": {
+          "bytes": 37263,
+          "sha256": "3f179359d1679831ce52da9b1ba4d996601d6e6ad0fa2cd23657b5e1066adc9b"
+        },
+        "manual/source.json": {
+          "bytes": 644,
+          "sha256": "97f590d95534b9303f8e877ed878fe06a1f10df1206efeaecc59975f51ac3d4d"
+        },
+        "manual/voice-listening.png": {
+          "bytes": 48436,
+          "sha256": "f828c6c629830b67d76dfdc2d80879bfa22d52f4b974d7ff21cba9db57c46f59"
+        },
+        "manual/voice-review.png": {
+          "bytes": 48800,
+          "sha256": "a09f300d0364fdb95a7261fee595805acf9b67618447dbba6aed8059b5a3090f"
+        },
+        "manual/voice-settings.png": {
+          "bytes": 49748,
+          "sha256": "c7ee228c7938fc8a15ca119e7685ace1339a202159ccb93f7096b78e15be5c01"
+        },
+        "manual/voice-start.png": {
+          "bytes": 47240,
+          "sha256": "8f67108a49284756313cc4dda10698bb0088ea7939b1ce69de086d44020e6fc6"
+        },
+        "registerSW.js": {
+          "bytes": 134,
+          "sha256": "9742073ef7fc795e7673d98f272992843298426a0ffd8cb3507784df5143608b"
+        },
+        "sw.js": {
+          "bytes": 2222,
+          "sha256": "aaa96d557a8e8b0869e8a1516417e75c3d0749b1cd60c8598213c2ba6473ab4c"
+        },
+        "workbox-9c191d2f.js": {
+          "bytes": 15112,
+          "sha256": "04b086f1b2f4215ee4b659a7bc9c76162894abdb43fa876247bc7c0bd6fd1c37"
+        }
+      }
+    },
+    "1.10.6": {
+      "source_apk": "Gleam-v1.10.6-private-key-ui.apk",
+      "source_apk_sha256": "4af334647de47770d23df6b39434353ef12ebe151ffa88ff4458787234f29933",
+      "fixture": "gleam-1.10.6-public.zip",
+      "fixture_sha256": "c8a177bfa853e9939ff4e5b220506fa38a6d413ac47ad08c32474d702c37597c",
+      "module_url": "/assets/index-D2adEAe7.js",
+      "assets": {
+        "assets/index-D2adEAe7.js": {
+          "bytes": 762993,
+          "sha256": "0737d1cadc90592e7028163359d588a70e66e837f4e8c908e59921f1af1349f0"
+        },
+        "assets/index-cqMxZ7oN.js": {
+          "bytes": 1408,
+          "sha256": "e102025f70f88c4fa55deab68a784817579a5f821817f5a4e8f0e44ac5485139"
+        },
+        "assets/index-sFjcPnuK.js": {
+          "bytes": 333,
+          "sha256": "cd02355740e941dd54971c217dfd203580428dd95e6e2676261c45f4e62a6d95"
+        },
+        "assets/index-y-q8XLG4.css": {
+          "bytes": 127459,
+          "sha256": "8f7316c02497531623b48c603306f9c756769a7860969234f6fb17d99ca438a5"
+        },
+        "assets/jszip.min-DgoYGh8S.js": {
+          "bytes": 97535,
+          "sha256": "413608c2d2d31e7946775005c112408785147a373acc37f62bd54c075c390e8c"
+        },
+        "assets/s3-BM9IBadP.js": {
+          "bytes": 9428,
+          "sha256": "d7251e48578769347d91057364f61529954955d3b0abc7be24e1dbb9bb36c498"
+        },
+        "assets/web-BTgWSRYJ.js": {
+          "bytes": 361,
+          "sha256": "1204c83204f39ce66bc6254c5cc1333722c2e4e827de155cb4faa52be6658c34"
+        },
+        "assets/web-Bxg3zqfm.js": {
+          "bytes": 842,
+          "sha256": "5ddbbbc10a876b4ebcfde251ff2df361aae70142fc4d7bfef9fcb73833a424ae"
+        },
+        "assets/web-C3j2QdqI.js": {
+          "bytes": 144,
+          "sha256": "d6fd6bf02fb0dd68d806f577e37766f82168f2383f5ac2e32c480b8a3a3baec3"
+        },
+        "assets/web-CkudrBRt.js": {
+          "bytes": 8773,
+          "sha256": "a66fa901b2f3dfe2ae7da1cd7370a735b172298ea095261b1aa2d697be262e96"
+        },
+        "assets/web-Cmq7u2K2.js": {
+          "bytes": 4591,
+          "sha256": "03bb6fa1748d685ebd8ec8ff7d3ea3d66fac46fc62d11afb03dbf55ee7eb66de"
+        },
+        "assets/xlsx-BGhuli8m.js": {
+          "bytes": 500059,
+          "sha256": "9884e2dba31195badb157ab848744211c04fa7b62b9f7031670cd7a5b96d25a9"
+        },
+        "build-info.json": {
+          "bytes": 20,
+          "sha256": "52124e9555e215c1689b7500b28c86abce91140872209bb3ef153c2a4d5ee626"
+        },
+        "cordova.js": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "cordova_plugins.js": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "icons/icon-192.png": {
+          "bytes": 31911,
+          "sha256": "62563e4f0b8a768b513e6671233fd8a2fac671c24204b93282b1afe03c183143"
+        },
+        "icons/icon-512.png": {
+          "bytes": 182421,
+          "sha256": "abe9df0d337a1253c1e05b923567220208a0f686321c62b6cf11cc7b1e9cceee"
+        },
+        "index.html": {
+          "bytes": 1447,
+          "sha256": "c419eab56b15a7b4b4a1afdbd30995002b1d7c172ef49f846965e25c5ab52c06"
+        },
+        "manifest.webmanifest": {
+          "bytes": 472,
+          "sha256": "7a737b9336661ed1e0f54a3cc3195101438b38e0f0228832b4e71bc1ab1b5492"
+        },
+        "manual/manual-entry.png": {
+          "bytes": 37286,
+          "sha256": "99a09dfa177f341a040d9667f32810149cefe64d0c67679e349d96abe65b88d9"
+        },
+        "manual/source.json": {
+          "bytes": 644,
+          "sha256": "83590f29572017416c654f1d45cf4c84bbc2ec567a7b01b5310e1c32cc995482"
+        },
+        "manual/voice-listening.png": {
+          "bytes": 48367,
+          "sha256": "5e93d04a2e2bf7aec0d785234023224b18d80f7194481fb7e595a1ad5d88074b"
+        },
+        "manual/voice-review.png": {
+          "bytes": 48686,
+          "sha256": "670f5a8cd2b3bc03968f316cd05b171148af84fb5f3e0c05ced092713a18a79d"
+        },
+        "manual/voice-settings.png": {
+          "bytes": 46775,
+          "sha256": "d011a8466edb7cc8c13df144f3b49e1fdaa5c80439fb6f32fc368aa68151dbc5"
+        },
+        "manual/voice-start.png": {
+          "bytes": 46952,
+          "sha256": "8ff7da759b057657eafd73dc4dfd7ec609262f259378852d270a4559f45ad120"
+        },
+        "registerSW.js": {
+          "bytes": 134,
+          "sha256": "9742073ef7fc795e7673d98f272992843298426a0ffd8cb3507784df5143608b"
+        },
+        "sw.js": {
+          "bytes": 2222,
+          "sha256": "caf91ffac4d71909ae447720fd9bc71d6ac7098101261dd41cafe264f07c21fe"
+        },
+        "workbox-9c191d2f.js": {
+          "bytes": 15112,
+          "sha256": "04b086f1b2f4215ee4b659a7bc9c76162894abdb43fa876247bc7c0bd6fd1c37"
+        }
+      }
+    }
+  }
+}

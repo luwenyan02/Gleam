@@ -11,6 +11,34 @@ URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4617/')
 OUT = Path(__file__).parents[2] / '.tmp/tests/e2e/form-input-layout'
 CARD = '#sp-ai-inbox [data-temp="fiction-form-layout"]'
 
+# fill() changes value on the old input. refresh() must replace its markup before
+# defaultValue also matches, so a persisted edit alone cannot satisfy this wait.
+MERCHANT_RENDERED = '''({selector, value}) => {
+  const card = document.querySelector(selector);
+  const input = card?.querySelector('[data-field=merchant]');
+  return Boolean(card?.isConnected && input && input.value === value && input.defaultValue === value);
+}'''
+
+# Query and measure synchronously in the page. A locator handle resolved before
+# the callback starts may already belong to the detached pre-refresh card.
+CARD_GEOMETRY = '''selector => {
+  const card = document.querySelector(selector);
+  if (!card?.isConnected) throw new Error('Card is not connected');
+  const box = el => el.getBoundingClientRect().toJSON();
+  const merchant = card.querySelector('[data-field=merchant]');
+  const fields = card.querySelector('.ai-fields');
+  const names = ['merchant', 'amount', 'time', 'category', 'account', 'note'];
+  return {
+    card: box(card), merchant: box(merchant), fields: box(fields),
+    controls: names.map(name => {
+      const el = card.querySelector(`[data-field=${name}]`);
+      const style = getComputedStyle(el);
+      return {name, ...box(el), border: style.borderTopWidth,
+        radius: parseFloat(style.borderTopLeftRadius), shadow: style.boxShadow};
+    }),
+  };
+}'''
+
 
 def wait_for_merchant(page, value):
     page.wait_for_function('''async value => {
@@ -28,25 +56,12 @@ def wait_for_merchant(page, value):
       db.close();
       return (record?.value?.[0]?.merchantName ?? '') === value;
     }''', arg=value)
+    page.wait_for_function(MERCHANT_RENDERED, arg={'selector': CARD, 'value': value})
 
 
 def assert_card_layout(page):
     assert_usable(page, CARD)
-    geometry = page.locator(CARD).evaluate('''card => {
-      const box = el => el.getBoundingClientRect().toJSON();
-      const merchant = card.querySelector('[data-field=merchant]');
-      const fields = card.querySelector('.ai-fields');
-      const names = ['merchant', 'amount', 'time', 'category', 'account', 'note'];
-      return {
-        card: box(card), merchant: box(merchant), fields: box(fields),
-        controls: names.map(name => {
-          const el = card.querySelector(`[data-field=${name}]`);
-          const style = getComputedStyle(el);
-          return {name, ...box(el), border: style.borderTopWidth,
-            radius: parseFloat(style.borderTopLeftRadius), shadow: style.boxShadow};
-        }),
-      };
-    }''')
+    geometry = page.evaluate(CARD_GEOMETRY, CARD)
     controls = {item['name']: item for item in geometry['controls']}
     for control in controls.values():
         assert control['width'] >= 44 and control['height'] >= 44, control
@@ -111,6 +126,15 @@ def run(page, width, theme):
     merchant.blur()
     assert page.evaluate("document.documentElement.dataset.theme ?? 'light'") == theme
     page.screenshot(path=str(OUT / f'inbox-{width}-{theme}.png'), animations='disabled')
+    # Keep the top image and also expose the note/actions below the viewport.
+    # Scrolling never changes focus; restore the offset before the picker flow.
+    scroller = page.locator('#sp-ai-inbox .sub-body')
+    scroll_top = scroller.evaluate('el => el.scrollTop')
+    try:
+        page.locator(f'{CARD} .ai-actions').scroll_into_view_if_needed()
+        page.screenshot(path=str(OUT / f'inbox-details-{width}-{theme}.png'), animations='disabled')
+    finally:
+        scroller.evaluate('(el, top) => { el.scrollTop = top; }', scroll_top)
 
     # The same shared picker search input is at least 44 px; dismiss keeps the draft.
     page.locator(f'{CARD} [data-field="category"]').click()
@@ -177,11 +201,19 @@ if __name__ == '__main__':
             for width in (360, 390, 430, 1280):
                 for theme in ('light', 'dark'):
                     context = browser.new_context(viewport={'width': width, 'height': 900}, service_workers='block')
+                    page = None
                     try:
                         page = context.new_page()
                         page.set_default_timeout(10_000)
                         run(page, width, theme)
                         print(f'PASS form input layout {width} {theme}', flush=True)
+                    except Exception:
+                        try:
+                            if page is not None:
+                                page.screenshot(path=str(OUT / f'failed-{width}-{theme}.png'), animations='disabled')
+                        except Exception as screenshot_error:
+                            print(f'Could not capture failure screenshot: {screenshot_error}', flush=True)
+                        raise
                     finally:
                         context.close()
         finally:

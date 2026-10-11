@@ -68,7 +68,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: e2e-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .tmp/tests/**/*.png
+          path: |
+            .tmp/tests/**/*.png
+            .tmp/tests/e2e/upgrade-cache/report.json
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7

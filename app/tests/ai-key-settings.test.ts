@@ -111,6 +111,41 @@ it('rerender keeps only a user-edited input node, never reconstructing a raw sav
   expect(current).toBe(field); expect(current.value).toBe('fixture-unsaved-draft');
   expect(current.placeholder).toBe('replacement-masked-summary');
 });
+it('a focused empty editor survives the previous save refresh so the next masked paste is rejected', async () => {
+  const secret = 'fixture-previously-saved-main-key';
+  const field = input(secret); handleAiKeyInput(field); handleAiKeyChange(field); await flush();
+  expect(field.value).toBe('');
+  expect(mocks.toast).toHaveBeenLastCalledWith('API Key 已安全保存');
+  // The next edit can focus the cleared field before the previous save's async
+  // full-page render finishes, with text insertion still waiting for that focus.
+  vi.stubGlobal('document', { activeElement: field });
+  let current = field;
+  const container = { isConnected: true, querySelector: () => current } as unknown as HTMLElement;
+  const restore = preserveAiKeyDraft(container);
+  handleAiKeyChange(field); // Render-induced focusout must not delete the saved key.
+  const replacement = input('', maskSecret(secret));
+  replacement.replaceWith = vi.fn(node => { current = node as HTMLInputElement; });
+  current = replacement; restore();
+  expect(current).toBe(field); expect(field.focus).toHaveBeenCalledWith({ preventScroll: true });
+  expect(current.value).toBe('');
+  current.value = maskSecret(secret);
+  handleAiKeyInput(current); handleAiKeyChange(current); await flush();
+  expect(mocks.set).toHaveBeenCalledExactlyOnceWith('ai.apiKey', secret);
+  expect(mocks.remove).not.toHaveBeenCalled(); expect(current.value).toBe('');
+  expect(mocks.toast).toHaveBeenLastCalledWith('请输入完整的 API Key');
+});
+it('preserving an empty focused editor does not make an untouched real blur delete its saved key', async () => {
+  const field = input(); vi.stubGlobal('document', { activeElement: field });
+  let current = field;
+  const container = { isConnected: true, querySelector: () => current } as unknown as HTMLElement;
+  const restore = preserveAiKeyDraft(container);
+  const replacement = input(); replacement.replaceWith = vi.fn(node => { current = node as HTMLInputElement; });
+  current = replacement; restore();
+  expect(current).toBe(field);
+  handleAiKeyChange(field); await flush();
+  expect(mocks.set).not.toHaveBeenCalled(); expect(mocks.remove).not.toHaveBeenCalled();
+  expect(mocks.toast).not.toHaveBeenCalled(); expect(field.value).toBe('');
+});
 it('render detachment change and focusout do not save a draft, but the later real blur saves exactly once', async () => {
   const draft = 'fixture-unsubmitted-main-key';
   const field = input(draft); handleAiKeyInput(field);
@@ -159,7 +194,7 @@ it('a missing replacement ends render suppression instead of leaving the editor 
   handleAiKeyChange(field); await flush();
   expect(mocks.set).toHaveBeenCalledExactlyOnceWith('ai.apiKey', 'fixture-missing-replacement');
 });
-it('rerender does not preserve an untouched input or reinsert a previously submitted key', async () => {
+it('rerender does not preserve an unfocused untouched input or reinsert a previously submitted key', async () => {
   const field = input('fixture-submitted-main-key');
   handleAiKeyInput(field); handleAiKeyChange(field); await flush();
   let current = field;

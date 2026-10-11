@@ -57,6 +57,26 @@ def run(page, width):
     assert stored(page) == NEW
     assert NEW not in page.locator('#sp-settings').inner_html()
 
+    # A queued save refresh can land after focus but before the next paste/input.
+    # Force that empty-focused state to refresh and verify its identity and focus.
+    field.focus()
+    page.evaluate("""() => {
+      window.__focusedKeyNode = document.querySelector('#ai-key');
+      window.__focusedKeyRendered = false;
+      const observer = new MutationObserver(() => {
+        observer.disconnect(); window.__focusedKeyRendered = true;
+      });
+      observer.observe(document.querySelector('#sp-settings .sub-body'), { childList: true });
+      const threshold = document.querySelector('#ai-thres');
+      threshold.value = '85';
+      threshold.dispatchEvent(new Event('change', { bubbles: true }));
+    }""")
+    page.wait_for_function('window.__focusedKeyRendered')
+    assert page.evaluate("window.__focusedKeyNode === document.querySelector('#ai-key')")
+    expect(field).to_be_focused()
+    expect(field).to_have_value('')
+    assert stored(page) == NEW
+
     # A copied display summary must never become a persisted credential.
     field.fill(summary(NEW)); field.press('Tab')
     expect(field).to_have_value('')
