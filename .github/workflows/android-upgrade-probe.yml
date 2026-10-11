@@ -37,7 +37,7 @@ jobs:
         run: python3 scripts/verify-android-probe-license.py
       - name: Install official emulator and isolated system image without accepting new terms
         run: |
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'emulator' 'system-images;android-35;google_apis;x86_64' </dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --channel=0 'emulator' 'system-images;android-35;google_apis;x86_64' </dev/null
       - name: Grant this disposable runner user access to the existing KVM group
         run: |
           test "$(stat -c '%G:%a' /dev/kvm)" = 'kvm:660'
