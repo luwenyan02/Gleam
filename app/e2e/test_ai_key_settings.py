@@ -96,7 +96,18 @@ def run(page, width):
     open_settings(page)
     expect(field).to_have_value('')
     expect(field).to_have_attribute('placeholder', summary(draft))
+    before_short_save = field.element_handle()
+    assert before_short_save is not None
     field.fill('short-key'); field.press('Tab')
+    # Saving updates the old placeholder before settings-changed queues a full
+    # refresh. Wait for that saved-state render, not merely the earlier text update,
+    # before checking layout or scrolling a card that the refresh will replace.
+    page.wait_for_function("""({previous, expected}) => {
+      const current = document.querySelector('#ai-key');
+      return !previous.isConnected && current && current !== previous
+        && current.value === '' && current.placeholder === expected;
+    }""", arg={'previous': before_short_save, 'expected': '••••••'})
+    before_short_save.dispose()
     expect(field).to_have_value('')
     expect(field).to_have_attribute('placeholder', '••••••')
     assert stored(page) == 'short-key'

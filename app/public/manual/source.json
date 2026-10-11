@@ -1,14 +1,14 @@
 {
-  "version": "1.10.5",
-  "captureCommit": "fd43bbf94cd7835e03c2419f760cc603e0d1e417",
-  "ciRun": 38109354625,
+  "version": "1.10.6",
+  "captureCommit": "6063fb4c6fd1dd0ce086bbcad2d29ca646839703",
+  "ciRun": 38116657780,
   "synthetic": true,
   "imagesUnmodified": true,
   "sha256": {
-    "manual-entry.png": "3f179359d1679831ce52da9b1ba4d996601d6e6ad0fa2cd23657b5e1066adc9b",
-    "voice-listening.png": "f828c6c629830b67d76dfdc2d80879bfa22d52f4b974d7ff21cba9db57c46f59",
-    "voice-review.png": "a09f300d0364fdb95a7261fee595805acf9b67618447dbba6aed8059b5a3090f",
-    "voice-settings.png": "c7ee228c7938fc8a15ca119e7685ace1339a202159ccb93f7096b78e15be5c01",
-    "voice-start.png": "8f67108a49284756313cc4dda10698bb0088ea7939b1ce69de086d44020e6fc6"
+    "voice-start.png": "8ff7da759b057657eafd73dc4dfd7ec609262f259378852d270a4559f45ad120",
+    "voice-listening.png": "5e93d04a2e2bf7aec0d785234023224b18d80f7194481fb7e595a1ad5d88074b",
+    "voice-review.png": "670f5a8cd2b3bc03968f316cd05b171148af84fb5f3e0c05ced092713a18a79d",
+    "voice-settings.png": "d011a8466edb7cc8c13df144f3b49e1fdaa5c80439fb6f32fc368aa68151dbc5",
+    "manual-entry.png": "99a09dfa177f341a040d9667f32810149cefe64d0c67679e349d96abe65b88d9"
   }
 }

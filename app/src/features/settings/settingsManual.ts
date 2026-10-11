@@ -6,8 +6,8 @@ type ManualFigure = { file: string; title: string; caption: string; marks: Array
 const figures: ManualFigure[] = [
   { file: 'voice-start', title: '开始说话', caption: '① 点「开始说话」。也可直接输入文字。', marks: [[1, 9, 79.2]] },
   { file: 'voice-listening', title: '结束录音', caption: '② 出现「正在听」后说话，点「说完了」结束。', marks: [[2, 9, 94.8]] },
-  { file: 'voice-review', title: '核对并发送', caption: '③ 核对或修改文字。④ 点「发送并生成草稿」，再核对草稿。', marks: [[3, 64, 79.2], [4, 9, 94.8]] },
-  { file: 'voice-settings', title: '设置与连接测试', caption: '⑤ 选择 Key 来源并填好配置，点「测试语音连接」，再点「开始测试」。通过后才保存；录音仍需实际测试。', marks: [[5, 58, 92]] },
+  { file: 'voice-review', title: '核对并发送', caption: '③ 核对或修改文字。④ 点「发送并生成草稿」，再核对草稿。', marks: [[3, 64, 79.2], [4, 37, 94.8]] },
+  { file: 'voice-settings', title: '设置与连接测试', caption: '⑤ 选择 Key 来源并填好配置，点「测试语音连接」，再点「开始测试」。通过后才保存；录音仍需实际测试。', marks: [[5, 60, 56.6]] },
   { file: 'manual-entry', title: '找到使用手册', caption: '⑥ 我的 → 应用设置 → 关于拾光 → 使用手册。', marks: [[6, 66, 87.7]] },
 ];
 function illustratedStepsHtml(): string {
