@@ -50,6 +50,7 @@ def run(page, width, motion):
     expect(zoom).to_have_attribute('aria-expanded', 'true')
     expect(zoom).to_have_accessible_name('缩小图解：开始说话')
     expect(zoom.locator('.manual-callout')).to_be_in_viewport()
+    assert zoom.evaluate('(el)=>el.clientWidth<=Math.max(390,el.parentElement.clientWidth)+1')
     assert_usable(page, '#sheet')
     page.screenshot(path=str(OUT / f'manual-zoom-{width}-{motion}.png'), animations='disabled')
     zoom.press('Enter'); expect(zoom).to_have_attribute('aria-expanded', 'false')
