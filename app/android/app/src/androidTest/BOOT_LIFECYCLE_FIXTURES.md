@@ -39,13 +39,23 @@ callback/launched/pending maps, and bounded saved-Bundle key/type trees (no stor
 payloads). It records save-call counts and exact Activity/state identities. Baseline and gated runs
 are attempted independently within the same one-test invocation, then every failure is rethrown;
 one failing baseline does not prevent observing the gated prerequisite. No Bundle is manufactured,
-copied into framework state, or replaced. The postSave-not-called case now has its own hard failure,
-separate from a called-save/key-absent failure. Optional ActivityInvoker metadata enumerates actual
+copied into framework state, or replaced. The test awaits a bounded 25-second latch signalled by
+the original Activity's actual postSave
+callback after it publishes evidence for the queued launcher key, before inspecting that evidence
+or recreating the stopped host. An earlier unrelated save cannot release the latch. A postSave
+completion timeout remains a hard failure, separate from a completed-save/key-absent failure.
+Optional ActivityInvoker metadata enumerates actual
 runtime field names/types and records an unavailable field read without blocking the behavioral
 trace. ActivityScenario.close failures are recorded and attached to the original failure as
-suppressed; a close-only failure is itself a hard failure. Neither case can become a green run. CI38159309270 failed the prior combined save-evidence
-assertion; its logs did not establish which of those cases occurred, so no timing/Capacitor claim
-is accepted until this trace is observed.
+suppressed; a close-only failure is itself a hard failure. Neither case can become a green run.
+CI38159309270 failed the prior premature save-evidence
+assertion. The full trace in CI38160925629 (head 1bdcf028, job 114533478839) establishes the race:
+for baseline, moveToState(CREATED) returned at +2886ms with postSave=0 and the test failed at
++2892ms; the actual framework after-super save at +2930ms and postSave at +2936ms both contained
+the exact queued key. Gated returned at +1922ms; after-super save and postSave at +1929ms likewise
+contained the key. Thus the observed failure was premature test-thread observation, not omitted
+framework state. The latch correction still requires an Android rerun to establish delivery and
+PluginCall retention in each distinct recreated host.
 
 It compares an ordinary ungated CapacitorWebView/Bridge host against MainActivity and explicitly
 reports callback call retention. The earlier CI 38154622179 reported nonnull calls in both hosts,
@@ -53,8 +63,11 @@ but that apparent restoration pass is retracted: ActivityScenario.recreate() fir
 pending result before recreation. The earlier evidence establishes old-instance stopped/resumed
 callback parity only. The corrected identity-verified probe must be rerun before any recreation
 retention conclusion. CI38157633775's subsequent zero-callback baseline also did not establish a
-Capacitor restoration failure: that revision injected after moveToState(CREATED) had already saved
-the old framework Bundle, which stopped-host recreation reused. The latest probe injects before
+Capacitor restoration failure: that revision injected after moveToState(CREATED) without verifying
+the exact pending key in actual framework state and the new registry; its save timing was not
+measured. The later complete trace shows CREATED can precede framework save completion, so the
+previous claim that this return necessarily meant saving was already complete is withdrawn.
+The latest probe injects before
 that actual save and requires both saved-Bundle and new-registry evidence; zero callbacks after
 those checks remains a hard failure. Current Capacitor saves activity calls but does not persist
 its permission-call queue. If the corrected probe reports null in both hosts, that is an inherited limitation,
@@ -134,4 +147,4 @@ Do not replace the kill step with force-stop: force-stop cancels the task/result
 flow. Do not run any permission requests or live provider calls. The verification-only test skips in
 ordinary runs lacking `expected_original_pid`, and must not be presented as covered by the first
 suite. No automated stage has been executed in the local workspace: only Java syntax was parsed;
-Android compilation and emulator execution have run. Commit 44f7288978387a18d920835ad0a42f24524cbbff passed the external PID-kill process-restoration stage (run 38154622179); commit 53ccbcddd48117ab34cfb7788061e144b6158586 passed real install-replace and historical assets but stopped at the permission diagnostic before that stage. The corrected permission probe and full final-head process-restoration stage still require execution. See docs/ANDROID_UPGRADE_CACHE_PROBE.md for exact scoped evidence.
+Android compilation and emulator execution have run. Commit 44f7288978387a18d920835ad0a42f24524cbbff passed the external PID-kill process-restoration stage (run 38154622179); commit 53ccbcddd48117ab34cfb7788061e144b6158586 passed real install-replace and historical assets but stopped at the permission diagnostic before that stage. Head 1bdcf028 also passed the six non-permission lifecycle tests and the actual PID-kill process-restoration stage (run 38160925629). The postSave-latch-corrected permission probe and full final-head process-restoration stage still require execution. See docs/ANDROID_UPGRADE_CACHE_PROBE.md for exact scoped evidence.

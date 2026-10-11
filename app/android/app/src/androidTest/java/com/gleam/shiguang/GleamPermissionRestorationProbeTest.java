@@ -154,6 +154,7 @@ public class GleamPermissionRestorationProbeTest {
         java.util.concurrent.atomic.AtomicBoolean injectionArmed = new java.util.concurrent.atomic.AtomicBoolean();
         java.util.concurrent.atomic.AtomicBoolean queuedWhileStopped = new java.util.concurrent.atomic.AtomicBoolean();
         java.util.concurrent.atomic.AtomicBoolean pendingInActualSavedBundle = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.CountDownLatch originalQueuedPostSave = new java.util.concurrent.CountDownLatch(1);
         java.util.concurrent.atomic.AtomicBoolean pendingInRecreatedRegistry = new java.util.concurrent.atomic.AtomicBoolean();
         java.util.concurrent.atomic.AtomicReference<T> recreated = new java.util.concurrent.atomic.AtomicReference<>();
         java.util.concurrent.atomic.AtomicBoolean originalRestarted = new java.util.concurrent.atomic.AtomicBoolean();
@@ -202,8 +203,13 @@ public class GleamPermissionRestorationProbeTest {
             @Override public void onActivityPostSaveInstanceState(Activity a, Bundle state) {
                 if (!relevant(a)) return;
                 trace.framework(a, "application.postSave", state, queuedKey.get());
-                if (a == original.get()) pendingInActualSavedBundle.set(savedBundleContainsPending(state, queuedKey.get()));
+                String expectedKey = queuedKey.get();
+                boolean originalQueuedSave = a == original.get() && expectedKey != null;
+                if (originalQueuedSave) pendingInActualSavedBundle.set(savedBundleContainsPending(state, expectedKey));
                 trace.event(a, "registry.atPostSave", registryState(host.cast(a)));
+                // Publish actual framework Bundle evidence before releasing the test thread.
+                // moveToState(CREATED) may return before Android finishes this postSave callback.
+                if (originalQueuedSave) originalQueuedPostSave.countDown();
             }
             @Override public void onActivityPreDestroyed(Activity a) { event(a, "application.preDestroy"); }
             @Override public void onActivityDestroyed(Activity a) { event(a, "application.destroy"); }
@@ -261,7 +267,11 @@ public class GleamPermissionRestorationProbeTest {
             trace.event(original.get(), "test.moveCreated.return", trace.saveCounts() + " queued=" + queuedWhileStopped.get()
                 + " savedContains=" + pendingInActualSavedBundle.get());
             assertTrue("onStop did not queue synthetic result before framework save", queuedWhileStopped.get());
-            assertTrue("actual framework postSave callback not observed: " + trace.saveCounts(), trace.postSaves > 0);
+            trace.event(original.get(), "test.awaitQueuedPostSave.begin", trace.saveCounts());
+            boolean postSaveCompleted = originalQueuedPostSave.await(25, java.util.concurrent.TimeUnit.SECONDS);
+            trace.event(original.get(), "test.awaitQueuedPostSave.return", "completed=" + postSaveCompleted
+                + " savedContains=" + pendingInActualSavedBundle.get() + " " + trace.saveCounts());
+            assertTrue("actual original queued framework postSave callback did not complete: " + trace.saveCounts(), postSaveCompleted);
             assertTrue("actual framework saved Bundle omitted queued AndroidX result: " + trace.saveCounts(), pendingInActualSavedBundle.get());
             assertEquals(0, BootResultProbePlugin.permissionResults.get());
             trace.event(original.get(), "test.directRecreate.begin", trace.saveCounts());

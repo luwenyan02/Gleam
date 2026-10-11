@@ -75,3 +75,13 @@
 提交 `27029a8e6eb7e69115db40cac611b4af626c1213`，原生运行 `38159309270`：覆盖安装 job `114528697205` 再次成功（artifact `11709901012`，ZIP SHA256 `221a3d9645484274dcdca88ff361dd5c40384c004a01a699ab480ebada4c12c6`）。lifecycle job `114528697297` 的能力探针、精确历史资源及其他六项通过，但权限 baseline 在“实际保存 Bundle 含 pending”前置断言失败。该断言此前未区分框架保存回调未发生和 Bundle 缺 key，因此不能称为已证实的框架/Capacitor 丢回调，也不能称为时序修复已成功。
 
 下一版不再猜测调整注入时机，新增 debug-only 完整事件观察：Activity 身份、Application/AndroidX 生命周期、实际 onSaveInstanceState entry/after-super、pre/save/post 次数、真实 Bundle 的 key/type 树与 pending registry（仅合成键与类型，不输出数据值）。分别运行 baseline/gated 并保留失败，不手写或替换框架 Bundle。原生 driver 将六项一般生命周期测试和真实 PID-kill 恢复放在权限诊断之前；权限诊断单独运行并继续决定整个 job 失败，避免遮挡独立证据。
+
+## `1bdcf028` 实际事件顺序与进程恢复
+
+提交 `1bdcf028d6efbd274a4094202abf7525d7ab91a6`，运行 `38160925629`。lifecycle job `114533478839` 已依次通过能力探针、精确旧资产、六项生命周期和实际 PID-kill 恢复。后台原进程 `4164` 被终止，前台结果进程 `4283` 保持，恢复宿主与回调进程均为 `4822`；原 Bundle、原生插件状态、调用参数、dangling call 保持，闸门关闭时接收回调，Activity 回调及 App restored event 各一次。artifact `11710717298` 已读回，ZIP SHA256 `ec102083bae1810edab763add9007c447e04fd43d3d101952be70eddc9bcc102`。
+
+该 job 仍失败于独立权限诊断。完整 trace 给出可核验的顺序：baseline moveCreated 返回时 `postSave=0`，测试在 +2892ms 立即断言失败；真实 after-super 在 +2930ms、postSave 在 +2936ms 均包含原 pending key。gated 同样在 +1922ms 返回，而 +1929ms 保存后含 key。由此明确是“测试在真实保存完成之前检查”的竞态，不是框架未保存，更不能归因于缓存闸门或 Capacitor 回调恢复。下一修正仅通过有界同步等待真实 postSave 完成后才检查和重建，注入位置不变；实际回调交付仍待新运行，不预判通过。
+
+同提交覆盖安装 job `114533479057` 成功，artifact `11710711079`，ZIP SHA256 `176c722258695a079146e66ea83ce94b9e61e30731b5fea65ee2f601c13a4d61`。不同阶段结果保留各自范围，不因覆盖安装或进程恢复成功将权限诊断标绿。
+
+同提交普通 CI `38160925638` 的完整浏览器回归失败于既有凭证测试 `test_entry_receipts.py:92`：保存后立即读取九张凭证卡片的渲染宽度，未达到原 144px 断言。此前相同 Web 源码的两轮完整回归通过；本次没有记录具体尺寸，不能断言确切根因。PWA 自动更新/离线/原生零注册测试均通过。测试现等待当前详情九张凭证的几何稳定及祖先动画结束，再同时核对 computed/layout/rendered 宽度；144px 要求保留，仅 DOMRect 浮点误差允许 1e-6px，并输出实际尺寸及失败截图。未改生产凭证布局，修正的实际浏览器结果仍待下一轮。
