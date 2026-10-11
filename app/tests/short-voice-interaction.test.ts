@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ configuration: vi.fn(), config: vi.fn(), prepare: vi.fn(), approve: vi.fn(), recognize: vi.fn(), revoke: vi.fn(), callbacks: undefined as any, start: vi.fn(), stop: vi.fn(), cancel: vi.fn(), dispose: vi.fn(), events: new Map<string, () => void>() }));
@@ -168,4 +169,11 @@ it('places re-record beside send below the transcript rather than in its heading
   expect(editor).not.toContain('data-sv-rerecord');
   const actions = root.innerHTML.slice(root.innerHTML.indexOf('short-voice-review-actions'));
   expect(actions).toMatch(/data-sv-rerecord[\s\S]*data-sv-send/);
+});
+
+it('keeps re-record intrinsic width so the send flex item cannot collapse behind the global full-width button rule', () => {
+  const css = readFileSync('src/features/entry/shortVoice.css', 'utf8');
+  const declaration = css.match(/\.short-voice-review-actions>\[data-sv-rerecord\]\{([^}]+)\}/)?.[1];
+  expect(declaration).toContain('width:auto');
+  expect(declaration).toContain('min-height:48px');
 });

@@ -26,5 +26,5 @@
 @keyframes short-voice-spin{to{transform:rotate(360deg)}}@keyframes short-voice-pulse{50%{box-shadow:0 0 0 12px color-mix(in srgb,var(--primary) 6%,transparent)}}@keyframes short-voice-bar{50%{transform:scaleY(2.4)}}
 @media(prefers-reduced-motion:reduce){.short-voice-activity *{animation:none!important;transition:none!important}.short-voice-activity[data-state="listening"] .short-voice-bars i:nth-child(2),.short-voice-activity[data-state="listening"] .short-voice-bars i:nth-child(4){height:18px}.short-voice-activity[data-state="listening"] .short-voice-bars i:nth-child(3){height:26px}}
 
-.short-voice-review-actions{display:flex;gap:8px;align-items:stretch}.short-voice-review-actions>[data-sv-rerecord]{flex:0 0 auto;min-width:100px;min-height:48px}.short-voice-review-actions>.short-voice-send{flex:1;min-width:0}.short-voice-review-actions .btn{min-height:48px;white-space:normal}
+.short-voice-review-actions{display:flex;gap:8px;align-items:stretch}.short-voice-review-actions>[data-sv-rerecord]{flex:0 0 auto;width:auto;min-width:100px;min-height:48px}.short-voice-review-actions>.short-voice-send{flex:1;min-width:0}.short-voice-review-actions .btn{min-height:48px;white-space:normal}
 .short-voice-review-actions:not(:has(> :not([hidden]))){display:none}

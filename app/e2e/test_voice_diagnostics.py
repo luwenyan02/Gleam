@@ -53,9 +53,22 @@ def run(page, width, motion):
         page.locator('[data-voice-test-confirm]').click()
 
     def set_region(name):
-        page.locator('#voice-bailian-region').click()
-        page.get_by_role('option', name=name, exact=True).click()
-        page.locator('.picker-mask').wait_for(state='detached')
+        value = {'北京': 'beijing', '新加坡': 'singapore'}[name]
+        region = page.locator('#voice-bailian-region')
+        previous = region.get_attribute('data-region')
+        region.click()
+        picker = page.locator('.picker-mask[aria-label="百炼语音地域"]')
+        expect(picker).to_be_visible()
+        # The selected option contains a visible checkmark in its accessible name. Use its
+        # exact value inside this picker, and assert both label and selection state, so this
+        # also covers deliberately choosing the current region again.
+        option = picker.locator(f'[role="option"][data-value="{value}"]')
+        expect(option.locator('.picker-item-label')).to_have_text(name)
+        expect(option).to_have_attribute('aria-selected', str(previous == value).lower())
+        option.click()
+        picker.wait_for(state='detached')
+        expect(region).to_have_attribute('data-region', value)
+        expect(region).to_have_text(name)
 
     def assert_original():
         current = snapshot()
@@ -237,6 +250,9 @@ def run(page, width, motion):
     page.locator('#sp-settings [data-act="back"]').click()
     page.wait_for_function('(n)=>window.__voiceCalls.filter(x=>x.method==="cancel").length>n', arg=before)
     page.evaluate('window.__finishTest()')
+    # Closing marks the page inert immediately, then removes it after its exit transition.
+    # Complete that lifecycle before reopening so locators cannot match both page instances.
+    page.locator('#sp-settings').wait_for(state='detached')
     page.get_by_role('button', name='应用设置', exact=True).click()
     expect(status).not_to_have_attribute('data-state', 'success')
     expect(key).to_have_value(''); expect(key).to_have_attribute('placeholder', summary(BASE_KEY))
@@ -305,6 +321,18 @@ if __name__ == '__main__':
         for width in (360, 390, 430, 1280):
             for motion in ('reduce', 'no-preference'):
                 context = browser.new_context(viewport={'width': width, 'height': 844}, service_workers='block', reduced_motion=motion)
-                run(context.new_page(), width, motion); context.close()
+                page = context.new_page()
+                try:
+                    run(page, width, motion)
+                except Exception:
+                    # Keep the exact failed UI for the next approved browser gate, without
+                    # changing or suppressing the original failing assertion.
+                    try:
+                        page.screenshot(path=str(OUT / f'failure-{width}-{motion}.png'), animations='disabled')
+                    except Exception:
+                        print('Unable to capture the voice diagnostics failure screen', flush=True)
+                    raise
+                finally:
+                    context.close()
             print(f'PASS synthetic voice candidate transactions {width}', flush=True)
         browser.close()
