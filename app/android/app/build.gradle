@@ -7,6 +7,12 @@ def appVersion = new JsonSlurper().parse(packageJsonFile).version as String
 def versionParts = appVersion.tokenize('.').collect { it as Integer }
 def appVersionCode = versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]
 
+// Disposable install/replace harness only. It is never a release-version override.
+def fixtureVersion = project.findProperty('gleamFixtureVersion')
+if (fixtureVersion != null && fixtureVersion != '1.10.5') {
+    throw new GradleException('Only the pinned 1.10.5 debug fixture version is supported.')
+}
+
 def signingProperties = new Properties()
 def signingPropertiesPath = System.getenv('GLEAM_KEYSTORE_PROPERTIES')
 def signingPropertiesFile = signingPropertiesPath
@@ -32,8 +38,8 @@ android {
         applicationId "com.gleam.shiguang"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode appVersionCode
-        versionName appVersion
+        versionCode fixtureVersion != null ? 11005 : appVersionCode
+        versionName fixtureVersion != null ? fixtureVersion : appVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -66,6 +72,9 @@ gradle.taskGraph.whenReady { graph ->
     def requestsRelease = graph.allTasks.any { task ->
         task.project == project && task.name.toLowerCase().contains('release')
     }
+    if (fixtureVersion != null && requestsRelease) {
+        throw new GradleException('gleamFixtureVersion is forbidden for every release task.')
+    }
     if (requestsRelease && !hasReleaseSigning && !unsignedTestApk) {
         throw new GradleException('Release signing is not configured. Set GLEAM_KEYSTORE_* or GLEAM_KEYSTORE_PROPERTIES.')
     }
@@ -83,6 +92,8 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // Debug-only offline fixture fences use document-start WebView APIs directly.
+    debugImplementation "androidx.webkit:webkit:$androidxWebkitVersion"
     implementation "com.squareup.okhttp3:okhttp:5.3.0"
     testImplementation "junit:junit:$junitVersion"
     // Exercise the same Android-compatible JSON protocol parser in local JVM tests.

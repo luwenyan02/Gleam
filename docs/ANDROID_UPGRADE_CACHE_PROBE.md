@@ -33,3 +33,16 @@
 - 更多受支持 Android/WebView 提供者；用户手机实际覆盖安装验收。
 
 禁止为使测试通过而清空应用数据、改源、删除 IndexedDB/localStorage/Keystore，或把网页浏览器测试当作 Android 生命周期测试。
+
+## 首轮生产候选生命周期证据
+
+- 提交 `44f7288978387a18d920835ad0a42f24524cbbff`，运行 [38154622179](https://github.com/luwenyan02/Gleam/actions/runs/38154622179)，artifact `11707933102`，2026-10-11 16:20 UTC 成功。
+- Android Gradle 实际编译 debug 主 APK 与测试 APK；生成配置核验 `android.resolveServiceWorkerRequests=false`。
+- 原始能力探针 1 项、主导航/Bridge 集成 7 项、外部实际进程死亡核验 1 项通过。
+- 七项包括构造即关闭的导航/脚本入口、同步 Bridge 与 Bundle 重建、冷分享/深链原生事件一次保留、失败重试与迟到回调、真实子 Activity 结果跨宿主重建、合成权限结果基线对照、合成旧 worker 清理及 IDB/localStorage/Keystore 保留。
+- 真正进程死亡阶段：前台结果 Activity 在独立 PID `4226`；杀死后台宿主 PID `4119` 后确认旧进程消失且结果进程存活。系统返回结果时宿主新 PID 为 `4728`，与回调 PID 相同。原 Bundle、插件状态、原调用参数和 dangling call 均恢复；回调发生时主闸门关闭；Activity 回调及 App restored event 均恰好一次。
+- 权限诊断复核发现夹具假阳性：ActivityScenario.recreate() 先恢复旧 Activity，原实例在销毁前已收到 pending result，静态记录随后仍在。baseline/gated retained=true 仅为旧实例停止→恢复路径的基线一致性，不能计为权限调用跨重建保存；该门槛仍未关闭，需核验回调接收者为新 Activity。真实麦克风授权弹窗和权限结果跨进程死亡亦未测试。
+- 测试使用 debug-only HTTP/WebDAV/speech 拒绝适配器，保留实际 MainActivity/Bridge/AndroidX 和合成结果插件路径。不能据此宣称真实语音插件/服务恢复已验证。
+- artifact 独立读回提供者仍为 WebView `124.0.6367.219`，Android 35。后续新增历史资源夹具及网络 document-start 限制不在此提交证据内。
+
+后续 `c19ce5e2e654b0a870b5bf1a07738f8fc0a639b7` 历史资产扩展首次编译发现测试代码直接引用 AndroidX WebKit 缺少直接 debug 依赖；该次并未运行模拟器，不继承前一提交的全绿结论。
