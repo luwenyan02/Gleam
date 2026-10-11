@@ -43,6 +43,7 @@ public class BootResultProbePlugin extends Plugin {
             ? "missing" : result.getData().getStringExtra("synthetic")));
     }
     @PermissionCallback private void permissionResult(PluginCall call) {
+        BootPermissionTrace.emit(getActivity(), "plugin.permissionCallback.callPresent=" + (call != null), null);
         permissionOwner = getActivity();
         permissionCall = call;
         permissionResults.incrementAndGet();

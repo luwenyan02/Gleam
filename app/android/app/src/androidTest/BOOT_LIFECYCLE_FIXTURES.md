@@ -32,6 +32,21 @@ to be the distinct new Activity. It does not use ActivityScenario.recreate() for
 This diagnostic requires API29+ and targetSdk>=P: it injects during Application.onActivityStopped,
 after AndroidX unbinds callbacks and before Android saves state. It verifies the key in the actual
 framework saved Bundle using onActivityPostSaveInstanceState and again in the new AndroidX registry.
+The latest diagnostic installs observers before Activity launch and emits a numbered monotonic
+trace for each host and facilitator: Application pre/normal/post lifecycle and save callbacks,
+fixture onSave entry/after-super, AndroidX stages, real queued launcher key/request code, registry
+callback/launched/pending maps, and bounded saved-Bundle key/type trees (no stored values or Intent
+payloads). It records save-call counts and exact Activity/state identities. Baseline and gated runs
+are attempted independently within the same one-test invocation, then every failure is rethrown;
+one failing baseline does not prevent observing the gated prerequisite. No Bundle is manufactured,
+copied into framework state, or replaced. The postSave-not-called case now has its own hard failure,
+separate from a called-save/key-absent failure. Optional ActivityInvoker metadata enumerates actual
+runtime field names/types and records an unavailable field read without blocking the behavioral
+trace. ActivityScenario.close failures are recorded and attached to the original failure as
+suppressed; a close-only failure is itself a hard failure. Neither case can become a green run. CI38159309270 failed the prior combined save-evidence
+assertion; its logs did not establish which of those cases occurred, so no timing/Capacitor claim
+is accepted until this trace is observed.
+
 It compares an ordinary ungated CapacitorWebView/Bridge host against MainActivity and explicitly
 reports callback call retention. The earlier CI 38154622179 reported nonnull calls in both hosts,
 but that apparent restoration pass is retracted: ActivityScenario.recreate() first resumes the original host and flushed its

@@ -61,8 +61,14 @@ grep -F 'OK (1 test)' "$OUT/historical-assets.txt"
 ! grep -E 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED' "$OUT/historical-assets.txt"
 
 # A fresh instrumentation process exercises real Bridge lifecycle without resetting app data.
-adb -s emulator-5554 shell am instrument -w -r -e class com.gleam.shiguang.GleamBootWebViewInstrumentationTest,com.gleam.shiguang.GleamNativeBootLifecycleTest,com.gleam.shiguang.GleamPermissionRestorationProbeTest,com.gleam.shiguang.GleamNativeBootUpgradeIntegrationTest com.gleam.shiguang.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/boot-integration.txt"
-grep -F 'OK (7 tests)' "$OUT/boot-integration.txt"
+adb -s emulator-5554 shell am instrument -w -r -e class com.gleam.shiguang.GleamBootWebViewInstrumentationTest,com.gleam.shiguang.GleamNativeBootLifecycleTest,com.gleam.shiguang.GleamNativeBootUpgradeIntegrationTest com.gleam.shiguang.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/boot-integration.txt"
+grep -F 'OK (6 tests)' "$OUT/boot-integration.txt"
 ! grep -E 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED' "$OUT/boot-integration.txt"
 
 bash scripts/run-android-process-probe.sh
+
+# Keep the diagnostic permission comparison independent and last: a failure still
+# fails this job, but cannot hide the actual PID-kill restoration evidence above.
+adb -s emulator-5554 shell am instrument -w -r -e class com.gleam.shiguang.GleamPermissionRestorationProbeTest com.gleam.shiguang.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/permission-restoration.txt"
+grep -F 'OK (1 test)' "$OUT/permission-restoration.txt"
+! grep -E 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED' "$OUT/permission-restoration.txt"

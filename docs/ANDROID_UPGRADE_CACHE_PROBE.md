@@ -69,3 +69,9 @@
 - 同提交普通 CI 的 Web 单测（79 文件 / 1,081 项）、离线 AI 评估（242/242）、Android 单测与编译、浏览器精确旧资源升级诊断通过；完整浏览器回归于 17:19 UTC 成功，其中新 PWA 测试确认真实 worker 自动更新刷新、离线重载，以及模拟原生连续重载零注册。后续文件修改不得继承此提交未重跑的证据。
 
 权限失败诊断的源依据：[Android 15 ActivityThread.callActivityOnStop](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-15.0.0_r1/core/java/android/app/ActivityThread.java#L5323-L5346) 在 target >= P 时先 onStop 再保存，并在已有 r.state 时不重新保存。旧探针在 moveToState(CREATED) 返回后才注入，可能错过实际保存。当前修正把注入放入 onActivityStopped，新增 onActivityPostSaveInstanceState 实际 Bundle 与新 registry 同 key 断言；没有手写替换 saved Bundle，也未放宽一次回调或接收者身份检查。修正运行尚待下一提交。
+
+## `27029a8e` 保存证据诊断
+
+提交 `27029a8e6eb7e69115db40cac611b4af626c1213`，原生运行 `38159309270`：覆盖安装 job `114528697205` 再次成功（artifact `11709901012`，ZIP SHA256 `221a3d9645484274dcdca88ff361dd5c40384c004a01a699ab480ebada4c12c6`）。lifecycle job `114528697297` 的能力探针、精确历史资源及其他六项通过，但权限 baseline 在“实际保存 Bundle 含 pending”前置断言失败。该断言此前未区分框架保存回调未发生和 Bundle 缺 key，因此不能称为已证实的框架/Capacitor 丢回调，也不能称为时序修复已成功。
+
+下一版不再猜测调整注入时机，新增 debug-only 完整事件观察：Activity 身份、Application/AndroidX 生命周期、实际 onSaveInstanceState entry/after-super、pre/save/post 次数、真实 Bundle 的 key/type 树与 pending registry（仅合成键与类型，不输出数据值）。分别运行 baseline/gated 并保留失败，不手写或替换框架 Bundle。原生 driver 将六项一般生命周期测试和真实 PID-kill 恢复放在权限诊断之前；权限诊断单独运行并继续决定整个 job 失败，避免遮挡独立证据。

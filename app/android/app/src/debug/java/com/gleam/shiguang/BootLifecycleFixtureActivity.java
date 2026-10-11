@@ -15,10 +15,12 @@ public class BootLifecycleFixtureActivity extends MainActivity {
     public static volatile java.util.function.Consumer<android.webkit.WebView> quarantineObserver;
 
     @Override protected void onCreate(Bundle saved) {
+        BootPermissionTrace.emit(this, "fixture.onCreate.entry", saved);
         originalBundle = saved;
         config = BootFixtureNetworkFence.configuration(this);
         registerPlugin(BootResultProbePlugin.class);
         super.onCreate(saved);
+        BootPermissionTrace.emit(this, "fixture.onCreate.afterSuper", saved);
         if (getBridge() != null) BootFixtureNetworkFence.install(getBridge());
         latest = this;
         creations++;
@@ -27,6 +29,12 @@ public class BootLifecycleFixtureActivity extends MainActivity {
             && getBridge().getPlugin("GleamSecrets") != null;
         restoredBeforeStart = saved == null || !saved.containsKey("capacitorLastActivityPluginId")
             || ((BootResultProbePlugin) getBridge().getPlugin("BootResultProbe").getInstance()).restored;
+    }
+
+    @Override public void onSaveInstanceState(Bundle state) {
+        BootPermissionTrace.emit(this, "fixture.onSave.entry", state);
+        super.onSaveInstanceState(state);
+        BootPermissionTrace.emit(this, "fixture.onSave.afterSuper", state);
     }
 
     @Override protected void load() {
