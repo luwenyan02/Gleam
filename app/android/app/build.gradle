@@ -72,7 +72,7 @@ gradle.taskGraph.whenReady { graph ->
     def requestsRelease = graph.allTasks.any { task ->
         task.project == project && task.name.toLowerCase().contains('release')
     }
-    if (fixtureVersion != null && requestsRelease) {
+    if (fixtureVersion != null && graph.allTasks.any { task -> task.name.toLowerCase().contains('release') }) {
         throw new GradleException('gleamFixtureVersion is forbidden for every release task.')
     }
     if (requestsRelease && !hasReleaseSigning && !unsignedTestApk) {

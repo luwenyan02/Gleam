@@ -5,6 +5,10 @@ mkdir -p "$OUT"
 APP_APK="$PWD/app/android/app/build/outputs/apk/debug/app-debug.apk"
 TEST_APK="$PWD/app/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
 test -s "$APP_APK" && test -s "$TEST_APK"
+if [ "${GLEAM_INSTALL_REPLACE_ONLY:-false}" = true ]; then
+  STAGES="$PWD/.tmp/android-install-replace-build"
+  test -s "$STAGES/old-debug.apk" && test -s "$STAGES/current-debug.apk" && test -s "$STAGES/test-debug.apk"
+fi
 # Only this job's reproducible npm install is discarded after both APKs are built.
 python3 -c 'import shutil; shutil.rmtree("app/node_modules")'
 
@@ -15,6 +19,8 @@ mkdir -p "$ANDROID_AVD_HOME"
 test -r /dev/kvm && test -w /dev/kvm
 emulator -accel-check | tee "$OUT/acceleration.txt"
 cat "$ANDROID_HOME/emulator/source.properties" | tee "$OUT/emulator-package-version.txt"
+test ! -e "$ANDROID_AVD_HOME/gleam_upgrade_probe.ini"
+test ! -e "$ANDROID_AVD_HOME/gleam_upgrade_probe.avd"
 printf 'no\n' | avdmanager create avd --name gleam_upgrade_probe --package 'system-images;android-35;google_apis;x86_64' --path "$ANDROID_AVD_HOME/gleam_upgrade_probe.avd" --force
 ls -la "$ANDROID_AVD_HOME"
 test -s "$ANDROID_AVD_HOME/gleam_upgrade_probe.ini"
@@ -39,6 +45,10 @@ done
 [ "$booted" = true ] || { echo 'Emulator boot exceeded 600-second observation window'; tail -100 "$OUT/emulator.log"; exit 1; }
 adb -s emulator-5554 shell dumpsys webviewupdate > "$OUT/webview-provider.txt"
 adb -s emulator-5554 shell input keyevent 82
+if [ "${GLEAM_INSTALL_REPLACE_ONLY:-false}" = true ]; then
+  GLEAM_FRESH_AVD=true bash scripts/run-android-install-replace-fixtures.sh "$STAGES/old-debug.apk" "$STAGES/current-debug.apk" "$STAGES/test-debug.apk" emulator-5554 "$OUT/install-replace"
+  exit 0
+fi
 adb -s emulator-5554 install "$APP_APK"
 adb -s emulator-5554 install "$TEST_APK"
 adb -s emulator-5554 shell am instrument -w -r -e class com.gleam.shiguang.UpgradeWebViewProbeTest com.gleam.shiguang.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/instrumentation.txt"
