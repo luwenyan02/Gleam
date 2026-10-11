@@ -38,7 +38,7 @@ it('uses five bundled real screenshots with semantic steps and explicit zoom con
   expect(html.match(/data-manual-zoom=/g)).toHaveLength(5);
   expect(html.match(/class="manual-callout"/g)).toHaveLength(6);
   expect(html).toContain('示例截图使用虚构数据');
-  expect(html).toContain('连接通过仅代表连接测试通过');
+  expect(html).toContain('通过后才保存；录音仍需实际测试');
   expect(html).toContain('width="390" height="844"');
   expect(html).toContain('aria-expanded="false"');
 });

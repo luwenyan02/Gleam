@@ -27,8 +27,9 @@ import {
 import { formatAccountingRange } from '../../core/period';
 import { bailianVoiceSettingsHtml, handleVoiceSettingsChange, handleVoiceSettingsInput, handleVoiceSettingsClick, isVoiceKeyWritePending } from './bailianVoiceSettings';
 
-import { getVoiceSettingsEpoch, mountVoiceConnectionTest, syncVoiceConnectionTest } from './bailianVoiceTestSettings';
+import { getVoiceSettingsEpoch, invalidateVoiceConnectionTest, mountVoiceConnectionTest, syncVoiceConnectionTest } from './bailianVoiceTestSettings';
 import { openSettingsManual } from './settingsManual';
+import { aiKeyInputHtml, getAiKeySettingsEpoch, handleAiKeyChange, handleAiKeyInput, preserveAiKeyDraft } from './aiKeySettings';
 
 let body: HTMLElement | undefined;
 let sheetAbort: AbortController | undefined;
@@ -58,6 +59,7 @@ async function refresh(): Promise<void> {
   if (!el?.isConnected) return;
   const token = ++settingsRefreshToken;
   const voiceEpoch = getVoiceSettingsEpoch();
+  const aiKeyEpoch = getAiKeySettingsEpoch();
   const isNative = Capacitor.isNativePlatform();
   const [pin, webauthn, bioOk, countAsIncome, autoRenew, backupAuto, retention, themeMode, monthStartDay] = await Promise.all([
     getSetting('security.pin'), getSetting('security.webauthn'), biometricAvailable(),
@@ -100,9 +102,15 @@ async function refresh(): Promise<void> {
   if (token !== settingsRefreshToken || !el.isConnected) return;
   // A slow settings read must never restore stale readiness, consent, or test success.
   if (voiceEpoch !== getVoiceSettingsEpoch()) { void refresh(); return; }
+  if (aiKeyEpoch !== getAiKeySettingsEpoch()) { void refresh(); return; }
+  const restoreAiKeyDraft = preserveAiKeyDraft(el);
   const voiceWorkspaceInput = el.querySelector<HTMLInputElement>('#voice-bailian-workspace');
   const voiceWorkspaceDraft = voiceWorkspaceInput?.dataset.voiceDirty ? voiceWorkspaceInput.value : undefined;
   const voiceKeyDraft = isVoiceKeyWritePending() ? '' : el.querySelector<HTMLInputElement>('#voice-bailian-key')?.value ?? '';
+  const voiceRegionInput = el.querySelector<HTMLElement>('#voice-bailian-region');
+  const voiceRegionDraft = voiceRegionInput?.dataset.voiceDirty ? voiceRegionInput.dataset.region : undefined;
+  const voiceSourceInput = el.querySelector<HTMLInputElement>('#voice-key-shared');
+  const voiceSourceDraft = voiceSourceInput?.dataset.voiceDirty ? voiceSourceInput.checked : undefined;
   el.innerHTML = `
     <section class="card" aria-label="安全">
       <h3 class="card-title">安全</h3>
@@ -160,7 +168,7 @@ async function refresh(): Promise<void> {
         </label>
         <label>模型名（可修改）<input id="ai-model" type="text" value="${esc(aiModel)}" placeholder="如 qwen3.8-flash / kimi-k3" autocomplete="off"></label>
         <div class="field"><span>识别类型</span><span class="sub" id="ai-model-capability">${selectedModel ? selectedModel.vision ? '图片、文字' : '文字' : '以接口为准'}</span></div>
-        <label>API Key<input id="ai-key" type="password" value="${esc(aiKey ?? '')}" placeholder="sk-..." autocomplete="off"></label>
+        <label>API Key${aiKeyInputHtml(aiKey)}</label>
         <label>静默入账置信度阈值
           <div class="ai-thres"><input id="ai-thres" type="range" min="50" max="100" step="5" value="${aiThreshold}"><span class="num" id="ai-thres-val">${aiThreshold}%</span></div>
         </label>
@@ -186,8 +194,20 @@ async function refresh(): Promise<void> {
     const section = el.querySelector<HTMLElement>(`section[aria-label="${label}"]`);
     if (section) el.appendChild(section);
   }
+  restoreAiKeyDraft();
   const voiceInput = el.querySelector<HTMLInputElement>('#voice-bailian-key');
   if (voiceInput && !voiceInput.disabled) voiceInput.value = voiceKeyDraft;
+  const regionInput = el.querySelector<HTMLElement>('#voice-bailian-region');
+  if (regionInput && voiceRegionDraft) { regionInput.dataset.region = voiceRegionDraft; regionInput.dataset.voiceDirty = 'true'; regionInput.textContent = voiceRegionDraft === 'singapore' ? '新加坡' : '北京'; }
+  const sourceInput = el.querySelector<HTMLInputElement>('#voice-key-shared');
+  if (sourceInput && voiceSourceDraft !== undefined) {
+    sourceInput.checked = voiceSourceDraft; sourceInput.dataset.voiceDirty = 'true';
+    if (voiceInput) {
+      voiceInput.readOnly = voiceSourceDraft;
+      const test = el.querySelector<HTMLElement>('[data-voice-test]');
+      voiceInput.placeholder = (voiceSourceDraft ? test?.dataset.maskedMainKey : test?.dataset.keySource === 'shared' ? undefined : test?.dataset.maskedKey) || (voiceSourceDraft ? '请先填写 API Key' : '输入语音 Key');
+    }
+  }
   const workspaceInput = el.querySelector<HTMLInputElement>('#voice-bailian-workspace');
   if (workspaceInput && voiceWorkspaceDraft !== undefined) { workspaceInput.value = voiceWorkspaceDraft; workspaceInput.dataset.voiceDirty = 'true'; }
   syncVoiceConnectionTest(el);
@@ -413,19 +433,18 @@ export function initSettings(): void {
       el.addEventListener('change', (e) => {
         const t = e.target as HTMLInputElement;
         if (handleVoiceSettingsChange(t)) return;
+        if (handleAiKeyChange(t)) return;
         if (t.id === 'ai-base') void setSetting('ai.baseUrl', t.value.trim());
         else if (t.id === 'ai-model') void setSetting('ai.model', t.value.trim());
-        else if (t.id === 'ai-key') {
-          const value = t.value.trim();
-          void (value ? secretStore.set('ai.apiKey', value) : secretStore.remove('ai.apiKey'))
-            .then(() => showToast(secretStore.kind === 'session' ? 'API Key 仅在当前会话有效' : 'API Key 已安全保存'))
-            .catch(() => showToast('API Key 保存失败，请重新输入'));
-        }
         else if (t.id === 'ai-thres') void setSetting('ai.autoConfirmThreshold', Number(t.value));
       });
       el.addEventListener('input', (e) => {
         const t = e.target as HTMLInputElement;
         if (handleVoiceSettingsInput(t)) return;
+        if (handleAiKeyInput(t)) {
+          invalidateVoiceConnectionTest('主 API Key 输入已变化，请重新测试');
+          return;
+        }
         if (t.id !== 'ai-thres') return;
         const label = el.querySelector('#ai-thres-val');
         if (label) label.textContent = `${t.value}%`;

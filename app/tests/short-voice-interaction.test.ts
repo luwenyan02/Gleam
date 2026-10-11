@@ -162,3 +162,10 @@ it('routine voice UI contains only operations, status and review fields, with no
   mocks.callbacks.onText('午餐28元'); await flush();
   expect(q('send-panel').hidden).toBe(false); expect(mocks.recognize).not.toHaveBeenCalled();
 });
+
+it('places re-record beside send below the transcript rather than in its heading', () => {
+  const editor = root.innerHTML.slice(root.innerHTML.indexOf('short-voice-editor-head'), root.innerHTML.indexOf('</textarea>'));
+  expect(editor).not.toContain('data-sv-rerecord');
+  const actions = root.innerHTML.slice(root.innerHTML.indexOf('short-voice-review-actions'));
+  expect(actions).toMatch(/data-sv-rerecord[\s\S]*data-sv-send/);
+});

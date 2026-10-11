@@ -3,7 +3,7 @@ import { formatFen } from '../../core/money';
 import { on } from '../../core/store';
 import { BailianVoiceSession, type ShortVoiceState } from '../../core/bailianVoiceSession';
 import { iconHtml } from '../../assets/icons';
-import { getBailianVoiceConfig, type BailianVoiceConfig } from '../../core/bailianVoiceConfig';
+import { getBailianVoiceConfig, validateBailianVoiceConfig, type BailianVoiceConfig } from '../../core/bailianVoiceConfig';
 import { nativeSpeech, type NativeSpeechConfiguration } from '../../core/nativeSpeech';
 import {
   prepareVoiceRecognition, approveVoiceRecognition, recognizeVoiceDraft, revokeVoicePreview,
@@ -36,13 +36,15 @@ export function openShortVoice(options: ShortVoiceOptions): () => void {
       <p class="short-voice-status" data-sv-status role="status" aria-live="polite"></p>
       <div class="short-voice-actions"><button class="btn primary" data-sv-stop hidden>说完了</button><button class="btn ghost" data-sv-cancel hidden>取消</button></div>
       <div data-sv-editor tabindex="-1">
-        <div class="short-voice-editor-head"><label for="short-voice-text">核对文字</label><button class="btn ghost" data-sv-rerecord hidden>重新录音</button></div>
+        <div class="short-voice-editor-head"><label for="short-voice-text">核对文字</label></div>
         <textarea id="short-voice-text" data-sv-text rows="2" maxlength="500" aria-label="核对语音文字" placeholder="或直接输入：午餐28元，现金"></textarea>
       </div>
       <button class="btn ghost" data-sv-preview hidden>重新准备识别</button>
+      <div class="short-voice-review-actions">
+        <button class="btn ghost" data-sv-rerecord hidden>重新录音</button>
       <section class="short-voice-send" data-sv-send-panel hidden>
         <button class="btn primary" data-sv-send>发送并生成草稿</button>
-      </section>
+      </section></div>
       <section class="short-voice-result" data-sv-result hidden><h4>核对这笔草稿</h4><dl data-sv-fields></dl><button class="btn primary" data-sv-apply>${esc(options.applyLabel)}</button></section>
     </div></section>`;
   document.body.appendChild(root);
@@ -75,7 +77,7 @@ export function openShortVoice(options: ShortVoiceOptions): () => void {
     q<HTMLButtonElement>('[data-sv-cancel]').hidden = !recording && !aiBusy;
     q<HTMLButtonElement>('[data-sv-cancel]').textContent = recording ? '取消' : '取消识别';
     q('[data-sv-editor]').hidden = recording;
-    q<HTMLButtonElement>('[data-sv-rerecord]').hidden = !input.value.trim() || voicePrompt;
+    q<HTMLButtonElement>('[data-sv-rerecord]').hidden = recording || !input.value.trim() || voicePrompt;
     q<HTMLButtonElement>('[data-sv-rerecord]').disabled = aiBusy || applying;
     input.disabled = recording || aiBusy || applying;
     q<HTMLButtonElement>('[data-sv-preview]').hidden = !previewError || recording;
@@ -190,11 +192,11 @@ export function openShortVoice(options: ShortVoiceOptions): () => void {
       const native = await nativeSpeech.configuration();
       if (closed || token !== configRevision) return;
       let loadedConfig: BailianVoiceConfig | undefined;
-      try { loadedConfig = await getBailianVoiceConfig(); } catch { loadedConfig = undefined; }
+      try { loadedConfig = native.activeConfig ? validateBailianVoiceConfig(native.activeConfig) : await getBailianVoiceConfig(); } catch { loadedConfig = undefined; }
       if (closed || token !== configRevision) return;
       readiness = native; config = loadedConfig;
       if (!native.supported) status('百炼短语音仅支持 Android 安装包；这里可手动输入文字');
-      else if (!native.hasKey || !config) status('请先在「我的 → 设置 → 百炼短语音」保存独立 Key、地域与业务空间');
+      else if (!native.hasKey || !config) status('请先在「我的 → 设置 → 百炼短语音」完成配置与连接测试');
       controls();
     } catch {
       if (!closed && token === configRevision) { readiness = undefined; config = undefined; controls(); status('语音设置暂不可用，可手动输入文字'); }

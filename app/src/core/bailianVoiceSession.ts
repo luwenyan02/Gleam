@@ -22,7 +22,7 @@ export class BailianVoiceSession {
 
   async start(config: BailianVoiceConfig, readiness: NativeSpeechConfiguration): Promise<void> {
     if (this.disposed || this.active) return;
-    if (!readiness.supported || !readiness.hasKey) { this.callbacks.onError('请先在 Android 设置中保存独立的百炼语音 Key'); return; }
+    if (!readiness.supported || !readiness.hasKey) { this.callbacks.onError('请先在 Android 设置中配置语音Key并通过连接测试'); return; }
     const session: ActiveSession = { id: crypto.randomUUID() };
     if (!claimVoiceOperation(this.bridge, session)) { this.callbacks.onError(shortVoiceError({ code: 'SPEECH_BUSY', data: { phase: 'validation' } })); return; }
     this.active = session;
@@ -80,3 +80,4 @@ export class BailianVoiceSession {
     this.update('idle');
   }
 }
+

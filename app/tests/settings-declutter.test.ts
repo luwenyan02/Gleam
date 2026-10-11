@@ -12,5 +12,9 @@ it('settings routine surface removes tutorial paragraphs instead of merely hidin
 
 it('operational labels, values and security warnings remain available', () => {
   for (const required of ['静默入账置信度阈值', 'API 地址', '回收站保留', '天后自动清除', '忘记 PIN 将无法解锁', 'ai-model-capability', '每月起始日']) expect(settings).toContain(required);
-  for (const required of ['独立语音 API Key', '服务地域', '业务空间 ID', 'data-voice-key-status', 'voiceConnectionTestHtml']) expect(voiceSettings).toContain(required);
+  for (const required of ['语音Key', '与 API Key 相同', '服务地域', '业务空间 ID', 'voiceConnectionTestHtml']) expect(voiceSettings).toContain(required);
+});
+
+it('voice credentials have no separate save, clear or redundant saved-status controls', () => {
+  for (const text of ['data-voice-save-key', 'data-voice-clear-key', 'data-voice-key-status', 'Key 已保存']) expect(voiceSettings).not.toContain(text);
 });

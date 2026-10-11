@@ -28,11 +28,16 @@ def run(page, width, motion):
 
     def capture(name):
         page.locator('#toast.show').wait_for(state='hidden')
+        page.wait_for_timeout(220)
         assert_usable(page, '.short-voice-panel')
         page.screenshot(path=str(OUT / f'{name}-{width}-{motion}.png'), animations='disabled')
 
     expect(activity).to_be_hidden(); assert count('start') == 0 and not requests
     expect(page.locator('[data-sv-consent]')).to_have_count(0)
+    expect(page.locator('.short-voice-editor-head button')).to_have_count(0)
+    expect(page.locator('.short-voice-review-actions [data-sv-rerecord]')).to_have_count(1)
+    expect(page.locator('.short-voice-review-actions [data-sv-send]')).to_have_count(1)
+    expect(page.locator('[data-sv-rerecord]')).to_be_hidden()
     capture('ready')
     page.locator('[data-sv-start]').click()
     expect(activity).to_have_attribute('data-state', 'connecting'); expect(activity).to_be_visible()
@@ -57,6 +62,12 @@ def run(page, width, motion):
     expect(page.locator('[data-sv-voice-prompt]')).to_be_hidden()
     expect(page.locator('[data-sv-preview]')).to_be_hidden()
     assert page.locator('.short-voice-editor-head label').evaluate('(el)=>{const range=document.createRange();range.selectNodeContents(el);return range.getClientRects().length===1;}')
+    expect(page.locator('[data-sv-rerecord]')).to_be_visible()
+    buttons = page.locator('.short-voice-review-actions button').evaluate_all('(els)=>els.map(el=>el.getBoundingClientRect().toJSON())')
+    assert len(buttons) == 2
+    assert abs(buttons[0]['top'] - buttons[1]['top']) < 1
+    assert buttons[0]['right'] <= buttons[1]['left']
+    assert all(button['width'] >= 44 and button['height'] >= 44 for button in buttons)
     assert not requests; capture('review')
     page.locator('[data-sv-text]').fill('修改后午餐25元现金')
     expect(page.locator('[data-sv-send-panel]')).to_be_hidden()
@@ -65,6 +76,7 @@ def run(page, width, motion):
     # Re-record exposes a fresh consent first; cancel preserves earlier text.
     page.locator('[data-sv-rerecord]').click(); assert count('start') == 1
     expect(page.locator('[data-sv-voice-prompt]')).to_be_visible()
+    expect(page.locator('[data-sv-rerecord]')).to_be_hidden()
     page.locator('[data-sv-start]').click(); expect(activity).to_be_visible()
     page.locator('[data-sv-cancel]').click(); expect(activity).to_be_hidden()
     expect(page.locator('[data-sv-text]')).to_have_value('修改后午餐25元现金')

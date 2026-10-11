@@ -1,15 +1,15 @@
 /** Only these internal codes, phases and reason enums may cross into user-facing diagnostics. */
 const SAFE_ERRORS: Record<string, string> = {
   SPEECH_UNSUPPORTED: '百炼短语音仅支持 Android 安装包，可使用文字输入',
-  SPEECH_CONSENT_REQUIRED: '请先核对接收方与费用说明，再明确同意开始',
-  SPEECH_KEY_REQUIRED: '请先在设置中保存独立百炼语音 Key',
+  SPEECH_CONSENT_REQUIRED: '请点击开始或测试以继续',
+  SPEECH_KEY_REQUIRED: '请先在设置中配置语音Key并通过连接测试',
   SPEECH_KEY_CHANGED: '语音 Key 已变化或清除，请重新核对设置后开始',
   SPEECH_KEY_STORAGE: '语音 Key 安全存储暂不可用，请在手机上重新保存',
   SPEECH_PERMISSION_DENIED: '麦克风未获授权，可在手机系统设置中允许后重试，或手动输入',
   SPEECH_PERMISSION_CANCELLED: '麦克风授权已取消，可重新开始或手动输入',
   SPEECH_BUSY: '已有语音或连接测试进行中，请先结束再重试',
   SPEECH_CONFIG_INVALID: '百炼语音配置无效，请核对地域、业务空间与固定模型',
-  SPEECH_AUTH: '百炼语音鉴权失败，请核对独立 Key、地域与业务空间',
+  SPEECH_AUTH: '百炼语音鉴权失败，请核对语音Key、地域与业务空间',
   SPEECH_RATE_LIMIT: '百炼语音请求受限，请稍后重试',
   SPEECH_LIMIT: '本次录音已达30秒上限，已取消，请录更短的一句',
   SPEECH_TRANSCRIPT_LIMIT: '转录超过500字，未截断或入账，请录更短的一句',
@@ -118,3 +118,4 @@ export function shortVoiceError(error: unknown): string {
   // Never stringify the error, its message, unknown metadata, or actual/expected provider values.
   return `${code ? SAFE_ERRORS[code] : '语音未完成，请检查权限、网络、Key 与业务空间，或改用手动输入'}（${code ?? 'SPEECH_UNKNOWN'}；阶段：${phase}${detail}）`;
 }
+

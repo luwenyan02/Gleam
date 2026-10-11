@@ -1,28 +1,28 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-const mocks=vi.hoisted(()=>({configuration:vi.fn(),testConnection:vi.fn(),start:vi.fn(),cancel:vi.fn(),getConfig:vi.fn(),handlers:new Map<string,((payload?:unknown)=>void)[]>(),observers:[] as (()=>void)[]}));
-vi.mock('../src/core/nativeSpeech',()=>({nativeSpeech:{configuration:mocks.configuration,testConnection:mocks.testConnection,start:mocks.start,cancel:mocks.cancel}}));
+const mocks=vi.hoisted(()=>({configuration:vi.fn(),testConnection:vi.fn(),commit:vi.fn(),invalidate:vi.fn(),start:vi.fn(),cancel:vi.fn(),getConfig:vi.fn(),handlers:new Map<string,((payload?:unknown)=>void)[]>(),observers:[] as (()=>void)[]}));
+vi.mock('../src/core/nativeSpeech',()=>({nativeSpeech:{configuration:mocks.configuration,testCandidate:mocks.testConnection,commitTestedKey:mocks.commit,invalidateConfiguration:mocks.invalidate,start:mocks.start,cancel:mocks.cancel}}));
 vi.mock('../src/core/bailianVoiceConfig',async()=>({...await vi.importActual('../src/core/bailianVoiceConfig'),getBailianVoiceConfig:mocks.getConfig}));
 vi.mock('../src/core/store',()=>({on:(name:string,callback:(p?:unknown)=>void)=>{const handlers=mocks.handlers.get(name)??[];handlers.push(callback);mocks.handlers.set(name,handlers);return ()=>{};}}));
 import { mountVoiceConnectionTest, syncVoiceConnectionTest, handleVoiceConnectionTestClick, invalidateVoiceConnectionTest, getVoiceSettingsEpoch, setVoiceTestCredentialWritePending, voiceConnectionTestHtml } from '../src/features/settings/bailianVoiceTestSettings';
 const config={region:'beijing',workspace:'synthetic-space',model:'qwen3.8-omni-flash-realtime'};
-const readiness={supported:true,hasKey:true,credentialRevision:'synthetic-revision'};
+const readiness={supported:true,hasKey:true,credentialRevision:'synthetic-revision',mainCredentialRevision:'main-revision',keySource:'separate' as const,maskedKey:'abcde••••••vwxyz',hasMainKey:true,maskedMainKey:'main1••••••main2'};
 class ElementStub {
- value='';disabled=false;hidden=false;textContent='';isConnected=true;dataset:Record<string,string>={};
+ value='';checked=false;placeholder='';disabled=false;hidden=false;textContent='';isConnected=true;dataset:Record<string,string>={};
  nodes=new Map<string,ElementStub>();closest(){return null;}
  querySelector(selector:string):ElementStub {if(!this.nodes.has(selector))this.nodes.set(selector,new ElementStub());return this.nodes.get(selector)!;}
 }
 let container:ElementStub;let dispose:()=>void;let docEvents:Map<string,()=>void>;let winEvents:Map<string,()=>void>;let hidden=false;
-async function flush(){for(let i=0;i<15;i++)await Promise.resolve();}
+async function flush(){for(let i=0;i<35;i++)await Promise.resolve();}
 function click(selector:string){const button=container.querySelector(selector);const target={closest:(s:string)=>s===selector?button:null} as unknown as HTMLElement;expect(handleVoiceConnectionTestClick(target,container as unknown as HTMLElement)).toBe(true);}
 function status(){return container.querySelector('[data-voice-test-status]');}
 beforeEach(()=>{
  vi.clearAllMocks();mocks.handlers.clear();mocks.observers=[];docEvents=new Map();winEvents=new Map();hidden=false;
- mocks.configuration.mockResolvedValue(readiness);mocks.getConfig.mockResolvedValue({...config});mocks.cancel.mockResolvedValue(undefined);mocks.testConnection.mockImplementation(()=>new Promise(()=>{}));
+ mocks.configuration.mockResolvedValue(readiness);mocks.getConfig.mockResolvedValue({...config});mocks.cancel.mockResolvedValue(undefined);mocks.invalidate.mockResolvedValue(undefined);mocks.commit.mockResolvedValue({...readiness,credentialRevision:"committed-revision",activeConfig:config});mocks.testConnection.mockImplementation(()=>new Promise(()=>{}));
  vi.stubGlobal('document',{get hidden(){return hidden;},body:{},addEventListener:(e:string,f:()=>void)=>docEvents.set(e,f),removeEventListener:vi.fn()});
  vi.stubGlobal('window',{addEventListener:(e:string,f:()=>void)=>winEvents.set(e,f),removeEventListener:vi.fn()});
  vi.stubGlobal('MutationObserver',class{constructor(callback:()=>void){mocks.observers.push(callback);}observe(){}disconnect(){}});
  container=new ElementStub();container.querySelector('#voice-bailian-workspace').value=config.workspace;container.querySelector('#voice-bailian-model').value=config.model;
- container.querySelector('[data-voice-test]').dataset={supported:'true',hasKey:'true'};
+ container.querySelector('[data-voice-test]').dataset={supported:'true',hasKey:'true',keySource:'separate',hasMainKey:'true'};
  dispose=mountVoiceConnectionTest(container as unknown as HTMLElement);syncVoiceConnectionTest(container as unknown as HTMLElement);
 });
 afterEach(()=>{dispose();setVoiceTestCredentialWritePending(false);vi.useRealTimers();vi.unstubAllGlobals();});
@@ -37,7 +37,7 @@ it.each(['#voice-bailian-workspace','#voice-bailian-key','#voice-bailian-model']
  invalidateVoiceConnectionTest();expect(getVoiceSettingsEpoch()).toBeGreaterThan(epoch);click('[data-voice-test-confirm]');await flush();expect(mocks.testConnection).not.toHaveBeenCalled();expect(status().dataset.state).toBe('idle');
 });
 it('stale preflight resolution after raw input cannot restore consent',async()=>{
- let resolve!:(v:unknown)=>void;mocks.configuration.mockImplementationOnce(()=>new Promise(done=>resolve=done));click('[data-voice-test]');invalidateVoiceConnectionTest();resolve(readiness);await flush();expect(status().dataset.state).toBe('idle');expect(container.querySelector('[data-voice-test-consent]').hidden).toBe(true);
+ let resolve!:(v:unknown)=>void;mocks.configuration.mockImplementationOnce(()=>new Promise(done=>resolve=done));click('[data-voice-test]');await flush();invalidateVoiceConnectionTest();resolve(readiness);await flush();expect(status().dataset.state).toBe('idle');expect(container.querySelector('[data-voice-test-consent]').hidden).toBe(true);
 });
 it('credential change during confirm validation is rejected before any provider request',async()=>{
  click('[data-voice-test]');await flush();mocks.configuration.mockResolvedValue({...readiness,credentialRevision:'changed'});click('[data-voice-test-confirm]');await flush();expect(mocks.testConnection).not.toHaveBeenCalled();expect(status().textContent).toContain('SPEECH_KEY_CHANGED');
@@ -47,9 +47,16 @@ it.each(['background','pagehide','navigation','settings','disconnect'])('%s canc
  if(trigger==='background'){hidden=true;docEvents.get('visibilitychange')!();}else if(trigger==='pagehide')winEvents.get('pagehide')!();else if(trigger==='navigation')mocks.handlers.get('route-changed')![0]();else if(trigger==='settings')mocks.handlers.get('settings-changed')![0]({key:'voice.bailian.model'});else{container.isConnected=false;mocks.observers[0]();}
  expect(mocks.cancel).toHaveBeenCalledWith({sessionId:id});resolve({sessionId:id,connected:true});await flush();expect(status().dataset.state).not.toBe('success');expect(mocks.testConnection).toHaveBeenCalledOnce();
 });
-it('a new raw key or workspace mismatch prevents consent and never transmits draft credentials',async()=>{
- container.querySelector('#voice-bailian-key').value='synthetic-private-key';click('[data-voice-test]');await flush();expect(status().dataset.state).toBe('error');expect(mocks.testConnection).not.toHaveBeenCalled();expect(status().textContent).not.toContain('synthetic-private-key');
- container.querySelector('#voice-bailian-key').value='';container.querySelector('#voice-bailian-workspace').value='different';click('[data-voice-test]');await flush();expect(status().dataset.state).toBe('error');expect(mocks.testConnection).not.toHaveBeenCalled();
+it('a typed candidate is sent only after explicit test confirmation and never written before success',async()=>{
+ container.querySelector('#voice-bailian-key').value='synthetic-private-key';click('[data-voice-test]');await flush();
+ expect(status().dataset.state).toBe('consent');expect(mocks.testConnection).not.toHaveBeenCalled();expect(mocks.commit).not.toHaveBeenCalled();
+ click('[data-voice-test-confirm]');await flush();
+ expect(mocks.testConnection).toHaveBeenCalledWith(expect.objectContaining({value:'synthetic-private-key',keySource:'separate'}));
+ expect(mocks.commit).not.toHaveBeenCalled();expect(status().textContent).not.toContain('synthetic-private-key');
+});
+it('invalid staged workspace is rejected without sending credentials',async()=>{
+ container.querySelector('#voice-bailian-workspace').value='invalid space';click('[data-voice-test]');await flush();
+ expect(status().dataset.state).toBe('error');expect(mocks.testConnection).not.toHaveBeenCalled();
 });
 
 it('test confirmation is a compact explicit action, without routine tutorial prose',()=>{
@@ -101,3 +108,26 @@ it('idle/consent states cannot copy anything and clipboard failures never echo t
   expect(container.querySelector('[data-voice-test-copy]').hidden).toBe(true);
 });
 
+
+it('successful candidate commit clears raw input and displays only the masked summary', async () => {
+ mocks.testConnection.mockImplementationOnce(async options => ({ sessionId: options.sessionId, connected: true, candidateToken: 'candidate-once' }));
+ container.querySelector('#voice-bailian-key').value='synthetic-private-key';click('[data-voice-test]');await flush();click('[data-voice-test-confirm]');await flush();
+ expect(mocks.commit).toHaveBeenCalledOnce();expect(status().dataset.state).toBe('success');
+ expect(container.querySelector('#voice-bailian-key').value).toBe('');
+ expect(container.querySelector('#voice-bailian-key').placeholder).toBe(readiness.maskedKey);
+});
+it('shared source never sends a JavaScript key and main-key changes revoke an in-flight candidate', async () => {
+ container.querySelector('#voice-key-shared').checked=true;
+ container.querySelector('#voice-bailian-key').value='ignored-independent-draft';
+ click('[data-voice-test]');await flush();click('[data-voice-test-confirm]');await flush();
+ expect(mocks.testConnection).toHaveBeenCalledWith(expect.objectContaining({keySource:'shared',expectedMainCredentialRevision:'main-revision'}));
+ expect(mocks.testConnection.mock.calls[0][0].value).toBeUndefined();
+ mocks.handlers.get('settings-changed')![0]({key:'ai.apiKey'});
+ expect(mocks.cancel).toHaveBeenCalledOnce();expect(mocks.commit).not.toHaveBeenCalled();
+});
+it('a stale native invalidation or preflight never starts a request after cancel', async () => {
+ let resolve!:()=>void;mocks.invalidate.mockImplementationOnce(()=>new Promise<void>(done=>resolve=done));
+ invalidateVoiceConnectionTest();click('[data-voice-test]');await flush();
+ click('[data-voice-test-cancel]');resolve();await flush();
+ expect(mocks.testConnection).not.toHaveBeenCalled();expect(mocks.commit).not.toHaveBeenCalled();
+});

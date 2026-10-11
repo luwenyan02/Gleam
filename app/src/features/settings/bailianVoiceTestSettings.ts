@@ -1,17 +1,20 @@
-import { BailianVoiceConnectionTest } from '../../core/bailianVoiceConnectionTest';
-import { getBailianVoiceConfig, type BailianVoiceConfig } from '../../core/bailianVoiceConfig';
+import { BailianVoiceCandidateTest } from '../../core/bailianVoiceCandidateTest';
+import { esc } from '../../core/esc';
+import { isAiKeyWritePending } from './aiKeySettings';
+import { validateBailianVoiceConfig, type BailianVoiceConfig } from '../../core/bailianVoiceConfig';
 import { shortVoiceError } from '../../core/bailianVoiceErrors';
 import { nativeSpeech, type NativeSpeechConfiguration } from '../../core/nativeSpeech';
 import { on } from '../../core/store';
 
-interface ConsentSnapshot { config: BailianVoiceConfig; readiness: NativeSpeechConfiguration }
+interface ConsentSnapshot { config: BailianVoiceConfig; readiness: NativeSpeechConfiguration; keySource: 'shared' | 'separate'; value: string; configurationId: string }
 interface TestView {
-  container: HTMLElement; test: BailianVoiceConnectionTest; sequence: number; pending: boolean;
+  container: HTMLElement; test: BailianVoiceCandidateTest; configurationId: string; nativeInvalidation: Promise<void>; sequence: number; pending: boolean;
   consent?: ConsentSnapshot; error?: string; copyMessage?: string; copying?: boolean; pendingTimer?: ReturnType<typeof setTimeout>; disposed: boolean; dispose(): void;
 }
 let view: TestView | undefined;
 let epoch = 0;
 let credentialWritePending = false;
+let nativeAuthorityQueue: Promise<void> = Promise.resolve();
 /** Async full-page renders must retry when a draft, credential or test state changes. */
 export function getVoiceSettingsEpoch(): number { return epoch; }
 export function setVoiceTestCredentialWritePending(pending: boolean): void {
@@ -19,8 +22,8 @@ export function setVoiceTestCredentialWritePending(pending: boolean): void {
   invalidateVoiceConnectionTest(pending ? '语音 Key 正在更新，更新后请重新测试' : undefined);
 }
 
-export function voiceConnectionTestHtml(supported: boolean, hasKey: boolean): string {
-  return `<div class="ai-actions"><button class="chip" data-voice-test data-supported="${supported}" data-has-key="${hasKey}"${supported && hasKey ? '' : ' disabled'}>测试语音连接</button><button class="chip" data-voice-test-cancel hidden>取消测试</button></div>
+export function voiceConnectionTestHtml(supported: boolean, hasKey: boolean, readiness?: NativeSpeechConfiguration): string {
+  return `<div class="ai-actions"><button class="chip" data-voice-test data-supported="${supported}" data-has-key="${hasKey}" data-key-source="${readiness?.keySource ?? 'separate'}" data-has-main-key="${!!readiness?.hasMainKey}" data-masked-key="${esc(readiness?.maskedKey ?? '')}" data-masked-main-key="${esc(readiness?.maskedMainKey ?? '')}"${supported ? '' : ' disabled'}>测试语音连接</button><button class="chip" data-voice-test-cancel hidden>取消测试</button></div>
     <section data-voice-test-consent hidden aria-label="确认语音连接测试">
       <p class="settings-status" data-voice-test-recipient></p>
       <button class="chip" data-voice-test-confirm>开始测试</button>
@@ -32,17 +35,17 @@ export function voiceConnectionTestHtml(supported: boolean, hasKey: boolean): st
 
 export function mountVoiceConnectionTest(container: HTMLElement): () => void {
   view?.dispose();
-  const current: TestView = { container, sequence: 0, pending: false, disposed: false,
-    test: new BailianVoiceConnectionTest(nativeSpeech, () => { epoch++; syncVoiceConnectionTest(container); }),
+  const current: TestView = { container, sequence: 0, pending: false, disposed: false, configurationId: crypto.randomUUID(), nativeInvalidation: Promise.resolve(),
+    test: new BailianVoiceCandidateTest(nativeSpeech, () => { epoch++; syncVoiceConnectionTest(container); }, readiness => applyCommittedConfiguration(container, readiness)),
     dispose: () => {},
   };
-  view = current; epoch++;
+  view = current; epoch++; rotateNativeAuthority(current);
   const invalidate = () => invalidateVoiceConnectionTest('测试已取消，重新测试需要再次同意');
   const visibility = () => { if (document.hidden) invalidate(); };
   const offRoute = on('route-changed', invalidate);
   const offSettings = on('settings-changed', payload => {
     const key = payload && typeof payload === 'object' && 'key' in payload ? (payload as { key?: unknown }).key : undefined;
-    if (key === undefined || (typeof key === 'string' && key.startsWith('voice.bailian.'))) invalidateVoiceConnectionTest();
+    if (key === undefined || (typeof key === 'string' && (key.startsWith('voice.bailian.') || key === 'ai.apiKey'))) invalidateVoiceConnectionTest();
   });
   document.addEventListener('visibilitychange', visibility); window.addEventListener('pagehide', invalidate);
   const page = container.closest<HTMLElement>('.subpage');
@@ -56,7 +59,7 @@ export function mountVoiceConnectionTest(container: HTMLElement): () => void {
   if (page) observer.observe(page, { attributes: true, attributeFilter: ['inert', 'aria-hidden'] });
   current.dispose = () => {
     if (current.disposed) return;
-    current.disposed = true; current.sequence++; clearTimeout(current.pendingTimer); current.test.dispose(); epoch++;
+    rotateNativeAuthority(current); current.disposed = true; current.sequence++; clearTimeout(current.pendingTimer); current.test.dispose(); epoch++;
     observer.disconnect(); offRoute(); offSettings();
     document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', invalidate);
     if (view === current) view = undefined;
@@ -67,7 +70,7 @@ export function mountVoiceConnectionTest(container: HTMLElement): () => void {
 export function invalidateVoiceConnectionTest(message?: string): void {
   epoch++;
   if (!view || view.disposed) return;
-  view.sequence++; clearTimeout(view.pendingTimer); view.pending = false; view.consent = undefined; view.error = undefined; view.copyMessage = undefined; view.copying = false;
+  rotateNativeAuthority(view); view.sequence++; clearTimeout(view.pendingTimer); view.pending = false; view.consent = undefined; view.error = undefined; view.copyMessage = undefined; view.copying = false;
   view.test.invalidate(message);
 }
 
@@ -75,8 +78,13 @@ export function syncVoiceConnectionTest(container: HTMLElement): void {
   const current = view; if (!current || current.container !== container || current.disposed) return;
   const q = <T extends HTMLElement>(selector: string) => container.querySelector<T>(selector);
   const button = q<HTMLButtonElement>('[data-voice-test]');
-  if (button) button.disabled = button.dataset.supported !== 'true' || button.dataset.hasKey !== 'true'
-    || credentialWritePending || current.pending || !!current.consent || current.test.busy;
+  if (button) {
+    const shared = !!q<HTMLInputElement>('#voice-key-shared')?.checked;
+    const typed = !!q<HTMLInputElement>('#voice-bailian-key')?.value.trim();
+    const hasCandidate = shared ? button.dataset.hasMainKey === 'true' : typed || (button.dataset.hasKey === 'true' && button.dataset.keySource !== 'shared');
+    button.disabled = button.dataset.supported !== 'true' || !hasCandidate || isAiKeyWritePending()
+      || credentialWritePending || current.pending || !!current.consent || current.test.busy;
+  }
   const cancel = q<HTMLButtonElement>('[data-voice-test-cancel]');
   if (cancel) cancel.hidden = !current.pending && !current.consent && !current.test.busy;
   const panel = q('[data-voice-test-consent]'); if (panel) panel.hidden = !current.consent;
@@ -99,16 +107,41 @@ export function syncVoiceConnectionTest(container: HTMLElement): void {
 function recipientText(config: BailianVoiceConfig): string {
   return `阿里云百炼 · ${config.region === 'beijing' ? '北京' : '新加坡'}`;
 }
-function currentDraftMatches(current: TestView, config: BailianVoiceConfig): boolean {
-  const key = current.container.querySelector<HTMLInputElement>('#voice-bailian-key')?.value ?? '';
-  const workspace = current.container.querySelector<HTMLInputElement>('#voice-bailian-workspace')?.value ?? '';
-  const model = current.container.querySelector<HTMLInputElement>('#voice-bailian-model')?.value;
-  return !key && workspace.trim() === config.workspace && model === config.model;
+function readDraft(current: TestView): { config: BailianVoiceConfig; keySource: 'shared' | 'separate'; value: string } {
+  const q = <T extends HTMLElement>(selector: string) => current.container.querySelector<T>(selector);
+  const config = validateBailianVoiceConfig({
+    region: (q('#voice-bailian-region')?.dataset.region ?? 'beijing') as 'beijing' | 'singapore',
+    workspace: q<HTMLInputElement>('#voice-bailian-workspace')?.value.trim() ?? '',
+    model: q<HTMLInputElement>('#voice-bailian-model')?.value as BailianVoiceConfig['model'],
+  });
+  const keySource = q<HTMLInputElement>('#voice-key-shared')?.checked ? 'shared' : 'separate';
+  return { config, keySource, value: keySource === 'shared' ? '' : q<HTMLInputElement>('#voice-bailian-key')?.value.trim() ?? '' };
+}
+function rotateNativeAuthority(current: TestView): void {
+  const configurationId = crypto.randomUUID(); current.configurationId = configurationId;
+  nativeAuthorityQueue = nativeAuthorityQueue.catch(() => {}).then(() => nativeSpeech.invalidateConfiguration({ configurationId }));
+  current.nativeInvalidation = nativeAuthorityQueue;
+  // Keep a rejected authority observable to preflight while avoiding unhandled rejections during cleanup.
+  void current.nativeInvalidation.catch(() => {});
+}
+function applyCommittedConfiguration(container: HTMLElement, readiness: NativeSpeechConfiguration): void {
+  const key = container.querySelector<HTMLInputElement>('#voice-bailian-key');
+  const source = container.querySelector<HTMLInputElement>('#voice-key-shared');
+  const test = container.querySelector<HTMLButtonElement>('[data-voice-test]');
+  if (key) { key.value = ''; key.placeholder = readiness.maskedKey ?? ''; delete key.dataset.voiceDirty; }
+  if (source) { source.checked = readiness.keySource === 'shared'; delete source.dataset.voiceDirty; }
+  if (test) {
+    test.dataset.hasKey = String(readiness.hasKey); test.dataset.keySource = readiness.keySource ?? 'separate';
+    test.dataset.hasMainKey = String(!!readiness.hasMainKey); test.dataset.maskedKey = readiness.maskedKey ?? ''; test.dataset.maskedMainKey = readiness.maskedMainKey ?? '';
+  }
+  for (const selector of ['#voice-bailian-workspace', '#voice-bailian-region']) {
+    const input = container.querySelector<HTMLElement>(selector); if (input) delete input.dataset.voiceDirty;
+  }
 }
 function isCurrent(current: TestView, sequence: number): boolean {
   const page = current.container.closest<HTMLElement>('.subpage');
   return view === current && !current.disposed && current.sequence === sequence && current.container.isConnected && !document.hidden
-    && !credentialWritePending && !page?.inert && page?.getAttribute('aria-hidden') !== 'true';
+    && !credentialWritePending && !isAiKeyWritePending() && !page?.inert && page?.getAttribute('aria-hidden') !== 'true';
 }
 function failure(current: TestView, code: string): void {
   clearTimeout(current.pendingTimer); current.pending = false; current.consent = undefined;
@@ -128,12 +161,13 @@ async function prepare(current: TestView): Promise<void> {
   current.test.invalidate(); current.pending = true; current.error = undefined; epoch++; syncVoiceConnectionTest(current.container);
   boundPreflight(current, sequence);
   try {
-    const [config, readiness] = await Promise.all([getBailianVoiceConfig(), nativeSpeech.configuration()]);
+    await current.nativeInvalidation;
+    const readiness = await nativeSpeech.configuration();
     if (!isCurrent(current, sequence)) return;
     if (!readiness.supported) { failure(current, 'SPEECH_UNSUPPORTED'); return; }
-    if (!readiness.hasKey) { failure(current, 'SPEECH_KEY_REQUIRED'); return; }
-    if (!currentDraftMatches(current, config)) { failure(current, 'SPEECH_CONFIG_INVALID'); return; }
-    clearTimeout(current.pendingTimer); current.pending = false; current.consent = { config, readiness }; epoch++; syncVoiceConnectionTest(current.container);
+    const draft = readDraft(current);
+    if (draft.keySource === 'shared' ? !readiness.hasMainKey : !draft.value && (!readiness.hasKey || readiness.keySource === 'shared')) { failure(current, 'SPEECH_KEY_REQUIRED'); return; }
+    clearTimeout(current.pendingTimer); current.pending = false; current.consent = { ...draft, readiness, configurationId: current.configurationId }; epoch++; syncVoiceConnectionTest(current.container);
   } catch { if (isCurrent(current, sequence)) failure(current, 'SPEECH_CONFIG_INVALID'); }
 }
 async function confirm(current: TestView): Promise<void> {
@@ -142,14 +176,17 @@ async function confirm(current: TestView): Promise<void> {
   current.pending = true; current.consent = undefined; epoch++; syncVoiceConnectionTest(current.container);
   boundPreflight(current, sequence);
   try {
-    const [config, readiness] = await Promise.all([getBailianVoiceConfig(), nativeSpeech.configuration()]);
+    await current.nativeInvalidation;
+    const readiness = await nativeSpeech.configuration();
     if (!isCurrent(current, sequence)) return;
-    if (readiness.credentialRevision !== snapshot.readiness.credentialRevision) { failure(current, 'SPEECH_KEY_CHANGED'); return; }
-    if (!currentDraftMatches(current, config) || config.region !== snapshot.config.region
-      || config.workspace !== snapshot.config.workspace || config.model !== snapshot.config.model) { failure(current, 'SPEECH_CONFIG_INVALID'); return; }
+    if (readiness.credentialRevision !== snapshot.readiness.credentialRevision || readiness.mainCredentialRevision !== snapshot.readiness.mainCredentialRevision) { failure(current, 'SPEECH_KEY_CHANGED'); return; }
+    const draft = readDraft(current);
+    if (current.configurationId !== snapshot.configurationId || draft.keySource !== snapshot.keySource || draft.value !== snapshot.value || draft.config.region !== snapshot.config.region
+      || draft.config.workspace !== snapshot.config.workspace || draft.config.model !== snapshot.config.model) { failure(current, 'SPEECH_CONFIG_INVALID'); return; }
     clearTimeout(current.pendingTimer); current.pending = false; epoch++;
     // Consent is consumed once. Only this explicit confirm path may invoke the native probe.
-    void current.test.start(config, readiness);
+    void current.test.start(draft.config, readiness, { keySource: draft.keySource, value: draft.value || undefined, configurationId: snapshot.configurationId });
+    snapshot.value = ''; draft.value = '';
   } catch { if (isCurrent(current, sequence)) failure(current, 'SPEECH_CONFIG_INVALID'); }
 }
 async function copyDiagnostic(current: TestView): Promise<void> {

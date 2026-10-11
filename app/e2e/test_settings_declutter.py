@@ -26,10 +26,27 @@ def run(page, width, motion):
     expect(settings).to_contain_text('静默入账置信度阈值')
     expect(settings).to_contain_text('天后自动清除')
     initial = page.locator('#voice-bailian-workspace').input_value()
-    calls = page.evaluate('window.__voiceCalls.length')
+    operations = lambda: page.evaluate("window.__voiceCalls.filter(call=>['testCandidate','commitTestedKey','setKey','clearKey','testConnection','start','stop'].includes(call.method))")
+    calls = operations()
+    native_before = page.evaluate('window.__voiceSnapshot()')
+    voice = settings.locator('section[aria-label="百炼短语音"]')
+    expect(voice.locator('#voice-bailian-key')).to_have_accessible_name('语音Key')
+    expect(voice.locator('#voice-bailian-key')).to_have_value('')
+    expect(voice.locator('#voice-key-shared')).to_have_accessible_name('与 API Key 相同')
+    expect(voice.locator('#voice-key-shared')).not_to_be_checked()
+    expect(voice.locator('[data-voice-save-key], [data-voice-clear-key], [data-voice-key-status]')).to_have_count(0)
+    expect(voice.locator('[data-voice-test]')).to_have_text('测试语音连接')
+    # The label and optional shared source remain in one discoverable, touch-sized row.
+    label_row = voice.locator('.voice-key-label')
+    assert label_row.evaluate('(el)=>el.scrollWidth<=el.clientWidth+1')
+    labels = label_row.locator('label').evaluate_all('(els)=>els.map(el=>el.getBoundingClientRect().toJSON())')
+    assert len(labels) == 2 and labels[0]['right'] <= labels[1]['left']
+    assert abs((labels[0]['top'] + labels[0]['height']/2) - (labels[1]['top'] + labels[1]['height']/2)) < 1
+    assert label_row.locator('label[for="voice-bailian-key"]').evaluate('(el)=>{const r=document.createRange();r.selectNodeContents(el);return r.getClientRects().length===1}')
     for section, name in (('安全', 'top'), ('AI 记账', 'ai'), ('百炼短语音', 'voice')):
         block = settings.locator(f'section[aria-label="{section}"]')
         block.scroll_into_view_if_needed()
+        page.wait_for_timeout(220)
         assert_usable(page, f'#sp-settings section[aria-label="{section}"]')
         page.screenshot(path=str(OUT / f'{name}-{width}-{motion}.png'), animations='disabled')
     manual_button = settings.locator('[data-act="settings-manual"]')
@@ -71,7 +88,8 @@ def run(page, width, motion):
     expect(page.locator('#sheet.open')).to_have_count(0)
     expect(settings).to_be_visible()
     expect(page.locator('#voice-bailian-workspace')).to_have_value(initial)
-    assert page.evaluate('window.__voiceCalls.length') == calls
+    assert operations() == calls
+    assert page.evaluate('window.__voiceSnapshot()') == native_before
     assert page.evaluate('window.__micCalls') == 0
     assert not requests, requests
     assert not errors, errors

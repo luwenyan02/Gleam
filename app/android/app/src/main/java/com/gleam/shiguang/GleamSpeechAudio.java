@@ -13,14 +13,13 @@ import android.os.Handler;
 import android.os.Looper;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.BooleanSupplier;
 
 /** In-memory PCM only; capture cannot resume after an interruption. */
 final class GleamSpeechAudio implements GleamSpeechSession.Audio {
     interface Sink { void pcm(byte[] bytes, int length); void failure(String code); }
     private final AudioManager manager;
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final BooleanSupplier mayCapture;
+    private final GleamSpeechAuthorization authorization;
     private final Sink sink;
     private volatile boolean running;
     private volatile AudioRecord recorder;
@@ -38,15 +37,15 @@ final class GleamSpeechAudio implements GleamSpeechSession.Audio {
             }
         }
     };
-    GleamSpeechAudio(Context context, BooleanSupplier mayCapture, Sink sink) {
-        manager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE); this.mayCapture = mayCapture; this.sink = sink;
+    GleamSpeechAudio(Context context, GleamSpeechAuthorization authorization, Sink sink) {
+        manager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE); this.authorization = authorization; this.sink = sink;
         focus = change -> {
             if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) sink.failure("SPEECH_INTERRUPTED");
         };
     }
     private boolean callActive() { return manager == null || manager.getMode() == AudioManager.MODE_IN_CALL || manager.getMode() == AudioManager.MODE_IN_COMMUNICATION; }
     @Override public synchronized void start() throws Exception {
-        if (!mayCapture.getAsBoolean() || callActive()) throw new IllegalStateException("SPEECH_INTERRUPTED");
+        if (!authorization.allowed() || callActive()) throw new IllegalStateException("SPEECH_INTERRUPTED");
         int granted;
         if (Build.VERSION.SDK_INT >= 26) {
             focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
@@ -60,9 +59,12 @@ final class GleamSpeechAudio implements GleamSpeechSession.Audio {
             int minimum = AudioRecord.getMinBufferSize(GleamSpeechSession.SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
             if (minimum <= 0) throw new IllegalStateException("SPEECH_AUDIO_UNAVAILABLE");
             recorder = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, GleamSpeechSession.SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, Math.max(minimum, GleamSpeechSession.FRAME_BYTES * 4));
-            if (recorder.getState() != AudioRecord.STATE_INITIALIZED || !mayCapture.getAsBoolean() || callActive()) throw new IllegalStateException("SPEECH_AUDIO_UNAVAILABLE");
+            if (recorder.getState() != AudioRecord.STATE_INITIALIZED || !authorization.allowed() || callActive()) throw new IllegalStateException("SPEECH_AUDIO_UNAVAILABLE");
             manager.registerAudioRecordingCallback(recordingCallback, main); callbackRegistered = true;
-            recorder.startRecording();
+            // The last permission/revision check and microphone activation are one transaction with
+            // native key rotation. A stale earlier mayCapture check cannot authorize this operation.
+            final AudioRecord activating = recorder;
+            authorization.activate(activating::startRecording);
             if (recorder.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) throw new IllegalStateException("SPEECH_AUDIO_UNAVAILABLE");
             running = true;
             final AudioRecord current = recorder;
@@ -74,10 +76,10 @@ final class GleamSpeechAudio implements GleamSpeechSession.Audio {
         byte[] bytes = new byte[GleamSpeechSession.FRAME_BYTES];
         try {
             while (running) {
-                if (!mayCapture.getAsBoolean() || callActive()) { sink.failure("SPEECH_INTERRUPTED"); break; }
+                if (!authorization.allowed() || callActive()) { sink.failure("SPEECH_INTERRUPTED"); break; }
                 int count = current.read(samples, 0, samples.length, AudioRecord.READ_BLOCKING);
                 if (!running) break;
-                if (!mayCapture.getAsBoolean() || callActive()) { sink.failure("SPEECH_INTERRUPTED"); break; }
+                if (!authorization.allowed() || callActive()) { sink.failure("SPEECH_INTERRUPTED"); break; }
                 if (count <= 0) { sink.failure("SPEECH_AUDIO_UNAVAILABLE"); break; }
                 for (int i = 0; i < count; i++) { bytes[i * 2] = (byte) samples[i]; bytes[i * 2 + 1] = (byte) (samples[i] >>> 8); }
                 sink.pcm(bytes, count * 2);
