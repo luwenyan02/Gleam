@@ -449,7 +449,7 @@ export const SETTING_DEFAULTS = {
   /** 回收站保留天数（展示用，v1.0 固定 30） */
   'trash.retentionDays': 30,
   /** 首页模块开关 */
-  'home.modules': { month: true, quick: true, today: true, past: true },
+  'home.modules': { month: true, quick: true, rhythm: true, today: true, past: true },
   /** 记账面板最近一次选择，用于减少重复操作 */
   'entry.lastUsed': {
     expenseCategoryId: null as number | null,

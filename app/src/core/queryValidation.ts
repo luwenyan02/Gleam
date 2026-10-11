@@ -15,3 +15,9 @@ export function parseAmountRange(min: string, max: string): { amountMin?: number
 export function validateDateRange(from: number, to: number): void {
   if (!Number.isFinite(from) || !Number.isFinite(to) || from > to) throw new Error('开始日期不能晚于结束日期');
 }
+
+/** Exclusive end for an inclusive local date; a DST day need not last 24 hours. */
+export function nextLocalDayStart(timestamp: number): number {
+  const date = new Date(timestamp);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime();
+}

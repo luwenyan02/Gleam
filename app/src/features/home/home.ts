@@ -33,6 +33,8 @@ import { entryRowText } from '../detail/entryRowText';
 import { listInAppReminders } from '../../core/notify';
 import { accountingMonthRange, getAccountingMonth } from '../../core/repo/periodRepo';
 
+import { bindSpendingRhythm, refreshSpendingRhythm, spendingRhythmHtml } from './spendingRhythm';
+
 const PAGE = 40;
 
 let root: HTMLElement | null = null;
@@ -42,6 +44,7 @@ let loading = false;
 let refreshTimer = 0;
 let refreshPending = false;
 let paginationPending = false;
+let dayTimer = 0;
 
 /** 注册首页（main.ts 调用一次） */
 export function initHome(): void {
@@ -58,6 +61,9 @@ export function initHome(): void {
   const events = ['entries-changed', 'accounts-changed', 'categories-changed',
     'budgets-changed', 'credit-changed', 'life-changed', 'settings-changed'] as const;
   for (const ev of events) on(ev, scheduleRefresh);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) scheduleRefresh();
+  });
 }
 
 function scheduleRefresh(): void {
@@ -101,9 +107,12 @@ function renderSkeleton(el: HTMLElement): void {
       <button class="qa" data-qa="ai"><span class="qa-ic">${iconHtml('ic-ai')}</span>AI 记账</button>
     </nav>
 
+    ${spendingRhythmHtml()}
+
     <div id="hm-days"></div>
     <p class="tiny hm-more" id="hm-more"></p>`;
 
+  bindSpendingRhythm(el);
   el.querySelector('#btn-home-edit')!.addEventListener('click', () => openSubpage('sp-home-custom'));
   el.querySelector('#btn-search')!.addEventListener('click', () => openSubpage('sp-search'));
 
@@ -196,17 +205,24 @@ async function refresh(): Promise<void> {
     }
     nav.style.gridTemplateColumns = `repeat(${Math.max(1, layout.quick.length + 1)}, minmax(44px, 1fr))`;
     nav.hidden = !mods.quick;
+    const showRhythm = mods.rhythm !== false;
+    el.querySelector<HTMLElement>('#hm-rhythm')!.hidden = !showRhythm;
     await Promise.all([
       mods.month ? refreshMonthCard(el) : Promise.resolve(),
+      showRhythm ? refreshSpendingRhythm(el) : Promise.resolve(),
       refreshReminders(el),
       refreshTimeline(el, mods.today, mods.past),
     ]);
     for (const [index, key] of layout.order.entries()) {
-      const selectors = { month: '#hm-month', quick: '#hm-quick', today: '#hm-today', past: '.hm-past' };
+      const selectors = { month: '#hm-month', quick: '#hm-quick', rhythm: '#hm-rhythm', today: '#hm-today', past: '.hm-past' };
       for (const node of el.querySelectorAll<HTMLElement>(selectors[key])) node.style.order = String(index);
     }
   } finally {
     loading = false;
+    window.clearTimeout(dayTimer);
+    const now = new Date();
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
+    dayTimer = window.setTimeout(scheduleRefresh, Math.max(1000, midnight - Date.now()));
     if (refreshPending) {
       refreshPending = false;
       void refresh();
