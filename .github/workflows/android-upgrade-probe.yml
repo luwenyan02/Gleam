@@ -31,7 +31,7 @@ jobs:
       - run: npm run build && npx cap sync android
         working-directory: app
       - name: Compile isolated synthetic Android probe without running a device
-        run: ./gradlew assembleDebug assembleDebugAndroidTest
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
         working-directory: app/android
       - name: Verify existing approved SDK terms before installation
         run: python3 scripts/verify-android-probe-license.py

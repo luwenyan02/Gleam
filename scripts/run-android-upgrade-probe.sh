@@ -20,4 +20,4 @@ done
 adb -s emulator-5554 shell dumpsys webviewupdate > "$OUT/webview-provider.txt"
 adb -s emulator-5554 shell input keyevent 82
 cd app/android
-./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.gleam.shiguang.UpgradeWebViewProbeTest
+./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.gleam.shiguang.UpgradeWebViewProbeTest
