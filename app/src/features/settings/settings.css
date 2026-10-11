@@ -30,10 +30,6 @@
 .ai-thres .num{font-size:13px;font-weight:600;color:var(--fg);min-width:40px;text-align:right}
 
 /* 语音诊断的长域名/错误代码在窄屏换行，操作仍保持可触达。 */
-[data-voice-test-recipient],[data-voice-test-status]{overflow-wrap:anywhere;color:var(--muted)}
-[data-voice-test-consent]{margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:calc(var(--r) - 4px)}
-[data-voice-test-consent] .settings-status{margin-bottom:8px;color:var(--muted)}
-[data-voice-test],[data-voice-test-confirm],[data-voice-test-cancel]{min-height:44px}
 
 .settings-status{font-size:13px;line-height:1.5;margin:4px 0;overflow-wrap:anywhere;color:var(--muted)}
 .settings-manual{font-size:14px;line-height:1.75;color:var(--fg);overflow-wrap:anywhere}
@@ -49,3 +45,4 @@
 .manual-callout{position:absolute;transform:translate(-50%,-50%);display:grid;place-items:center;width:24px;height:24px;border:2px solid white;border-radius:50%;background:#145bd7;color:white;font:700 14px/1 sans-serif;box-shadow:0 1px 4px #0004;pointer-events:none}
 .manual-figure.is-zoomed{grid-column:1/-1}.manual-figure.is-zoomed .manual-image-button{width:390px;min-width:100%;max-width:none;cursor:zoom-out}
 .voice-key-label{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px}.ai-set .voice-key-source{display:flex;flex-direction:row;align-items:center;gap:6px;min-height:44px;color:var(--fg);font-size:13px}.voice-key-source input[type=checkbox]{appearance:none;width:44px;height:44px;min-height:44px;padding:12px;border:0;background:transparent;cursor:pointer}.voice-key-source input[type=checkbox]::before{content:"";display:block;width:20px;height:20px;border:1px solid var(--border);border-radius:5px;box-sizing:border-box}.voice-key-source input[type=checkbox]:checked::before{content:"✓";background:var(--primary);color:white;border-color:var(--primary);font-size:16px;line-height:18px;text-align:center}
+[data-voice-test]{min-height:44px}

@@ -67,7 +67,14 @@ MOCK_NATIVE = r'''(() => {
       if (plugin !== 'GleamSpeech') return {};
       const {value, ...safeOptions} = options;
       window.__voiceCalls.push({method,...safeOptions,...(method==='testCandidate'?{hasValue:Object.hasOwn(options,'value')}:{}),...(value===undefined?{}:{redacted:true})});
-      if (method === 'configuration') return configuration();
+      if (method === 'configuration') {
+        const result = configuration();
+        if (window.__holdNextConfiguration) {
+          window.__holdNextConfiguration = false;
+          return new Promise(resolve => {window.__finishConfiguration=()=>resolve(result)});
+        }
+        return result;
+      }
       if (method === 'setKey' || method === 'clearKey' || method === 'testConnection') throw {code:'LEGACY_VOICE_MUTATION_FORBIDDEN'};
       if (method === 'invalidateConfiguration') {
         window.__voiceConfigurationId = options.configurationId; candidate = undefined; return {};
@@ -80,7 +87,7 @@ MOCK_NATIVE = r'''(() => {
         // Shared credentials are read here, inside the mock native store, never forwarded by JS.
         const key = options.keySource === 'shared' ? secret['ai.apiKey'] : value || (source === 'separate' ? effectiveKey() : '');
         if (!key) throw {code:'SPEECH_KEY_REQUIRED'};
-        if (window.__testError) throw {code:window.__testError,data:{phase:'configuring',reason:'ACK_MODEL_MISMATCH',reasons:['ACK_MODEL_MISMATCH','ACK_AUDIO_FORMAT_MISSING','PRIVATE_UNKNOWN_REASON']},message:'PRIVATE_PROVIDER_BODY'};
+        if (window.__testError) throw {code:window.__testError,data:{phase:'configuring',reason:'ACK_MODEL_MISMATCH',reasons:window.__testReasons ?? ['ACK_MODEL_MISMATCH','ACK_AUDIO_FORMAT_MISSING','PRIVATE_UNKNOWN_REASON']},message:'PRIVATE_PROVIDER_BODY'};
         const token = 'synthetic-candidate-'+options.sessionId;
         candidate = {sessionId:options.sessionId, candidateToken:token, key, keySource:options.keySource,
           configurationId:options.configurationId, credentialRevision:options.expectedCredentialRevision,
@@ -173,15 +180,21 @@ def run(page, width, motion):
     assert page.evaluate('window.__voiceCommitCount') == 0
     assert not any(row['method'] == 'testCandidate' for row in page.evaluate('window.__voiceCalls'))
     assert next(row['value'] for row in read_rows(page,'settings') if row['key']=='voice.bailian.workspace') == 'synthetic-workspace'
-    page.locator('[data-voice-test]').click()
-    expect(page.locator('[data-voice-test-consent]')).to_be_visible()
-    assert page.evaluate('window.__voiceCommitCount') == 0
-    page.locator('[data-voice-test-confirm]').click()
-    expect(page.locator('[data-voice-test-status]')).to_have_attribute('data-state', 'success')
+    test_button = page.locator('[data-voice-test]')
+    expect(test_button).to_have_text('测试语音连接')
+    expect(page.locator('[data-voice-test-consent], [data-voice-test-confirm], [data-voice-test-cancel], [data-voice-test-status], [data-voice-test-copy], [data-voice-test-copy-status]')).to_have_count(0)
+    test_button.click()
+    expect(test_button).to_have_attribute('data-state', 'success')
+    expect(test_button).to_have_text('测试语音连接')
+    expect(page.locator('#toast.show')).to_contain_text('连接通过')
+    expect(page.locator('#toast.show')).to_contain_text('录音未测试')
+    candidate = page.evaluate("window.__voiceCalls.filter(x=>x.method==='testCandidate')")
+    assert len(candidate) == 1 and candidate[0]['consent'] and candidate[0]['userInitiated']
+    assert page.evaluate("window.__voiceCalls.filter(x=>x.method==='start').length") == 0
     expect(key).to_have_value('')
     expect(key).to_have_attribute('placeholder', 'synth••••••t-key')
     assert page.evaluate('window.__voiceCommitCount') == 1
-    assert page.evaluate('window.__voiceSnapshot().activeConfig.workspace') == 'tested-workspace'
+    assert page.evaluate('window.__voiceSnapshot().activeConfig') == {'region': 'beijing', 'workspace': 'tested-workspace', 'model': 'qwen3.8-omni-flash-realtime'}
     assert not requests
     assert not any('synthetic-voice-test-key' in str(row) for row in read_rows(page,'settings'))
     assert page.evaluate("!JSON.stringify({...localStorage,...sessionStorage}).includes('synthetic-voice-test-key')")
@@ -208,6 +221,7 @@ def run(page, width, motion):
     page.locator('[data-sv-start]').dispatch_event('click')
     assert page.evaluate("window.__voiceCalls.filter(x=>x.method==='start').length") == 1
     assert page.evaluate("window.__voiceCalls.filter(x=>x.method==='start').at(-1).workspace") == 'tested-workspace'
+    assert page.evaluate("window.__voiceCalls.filter(x=>x.method==='start').at(-1).model") == 'qwen3.8-omni-flash-realtime'
     image(page, 'listening', width, motion)
     page.locator('[data-sv-stop]').click(); expect(page.locator('[data-sv-text]')).to_have_value('今天午餐28.01元，现金')
     assert not payloads
@@ -282,8 +296,28 @@ if __name__=='__main__':
         for width in (360,390,430,1280):
             for motion in ('reduce', 'no-preference'):
                 context=browser.new_context(viewport={'width':width,'height':844},service_workers='block',reduced_motion=motion)
-                run(context.new_page(),width,motion);context.close()
+                page = context.new_page()
+                try:
+                    run(page,width,motion)
+                except Exception:
+                    try:
+                        page.screenshot(path=str(OUT / f'failure-native-{width}-{motion}.png'), animations='disabled')
+                    except Exception:
+                        print('Unable to capture the native short voice failure screen', flush=True)
+                    raise
+                finally:
+                    context.close()
                 web=browser.new_context(viewport={'width':width,'height':844},service_workers='block',reduced_motion=motion)
-                web_mode(web.new_page(),width,motion);web.close()
+                page = web.new_page()
+                try:
+                    web_mode(page,width,motion)
+                except Exception:
+                    try:
+                        page.screenshot(path=str(OUT / f'failure-web-{width}-{motion}.png'), animations='disabled')
+                    except Exception:
+                        print('Unable to capture the web short voice failure screen', flush=True)
+                    raise
+                finally:
+                    web.close()
             print(f'PASS synthetic short voice {width}',flush=True)
         browser.close()

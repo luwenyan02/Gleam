@@ -40,17 +40,18 @@ export function openShortVoice(options: ShortVoiceOptions): () => void {
         <textarea id="short-voice-text" data-sv-text rows="2" maxlength="500" aria-label="核对语音文字" placeholder="或直接输入：午餐28元，现金"></textarea>
       </div>
       <button class="btn ghost" data-sv-preview hidden>重新准备识别</button>
-      <div class="short-voice-review-actions">
+      <div class="short-voice-review-actions" data-sv-review-actions>
         <button class="btn ghost" data-sv-rerecord hidden>重新录音</button>
       <section class="short-voice-send" data-sv-send-panel hidden>
         <button class="btn primary" data-sv-send>发送并生成草稿</button>
       </section></div>
-      <section class="short-voice-result" data-sv-result hidden><h4>核对这笔草稿</h4><dl data-sv-fields></dl><button class="btn primary" data-sv-apply>${esc(options.applyLabel)}</button></section>
+      <section class="short-voice-result" data-sv-result hidden><h4>核对这笔草稿</h4><dl data-sv-fields></dl><div class="short-voice-result-actions" data-sv-result-actions><button class="btn primary" data-sv-apply>${esc(options.applyLabel)}</button></div></section>
     </div></section>`;
   document.body.appendChild(root);
   const q = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
   const input = q<HTMLTextAreaElement>('[data-sv-text]');
   const start = q<HTMLButtonElement>('[data-sv-start]');
+  const rerecord = q<HTMLButtonElement>('[data-sv-rerecord]');
   let closed = false, revision = 0, configRevision = 0, aiBusy = false, applying = false;
   let config: BailianVoiceConfig | undefined;
   let readiness: NativeSpeechConfiguration | undefined;
@@ -61,11 +62,20 @@ export function openShortVoice(options: ShortVoiceOptions): () => void {
   let recording = false, voiceState: ShortVoiceState = 'idle', voicePrompt = true;
   let previewTimer: ReturnType<typeof setTimeout> | undefined, preparing = false, previewError = false, composing = false;
   const status = (message: string) => { if (!closed) q('[data-sv-status]').textContent = message; };
+  const placeRerecord = () => {
+    const actions = q(bill ? '[data-sv-result-actions]' : '[data-sv-review-actions]');
+    if (rerecord.parentElement === actions) return;
+    // Reuse its listener and preserve keyboard focus when returning from a stale result.
+    const focused = document.activeElement === rerecord;
+    actions.prepend(rerecord);
+    if (focused) rerecord.focus({ preventScroll: true });
+  };
   const invalidateDraft = () => {
     clearTimeout(previewTimer); previewTimer = undefined; preparing = false; previewError = false;
     revision++;
     if (preview) revokeVoicePreview(preview);
     preview = undefined; bill = undefined; controller?.abort(); controller = undefined; aiBusy = false;
+    placeRerecord();
     q('[data-sv-send-panel]').hidden = true; q('[data-sv-result]').hidden = true;
   };
   const controls = () => {
@@ -77,8 +87,9 @@ export function openShortVoice(options: ShortVoiceOptions): () => void {
     q<HTMLButtonElement>('[data-sv-cancel]').hidden = !recording && !aiBusy;
     q<HTMLButtonElement>('[data-sv-cancel]').textContent = recording ? '取消' : '取消识别';
     q('[data-sv-editor]').hidden = recording;
-    q<HTMLButtonElement>('[data-sv-rerecord]').hidden = recording || !input.value.trim() || voicePrompt;
-    q<HTMLButtonElement>('[data-sv-rerecord]').disabled = aiBusy || applying;
+    rerecord.hidden = recording || !input.value.trim() || voicePrompt;
+    rerecord.disabled = aiBusy || applying;
+    placeRerecord();
     input.disabled = recording || aiBusy || applying;
     q<HTMLButtonElement>('[data-sv-preview]').hidden = !previewError || recording;
     q<HTMLButtonElement>('[data-sv-preview]').disabled = recording || aiBusy || applying || preparing;
@@ -133,7 +144,7 @@ export function openShortVoice(options: ShortVoiceOptions): () => void {
   input.addEventListener('input', edited);
   input.addEventListener('compositionstart', () => { composing = true; invalidateDraft(); controls(); });
   input.addEventListener('compositionend', () => { composing = false; edited(); });
-  q('[data-sv-rerecord]').addEventListener('click', () => {
+  rerecord.addEventListener('click', () => {
     if (closed || recording || aiBusy || applying) return;
     voicePrompt = true; controls(); start.focus({ preventScroll: true });
   });

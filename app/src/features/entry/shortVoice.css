@@ -28,3 +28,4 @@
 
 .short-voice-review-actions{display:flex;gap:8px;align-items:stretch}.short-voice-review-actions>[data-sv-rerecord]{flex:0 0 auto;width:auto;min-width:100px;min-height:48px}.short-voice-review-actions>.short-voice-send{flex:1;min-width:0}.short-voice-review-actions .btn{min-height:48px;white-space:normal}
 .short-voice-review-actions:not(:has(> :not([hidden]))){display:none}
+.short-voice-result-actions{display:flex;gap:8px;align-items:stretch}.short-voice-result-actions>[data-sv-rerecord]{flex:0 0 auto;width:auto;min-width:100px;min-height:48px}.short-voice-result-actions>[data-sv-apply]{flex:1;width:auto;min-width:0;min-height:48px;white-space:normal;overflow-wrap:anywhere}

@@ -35,7 +35,13 @@ def run(page, width, motion):
     expect(voice.locator('#voice-key-shared')).to_have_accessible_name('与 API Key 相同')
     expect(voice.locator('#voice-key-shared')).not_to_be_checked()
     expect(voice.locator('[data-voice-save-key], [data-voice-clear-key], [data-voice-key-status]')).to_have_count(0)
+    expect(voice.locator('[data-voice-test]')).to_have_count(1)
     expect(voice.locator('[data-voice-test]')).to_have_text('测试语音连接')
+    expect(voice.locator('[data-voice-test]')).to_have_attribute('data-state', 'idle')
+    expect(voice.locator('[data-voice-test-consent], [data-voice-test-recipient], [data-voice-test-confirm], [data-voice-test-cancel], [data-voice-test-status], [data-voice-test-copy], [data-voice-test-copy-status]')).to_have_count(0)
+    expect(voice.locator('#voice-bailian-model')).to_have_value('qwen3.8-omni-flash-realtime')
+    expect(voice.locator('#voice-bailian-model')).to_have_attribute('readonly', '')
+    expect(voice).not_to_contain_text('未测试')
     # The label and optional shared source remain in one discoverable, touch-sized row.
     label_row = voice.locator('.voice-key-label')
     assert label_row.evaluate('(el)=>el.scrollWidth<=el.clientWidth+1')
@@ -102,6 +108,16 @@ if __name__ == '__main__':
         for width in (360, 390, 430, 1280):
             for motion in ('reduce', 'no-preference'):
                 context = browser.new_context(viewport={'width': width, 'height': 844}, service_workers='block', reduced_motion=motion)
-                run(context.new_page(), width, motion); context.close()
+                page = context.new_page()
+                try:
+                    run(page, width, motion)
+                except Exception:
+                    try:
+                        page.screenshot(path=str(OUT / f'failure-{width}-{motion}.png'), animations='disabled')
+                    except Exception:
+                        print('Unable to capture the settings declutter failure screen', flush=True)
+                    raise
+                finally:
+                    context.close()
             print(f'PASS compact settings {width}', flush=True)
         browser.close()

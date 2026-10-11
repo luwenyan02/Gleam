@@ -42,7 +42,7 @@
 /* 抽屉内选择浮层：主体已迁至 shared/pickList.css，仅保留「新建」输入行样式 */
 .picker-new{display:flex;gap:8px;margin-top:10px;flex:none}
 .picker-new input{
-  flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:calc(var(--r) - 4px);
+  flex:1;min-width:0;min-height:44px;padding:10px 12px;border:1.5px solid var(--border);border-radius:calc(var(--r) - 4px);
   background:var(--bg);font-size:13px;color:var(--fg);font-family:inherit;outline:none;
 }
 .picker-new input:focus{border-color:var(--primary)}

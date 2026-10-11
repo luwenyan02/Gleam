@@ -157,6 +157,7 @@ button.chip,.tab,.fab,.icon-btn,.btn,button.row,.seg button,.qa,.lf-check{min-wi
 /* ── 字段行 / 表格（备份、导入等） ───── */
 .field{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;font-size:13px}
 .field > span{color:var(--muted);flex:none}
+.field > .note{min-width:0;margin-bottom:0}
 .chip-group{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .chip-group .chip{min-width:58px;justify-content:center;padding:8px 12px;border-radius:10px;background:var(--bg);font-size:11.5px}
 .chip-group .chip.active{background:var(--accent-soft)}
