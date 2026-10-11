@@ -26,10 +26,18 @@ restored-result event must survive exactly once while the new main WebView is st
 
 Timeout/stale-generation callbacks are accelerated synthetic injections into the exact production
 callback paths. The permission diagnostic seeds a raw pending result into the real AndroidX
-registry without a permission request. It compares an ordinary ungated CapacitorWebView/Bridge
-host against MainActivity and explicitly reports callback call retention. Current Capacitor saves
-activity calls but does not persist its permission-call queue; null in both hosts is a documented
-inherited limitation, NOT full permission restoration acceptance. There is no microphone or system
+registry without a permission request. It directly recreates the stopped host, verifies that the
+original Activity never restarts to consume the pending result, and requires the callback receiver
+to be the distinct new Activity. It does not use ActivityScenario.recreate() for this pending flow.
+It compares an ordinary ungated CapacitorWebView/Bridge host against MainActivity and explicitly
+reports callback call retention. The earlier CI 38154622179 reported nonnull calls in both hosts,
+but that apparent restoration
+pass is retracted: ActivityScenario.recreate() first resumes the original host and flushed its
+pending result before recreation. The earlier evidence establishes old-instance stopped/resumed
+callback parity only. The corrected identity-verified probe must be rerun before any recreation
+retention conclusion. Current Capacitor saves activity calls but does not persist its permission-call
+queue. If the corrected probe reports null in both hosts, that is an inherited limitation,
+NOT full permission restoration acceptance. There is no microphone or system
 permission dialog, grant, revoke, or security-setting operation.
 
 Network-sensitive native adapters (`CapacitorHttp`, `GleamWebDav`, `GleamSpeech`) are replaced

@@ -20,6 +20,7 @@ public class BootResultProbePlugin extends Plugin {
     public static final AtomicInteger permissionResults = new AtomicInteger();
     public static volatile PluginCall activityCall;
     public static volatile PluginCall permissionCall;
+    public static volatile android.app.Activity permissionOwner;
     public static volatile boolean gateClosedAtActivityResult;
     public boolean restored;
     public String restoredMarker;
@@ -42,6 +43,7 @@ public class BootResultProbePlugin extends Plugin {
             ? "missing" : result.getData().getStringExtra("synthetic")));
     }
     @PermissionCallback private void permissionResult(PluginCall call) {
+        permissionOwner = getActivity();
         permissionCall = call;
         permissionResults.incrementAndGet();
         // Intentionally do not dereference or resolve null. This reports the inherited
