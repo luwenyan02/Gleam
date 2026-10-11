@@ -40,7 +40,10 @@ the original service workers to run. It logs four phases:
 2. First explicit navigation after replacement
 3. Worker update/activation without another test-initiated reload; the tracked
    update candidate must be activated and be both the active worker and page
-   controller, rechecked after asynchronous cache inspection
+   controller, rechecked after asynchronous cache inspection; old index revisions
+   must be gone. Async checks are polled via awaited `page.evaluate`, because
+   Playwright 1.59 `wait_for_function` treats a returned Promise as truthy before
+   its boolean resolves.
 4. Second explicit navigation, which must show the new script and About version
 
 Every phase reports the rendered About version, main module URL, worker/controller

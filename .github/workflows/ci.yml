@@ -22,6 +22,19 @@ jobs:
         working-directory: app
     steps:
       - uses: actions/checkout@v5
+      - name: Inspect Android runtime availability without changing the runner
+        run: |
+          id
+          if test -e /dev/kvm; then
+            ls -l /dev/kvm
+            test -r /dev/kvm && test -w /dev/kvm && echo KVM_ACCESSIBLE || echo KVM_NOT_ACCESSIBLE
+          else
+            echo KVM_ABSENT
+          fi
+          if test -n "$ANDROID_HOME"; then
+            test ! -d "$ANDROID_HOME/system-images" || find "$ANDROID_HOME/system-images" -maxdepth 3 -name package.xml
+            test ! -x "$ANDROID_HOME/emulator/emulator" || "$ANDROID_HOME/emulator/emulator" -version
+          fi
       - uses: actions/setup-node@v5
         with:
           node-version: 22

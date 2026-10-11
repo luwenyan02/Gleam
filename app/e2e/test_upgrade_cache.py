@@ -11,6 +11,7 @@ import mimetypes
 from pathlib import Path
 import re
 from threading import Lock, Thread
+from time import monotonic
 from urllib.parse import unquote, urlsplit
 
 from upgrade_fixtures import load_fixtures, module_url, safe_asset_path
@@ -134,6 +135,7 @@ WAIT_FOR_WORKER = """async (expectedModule) => {
     navigator.serviceWorker.controller === worker && !current.installing && !current.waiting &&
     (!window.__upgradeWorkerUpdate || window.__upgradeWorkerUpdate.worker === worker);
   if (!ready(registration)) return false;
+  let foundExpectedIndex = false;
   for (const name of await caches.keys()) {
     const cache = await caches.open(name);
     for (const key of await cache.keys()) {
@@ -143,15 +145,31 @@ WAIT_FOR_WORKER = """async (expectedModule) => {
       const html = await response.text();
       const source = new DOMParser().parseFromString(html, 'text/html')
         .querySelector('script[type="module"]')?.getAttribute('src');
-      if (source === expectedModule) {
-        // New precache entries alone do not prove activation. Any await above
-        // can let a new installation begin or change the active/controller pair.
-        return !!ready(await navigator.serviceWorker.getRegistration());
-      }
+      // During installation both revisions can coexist. An already-completed
+      // automatic update is acceptable only after old index revisions are gone.
+      if (source !== expectedModule) return false;
+      foundExpectedIndex = true;
     }
   }
-  return false;
+  // New precache entries alone do not prove activation. Any await above can
+  // change installation state or the active/controller pair.
+  return foundExpectedIndex && !!ready(await navigator.serviceWorker.getRegistration());
 }"""
+
+
+def wait_for_worker(page, expected_module, timeout_ms=30000):
+    # Playwright 1.59 wait_for_function treats the returned Promise as truthy
+    # before it resolves: an async predicate resolving false stops its polling.
+    # page.evaluate awaits the actual boolean; poll that value explicitly.
+    # https://github.com/microsoft/playwright/blob/v1.59.0/packages/playwright-core/src/server/frames.ts#L1397-L1409
+    deadline = monotonic() + timeout_ms / 1000
+    while monotonic() < deadline:
+        if page.evaluate(WAIT_FOR_WORKER, expected_module) is True:
+            return
+        remaining_ms = (deadline - monotonic()) * 1000
+        if remaining_ms > 0:
+            page.wait_for_timeout(min(100, remaining_ms))
+    raise AssertionError(f'Service worker did not become ready for {expected_module} within {timeout_ms} ms')
 
 
 def request_asset_path(target):
@@ -329,7 +347,7 @@ def run_diagnostic(browser, origin, state, report):
     try:
         page.goto(origin, wait_until='load')
         page.locator('#fab').wait_for(state='visible')
-        page.wait_for_function(WAIT_FOR_WORKER, arg=module_url(state.fixtures[OLD]), timeout=30000)
+        wait_for_worker(page, module_url(state.fixtures[OLD]))
         page.evaluate(SEED_STORAGE, SENTINEL)
         record('old_loaded', OLD, OLD)
 
@@ -339,7 +357,7 @@ def run_diagnostic(browser, origin, state, report):
 
         # The app/worker may already have updated. Do not require stale behavior.
         page.evaluate(START_WORKER_UPDATE)
-        page.wait_for_function(WAIT_FOR_WORKER, arg=module_url(state.fixtures[NEW]), timeout=30000)
+        wait_for_worker(page, module_url(state.fixtures[NEW]))
         record('after_worker_update_without_explicit_reload', NEW)
 
         page.reload(wait_until='load')

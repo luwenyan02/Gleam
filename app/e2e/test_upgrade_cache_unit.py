@@ -8,7 +8,7 @@ import stat
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import zipfile
 
 import test_upgrade_cache as diagnostic
@@ -237,12 +237,17 @@ if (scenario === 'install_starts_during_cache_read') {
   delete window.__upgradeWorkerUpdate;
 }
 const cache = {
-  keys: async () => [{url: 'http://local/index.html?revision=new'}],
-  match: async () => ({text: async () => {mutateDuringRead(); return '<fixture>';}})
+  keys: async () => scenario === 'old_and_new_index_coexist'
+    ? [{url: 'http://local/index.html?revision=old'}, {url: 'http://local/index.html?revision=new'}]
+    : [{url: 'http://local/index.html?revision=new'}],
+  match: async (key) => ({text: async () => {
+    mutateDuringRead();
+    return key.url.includes('revision=old') ? '<old-fixture>' : '<fixture>';
+  }})
 };
 global.caches = {keys: async () => ['fixture-cache'], open: async () => cache};
 global.DOMParser = class {
-  parseFromString() {return {querySelector: () => ({getAttribute: () => '/assets/new.js'})};}
+  parseFromString(html) {return {querySelector: () => ({getAttribute: () => html === '<old-fixture>' ? '/assets/old.js' : '/assets/new.js'})};}
 };
 (async () => {
   const result = await eval('(' + script + ')')('/assets/new.js');
@@ -325,11 +330,42 @@ Object.defineProperty(globalThis, 'navigator', {
     def test_failed_new_worker_cannot_pass_using_its_partial_cache(self):
         self.assertFalse(self.wait_result('failed_new_worker_left_populated_cache'))
 
+    def test_coexisting_old_and_new_cache_does_not_prove_completed_update(self):
+        self.assertFalse(self.wait_result('old_and_new_index_coexist'))
+
     def test_exact_new_worker_activated_and_controlling_page_passes(self):
         self.assertTrue(self.wait_result('stable_updated_worker'))
 
     def test_initial_worker_without_update_tracking_can_become_ready(self):
         self.assertTrue(self.wait_result('stable_initial_worker'))
+
+
+class WorkerPollingIntegrationTests(unittest.TestCase):
+    def test_async_false_is_polled_until_evaluate_resolves_true(self):
+        page = Mock()
+        # Playwright 1.59 treats an async predicate's Promise as truthy, stops
+        # polling, and returns its resolved false value without raising.
+        page.wait_for_function.return_value = False
+        page.evaluate.side_effect = [False, False, True]
+        diagnostic.wait_for_worker(page, '/assets/new.js', timeout_ms=1000)
+        self.assertEqual(page.evaluate.call_count, 3)
+        page.wait_for_function.assert_not_called()
+        self.assertEqual(page.wait_for_timeout.call_count, 2)
+
+    def test_a_never_ready_async_result_times_out_instead_of_passing(self):
+        page = Mock()
+        page.wait_for_function.return_value = False
+        page.evaluate.return_value = False
+        with self.assertRaisesRegex(AssertionError, 'did not become ready'):
+            diagnostic.wait_for_worker(page, '/assets/new.js', timeout_ms=0)
+        page.wait_for_function.assert_not_called()
+
+    def test_evaluation_failure_remains_a_test_failure(self):
+        page = Mock()
+        page.wait_for_function.return_value = False
+        page.evaluate.side_effect = RuntimeError('synthetic cache inspection failed')
+        with self.assertRaisesRegex(RuntimeError, 'cache inspection failed'):
+            diagnostic.wait_for_worker(page, '/assets/new.js', timeout_ms=1000)
 
 
 if __name__ == '__main__':
