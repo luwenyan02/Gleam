@@ -121,7 +121,7 @@ def run(page, width):
     assert page.evaluate("!JSON.stringify({...localStorage,...sessionStorage}).includes('synthetic-voice-test-key')")
     page.screenshot(path=str(OUT / f'settings-{width}.png'), animations='disabled')
     page.locator('[data-voice-clear-key]').click()
-    expect(page.locator('[data-voice-key-status]')).to_contain_text('只保存在')
+    expect(page.locator('[data-voice-key-status]')).to_contain_text('未设置')
     page.locator('#voice-bailian-key').fill('synthetic-voice-test-key')
     page.locator('[data-voice-save-key]').click(); expect(page.locator('[data-voice-key-status]')).to_contain_text('已保存')
     page.locator('#sp-settings [data-act="back"]').click()
@@ -132,8 +132,8 @@ def run(page, width):
     page.locator('#note').blur()
     page.locator('#keypad [data-k="9"]').click(); page.locator('#btn-voice').click()
     expect(page.locator('[data-sv-start]')).to_be_enabled()
-    expect(page.locator('[data-sv-consent]')).to_contain_text('阿里云百炼')
-    expect(page.locator('[data-sv-consent]')).to_contain_text('synthetic-workspace.cn-beijing.maas.aliyuncs.com')
+    expect(page.locator('[data-sv-start]')).to_have_accessible_name('开始说话，使用阿里云百炼')
+    expect(page.locator('[data-sv-consent]')).to_have_count(0)
     assert page.evaluate("window.__voiceCalls.filter(x=>x.method==='start').length") == 0
     image(page, 'consent', width)
     page.locator('[data-sv-close]').click(); expect(page.locator('#note')).to_have_value('原本的虚构草稿')
@@ -203,7 +203,7 @@ def web_mode(page,width):
     page.locator('[data-sv-close]').click();page.locator('#sheet-close').click()
     page.locator('[data-page="page-mine"]').click();page.get_by_role('button', name='应用设置', exact=True).click()
     expect(page.locator('#voice-bailian-key')).to_be_disabled()
-    expect(page.locator('[data-voice-key-status]')).to_contain_text('不接收或保存')
+    expect(page.locator('[data-voice-key-status]')).to_contain_text('仅 Android 可用')
 
 
 if __name__=='__main__':

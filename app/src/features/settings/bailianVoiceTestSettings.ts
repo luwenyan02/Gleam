@@ -1,5 +1,5 @@
 import { BailianVoiceConnectionTest } from '../../core/bailianVoiceConnectionTest';
-import { bailianVoiceDestination, getBailianVoiceConfig, type BailianVoiceConfig } from '../../core/bailianVoiceConfig';
+import { getBailianVoiceConfig, type BailianVoiceConfig } from '../../core/bailianVoiceConfig';
 import { shortVoiceError } from '../../core/bailianVoiceErrors';
 import { nativeSpeech, type NativeSpeechConfiguration } from '../../core/nativeSpeech';
 import { on } from '../../core/store';
@@ -22,13 +22,12 @@ export function setVoiceTestCredentialWritePending(pending: boolean): void {
 export function voiceConnectionTestHtml(supported: boolean, hasKey: boolean): string {
   return `<div class="ai-actions"><button class="chip" data-voice-test data-supported="${supported}" data-has-key="${hasKey}"${supported && hasKey ? '' : ' disabled'}>测试语音连接</button><button class="chip" data-voice-test-cancel hidden>取消测试</button></div>
     <section data-voice-test-consent hidden aria-label="确认语音连接测试">
-      <p class="tiny" data-voice-test-recipient></p>
-      <p class="tiny">同意后将使用已安全保存的语音 Key，向以上阿里云百炼地址发送鉴权与会话配置请求，可能产生服务商费用。本次不请求麦克风权限、不录音、不发送音频、文字或账本数据。</p>
-      <button class="chip" data-voice-test-confirm>同意并测试连接</button>
+      <p class="settings-status" data-voice-test-recipient></p>
+      <button class="chip" data-voice-test-confirm>开始测试</button>
     </section>
-    <p class="tiny" data-voice-test-status data-state="idle" role="status" aria-live="polite">尚未测试连接；保存 Key 不会调用服务</p>
+    <p class="settings-status" data-voice-test-status data-state="idle" role="status" aria-live="polite">未测试</p>
     <div class="ai-actions"><button class="chip" data-voice-test-copy hidden>复制诊断结果</button></div>
-    <p class="tiny" data-voice-test-copy-status role="status" aria-live="polite" hidden></p>`;
+    <p class="settings-status" data-voice-test-copy-status role="status" aria-live="polite" hidden></p>`;
 }
 
 export function mountVoiceConnectionTest(container: HTMLElement): () => void {
@@ -92,12 +91,13 @@ export function syncVoiceConnectionTest(container: HTMLElement): void {
   const status = q('[data-voice-test-status]');
   if (status) {
     status.dataset.state = current.error ? 'error' : current.pending ? 'preparing' : current.consent ? 'consent' : current.test.state;
-    status.textContent = current.error ?? (current.pending ? '正在核对本机设置…' : current.consent ? '核对接收方后，同意才会发起连接测试' : current.test.message);
+    status.textContent = current.error ?? (current.pending ? '正在核对设置…' : current.consent ? '' : current.test.message);
+    status.hidden = !status.textContent;
   }
 }
 
 function recipientText(config: BailianVoiceConfig): string {
-  return `接收方：阿里云百炼；地域：${config.region === 'beijing' ? '北京' : '新加坡'}；模型：${config.model}；域名：${bailianVoiceDestination(config)}`;
+  return `阿里云百炼 · ${config.region === 'beijing' ? '北京' : '新加坡'}`;
 }
 function currentDraftMatches(current: TestView, config: BailianVoiceConfig): boolean {
   const key = current.container.querySelector<HTMLInputElement>('#voice-bailian-key')?.value ?? '';
@@ -178,3 +178,4 @@ export function handleVoiceConnectionTestClick(target: HTMLElement, container: H
   else if (agree && !agree.disabled && current.consent) void confirm(current);
   return true;
 }
+

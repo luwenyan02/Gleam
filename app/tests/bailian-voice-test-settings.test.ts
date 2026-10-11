@@ -28,9 +28,9 @@ beforeEach(()=>{
 afterEach(()=>{dispose();setVoiceTestCredentialWritePending(false);vi.useRealTimers();vi.unstubAllGlobals();});
 it('requires test click and a second explicit consent; shows recipient and preserves state through refresh',async()=>{
  expect(mocks.testConnection).not.toHaveBeenCalled();click('[data-voice-test]');await flush();
- expect(mocks.testConnection).not.toHaveBeenCalled();expect(status().dataset.state).toBe('consent');expect(container.querySelector('[data-voice-test-recipient]').textContent).toContain('synthetic-space.cn-beijing.maas.aliyuncs.com');
- expect(container.querySelector('[data-voice-test-recipient]').textContent).toContain(config.model);
- syncVoiceConnectionTest(container as unknown as HTMLElement);expect(status().dataset.state).toBe('consent');click('[data-voice-test-confirm]');await flush();expect(mocks.testConnection).toHaveBeenCalledOnce();expect(mocks.start).not.toHaveBeenCalled();
+ expect(mocks.testConnection).not.toHaveBeenCalled();expect(status().dataset.state).toBe('consent');expect(container.querySelector('[data-voice-test-recipient]').textContent).toContain('阿里云百炼 · 北京');
+
+ syncVoiceConnectionTest(container as unknown as HTMLElement);expect(status().dataset.state).toBe('consent');click('[data-voice-test-confirm]');await flush();expect(mocks.testConnection).toHaveBeenCalledOnce();expect(mocks.testConnection).toHaveBeenCalledWith(expect.objectContaining(config));expect(mocks.start).not.toHaveBeenCalled();
 });
 it.each(['#voice-bailian-workspace','#voice-bailian-key','#voice-bailian-model'])('raw %s input revokes a displayed consent and advances render epoch',async selector=>{
  click('[data-voice-test]');await flush();const epoch=getVoiceSettingsEpoch();container.querySelector(selector).value+=' ';
@@ -52,8 +52,8 @@ it('a new raw key or workspace mismatch prevents consent and never transmits dra
  container.querySelector('#voice-bailian-key').value='';container.querySelector('#voice-bailian-workspace').value='different';click('[data-voice-test]');await flush();expect(status().dataset.state).toBe('error');expect(mocks.testConnection).not.toHaveBeenCalled();
 });
 
-it('the consent text discloses authentication, provider fees, and the no-audio scope',()=>{
- const html=voiceConnectionTestHtml(true,true);expect(html).toContain('可能产生服务商费用');expect(html).toContain('鉴权与会话配置请求');expect(html).toContain('不请求麦克风权限、不录音、不发送音频');
+it('test confirmation is a compact explicit action, without routine tutorial prose',()=>{
+ const html=voiceConnectionTestHtml(true,true);expect(html).toContain('开始测试');expect(html).toContain('data-voice-test-consent');expect(html).not.toContain('可能产生服务商费用');expect(html).not.toContain('鉴权与会话配置请求');
 });
 it('pending credential writes block testing until a new explicit click after completion',async()=>{
  setVoiceTestCredentialWritePending(true);click('[data-voice-test]');await flush();expect(mocks.configuration).not.toHaveBeenCalled();setVoiceTestCredentialWritePending(false);await flush();expect(mocks.testConnection).not.toHaveBeenCalled();click('[data-voice-test]');await flush();expect(status().dataset.state).toBe('consent');
@@ -100,3 +100,4 @@ it('idle/consent states cannot copy anything and clipboard failures never echo t
   invalidateVoiceConnectionTest();
   expect(container.querySelector('[data-voice-test-copy]').hidden).toBe(true);
 });
+

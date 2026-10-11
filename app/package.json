@@ -1,7 +1,7 @@
 {
   "name": "gleam-app",
   "private": true,
-  "version": "1.10.4",
+  "version": "1.10.5",
   "description": "拾光 · 本地优先的记账与生活记录 PWA",
   "type": "module",
   "scripts": {

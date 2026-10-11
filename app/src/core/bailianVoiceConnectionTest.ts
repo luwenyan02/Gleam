@@ -5,7 +5,7 @@ import type { NativeSpeechConfiguration, NativeSpeechPlugin } from './nativeSpee
 
 type ActiveTest = { id: string; timer?: ReturnType<typeof setTimeout> };
 export type VoiceConnectionTestState = 'idle' | 'testing' | 'success' | 'error';
-const UNTESTED = '尚未测试连接；保存 Key 不会调用服务';
+const UNTESTED = '未测试';
 /** Explicitly consented configuration probe. It never calls start, stop, or microphone APIs. */
 export class BailianVoiceConnectionTest {
   private active?: ActiveTest;
@@ -22,7 +22,7 @@ export class BailianVoiceConnectionTest {
     const run: ActiveTest = { id: crypto.randomUUID() };
     if (!claimVoiceOperation(this.bridge, run)) { this.fail('SPEECH_BUSY'); return; }
     this.active = run;
-    this.update('testing', '正在验证连接与会话配置，不使用麦克风…');
+    this.update('testing', '正在测试连接…');
     run.timer = setTimeout(() => {
       if (this.active !== run) return;
       this.cancelActive(); this.fail('SPEECH_TIMEOUT', 'connecting');
@@ -43,7 +43,7 @@ export class BailianVoiceConnectionTest {
       if (typeof fields.connected !== 'boolean') bridgeFailure('BRIDGE_RESULT_CONNECTED_TYPE');
       if (fields.connected !== true) bridgeFailure('BRIDGE_RESULT_CONNECTED_FALSE');
       this.finish(run);
-      this.update('success', '连接与会话配置验证通过；未测试麦克风或转写，也未发送音频');
+      this.update('success', '连接通过 · 录音未测试');
     } catch (error) {
       if (this.active !== run || this.disposed) return;
       // Cancel is idempotent; also clean up malformed bridge results.
@@ -66,3 +66,4 @@ export class BailianVoiceConnectionTest {
     clearTimeout(run.timer); this.active = undefined; releaseVoiceOperation(this.bridge, run);
   }
 }
+

@@ -109,7 +109,7 @@ def main() -> None:
                     page.wait_for_selector('#sp-settings [data-freq="daily"].active')
                     page.click('#sp-settings [data-sw="ntf-backup"]')
                     page.wait_for_selector('#sp-settings [data-sw="ntf-backup"][aria-checked="true"]')
-                    assert '首页显示应用内提醒' in page.inner_text('#sp-settings section[aria-label="通知"]')
+                    assert '首页提醒' in page.inner_text('#sp-settings section[aria-label="通知"]')
                     page.screenshot(path=str(OUT / f'settings-{width}.png'))
                 page.click(f'#{subpage} .sub-head [data-act="back"]')
                 page.wait_for_selector(f'#{subpage}', state='detached')

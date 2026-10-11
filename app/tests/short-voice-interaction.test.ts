@@ -79,7 +79,7 @@ it('a late older local preview never replaces the edited text destination snapsh
   expect(mocks.revoke).toHaveBeenCalledWith(snapshot('午餐28元'));
   q('send').fire(); expect(mocks.approve).toHaveBeenCalledWith(snapshot('晚餐20元'));
 });
-it('re-record first reopens the audio recipient and fee consent without starting', async () => {
+it('re-record returns to an explicit start without starting automatically', async () => {
   mocks.callbacks.onText('午餐28元'); await flush(); q('rerecord').fire();
   expect(q('voice-prompt').hidden).toBe(false); expect(mocks.start).not.toHaveBeenCalled();
   expect(q('text').value).toBe('午餐28元'); q('start').fire(); expect(mocks.start).toHaveBeenCalledOnce();
@@ -131,7 +131,7 @@ it('cancelled AI results cannot overwrite the text or restore the apply button',
   expect(q('text').value).toBe('午餐28元'); expect(q('apply').disabled).toBe(true); expect(q('result').hidden).toBe(true);
 });
 
-it('out-of-order configuration reads cannot replace the destination the user has just seen', async () => {
+it('out-of-order configuration reads cannot replace the latest configured destination', async () => {
   let resolveA!: (value: unknown) => void;
   const configA = { region: 'beijing', workspace: 'older-space', model: 'older-model' };
   const configB = { region: 'singapore', workspace: 'current-space', model: 'current-model' };
@@ -140,10 +140,10 @@ it('out-of-order configuration reads cannot replace the destination the user has
   mocks.config.mockImplementationOnce(() => new Promise(done => { resolveA = done; })).mockResolvedValueOnce(configB);
   mocks.events.get('settings-changed')!(); await flush(); expect(q('start').disabled).toBe(true);
   mocks.events.get('settings-changed')!(); await flush();
-  expect(q('consent').innerHTML).toContain('current-model'); expect(q('start').disabled).toBe(false);
+  expect(q('start').disabled).toBe(false);
   resolveA(configA); await flush(); q('start').fire();
   expect(mocks.start).toHaveBeenCalledWith(configB, readinessB);
-  expect(q('consent').innerHTML).toContain('current-model');
+  expect(mocks.start).toHaveBeenCalledOnce();
 });
 
 it('background during the edit debounce cancels pending local preparation', async () => {
@@ -151,4 +151,14 @@ it('background during the edit debounce cancels pending local preparation', asyn
   mocks.events.get('pagehide')!(); await vi.advanceTimersByTimeAsync(500);
   expect(mocks.prepare).not.toHaveBeenCalled(); expect(q('send-panel').hidden).toBe(true);
   expect(q('preview').hidden).toBe(false); expect(q('text').value).toBe('午餐28元');
+});
+
+it('routine voice UI contains only operations, status and review fields, with no explanatory sections', async () => {
+  for (const copy of ['可能产生费用', '语音服务详情', '使用说明', '发送内容详情', '候选分类与账户名称']) expect(root.innerHTML).not.toContain(copy);
+  expect(root.innerHTML).toContain('>发送并生成草稿</button>');
+  expect(root.innerHTML).not.toContain('同意并开始');
+  expect(root.innerHTML).not.toContain('class="tiny"');
+  expect(mocks.start).not.toHaveBeenCalled(); expect(mocks.recognize).not.toHaveBeenCalled();
+  mocks.callbacks.onText('午餐28元'); await flush();
+  expect(q('send-panel').hidden).toBe(false); expect(mocks.recognize).not.toHaveBeenCalled();
 });

@@ -10,7 +10,7 @@ import { esc } from '../../core/esc';
 import { on } from '../../core/store';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
 import { testAiConnection, listAiModels } from '../../core/repo/aiRepo';
-import { AI_PROVIDERS, MODEL_CATALOG_CHECKED_ON, buildModelChoices, matchProviderId, modelPreset, recentModels } from './providers';
+import { AI_PROVIDERS, buildModelChoices, matchProviderId, modelPreset, recentModels } from './providers';
 import { ensurePermission } from '../../core/notify';
 import { registerSubpage, openSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
@@ -28,6 +28,7 @@ import { formatAccountingRange } from '../../core/period';
 import { bailianVoiceSettingsHtml, handleVoiceSettingsChange, handleVoiceSettingsInput, handleVoiceSettingsClick, isVoiceKeyWritePending } from './bailianVoiceSettings';
 
 import { getVoiceSettingsEpoch, mountVoiceConnectionTest, syncVoiceConnectionTest } from './bailianVoiceTestSettings';
+import { openSettingsManual } from './settingsManual';
 
 let body: HTMLElement | undefined;
 let sheetAbort: AbortController | undefined;
@@ -108,7 +109,6 @@ async function refresh(): Promise<void> {
       <div class="field"><span>应用锁（PIN 码）</span>${switchHtml('pin', !!pin, '应用锁')}</div>
       ${pin ? `<div class="field"><span>修改 PIN 码</span><button class="chip" data-act="change-pin">修改</button></div>` : ''}
       ${pin && bioOk ? `<div class="field"><span>Touch ID / 生物识别</span>${switchHtml('bio', !!webauthn, '生物识别解锁')}</div>` : ''}
-      <p class="tiny">开启后每次打开拾光需解锁；PIN 以加盐哈希保存在本机，不上传</p>
     </section>
 
     <section class="card" aria-label="外观">
@@ -116,7 +116,6 @@ async function refresh(): Promise<void> {
       <div class="field"><span>主题模式</span>
         <div class="chip-group">${themeChip('light', '浅色')}${themeChip('dark', '深色')}${themeChip('system', '跟随系统')}</div>
       </div>
-      <p class="tiny">跟随系统时随设备深浅色自动切换</p>
     </section>
 
     <section class="card" aria-label="通知">
@@ -124,19 +123,16 @@ async function refresh(): Promise<void> {
       <div class="field"><span>周期账入账提醒</span>${switchHtml('ntf-recurring', ntfRecurring as boolean, '周期账入账提醒')}</div>
       <div class="field"><span>信用卡还款日提醒</span>${switchHtml('ntf-credit', ntfCredit as boolean, '信用卡还款日提醒')}</div>
       <div class="field"><span>备份到期提醒</span>${switchHtml('ntf-backup', ntfBackup as boolean, '备份到期提醒')}</div>
-      <p class="tiny">${isNative
-        ? '周期账当日 09:00、还款日当天 10:00、备份到期次日 09:00 提醒；首次开启需授权系统通知'
-        : '开启后在拾光首页显示应用内提醒；关闭页面后不会在系统通知栏准时推送'}</p>
+      <div class="field"><span>提醒方式</span><span class="sub">${isNative ? '系统通知' : '首页提醒'}</span></div>
     </section>
 
     <section class="card" aria-label="记账偏好">
       <h3 class="card-title">记账偏好</h3>
       <div class="field"><span>报销到账记为收入</span>${switchHtml('reimburse', countAsIncome as boolean, '报销到账记为收入')}</div>
-      <p class="tiny">开＝到账记一笔「报销」收入；关＝冲抵原支出。与报销页开关同步</p>
       <div class="field"><span>每月起始日</span>
         <button class="pick-trigger" id="accounting-month-start" type="button" aria-haspopup="listbox">每月 ${monthStartDay} 日</button>
       </div>
-      <p class="tiny">当前周期 ${currentAccountingMonth}：${formatAccountingRange(currentAccountingRange)}。首页总览、月报表和月预算采用此范围；周与年仍按自然周期。</p>
+      <div class="field"><span>本期范围</span><span class="sub">${formatAccountingRange(currentAccountingRange)}</span></div>
       <div class="field"><span>预算自动延续到下月</span>${switchHtml('budget', autoRenew as boolean, '预算自动延续')}</div>
     </section>
 
@@ -145,13 +141,11 @@ async function refresh(): Promise<void> {
       <div class="field"><span>备份提醒</span>
         <div class="chip-group">${freqChip('off', '关')}${freqChip('daily', '每日')}${freqChip('weekly', '每周')}</div>
       </div>
-      <p class="tiny">网页版到期时在首页与备份页提醒「该备份了」；生成与恢复在「我的 → 备份与恢复」</p>
     </section>
 
     <section class="card" aria-label="数据">
       <h3 class="card-title">数据</h3>
       <div class="field"><span>回收站保留</span><span class="sub">${retention} 天后自动清除</span></div>
-      <p class="tiny">删除的账单先进回收站，可随时恢复；到期由系统自动清理</p>
     </section>
 
     <section class="card" aria-label="AI 记账">
@@ -165,8 +159,7 @@ async function refresh(): Promise<void> {
           <button id="ai-model-pick" class="ai-pick-btn" type="button">${esc(modelLabel)}</button>
         </label>
         <label>模型名（可修改）<input id="ai-model" type="text" value="${esc(aiModel)}" placeholder="如 qwen3.8-flash / kimi-k3" autocomplete="off"></label>
-        <p class="tiny" id="ai-model-capability">${selectedModel ? selectedModel.vision ? '当前预设支持图片与文本记账' : '当前预设仅支持文本；识别截图请切换图片模型' : '自定义模型：图片识别能力以接口实际支持为准'}</p>
-        <p class="tiny">预设核对于 ${MODEL_CATALOG_CHECKED_ON} · 近期按最近三个月筛选，候选最多 10 个；离线目录不会自动联网更新。“获取模型列表”结果另行标注，日期与能力未核验。</p>
+        <div class="field"><span>识别类型</span><span class="sub" id="ai-model-capability">${selectedModel ? selectedModel.vision ? '图片、文字' : '文字' : '以接口为准'}</span></div>
         <label>API Key<input id="ai-key" type="password" value="${esc(aiKey ?? '')}" placeholder="sk-..." autocomplete="off"></label>
         <label>静默入账置信度阈值
           <div class="ai-thres"><input id="ai-thres" type="range" min="50" max="100" step="5" value="${aiThreshold}"><span class="num" id="ai-thres-val">${aiThreshold}%</span></div>
@@ -178,15 +171,13 @@ async function refresh(): Promise<void> {
           <button class="chip" data-act="ai-test">测试连接</button>
         </div>
       </div>
-      <p class="tiny">识别请求直连你填写的接口；${secretStore.kind === 'android-keystore' ? 'Key 由 Android 系统 Keystore 加密保存' : '浏览器版 Key 仅保留在当前标签页会话，关闭后需重新输入'}。置信度达阈值且分类账户齐全时自动入账，否则进收件箱待确认</p>
     </section>
 
     ${voiceSettings}
     <section class="card" aria-label="关于">
       <h3 class="card-title">关于拾光</h3>
       <div class="field"><span>版本</span><span class="sub">v${APP_VERSION}</span></div>
-      <p class="sub" style="padding:4px 0">拾光是一款极简暖调记账应用：记录每一笔收支与生活印记，让时间留下温度。</p>
-      <p class="tiny">账本默认保存在本机；仅在你主动启用云备份或 AI 识别时，将必要数据发送到所配置的外部服务</p>
+      <div class="field"><span>使用手册</span><button class="chip" data-act="settings-manual">查看</button></div>
     </section>`;
 
   // 固定信息架构：记账偏好 → 数据与备份 → 智能能力与通知 → 外观与安全 → 关于。
@@ -287,6 +278,8 @@ export function initSettings(): void {
         } else if (themeMode) {
           // 主题切换：setSetting 后 core/theme.ts 监听 settings-changed 自动应用
           void setSetting('theme.mode', themeMode).then(() => refresh());
+        } else if (act === 'settings-manual') {
+          openSettingsManual();
         } else if (act === 'change-pin') {
           openPinSheet('change');
         } else if (act === 'ai-test') {
@@ -445,3 +438,4 @@ export function initSettings(): void {
   // 报销页等处修改同一 key 时保持双向同步
   on('settings-changed', () => void refresh());
 }
+

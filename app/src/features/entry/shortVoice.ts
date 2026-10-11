@@ -3,7 +3,7 @@ import { formatFen } from '../../core/money';
 import { on } from '../../core/store';
 import { BailianVoiceSession, type ShortVoiceState } from '../../core/bailianVoiceSession';
 import { iconHtml } from '../../assets/icons';
-import { getBailianVoiceConfig, bailianVoiceDestination, type BailianVoiceConfig } from '../../core/bailianVoiceConfig';
+import { getBailianVoiceConfig, type BailianVoiceConfig } from '../../core/bailianVoiceConfig';
 import { nativeSpeech, type NativeSpeechConfiguration } from '../../core/nativeSpeech';
 import {
   prepareVoiceRecognition, approveVoiceRecognition, recognizeVoiceDraft, revokeVoicePreview,
@@ -27,8 +27,7 @@ export function openShortVoice(options: ShortVoiceOptions): () => void {
     <header class="sheet-head"><h3>短语音记账</h3><button class="icon-btn" data-sv-close aria-label="关闭短语音">×</button></header>
     <div class="short-voice-content">
       <div data-sv-voice-prompt>
-        <div class="short-voice-consent" data-sv-consent>正在核对语音设置…</div>
-        <button class="btn primary short-voice-start" data-sv-start disabled>${iconHtml('ic-mic', 20)} 同意并开始说话</button>
+        <button class="btn primary short-voice-start" data-sv-start disabled aria-label="开始说话，使用阿里云百炼">${iconHtml('ic-mic', 20)} 开始说话</button>
       </div>
       <div class="short-voice-activity" data-sv-activity data-state="idle" aria-hidden="true" hidden>
         <div class="short-voice-orb">${iconHtml('ic-mic', 32)}<span class="short-voice-ring"></span></div>
@@ -42,12 +41,9 @@ export function openShortVoice(options: ShortVoiceOptions): () => void {
       </div>
       <button class="btn ghost" data-sv-preview hidden>重新准备识别</button>
       <section class="short-voice-send" data-sv-send-panel hidden>
-        <p class="short-voice-ai-consent">将以上文字与候选名称交给文字 AI，可能产生费用。</p><p data-sv-destination></p>
-        <details><summary tabindex="0">发送内容详情</summary><p data-sv-candidates></p><p>仅包含以上文字、候选分类与账户名称及识别规则。</p></details>
-        <button class="btn primary" data-sv-send>同意发送并生成草稿</button>
+        <button class="btn primary" data-sv-send>发送并生成草稿</button>
       </section>
-      <section class="short-voice-result" data-sv-result hidden><h4>核对这笔草稿</h4><dl data-sv-fields></dl><p class="tiny">${esc(options.applyNote)}</p><button class="btn primary" data-sv-apply>${esc(options.applyLabel)}</button></section>
-      <details class="short-voice-help"><summary tabindex="0">使用说明</summary><p>每次说一笔支出或收入，最长30秒。转账、借贷、还款、退款和报销请手动记账。拾光不保存录音；生成草稿后仍需核对并保存。</p></details>
+      <section class="short-voice-result" data-sv-result hidden><h4>核对这笔草稿</h4><dl data-sv-fields></dl><button class="btn primary" data-sv-apply>${esc(options.applyLabel)}</button></section>
     </div></section>`;
   document.body.appendChild(root);
   const q = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
@@ -156,9 +152,7 @@ export function openShortVoice(options: ShortVoiceOptions): () => void {
     void prepareVoiceRecognition(input.value).then(result => {
       if (closed || token !== revision) { revokeVoicePreview(result); return; }
       preview = result;
-      q('[data-sv-destination]').textContent = `${result.destination.baseUrl} · ${result.destination.model}`;
-      q('[data-sv-candidates]').textContent = `分类：${result.categoryNames.join('、') || '无'}\n账户：${result.accountNames.join('、') || '无'}`;
-      q('[data-sv-send-panel]').hidden = false; status('核对文字后生成草稿');
+      q('[data-sv-send-panel]').hidden = false; status('');
     }).catch(error => { if (!closed && token === revision) { previewError = true; status(error instanceof Error ? error.message : '准备失败，请重试'); } })
       .finally(() => { if (!closed && token === revision) { preparing = false; controls(); } });
   }
@@ -199,8 +193,6 @@ export function openShortVoice(options: ShortVoiceOptions): () => void {
       try { loadedConfig = await getBailianVoiceConfig(); } catch { loadedConfig = undefined; }
       if (closed || token !== configRevision) return;
       readiness = native; config = loadedConfig;
-      const recipient = config ? `阿里云百炼（${config.region === 'beijing' ? '北京' : '新加坡'}）` : '阿里云百炼';
-      q('[data-sv-consent]').innerHTML = `<p>本次声音将发送给${recipient}，可能产生费用。</p><details><summary tabindex="0">语音服务详情</summary><p>${config ? `${esc(config.model)}<br>${esc(bailianVoiceDestination(config))}<br>` : ''}最长30秒；拾光不保存录音。</p></details>`;
       if (!native.supported) status('百炼短语音仅支持 Android 安装包；这里可手动输入文字');
       else if (!native.hasKey || !config) status('请先在「我的 → 设置 → 百炼短语音」保存独立 Key、地域与业务空间');
       controls();

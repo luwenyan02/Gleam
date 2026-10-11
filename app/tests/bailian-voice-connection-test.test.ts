@@ -15,12 +15,12 @@ afterEach(()=>vi.useRealTimers());
 it('calls only the explicit no-audio API once, and success describes only the tested scope',async()=>{
  const s=setup();expect(s.bridge.testConnection).not.toHaveBeenCalled();const run=s.test.start(config,readiness);await s.test.start(config,readiness);
  expect(s.bridge.testConnection).toHaveBeenCalledOnce();expect(s.bridge.start).not.toHaveBeenCalled();expect(s.bridge.testConnection).toHaveBeenCalledWith({...config,sessionId:s.id(),expectedCredentialRevision:readiness.credentialRevision,consent:true,userInitiated:true});
- s.pending[0].resolve({sessionId:s.id(),connected:true});await run;expect(s.test.state).toBe('success');expect(s.test.message).toContain('未测试麦克风或转写');expect(s.test.busy).toBe(false);
+ s.pending[0].resolve({sessionId:s.id(),connected:true});await run;expect(s.test.state).toBe('success');expect(s.test.message).toContain('录音未测试');expect(s.test.busy).toBe(false);
 });
 it('invalidating config or raw drafts cancels and ignores late results, including after another run starts',async()=>{
  const s=setup();const first=s.test.start(config,readiness);const old=s.id();s.test.invalidate();expect(s.bridge.cancel).toHaveBeenCalledWith({sessionId:old});
  const next=s.test.start(config,readiness);const current=s.id();s.pending[0].resolve({sessionId:old,connected:true});await first;expect(s.test.state).toBe('testing');
- s.pending[1].resolve({sessionId:current,connected:true});await next;s.test.invalidate();expect(s.test.state).toBe('idle');expect(s.test.message).not.toContain('验证通过');
+ s.pending[1].resolve({sessionId:current,connected:true});await next;s.test.invalidate();expect(s.test.state).toBe('idle');expect(s.test.message).not.toContain('连接通过');
 });
 it('timeout is bounded, cancels native work, and never accepts a late successful result',async()=>{
  vi.useFakeTimers();const s=setup();const run=s.test.start(config,readiness);const id=s.id();await vi.advanceTimersByTimeAsync(35_000);expect(s.bridge.cancel).toHaveBeenCalledWith({sessionId:id});expect(s.test.state).toBe('error');expect(s.test.message).toContain('SPEECH_TIMEOUT');
@@ -62,3 +62,4 @@ it.each([
   expect(s.bridge.cancel).toHaveBeenCalledOnce();
   expect(s.bridge.start).not.toHaveBeenCalled();
 });
+

@@ -40,8 +40,8 @@ def run(page, width):
     def consent():
         page.locator('[data-voice-test]').click()
         expect(page.locator('[data-voice-test-consent]')).to_be_visible()
-        expect(page.locator('[data-voice-test-recipient]')).to_contain_text('synthetic-workspace.cn-beijing.maas.aliyuncs.com')
-        expect(page.locator('[data-voice-test-consent]')).to_contain_text('费用')
+        expect(page.locator('[data-voice-test-recipient]')).to_contain_text('阿里云百炼 · 北京')
+        expect(page.locator('[data-voice-test-confirm]')).to_have_text('开始测试')
 
     consent()
     assert count('testConnection') == 0

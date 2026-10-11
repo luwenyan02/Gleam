@@ -26,9 +26,8 @@ export async function bailianVoiceSettingsHtml(): Promise<string> {
       <label>独立语音 API Key<input id="voice-bailian-key" type="password" value="" maxlength="512" placeholder="${readiness.hasKey ? '已安全保存，输入新 Key 可替换' : '在手机上填写百炼语音 Key'}" autocomplete="new-password"${readiness.supported && !keyWritePending ? '' : ' disabled'}></label>
     </div>
     <div class="ai-actions"><button class="chip" data-voice-save-key${readiness.supported && !keyWritePending ? '' : ' disabled'}>保存语音 Key</button><button class="chip" data-voice-clear-key${readiness.supported && readiness.hasKey && !keyWritePending ? '' : ' disabled'}>清除语音 Key</button></div>
-    <p class="tiny" data-voice-key-status role="status">${readiness.supported ? readiness.hasKey ? '语音 Key 已保存到本机' : '语音 Key 只保存在本机，需单独填写' : '仅支持 Android；网页版不接收或保存 Key'}</p>
+    <p class="settings-status" data-voice-key-status role="status">${readiness.supported ? readiness.hasKey ? 'Key 已保存' : 'Key 未设置' : '仅 Android 可用'}</p>
     ${voiceConnectionTestHtml(readiness.supported && !keyWritePending, readiness.hasKey)}
-    <details class="voice-settings-help"><summary>使用与隐私说明</summary><p class="tiny">语音 Key 独立于文字 AI，通过 Android Keystore 加密保存，不写入安装包、普通备份或账本。保存 Key 不调用服务。</p><p class="tiny">录音前会确认将声音发送给百炼，可能产生费用；拾光不保存录音。每次30秒内说一笔支出或收入，核对文字后生成草稿。</p></details>
   </section>`;
 }
 

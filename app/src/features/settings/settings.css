@@ -32,8 +32,10 @@
 /* 语音诊断的长域名/错误代码在窄屏换行，操作仍保持可触达。 */
 [data-voice-test-recipient],[data-voice-test-status]{overflow-wrap:anywhere;color:var(--muted)}
 [data-voice-test-consent]{margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:calc(var(--r) - 4px)}
-[data-voice-test-consent] .tiny{margin-bottom:8px;color:var(--muted)}
+[data-voice-test-consent] .settings-status{margin-bottom:8px;color:var(--muted)}
 [data-voice-test],[data-voice-test-confirm],[data-voice-test-cancel]{min-height:44px}
 
-.voice-settings-help summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-size:13px;color:var(--muted)}
-.voice-settings-help summary::after{content:'›';margin-left:6px;transform:rotate(90deg)}.voice-settings-help[open] summary::after{transform:rotate(-90deg)}
+.settings-status{font-size:13px;line-height:1.5;margin:4px 0;overflow-wrap:anywhere;color:var(--muted)}
+.settings-manual{font-size:14px;line-height:1.75;color:var(--fg);overflow-wrap:anywhere}
+.settings-manual section+section{margin-top:22px}.settings-manual h4{font-size:15px;margin:0 0 8px}.settings-manual p{margin:0 0 10px}
+#sp-settings .field .sub{text-align:right;overflow-wrap:anywhere}

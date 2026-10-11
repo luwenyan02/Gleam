@@ -32,7 +32,7 @@ def run(page, width, motion):
         page.screenshot(path=str(OUT / f'{name}-{width}-{motion}.png'), animations='disabled')
 
     expect(activity).to_be_hidden(); assert count('start') == 0 and not requests
-    expect(page.locator('[data-sv-consent]')).to_contain_text('费用')
+    expect(page.locator('[data-sv-consent]')).to_have_count(0)
     capture('ready')
     page.locator('[data-sv-start]').click()
     expect(activity).to_have_attribute('data-state', 'connecting'); expect(activity).to_be_visible()
