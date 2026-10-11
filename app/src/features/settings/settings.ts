@@ -15,7 +15,7 @@ import { ensurePermission } from '../../core/notify';
 import { registerSubpage, openSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { showToast } from '../shell/toast';
-import { APP_VERSION } from '../backup/skbak';
+import { appVersionText, getAppVersion, interfaceVersionText } from '../../core/appVersion';
 import {
   setPin, verifyPin, clearPin, biometricAvailable, enrollBiometric,
 } from './lock';
@@ -61,12 +61,13 @@ async function refresh(): Promise<void> {
   const voiceEpoch = getVoiceSettingsEpoch();
   const aiKeyEpoch = getAiKeySettingsEpoch();
   const isNative = Capacitor.isNativePlatform();
-  const [pin, webauthn, bioOk, countAsIncome, autoRenew, backupAuto, retention, themeMode, monthStartDay] = await Promise.all([
+  const [pin, webauthn, bioOk, countAsIncome, autoRenew, backupAuto, retention, themeMode, monthStartDay, appVersion] = await Promise.all([
     getSetting('security.pin'), getSetting('security.webauthn'), biometricAvailable(),
     getSetting('reimburse.countAsIncome'),
     getSetting('budget.autoRenew'), getSetting('backup.auto'), getSetting('trash.retentionDays'),
     getSetting('theme.mode'),
     getSetting('accounting.monthStartDay'),
+    getAppVersion(),
   ]);
   if (!el.isConnected) return;
   const voiceSettings = await bailianVoiceSettingsHtml();
@@ -98,6 +99,7 @@ async function refresh(): Promise<void> {
     : '自定义';
   const modelLabel = aiModel || '选择模型';
   const selectedModel = modelPreset(aiBase, aiModel);
+  const interfaceVersion = interfaceVersionText(appVersion);
 
   if (token !== settingsRefreshToken || !el.isConnected) return;
   // A slow settings read must never restore stale readiness, consent, or test success.
@@ -184,7 +186,8 @@ async function refresh(): Promise<void> {
     ${voiceSettings}
     <section class="card" aria-label="关于">
       <h3 class="card-title">关于拾光</h3>
-      <div class="field"><span>版本</span><span class="sub">v${APP_VERSION}</span></div>
+      <div class="field"><span>版本</span><span class="sub" data-app-version>${esc(appVersionText(appVersion))}</span></div>
+      ${interfaceVersion ? `<div class="field"><span>界面版本</span><span class="sub" data-interface-version>${esc(interfaceVersion)}</span></div>` : ''}
       <div class="field"><span>使用手册</span><button class="chip" data-act="settings-manual">查看</button></div>
     </section>`;
 

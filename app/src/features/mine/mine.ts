@@ -7,7 +7,8 @@
  * 视觉结构与原型 index.html #page-mine（L740-762）一致。
  */
 import './mine.css';
-import { APP_VERSION } from '../backup/skbak';
+import { aboutVersionText, appVersionText, getAppVersion, type AppVersionInfo } from '../../core/appVersion';
+import { esc } from '../../core/esc';
 import { iconHtml } from '../../assets/icons';
 import { on } from '../../core/store';
 import { formatFenCny } from '../../core/money';
@@ -22,6 +23,7 @@ import { showToast } from '../shell/toast';
 let body: HTMLElement | undefined;
 /** 并发刷新令牌 */
 let refreshToken = 0;
+let displayedVersion: AppVersionInfo | undefined;
 
 function curMonth(): string {
   const d = new Date();
@@ -51,10 +53,11 @@ async function refresh(): Promise<void> {
   if (!el?.isConnected) return;
   const token = ++refreshToken;
   const month = curMonth();
-  const [entries, budget, usage, contacts] = await Promise.all([
-    listEntries(), getBudget(month), budgetUsage(month), listLoanAccounts(),
+  const [entries, budget, usage, contacts, appVersion] = await Promise.all([
+    listEntries(), getBudget(month), budgetUsage(month), listLoanAccounts(), getAppVersion(),
   ]);
   if (token !== refreshToken || !el.isConnected) return;
+  displayedVersion = appVersion;
 
   /* 头部统计：记账天数（有记录的自然日）与流水笔数 */
   const days = new Set(entries.map((e) => dayKey(e.occurredAt))).size;
@@ -105,7 +108,7 @@ async function refresh(): Promise<void> {
       <h3>关于和帮助</h3><div class="card list">
       <button class="row" data-about>
         <span class="e-ic">${iconHtml('ic-file', 18)}</span>关于拾光
-        <span class="row-note">v${APP_VERSION} · PWA</span>
+        <span class="row-note" data-app-version>${esc(appVersionText(appVersion))} · ${appVersion.platform}</span>
         <span class="chev">${iconHtml('ic-right', 15)}</span>
       </button>
       </div>
@@ -128,7 +131,7 @@ export function initMine(): void {
           try { openSubpage(sub.dataset.sub!); } catch { showToast('该功能即将上线'); }
           return;
         }
-        if (target.closest('[data-about]')) showToast(`拾光 v${APP_VERSION} · 记录，是为了被时间照亮`);
+        if (target.closest('[data-about]') && displayedVersion) showToast(`${aboutVersionText(displayedVersion)} · 记录，是为了被时间照亮`);
       });
       void refresh();
     },

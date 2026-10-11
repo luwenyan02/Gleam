@@ -1,4 +1,5 @@
 """百炼短语音：合成原生桥、虚构账单、模拟文字模型；绝不调用麦克风或真实服务。"""
+import json
 import os
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
@@ -15,6 +16,7 @@ MOCK_NATIVE = r'''(() => {
   window.__voiceText = '今天午餐28.01元，现金'; window.__voiceError = null;
   window.__voicePending = new Map(); window.__voiceListeners = new Map();
   window.__micCalls = 0;
+  window.__appInfoCalls = 0;
   navigator.mediaDevices.getUserMedia = async () => { window.__micCalls++; throw new Error('REAL_MIC_FORBIDDEN'); };
   const methods = (names, callbacks=[]) => [...names.map(name => ({name,rtype:'promise'})), ...callbacks.map(name => ({name,rtype:'callback'}))];
   const secret = {'ai.apiKey':'synthetic-text-test-key'};
@@ -45,7 +47,7 @@ MOCK_NATIVE = r'''(() => {
       {name:'GleamSpeech',methods:methods(['configuration','setKey','clearKey','invalidateConfiguration','testCandidate','commitTestedKey','testConnection','start','stop','cancel'],['addListener','removeListener'])},
       {name:'GleamSecrets',methods:methods(['get','set','remove'])},
       {name:'GleamEntry',methods:methods(['setShortcuts','updateWidget'])},
-      {name:'App',methods:methods(['getLaunchUrl','exitApp'],['addListener','removeListener'])},
+      {name:'App',methods:methods(['getInfo','getLaunchUrl','exitApp'],['addListener','removeListener'])},
     ],
     nativeCallback(plugin, method, options, callback) {
       if (plugin === 'GleamSpeech' && method === 'addListener') {
@@ -55,6 +57,11 @@ MOCK_NATIVE = r'''(() => {
       return 'mock-listener';
     },
     async nativePromise(plugin, method, options={}) {
+      if (plugin === 'App' && method === 'getInfo') {
+        window.__appInfoCalls++;
+        if (window.__appInfoFailure) throw new Error('synthetic package info unavailable');
+        return {name:'拾光',id:'com.gleam.shiguang',build:'synthetic-build',version:window.__appVersion ?? __MOCK_APP_VERSION__};
+      }
       if (plugin === 'GleamSecrets') {
         window.__secretCalls.push({method,key:options.key});
         if (options.key.startsWith('voice.bailian.')) throw {code:'VOICE_SECRET_READBACK_FORBIDDEN'};
@@ -133,7 +140,7 @@ MOCK_NATIVE = r'''(() => {
       return {};
     },
   };
-})()'''
+})()'''.replace('__MOCK_APP_VERSION__', json.dumps(json.loads((Path(__file__).parents[1] / 'package.json').read_text())['version']))
 
 
 def seed_config(page):
