@@ -40,6 +40,22 @@ def run(page, width, motion):
     expect(manual).to_be_visible()
     for text in ('可能产生服务商费用', '设置中的文字 AI 接口', '连接通过不代表录音和实际转写已测试', '关闭页面后不会在系统通知栏准时推送'):
         expect(manual).to_contain_text(text)
+    expect(manual.locator('.manual-figure')).to_have_count(5)
+    for picture in manual.locator('.manual-figure img').all():
+        picture.scroll_into_view_if_needed()
+        expect(picture).to_be_visible()
+        page.wait_for_function('(src)=>{const i=[...document.images].find(i=>i.getAttribute("src")===src);return i?.complete&&i.naturalWidth===390&&i.naturalHeight===844;}', arg=picture.get_attribute('src'))
+    zoom = manual.locator('[data-manual-zoom]').first
+    zoom.scroll_into_view_if_needed(); zoom.click()
+    expect(zoom).to_have_attribute('aria-expanded', 'true')
+    expect(zoom).to_have_accessible_name('缩小图解：开始说话')
+    expect(zoom.locator('.manual-callout')).to_be_in_viewport()
+    assert_usable(page, '#sheet')
+    page.screenshot(path=str(OUT / f'manual-zoom-{width}-{motion}.png'), animations='disabled')
+    zoom.press('Enter'); expect(zoom).to_have_attribute('aria-expanded', 'false')
+    zoom.press('Space'); expect(zoom).to_have_attribute('aria-expanded', 'true')
+    zoom.click(); expect(zoom).to_have_attribute('aria-expanded', 'false')
+    manual.locator('.settings-manual').evaluate('(el)=>el.scrollTop=0')
     assert_usable(page, '#sheet')
     page.screenshot(path=str(OUT / f'manual-{width}-{motion}.png'), animations='disabled')
     manual.get_by_role('button', name='关闭使用手册').click()

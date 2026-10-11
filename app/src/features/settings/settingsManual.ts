@@ -2,10 +2,23 @@ import { iconHtml } from '../../assets/icons';
 import { MODEL_CATALOG_CHECKED_ON } from './providers';
 import { openSheet, closeSheet } from '../shell/sheet';
 
+type ManualFigure = { file: string; title: string; caption: string; marks: Array<[number, number, number]> };
+const figures: ManualFigure[] = [
+  { file: 'voice-start', title: '开始说话', caption: '① 点「开始说话」。也可直接输入文字。', marks: [[1, 9, 79.2]] },
+  { file: 'voice-listening', title: '结束录音', caption: '② 出现「正在听」后说话，点「说完了」结束。', marks: [[2, 9, 94.8]] },
+  { file: 'voice-review', title: '核对并发送', caption: '③ 核对或修改文字。④ 点「发送并生成草稿」，再核对草稿。', marks: [[3, 64, 79.2], [4, 9, 94.8]] },
+  { file: 'voice-settings', title: '设置与连接测试', caption: '⑤ 填好语音配置并保存 Key 后，点「测试语音连接」，再点「开始测试」。连接通过仅代表连接测试通过。', marks: [[5, 58, 92]] },
+  { file: 'manual-entry', title: '找到使用手册', caption: '⑥ 我的 → 应用设置 → 关于拾光 → 使用手册。', marks: [[6, 66, 87.7]] },
+];
+function illustratedStepsHtml(): string {
+  return `<section><h4>操作图解</h4><p>示例截图使用虚构数据。点图放大，再点缩小；放大后可上下、左右滚动。</p><div class="manual-gallery">${figures.map(figure => `<figure class="manual-figure"><div class="manual-image-viewport"><button type="button" class="manual-image-button" data-manual-zoom="${figure.title}" aria-label="放大图解：${figure.title}" aria-expanded="false"><span class="manual-image-frame"><img src="/manual/${figure.file}.png" width="390" height="844" alt="${figure.title}的拾光界面，操作说明见下方" loading="lazy">${figure.marks.map(([number, left, top]) => `<span class="manual-callout" aria-hidden="true" style="left:${left}%;top:${top}%">${number}</span>`).join('')}</span></button></div><figcaption>${figure.caption}</figcaption></figure>`).join('')}</div></section>`;
+}
+
 /** Read-only local reference. Opening it never reads credentials or calls a service. */
 export function settingsManualHtml(): string {
   return `<div class="sheet-head"><h3 class="sheet-title">拾光使用手册</h3><button class="icon-btn" data-manual-close aria-label="关闭使用手册">${iconHtml('ic-close')}</button></div>
     <div class="sheet-scroll settings-manual">
+      ${illustratedStepsHtml()}
       <section><h4>短语音记账</h4>
         <p>Android 安装版中，点「开始说话」录入一笔支出或收入，最长30秒；点「说完了」结束。转写文字可修改，也可直接手填。转账、借贷、还款、退款与报销使用手动记账。</p>
         <p>开始后，麦克风声音发送给阿里云百炼，地域、业务空间与模型以设置为准，可能产生服务商费用。拾光不保存录音。</p>
@@ -40,5 +53,19 @@ export function openSettingsManual(): void {
   openSheet({ ariaLabel: '拾光使用手册', render(el) {
     el.innerHTML = settingsManualHtml();
     el.querySelector('[data-manual-close]')?.addEventListener('click', closeSheet);
+    el.querySelectorAll<HTMLButtonElement>('[data-manual-zoom]').forEach(button => {
+      button.addEventListener('click', () => {
+        const expanded = button.getAttribute('aria-expanded') !== 'true';
+        button.setAttribute('aria-expanded', String(expanded));
+        button.setAttribute('aria-label', `${expanded ? '缩小' : '放大'}图解：${button.dataset.manualZoom}`);
+        button.closest('.manual-figure')?.classList.toggle('is-zoomed', expanded);
+        const viewport = button.parentElement;
+        const marker = button.querySelector<HTMLElement>('.manual-callout');
+        if (viewport) {
+          viewport.scrollTop = expanded && marker ? Math.max(0, marker.offsetTop - viewport.clientHeight / 2) : 0;
+          viewport.scrollLeft = expanded && marker ? Math.max(0, marker.offsetLeft - viewport.clientWidth / 2) : 0;
+        }
+      });
+    });
   } });
 }
