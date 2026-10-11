@@ -2,6 +2,12 @@
 set -euo pipefail
 OUT="$PWD/.tmp/android-upgrade-probe"
 mkdir -p "$OUT"
+APP_APK="$PWD/app/android/app/build/outputs/apk/debug/app-debug.apk"
+TEST_APK="$PWD/app/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+test -s "$APP_APK" && test -s "$TEST_APK"
+# Only this job's reproducible npm install is discarded after both APKs are built.
+python3 -c 'import shutil; shutil.rmtree("app/node_modules")'
+
 export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 export ANDROID_USER_HOME="$RUNNER_TEMP/gleam-probe-android"
 export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
@@ -33,5 +39,8 @@ done
 [ "$booted" = true ] || { echo 'Emulator boot exceeded 600-second observation window'; tail -100 "$OUT/emulator.log"; exit 1; }
 adb -s emulator-5554 shell dumpsys webviewupdate > "$OUT/webview-provider.txt"
 adb -s emulator-5554 shell input keyevent 82
-cd app/android
-./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.gleam.shiguang.UpgradeWebViewProbeTest
+adb -s emulator-5554 install "$APP_APK"
+adb -s emulator-5554 install "$TEST_APK"
+adb -s emulator-5554 shell am instrument -w -r -e class com.gleam.shiguang.UpgradeWebViewProbeTest com.gleam.shiguang.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/instrumentation.txt"
+grep -F 'OK (1 test)' "$OUT/instrumentation.txt"
+! grep -E 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED' "$OUT/instrumentation.txt"
