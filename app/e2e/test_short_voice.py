@@ -147,11 +147,11 @@ def run(page, width):
     page.locator('[data-sv-stop]').click(); expect(page.locator('[data-sv-text]')).to_have_value('今天午餐28.01元，现金')
     assert not payloads
     page.locator('[data-sv-text]').fill('核对后午餐28.01元，现金')
-    page.locator('[data-sv-preview]').click(); expect(page.locator('[data-sv-send-panel]')).to_be_visible()
+    expect(page.locator('[data-sv-send-panel]')).to_be_visible()
     assert not payloads; image(page, 'text-consent', width)
     page.locator('[data-sv-text]').fill('最终核对午餐28.01元，现金')
     expect(page.locator('[data-sv-send-panel]')).to_be_hidden()
-    page.locator('[data-sv-preview]').click(); page.locator('[data-sv-send]').click()
+    page.locator('[data-sv-send]').click()
     expect(page.locator('[data-sv-result]')).to_be_visible(); image(page, 'draft', width)
     assert payloads[-1]['messages'][1]['content'] == '最终核对午餐28.01元，现金'
     assert len(read_rows(page,'entries')) == 0
@@ -170,6 +170,7 @@ def run(page, width):
     page.evaluate("id=>window.__voicePending.get(id).resolve({sessionId:id,text:'迟到文本'})",old)
     expect(page.locator('[data-sv-text]')).to_have_value('取消后的手改文字')
     page.evaluate("window.__voiceError='SPEECH_PERMISSION_DENIED'")
+    page.locator('[data-sv-rerecord]').click()
     page.locator('[data-sv-start]').click(); expect(page.locator('[data-sv-status]')).to_contain_text('麦克风未获授权')
     assert 'PRIVATE_PROVIDER_ECHO' not in page.locator('.short-voice-panel').inner_text()
     image(page,'permission-error',width)
@@ -181,7 +182,7 @@ def run(page, width):
     page.locator('#ai-text').fill('原本尚未发送的收件箱虚构草稿')
     page.locator('[data-act="short-voice"]').click()
     page.locator('[data-sv-text]').fill('虚构午餐28.01元现金')
-    page.locator('[data-sv-preview]').click(); page.locator('[data-sv-send]').click()
+    page.locator('[data-sv-send]').click()
     expect(page.locator('[data-sv-result]')).to_be_visible(); page.locator('[data-sv-apply]').click()
     expect(page.locator('.short-voice-mask')).to_have_count(0)
     expect(page.locator('#ai-text')).to_have_value('原本尚未发送的收件箱虚构草稿')

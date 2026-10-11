@@ -34,3 +34,6 @@
 [data-voice-test-consent]{margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:calc(var(--r) - 4px)}
 [data-voice-test-consent] .tiny{margin-bottom:8px;color:var(--muted)}
 [data-voice-test],[data-voice-test-confirm],[data-voice-test-cancel]{min-height:44px}
+
+.voice-settings-help summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-size:13px;color:var(--muted)}
+.voice-settings-help summary::after{content:'›';margin-left:6px;transform:rotate(90deg)}.voice-settings-help[open] summary::after{transform:rotate(-90deg)}
