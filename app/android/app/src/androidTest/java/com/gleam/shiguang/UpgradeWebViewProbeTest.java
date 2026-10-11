@@ -66,7 +66,7 @@ public class UpgradeWebViewProbeTest {
     }
     private static void destroy(WebView view) { ui(()->{view.stopLoading();view.destroy();}); }
 
-    @Test public void trustedBaseUrlCanUnregisterWithoutExecutingStaleDocument() throws Exception {
+    @Test public void normalNavigationUnregistersWithoutExecutingDisabledScripts() throws Exception {
         ui(()->ServiceWorkerController.getInstance().setServiceWorkerClient(new ServiceWorkerClient(){
             @Override public WebResourceResponse shouldInterceptRequest(WebResourceRequest r){return response(r);}
         }));
@@ -91,10 +91,35 @@ public class UpgradeWebViewProbeTest {
             assertEquals("true",js(q,"window.isSecureContext"));
             assertEquals("\"object\"",js(q,"typeof navigator.serviceWorker"));
             assertEquals("\"1\"",js(q,"localStorage.getItem('upgrade-probe-old-runs')"));
-            js(q,"window.probeClean=false;navigator.serviceWorker.getRegistrations().then(async rs=>{window.probeCount=rs.length;for(const r of rs){if(r.scope!==location.origin+'/')throw Error('scope');const ws=[r.active,r.waiting,r.installing].filter(Boolean);if(!ws.length||ws.some(w=>w.scriptURL!==location.origin+'/sw.js'))throw Error('script');if(!await r.unregister())throw Error('unregister');}if((await navigator.serviceWorker.getRegistrations()).length)throw Error('remaining');window.probeClean=true;}).catch(()=>window.probeClean='failed');");
-            await(q,"window.probeClean","true");
-            assertEquals("1",js(q,"window.probeCount"));
+            js(q,"window.probeEnumeration='pending';navigator.serviceWorker.getRegistrations().then(rs=>window.probeEnumeration='registrations:'+rs.length).catch(e=>window.probeEnumeration=e.name==='InvalidStateError'?'no-provider':'unexpected-error');");
+            await(q,"window.probeEnumeration!=='pending'","true");
+            String capability = js(q,"window.probeEnumeration");
+            assertTrue("Unexpected trusted-document capability: " + capability,
+                "\"no-provider\"".equals(capability) || "\"registrations:1\"".equals(capability));
+            android.os.Bundle report = new android.os.Bundle();
+            report.putString("trusted_document_enumeration", capability);
+            InstrumentationRegistry.getInstrumentation().sendStatus(0,report);
             destroy(q); cleaner = null;
+            cleaner = view(); WebView quarantine = cleaner;
+            CountDownLatch loaded = new CountDownLatch(1);
+            ui(() -> {
+                quarantine.getSettings().setJavaScriptEnabled(false);
+                quarantine.setWebViewClient(new WebViewClient() {
+                    @Override public WebResourceResponse shouldInterceptRequest(WebView v,WebResourceRequest r) {return response(r);}
+                    @Override public void onPageFinished(WebView v,String url) {if(ORIGIN.equals(url))loaded.countDown();}
+                });
+                quarantine.loadUrl(ORIGIN);
+            });
+            assertTrue("JS-disabled same-origin navigation timed out",loaded.await(15,TimeUnit.SECONDS));
+            ui(() -> quarantine.getSettings().setJavaScriptEnabled(true));
+            assertEquals("\"undefined\"",js(quarantine,"typeof window.probeVersion"));
+            assertEquals("\"1\"",js(quarantine,"localStorage.getItem('upgrade-probe-old-runs')"));
+            Thread.sleep(300);
+            assertEquals("\"undefined\"",js(quarantine,"typeof window.probeVersion"));
+            js(quarantine,"window.probeClean=false;window.probeStage='enumerate';navigator.serviceWorker.getRegistrations().then(async rs=>{window.probeStage='validate';window.probeCount=rs.length;for(const r of rs){if(r.scope!==location.origin+'/')throw Error('scope');const ws=[r.active,r.waiting,r.installing].filter(Boolean);if(!ws.length||ws.some(w=>w.scriptURL!==location.origin+'/sw.js'))throw Error('script');window.probeStage='unregister';if(!await r.unregister())throw Error('unregister');}window.probeStage='recheck';if((await navigator.serviceWorker.getRegistrations()).length)throw Error('remaining');window.probeClean=true;}).catch(e=>window.probeClean=window.probeStage+':'+(e.name==='InvalidStateError'?'no-provider':'failed'));");
+            await(quarantine,"window.probeClean","true");
+            assertEquals("1",js(quarantine,"window.probeCount"));
+            destroy(quarantine); cleaner = null;
             current = view(); WebView n = current; ui(()->n.loadUrl(ORIGIN));
             await(n,"window.probeVersion","\"new\"");
             assertEquals("\"1\"",js(n,"localStorage.getItem('upgrade-probe-old-runs')"));
