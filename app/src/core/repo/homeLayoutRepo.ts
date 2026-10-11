@@ -1,6 +1,6 @@
 import { db, now } from '../db';
 import { emitAfterCommit } from './transactionEvents';
-export const HOME_MODULES = ['month', 'quick', 'today', 'past'] as const;
+export const HOME_MODULES = ['month', 'quick', 'rhythm', 'today', 'past'] as const;
 export type HomeModule = typeof HOME_MODULES[number];
 export const HOME_SERVICES = [
   { key: 'note', name: '速记', icon: 'ic-bolt', route: 'sp-template-manage' },

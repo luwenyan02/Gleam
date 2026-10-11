@@ -1,3 +1,4 @@
+import { nextLocalDayStart } from '../../core/queryValidation';
 /**
  * 拾光 · 全局搜索（重做版，参考挖财记账 UX）
  * 功能：字段选择器、iOS 风格日期滚轮选择器、搜索历史、结果汇总卡、
@@ -132,7 +133,7 @@ function rangeWindow(): { from: number; to: number } | null {
   if (dateRange === 'custom' && (customFrom || customTo)) {
     return {
       from: customFrom ? dateToTs(customFrom) : 0,
-      to: customTo ? dateToTs(customTo) + 86400000 : Number.MAX_SAFE_INTEGER,
+      to: customTo ? nextLocalDayStart(dateToTs(customTo)) : Number.MAX_SAFE_INTEGER,
     };
   }
   return null;
