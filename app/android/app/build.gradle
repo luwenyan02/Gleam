@@ -22,6 +22,9 @@ def signingKeyAlias = System.getenv('GLEAM_KEY_ALIAS') ?: signingProperties.getP
 def signingKeyPassword = System.getenv('GLEAM_KEY_PASSWORD') ?: signingProperties.getProperty('keyPassword')
 def hasReleaseSigning = [signingStoreFile, signingStorePassword, signingKeyAlias, signingKeyPassword].every { it }
 
+// This explicit test-only mode never uses signing material, even if present.
+def unsignedTestApk = project.findProperty('gleamUnsignedTestApk') == 'true'
+
 android {
     namespace = "com.gleam.shiguang"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -52,7 +55,7 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (hasReleaseSigning) {
+            if (hasReleaseSigning && !unsignedTestApk) {
                 signingConfig signingConfigs.release
             }
         }
@@ -63,7 +66,7 @@ gradle.taskGraph.whenReady { graph ->
     def requestsRelease = graph.allTasks.any { task ->
         task.project == project && task.name.toLowerCase().contains('release')
     }
-    if (requestsRelease && !hasReleaseSigning) {
+    if (requestsRelease && !hasReleaseSigning && !unsignedTestApk) {
         throw new GradleException('Release signing is not configured. Set GLEAM_KEYSTORE_* or GLEAM_KEYSTORE_PROPERTIES.')
     }
 }
@@ -82,6 +85,8 @@ dependencies {
     implementation project(':capacitor-android')
     implementation "com.squareup.okhttp3:okhttp:5.3.0"
     testImplementation "junit:junit:$junitVersion"
+    // Exercise the same Android-compatible JSON protocol parser in local JVM tests.
+    testImplementation "org.json:json:20240303"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')

@@ -13,6 +13,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  upgrade_cache:
+    # Surface the exact-asset upgrade evidence without waiting for all UI suites.
+    # The same assertions also remain in the complete browser runner below.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v5
+      - name: Inspect Android runtime availability without changing the runner
+        run: |
+          id
+          if test -e /dev/kvm; then
+            ls -l /dev/kvm
+            test -r /dev/kvm && test -w /dev/kvm && echo KVM_ACCESSIBLE || echo KVM_NOT_ACCESSIBLE
+          else
+            echo KVM_ABSENT
+          fi
+          if test -n "$ANDROID_HOME"; then
+            test ! -d "$ANDROID_HOME/system-images" || find "$ANDROID_HOME/system-images" -maxdepth 3 -name package.xml
+            test ! -x "$ANDROID_HOME/emulator/emulator" || "$ANDROID_HOME/emulator/emulator" -version
+          fi
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: app/e2e/requirements.txt
+      - run: python -m pip install -r e2e/requirements.txt
+      - run: python -m playwright install --with-deps chromium
+      - run: python e2e/test_upgrade_cache_unit.py
+      - run: python e2e/test_upgrade_cache.py
+      - name: Preserve exact-asset upgrade evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: upgrade-cache-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/tests/e2e/upgrade-cache/report.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
   web:
     runs-on: ubuntu-latest
     defaults:
@@ -68,7 +112,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: e2e-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .tmp/tests/**/*.png
+          path: |
+            .tmp/tests/**/*.png
+            .tmp/tests/e2e/upgrade-cache/report.json
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7
@@ -95,3 +141,24 @@ jobs:
       - run: npx cap sync android
       - run: ./gradlew testDebugUnitTest
         working-directory: app/android
+
+      # Private diagnostic artifact only. Signing stays on the user's authorized build host.
+      - name: Assemble unsigned diagnostic candidate
+        run: ./gradlew assembleRelease -PgleamUnsignedTestApk=true
+        working-directory: app/android
+      - name: Require exactly one unsigned diagnostic APK
+        run: |
+          shopt -s nullglob
+          apks=(android/app/build/outputs/apk/release/*-unsigned.apk)
+          test "${#apks[@]}" -eq 1
+          test -s "${apks[0]}"
+      - name: Preserve unsigned diagnostic candidate and exact web resources
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-diagnostic-${{ github.sha }}
+          path: |
+            app/android/app/build/outputs/apk/release/*-unsigned.apk
+            app/dist/**
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3

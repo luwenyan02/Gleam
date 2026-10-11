@@ -10,12 +10,12 @@ import { esc } from '../../core/esc';
 import { on } from '../../core/store';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
 import { testAiConnection, listAiModels } from '../../core/repo/aiRepo';
-import { AI_PROVIDERS, MODEL_CATALOG_CHECKED_ON, buildModelChoices, matchProviderId, modelPreset, recentModels } from './providers';
+import { AI_PROVIDERS, buildModelChoices, matchProviderId, modelPreset, recentModels } from './providers';
 import { ensurePermission } from '../../core/notify';
 import { registerSubpage, openSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { showToast } from '../shell/toast';
-import { APP_VERSION } from '../backup/skbak';
+import { appVersionText, getAppVersion, interfaceVersionText } from '../../core/appVersion';
 import {
   setPin, verifyPin, clearPin, biometricAvailable, enrollBiometric,
 } from './lock';
@@ -25,7 +25,11 @@ import {
   accountingMonthRange, getAccountingMonth, setAccountingMonthStartDay,
 } from '../../core/repo/periodRepo';
 import { formatAccountingRange } from '../../core/period';
-import { bailianVoiceSettingsHtml, handleVoiceSettingsChange, handleVoiceSettingsClick, isVoiceKeyWritePending } from './bailianVoiceSettings';
+import { bailianVoiceSettingsHtml, handleVoiceSettingsChange, handleVoiceSettingsInput, handleVoiceSettingsClick, isVoiceKeyWritePending } from './bailianVoiceSettings';
+
+import { getVoiceSettingsEpoch, invalidateVoiceConnectionTest, mountVoiceConnectionTest, syncVoiceConnectionTest } from './bailianVoiceTestSettings';
+import { openSettingsManual } from './settingsManual';
+import { aiKeyInputHtml, getAiKeySettingsEpoch, handleAiKeyChange, handleAiKeyInput, preserveAiKeyDraft } from './aiKeySettings';
 
 let body: HTMLElement | undefined;
 let sheetAbort: AbortController | undefined;
@@ -54,13 +58,16 @@ async function refresh(): Promise<void> {
   const el = body;
   if (!el?.isConnected) return;
   const token = ++settingsRefreshToken;
+  const voiceEpoch = getVoiceSettingsEpoch();
+  const aiKeyEpoch = getAiKeySettingsEpoch();
   const isNative = Capacitor.isNativePlatform();
-  const [pin, webauthn, bioOk, countAsIncome, autoRenew, backupAuto, retention, themeMode, monthStartDay] = await Promise.all([
+  const [pin, webauthn, bioOk, countAsIncome, autoRenew, backupAuto, retention, themeMode, monthStartDay, appVersion] = await Promise.all([
     getSetting('security.pin'), getSetting('security.webauthn'), biometricAvailable(),
     getSetting('reimburse.countAsIncome'),
     getSetting('budget.autoRenew'), getSetting('backup.auto'), getSetting('trash.retentionDays'),
     getSetting('theme.mode'),
     getSetting('accounting.monthStartDay'),
+    getAppVersion(),
   ]);
   if (!el.isConnected) return;
   const voiceSettings = await bailianVoiceSettingsHtml();
@@ -92,16 +99,26 @@ async function refresh(): Promise<void> {
     : '自定义';
   const modelLabel = aiModel || '选择模型';
   const selectedModel = modelPreset(aiBase, aiModel);
+  const interfaceVersion = interfaceVersionText(appVersion);
 
   if (token !== settingsRefreshToken || !el.isConnected) return;
+  // A slow settings read must never restore stale readiness, consent, or test success.
+  if (voiceEpoch !== getVoiceSettingsEpoch()) { void refresh(); return; }
+  if (aiKeyEpoch !== getAiKeySettingsEpoch()) { void refresh(); return; }
+  const restoreAiKeyDraft = preserveAiKeyDraft(el);
+  const voiceWorkspaceInput = el.querySelector<HTMLInputElement>('#voice-bailian-workspace');
+  const voiceWorkspaceDraft = voiceWorkspaceInput?.dataset.voiceDirty ? voiceWorkspaceInput.value : undefined;
   const voiceKeyDraft = isVoiceKeyWritePending() ? '' : el.querySelector<HTMLInputElement>('#voice-bailian-key')?.value ?? '';
+  const voiceRegionInput = el.querySelector<HTMLElement>('#voice-bailian-region');
+  const voiceRegionDraft = voiceRegionInput?.dataset.voiceDirty ? voiceRegionInput.dataset.region : undefined;
+  const voiceSourceInput = el.querySelector<HTMLInputElement>('#voice-key-shared');
+  const voiceSourceDraft = voiceSourceInput?.dataset.voiceDirty ? voiceSourceInput.checked : undefined;
   el.innerHTML = `
     <section class="card" aria-label="安全">
       <h3 class="card-title">安全</h3>
       <div class="field"><span>应用锁（PIN 码）</span>${switchHtml('pin', !!pin, '应用锁')}</div>
       ${pin ? `<div class="field"><span>修改 PIN 码</span><button class="chip" data-act="change-pin">修改</button></div>` : ''}
       ${pin && bioOk ? `<div class="field"><span>Touch ID / 生物识别</span>${switchHtml('bio', !!webauthn, '生物识别解锁')}</div>` : ''}
-      <p class="tiny">开启后每次打开拾光需解锁；PIN 以加盐哈希保存在本机，不上传</p>
     </section>
 
     <section class="card" aria-label="外观">
@@ -109,7 +126,6 @@ async function refresh(): Promise<void> {
       <div class="field"><span>主题模式</span>
         <div class="chip-group">${themeChip('light', '浅色')}${themeChip('dark', '深色')}${themeChip('system', '跟随系统')}</div>
       </div>
-      <p class="tiny">跟随系统时随设备深浅色自动切换</p>
     </section>
 
     <section class="card" aria-label="通知">
@@ -117,19 +133,16 @@ async function refresh(): Promise<void> {
       <div class="field"><span>周期账入账提醒</span>${switchHtml('ntf-recurring', ntfRecurring as boolean, '周期账入账提醒')}</div>
       <div class="field"><span>信用卡还款日提醒</span>${switchHtml('ntf-credit', ntfCredit as boolean, '信用卡还款日提醒')}</div>
       <div class="field"><span>备份到期提醒</span>${switchHtml('ntf-backup', ntfBackup as boolean, '备份到期提醒')}</div>
-      <p class="tiny">${isNative
-        ? '周期账当日 09:00、还款日当天 10:00、备份到期次日 09:00 提醒；首次开启需授权系统通知'
-        : '开启后在拾光首页显示应用内提醒；关闭页面后不会在系统通知栏准时推送'}</p>
+      <div class="field"><span>提醒方式</span><span class="sub">${isNative ? '系统通知' : '首页提醒'}</span></div>
     </section>
 
     <section class="card" aria-label="记账偏好">
       <h3 class="card-title">记账偏好</h3>
       <div class="field"><span>报销到账记为收入</span>${switchHtml('reimburse', countAsIncome as boolean, '报销到账记为收入')}</div>
-      <p class="tiny">开＝到账记一笔「报销」收入；关＝冲抵原支出。与报销页开关同步</p>
       <div class="field"><span>每月起始日</span>
         <button class="pick-trigger" id="accounting-month-start" type="button" aria-haspopup="listbox">每月 ${monthStartDay} 日</button>
       </div>
-      <p class="tiny">当前周期 ${currentAccountingMonth}：${formatAccountingRange(currentAccountingRange)}。首页总览、月报表和月预算采用此范围；周与年仍按自然周期。</p>
+      <div class="field"><span>本期范围</span><span class="sub">${formatAccountingRange(currentAccountingRange)}</span></div>
       <div class="field"><span>预算自动延续到下月</span>${switchHtml('budget', autoRenew as boolean, '预算自动延续')}</div>
     </section>
 
@@ -138,13 +151,11 @@ async function refresh(): Promise<void> {
       <div class="field"><span>备份提醒</span>
         <div class="chip-group">${freqChip('off', '关')}${freqChip('daily', '每日')}${freqChip('weekly', '每周')}</div>
       </div>
-      <p class="tiny">网页版到期时在首页与备份页提醒「该备份了」；生成与恢复在「我的 → 备份与恢复」</p>
     </section>
 
     <section class="card" aria-label="数据">
       <h3 class="card-title">数据</h3>
       <div class="field"><span>回收站保留</span><span class="sub">${retention} 天后自动清除</span></div>
-      <p class="tiny">删除的账单先进回收站，可随时恢复；到期由系统自动清理</p>
     </section>
 
     <section class="card" aria-label="AI 记账">
@@ -158,9 +169,8 @@ async function refresh(): Promise<void> {
           <button id="ai-model-pick" class="ai-pick-btn" type="button">${esc(modelLabel)}</button>
         </label>
         <label>模型名（可修改）<input id="ai-model" type="text" value="${esc(aiModel)}" placeholder="如 qwen3.8-flash / kimi-k3" autocomplete="off"></label>
-        <p class="tiny" id="ai-model-capability">${selectedModel ? selectedModel.vision ? '当前预设支持图片与文本记账' : '当前预设仅支持文本；识别截图请切换图片模型' : '自定义模型：图片识别能力以接口实际支持为准'}</p>
-        <p class="tiny">预设核对于 ${MODEL_CATALOG_CHECKED_ON} · 近期按最近三个月筛选，候选最多 10 个；离线目录不会自动联网更新。“获取模型列表”结果另行标注，日期与能力未核验。</p>
-        <label>API Key<input id="ai-key" type="password" value="${esc(aiKey ?? '')}" placeholder="sk-..." autocomplete="off"></label>
+        <div class="field"><span>识别类型</span><span class="sub" id="ai-model-capability">${selectedModel ? selectedModel.vision ? '图片、文字' : '文字' : '以接口为准'}</span></div>
+        <label>API Key${aiKeyInputHtml(aiKey)}</label>
         <label>静默入账置信度阈值
           <div class="ai-thres"><input id="ai-thres" type="range" min="50" max="100" step="5" value="${aiThreshold}"><span class="num" id="ai-thres-val">${aiThreshold}%</span></div>
         </label>
@@ -171,15 +181,14 @@ async function refresh(): Promise<void> {
           <button class="chip" data-act="ai-test">测试连接</button>
         </div>
       </div>
-      <p class="tiny">识别请求直连你填写的接口；${secretStore.kind === 'android-keystore' ? 'Key 由 Android 系统 Keystore 加密保存' : '浏览器版 Key 仅保留在当前标签页会话，关闭后需重新输入'}。置信度达阈值且分类账户齐全时自动入账，否则进收件箱待确认</p>
     </section>
 
     ${voiceSettings}
     <section class="card" aria-label="关于">
       <h3 class="card-title">关于拾光</h3>
-      <div class="field"><span>版本</span><span class="sub">v${APP_VERSION}</span></div>
-      <p class="sub" style="padding:4px 0">拾光是一款极简暖调记账应用：记录每一笔收支与生活印记，让时间留下温度。</p>
-      <p class="tiny">账本默认保存在本机；仅在你主动启用云备份或 AI 识别时，将必要数据发送到所配置的外部服务</p>
+      <div class="field"><span>版本</span><span class="sub" data-app-version>${esc(appVersionText(appVersion))}</span></div>
+      ${interfaceVersion ? `<div class="field"><span>界面版本</span><span class="sub" data-interface-version>${esc(interfaceVersion)}</span></div>` : ''}
+      <div class="field"><span>使用手册</span><button class="chip" data-act="settings-manual">查看</button></div>
     </section>`;
 
   // 固定信息架构：记账偏好 → 数据与备份 → 智能能力与通知 → 外观与安全 → 关于。
@@ -188,8 +197,23 @@ async function refresh(): Promise<void> {
     const section = el.querySelector<HTMLElement>(`section[aria-label="${label}"]`);
     if (section) el.appendChild(section);
   }
+  restoreAiKeyDraft();
   const voiceInput = el.querySelector<HTMLInputElement>('#voice-bailian-key');
   if (voiceInput && !voiceInput.disabled) voiceInput.value = voiceKeyDraft;
+  const regionInput = el.querySelector<HTMLElement>('#voice-bailian-region');
+  if (regionInput && voiceRegionDraft) { regionInput.dataset.region = voiceRegionDraft; regionInput.dataset.voiceDirty = 'true'; regionInput.textContent = voiceRegionDraft === 'singapore' ? '新加坡' : '北京'; }
+  const sourceInput = el.querySelector<HTMLInputElement>('#voice-key-shared');
+  if (sourceInput && voiceSourceDraft !== undefined) {
+    sourceInput.checked = voiceSourceDraft; sourceInput.dataset.voiceDirty = 'true';
+    if (voiceInput) {
+      voiceInput.readOnly = voiceSourceDraft;
+      const test = el.querySelector<HTMLElement>('[data-voice-test]');
+      voiceInput.placeholder = (voiceSourceDraft ? test?.dataset.maskedMainKey : test?.dataset.keySource === 'shared' ? undefined : test?.dataset.maskedKey) || (voiceSourceDraft ? '请先填写 API Key' : '输入语音 Key');
+    }
+  }
+  const workspaceInput = el.querySelector<HTMLInputElement>('#voice-bailian-workspace');
+  if (workspaceInput && voiceWorkspaceDraft !== undefined) { workspaceInput.value = voiceWorkspaceDraft; workspaceInput.dataset.voiceDirty = 'true'; }
+  syncVoiceConnectionTest(el);
   if (el.dataset.revealAi) requestAnimationFrame(() => {
     if (!el.isConnected || !el.dataset.revealAi) return;
     delete el.dataset.revealAi;
@@ -263,6 +287,7 @@ export function initSettings(): void {
     title: '设置',
     render(el) {
       body = el;
+      mountVoiceConnectionTest(el);
       if (revealAiOnOpen) el.dataset.revealAi = 'true';
       el.addEventListener('click', (e) => {
         const t = e.target as HTMLElement;
@@ -276,6 +301,8 @@ export function initSettings(): void {
         } else if (themeMode) {
           // 主题切换：setSetting 后 core/theme.ts 监听 settings-changed 自动应用
           void setSetting('theme.mode', themeMode).then(() => refresh());
+        } else if (act === 'settings-manual') {
+          openSettingsManual();
         } else if (act === 'change-pin') {
           openPinSheet('change');
         } else if (act === 'ai-test') {
@@ -409,18 +436,23 @@ export function initSettings(): void {
       el.addEventListener('change', (e) => {
         const t = e.target as HTMLInputElement;
         if (handleVoiceSettingsChange(t)) return;
+        if (handleAiKeyChange(t)) return;
         if (t.id === 'ai-base') void setSetting('ai.baseUrl', t.value.trim());
         else if (t.id === 'ai-model') void setSetting('ai.model', t.value.trim());
-        else if (t.id === 'ai-key') {
-          const value = t.value.trim();
-          void (value ? secretStore.set('ai.apiKey', value) : secretStore.remove('ai.apiKey'))
-            .then(() => showToast(secretStore.kind === 'session' ? 'API Key 仅在当前会话有效' : 'API Key 已安全保存'))
-            .catch(() => showToast('API Key 保存失败，请重新输入'));
-        }
         else if (t.id === 'ai-thres') void setSetting('ai.autoConfirmThreshold', Number(t.value));
+      });
+      // A renderer-induced change can consume the browser's native change flag.
+      // The next real blur still commits our dirty draft; the editor deduplicates both events.
+      el.addEventListener('focusout', (e) => {
+        handleAiKeyChange(e.target as HTMLInputElement);
       });
       el.addEventListener('input', (e) => {
         const t = e.target as HTMLInputElement;
+        if (handleVoiceSettingsInput(t)) return;
+        if (handleAiKeyInput(t)) {
+          invalidateVoiceConnectionTest('主 API Key 输入已变化，请重新测试');
+          return;
+        }
         if (t.id !== 'ai-thres') return;
         const label = el.querySelector('#ai-thres-val');
         if (label) label.textContent = `${t.value}%`;
@@ -433,3 +465,4 @@ export function initSettings(): void {
   // 报销页等处修改同一 key 时保持双向同步
   on('settings-changed', () => void refresh());
 }
+

@@ -18,6 +18,16 @@ function flushHistoryWrites(): void {
   while (waitingWrites.length && !awaitingBack) waitingWrites.shift()!();
 }
 
+function dismissLayersAbove(target: unknown): boolean {
+  let handled = false;
+  for (let top = layers.at(-1); top?.pushed && top.id !== target; top = layers.at(-1)) {
+    top.cancel();
+    handled = true;
+    if (layers.at(-1) === top) break;
+  }
+  return handled;
+}
+
 /** 同步关闭抽屉并打开子页时，先完成回退，再写新页面，避免吞掉新历史点。 */
 export function pushPageHistory(state: Record<string, unknown>): () => void {
   let active = true;
@@ -60,16 +70,24 @@ export function handleLayerHistory(state: Record<string, unknown> | null): boole
       awaitingBack = true;
       window.history.back();
     } else {
+      // A removed middle layer can also be reached by Back. After skipping it,
+      // close live layers above the real target before accepting newer writes.
+      dismissLayersAbove(target);
       flushHistoryWrites();
     }
     return true;
   }
-  let handled = false;
-  for (let top = layers.at(-1); top?.pushed && top.id !== target; top = layers.at(-1)) {
-    top.cancel();
-    handled = true;
-    if (layers.at(-1) === top) break;
+  // Forward may revisit a voice/picker layer already destroyed by Back. Do not
+  // treat that stale marker as a request to cancel the still-live draft below.
+  // Return to its actual history point so the next Back has no duplicate stop.
+  // With no live layer, keep the existing route-depth reconciliation below.
+  if (typeof target === 'string' && owned.has(target)
+    && !layers.some(layer => layer.id === target) && layers.some(layer => layer.pushed)) {
+    awaitingBack = true;
+    window.history.back();
+    return true;
   }
+  const handled = dismissLayersAbove(target);
   // 前进到已销毁弹层时不重新打开它，也不保留失效的标记。
   if (target && !layers.some(layer => layer.id === target)) {
     window.history.replaceState(withoutLayerHistory(state), '');

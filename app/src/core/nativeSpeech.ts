@@ -1,3 +1,4 @@
+import type { BailianVoiceConfig } from './bailianVoiceConfig';
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 
 export interface NativeSpeechConfiguration {
@@ -5,6 +6,12 @@ export interface NativeSpeechConfiguration {
   hasKey: boolean;
   /** Opaque isolation token only. This is neither a credential nor an authorization grant. */
   credentialRevision: string;
+  keySource?: 'separate' | 'shared';
+  maskedKey?: string;
+  maskedMainKey?: string;
+  hasMainKey?: boolean;
+  mainCredentialRevision?: string;
+  activeConfig?: BailianVoiceConfig;
 }
 export interface NativeSpeechStartOptions {
   sessionId: string;
@@ -15,6 +22,21 @@ export interface NativeSpeechStartOptions {
   consent: true;
   userInitiated: true;
 }
+export interface NativeSpeechCandidateOptions extends NativeSpeechStartOptions {
+  keySource: 'separate' | 'shared';
+  value?: string;
+  configurationId: string;
+  expectedMainCredentialRevision: string;
+}
+export interface NativeSpeechCandidateResult { sessionId: string; connected: true; candidateToken: string }
+export interface NativeSpeechCommitOptions {
+  sessionId: string;
+  candidateToken: string;
+  expectedCredentialRevision: string;
+  expectedMainCredentialRevision: string;
+  configurationId: string;
+}
+export interface NativeSpeechConnectionResult { sessionId: string; connected: true }
 export interface NativeSpeechResult { sessionId: string; text: string }
 export interface NativeSpeechStateEvent {
   sessionId: string;
@@ -22,8 +44,10 @@ export interface NativeSpeechStateEvent {
 }
 export interface NativeSpeechPlugin {
   configuration(): Promise<NativeSpeechConfiguration>;
-  setKey(options: { value: string }): Promise<NativeSpeechConfiguration>;
-  clearKey(): Promise<NativeSpeechConfiguration>;
+  invalidateConfiguration(options: { configurationId: string }): Promise<void>;
+  testCandidate(options: NativeSpeechCandidateOptions): Promise<NativeSpeechCandidateResult>;
+  commitTestedKey(options: NativeSpeechCommitOptions): Promise<NativeSpeechConfiguration>;
+  testConnection(options: NativeSpeechStartOptions): Promise<NativeSpeechConnectionResult>;
   start(options: NativeSpeechStartOptions): Promise<NativeSpeechResult>;
   stop(options: { sessionId: string }): Promise<void>;
   cancel(options: { sessionId: string }): Promise<void>;
@@ -42,8 +66,10 @@ export const nativeSpeech: NativeSpeechPlugin = {
   configuration: () => isNativeSpeechSupported()
     ? nativePlugin.configuration()
     : Promise.resolve({ supported: false, hasKey: false, credentialRevision: '' }),
-  setKey: async options => { if (!isNativeSpeechSupported()) unsupported(); return nativePlugin.setKey(options); },
-  clearKey: async () => { if (!isNativeSpeechSupported()) unsupported(); return nativePlugin.clearKey(); },
+  invalidateConfiguration: async options => { if (!isNativeSpeechSupported()) unsupported(); return nativePlugin.invalidateConfiguration(options); },
+  testCandidate: async options => { if (!isNativeSpeechSupported()) unsupported(); return nativePlugin.testCandidate(options); },
+  commitTestedKey: async options => { if (!isNativeSpeechSupported()) unsupported(); return nativePlugin.commitTestedKey(options); },
+  testConnection: async options => { if (!isNativeSpeechSupported()) unsupported(); return nativePlugin.testConnection(options); },
   start: async options => { if (!isNativeSpeechSupported()) unsupported(); return nativePlugin.start(options); },
   stop: async options => { if (!isNativeSpeechSupported()) unsupported(); return nativePlugin.stop(options); },
   cancel: async options => { if (!isNativeSpeechSupported()) unsupported(); return nativePlugin.cancel(options); },
@@ -52,3 +78,4 @@ export const nativeSpeech: NativeSpeechPlugin = {
     return nativePlugin.addListener(eventName, listener);
   },
 };
+

@@ -12,6 +12,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
+import java.util.UUID;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -24,15 +25,31 @@ public class GleamSecretsPlugin extends Plugin {
     private static final String PREFS_NAME = "gleam_secure_secrets";
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
 
-    private SharedPreferences preferences() {
-        return getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+    private static final String MAIN_KEY = "ai.apiKey";
+    private static final String MAIN_REVISION = "_gleam.mainKeyRevision";
+    private SharedPreferences preferences() { return preferences(getContext()); }
+    private static SharedPreferences preferences(Context context) { return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE); }
+    /** Native-only sharing. Neither this accessor nor its revision exposes a voice key over the bridge. */
+    static String mainRevision(Context context) {
+        synchronized (GleamCredentialLock.LOCK) {
+            SharedPreferences prefs = preferences(context);
+            String payload = prefs.getString(MAIN_KEY, "");
+            String revision = prefs.getString(MAIN_REVISION, "");
+            return UUID.nameUUIDFromBytes((revision + ":" + payload).getBytes(StandardCharsets.UTF_8)).toString();
+        }
+    }
+    static String readMainForNative(Context context) throws Exception {
+        synchronized (GleamCredentialLock.LOCK) {
+            String payload = preferences(context).getString(MAIN_KEY, null);
+            return payload == null ? null : decrypt(payload);
+        }
     }
 
     private boolean validKey(String key) {
         return key != null && !key.startsWith("voice.bailian.") && key.matches("[A-Za-z0-9._-]{1,80}");
     }
 
-    private SecretKey encryptionKey() throws Exception {
+    private static SecretKey encryptionKey() throws Exception {
         KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
         keyStore.load(null);
         if (keyStore.containsAlias(KEY_ALIAS)) {
@@ -50,55 +67,60 @@ public class GleamSecretsPlugin extends Plugin {
         return generator.generateKey();
     }
 
-    private String encrypt(String value) throws Exception {
+    private static String encrypt(String value) throws Exception {
         Cipher cipher = Cipher.getInstance(TRANSFORMATION);
         cipher.init(Cipher.ENCRYPT_MODE, encryptionKey());
-        byte[] encrypted = cipher.doFinal(value.getBytes(StandardCharsets.UTF_8));
+        byte[] plaintext = value.getBytes(StandardCharsets.UTF_8);
+        byte[] encrypted;
+        try { encrypted = cipher.doFinal(plaintext); } finally { java.util.Arrays.fill(plaintext, (byte) 0); }
         return Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP)
             + "."
             + Base64.encodeToString(encrypted, Base64.NO_WRAP);
     }
 
-    private String decrypt(String payload) throws Exception {
+    private static String decrypt(String payload) throws Exception {
         String[] parts = payload.split("\\.", 2);
         if (parts.length != 2) throw new IllegalArgumentException("invalid payload");
         byte[] iv = Base64.decode(parts[0], Base64.NO_WRAP);
         byte[] encrypted = Base64.decode(parts[1], Base64.NO_WRAP);
         Cipher cipher = Cipher.getInstance(TRANSFORMATION);
         cipher.init(Cipher.DECRYPT_MODE, encryptionKey(), new GCMParameterSpec(128, iv));
-        return new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8);
+        byte[] plaintext = cipher.doFinal(encrypted);
+        try { return new String(plaintext, StandardCharsets.UTF_8); } finally { java.util.Arrays.fill(plaintext, (byte) 0); }
     }
 
     @PluginMethod
     public void get(PluginCall call) {
         String key = call.getString("key");
         if (!validKey(key)) { call.reject("无效的安全存储键"); return; }
-        String payload = preferences().getString(key, null);
-        JSObject result = new JSObject();
-        if (payload == null) {
-            result.put("value", JSONObject.NULL);
-            call.resolve(result);
-            return;
-        }
-        try {
-            result.put("value", decrypt(payload));
-            call.resolve(result);
-        } catch (Exception error) {
-            preferences().edit().remove(key).apply();
-            call.reject("安全凭据已失效，请重新输入");
+        synchronized (GleamCredentialLock.LOCK) {
+            String payload = preferences().getString(key, null);
+            JSObject result = new JSObject();
+            if (payload == null) { result.put("value", JSONObject.NULL); call.resolve(result); return; }
+            try { result.put("value", decrypt(payload)); call.resolve(result); }
+            catch (Exception error) {
+                SharedPreferences.Editor editor = preferences().edit().remove(key);
+                if (MAIN_KEY.equals(key)) editor.putString(MAIN_REVISION, UUID.randomUUID().toString());
+                editor.commit();
+                if (MAIN_KEY.equals(key)) GleamCredentialLock.changed();
+                call.reject("安全凭据已失效，请重新输入");
+            }
         }
     }
 
     @PluginMethod
     public void set(PluginCall call) {
-        String key = call.getString("key");
-        String value = call.getString("value");
+        String key = call.getString("key"), value = call.getString("value");
         if (!validKey(key) || value == null) { call.reject("无效的安全存储参数"); return; }
-        try {
-            preferences().edit().putString(key, encrypt(value)).apply();
-            call.resolve();
-        } catch (Exception error) {
-            call.reject("安全凭据保存失败");
+        synchronized (GleamCredentialLock.LOCK) {
+            try {
+                SharedPreferences.Editor editor = preferences().edit().putString(key, encrypt(value));
+                if (MAIN_KEY.equals(key)) editor.putString(MAIN_REVISION, UUID.randomUUID().toString());
+                boolean saved = editor.commit();
+                if (MAIN_KEY.equals(key)) GleamCredentialLock.changed();
+                if (!saved) throw new IllegalStateException("storage");
+                call.resolve();
+            } catch (Exception error) { call.reject("安全凭据保存失败"); }
         }
     }
 
@@ -106,7 +128,12 @@ public class GleamSecretsPlugin extends Plugin {
     public void remove(PluginCall call) {
         String key = call.getString("key");
         if (!validKey(key)) { call.reject("无效的安全存储键"); return; }
-        preferences().edit().remove(key).apply();
-        call.resolve();
+        synchronized (GleamCredentialLock.LOCK) {
+            SharedPreferences.Editor editor = preferences().edit().remove(key);
+            if (MAIN_KEY.equals(key)) editor.putString(MAIN_REVISION, UUID.randomUUID().toString());
+            boolean saved = editor.commit();
+            if (MAIN_KEY.equals(key)) GleamCredentialLock.changed();
+            if (saved) call.resolve(); else call.reject("安全凭据移除失败");
+        }
     }
 }

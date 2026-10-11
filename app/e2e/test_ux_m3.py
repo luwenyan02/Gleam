@@ -130,7 +130,12 @@ def main() -> int:
                 "els => els.map(el => el.getAttribute('aria-label'))"
             )
             assert labels == ['记账偏好', '备份', '数据', 'AI 记账', '百炼短语音', '通知', '外观', '安全', '关于'], f'设置分组或顺序不符：{labels}'
-            assert '当前标签页会话' in page.inner_text('#sp-settings section[aria-label="AI 记账"]')
+            assert '当前标签页会话' not in page.inner_text('#sp-settings section[aria-label="AI 记账"]')
+            page.click('#sp-settings [data-act="settings-manual"]')
+            page.wait_for_selector('#sheet.open[aria-label="拾光使用手册"]')
+            assert '当前标签页会话' in page.inner_text('#sheet')
+            page.click('[data-manual-close]')
+            page.wait_for_selector('#sheet.open', state='hidden')
             page.click('#sp-settings [data-act="back"]')
             page.wait_for_selector('#sp-settings', state='detached')
 

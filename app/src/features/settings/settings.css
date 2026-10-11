@@ -28,3 +28,21 @@
 .ai-thres input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--primary)}
 .ai-thres input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;background:var(--primary);box-shadow:0 2px 6px rgba(0,0,0,.18);margin-top:-9px;cursor:pointer}
 .ai-thres .num{font-size:13px;font-weight:600;color:var(--fg);min-width:40px;text-align:right}
+
+/* 语音诊断的长域名/错误代码在窄屏换行，操作仍保持可触达。 */
+
+.settings-status{font-size:13px;line-height:1.5;margin:4px 0;overflow-wrap:anywhere;color:var(--muted)}
+.settings-manual{font-size:14px;line-height:1.75;color:var(--fg);overflow-wrap:anywhere}
+.settings-manual section+section{margin-top:22px}.settings-manual h4{font-size:15px;margin:0 0 8px}.settings-manual p{margin:0 0 10px}
+#sp-settings .field .sub{text-align:right;overflow-wrap:anywhere}
+
+.manual-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 12px}
+.manual-figure{min-width:0;margin:0}.manual-figure figcaption{font-size:13px;line-height:1.6;margin-top:8px}
+.manual-image-viewport{max-width:100%;max-height:70dvh;overflow:auto;overscroll-behavior:contain;border:1px solid var(--border);border-radius:12px}
+.manual-image-button{display:block;width:100%;padding:0;border:0;background:var(--surface);cursor:zoom-in;min-width:44px;min-height:44px;color:var(--fg)}
+.manual-image-button:focus-visible{outline:3px solid var(--primary);outline-offset:-3px}
+.manual-image-frame{display:block;position:relative;width:100%}.manual-image-frame img{display:block;width:100%;height:auto}
+.manual-callout{position:absolute;transform:translate(-50%,-50%);display:grid;place-items:center;width:24px;height:24px;border:2px solid white;border-radius:50%;background:#145bd7;color:white;font:700 14px/1 sans-serif;box-shadow:0 1px 4px #0004;pointer-events:none}
+.manual-figure.is-zoomed{grid-column:1/-1}.manual-figure.is-zoomed .manual-image-button{width:390px;min-width:100%;max-width:none;cursor:zoom-out}
+.voice-key-label{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px}.ai-set .voice-key-source{display:flex;flex-direction:row;align-items:center;gap:6px;min-height:44px;color:var(--fg);font-size:13px}.voice-key-source input[type=checkbox]{appearance:none;width:44px;height:44px;min-height:44px;padding:12px;border:0;background:transparent;cursor:pointer}.voice-key-source input[type=checkbox]::before{content:"";display:block;width:20px;height:20px;border:1px solid var(--border);border-radius:5px;box-sizing:border-box}.voice-key-source input[type=checkbox]:checked::before{content:"✓";background:var(--primary);color:white;border-color:var(--primary);font-size:16px;line-height:18px;text-align:center}
+[data-voice-test]{min-height:44px}

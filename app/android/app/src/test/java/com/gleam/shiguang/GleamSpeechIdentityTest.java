@@ -18,4 +18,17 @@ public class GleamSpeechIdentityTest {
     @Test public void isolationTokenCannotClaimOtherSession() {
         GleamSpeechIdentity gate = new GleamSpeechIdentity(); assertTrue(gate.reserve("voice_a", "r", "r")); assertFalse(gate.reserve("voice_b", "r", "r")); assertFalse(gate.mayContinue("voice_b", "r", true, false));
     }
+    @Test public void diagnosticAndRecordingShareOneReservationAndStaleCancelCannotEndSuccessor() {
+        for (String first : new String[]{"diagnostic_first", "recording_first"}) {
+            GleamSpeechIdentity gate = new GleamSpeechIdentity();
+            assertTrue(gate.reserve(first, "revision", "revision"));
+            assertFalse(gate.reserve("another_session", "revision", "revision"));
+            gate.end(first); assertTrue(gate.reserve("another_session", "revision", "revision"));
+            gate.end(first);
+            assertTrue(gate.mayContinue("another_session", "revision", true, false));
+            assertFalse(gate.mayContinue(first, "revision", true, false));
+            assertFalse(gate.reserve(first, "revision", "revision"));
+        }
+    }
+
 }

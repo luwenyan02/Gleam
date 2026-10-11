@@ -90,7 +90,8 @@ def run_width(page, width: int) -> None:
     expect(page.locator('#accounting-month-start')).to_have_text('每月 28 日')
     expect(page.locator('#sp-settings section[aria-label="记账偏好"]')).to_contain_text(expected['longRange'])
     settings_text = page.inner_text('#sp-settings section[aria-label="记账偏好"]')
-    assert expected['key'] in settings_text and expected['longRange'] in settings_text, settings_text
+    period_row = page.locator('#sp-settings section[aria-label="记账偏好"] .field').filter(has_text='本期范围')
+    expect(period_row.locator('.sub')).to_have_text(expected['longRange'])
     assert '财务月' not in settings_text, settings_text
     assert page.locator('#accounting-month-start').inner_text() == '每月 28 日'
     assert page.locator('#sp-settings select').count() == 0
