@@ -5,7 +5,7 @@ mkdir -p "$OUT"
 export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 test -r /dev/kvm && test -w /dev/kvm
 emulator -accel-check | tee "$OUT/acceleration.txt"
-emulator -version | tee "$OUT/emulator-version.txt"
+cat "$ANDROID_HOME/emulator/source.properties" | tee "$OUT/emulator-package-version.txt"
 printf 'no\n' | avdmanager create avd --name gleam_upgrade_probe --package 'system-images;android-35;google_apis;x86_64' --force
 emulator -avd gleam_upgrade_probe -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader -accel on -cores 2 -memory 2048 -camera-back none -camera-front none >"$OUT/emulator.log" 2>&1 &
 EMULATOR_PID=$!
