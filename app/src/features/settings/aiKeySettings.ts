@@ -5,6 +5,7 @@ import { emit } from '../../core/store';
 import { showToast } from '../shell/toast';
 
 const dirtyInputs = new WeakSet<HTMLInputElement>();
+const renderingInputs = new WeakSet<HTMLInputElement>();
 let epoch = 0;
 let editRevision = 0;
 let writeRevision = 0;
@@ -32,18 +33,26 @@ export function preserveAiKeyDraft(container: HTMLElement): () => void {
   const input = container.querySelector<HTMLInputElement>('#ai-key');
   if (!input || !dirtyInputs.has(input)) return () => {};
   const focused = typeof document !== 'undefined' && document.activeElement === input;
+  // Removing a focused input may synchronously dispatch change/focusout. This is
+  // a render transaction, not the user's decision to finish editing their key.
+  renderingInputs.add(input);
   return () => {
-    const replacement = container.querySelector<HTMLInputElement>('#ai-key');
-    if (!replacement || !dirtyInputs.has(input)) return;
-    input.placeholder = replacement.placeholder;
-    replacement.replaceWith(input);
-    if (focused && container.isConnected) input.focus({ preventScroll: true });
+    try {
+      const replacement = container.querySelector<HTMLInputElement>('#ai-key');
+      if (!replacement || !dirtyInputs.has(input)) return;
+      input.placeholder = replacement.placeholder;
+      replacement.replaceWith(input);
+      if (focused && container.isConnected) input.focus({ preventScroll: true });
+    } finally {
+      renderingInputs.delete(input);
+    }
   };
 }
 
 /** Main credentials still auto-save on change/blur, but an untouched empty field is inert. */
 export function handleAiKeyChange(input: HTMLInputElement): boolean {
   if (input.id !== 'ai-key') return false;
+  if (renderingInputs.has(input)) return true;
   if (!dirtyInputs.has(input)) return true;
   dirtyInputs.delete(input);
   const value = input.value.trim();

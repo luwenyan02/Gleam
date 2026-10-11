@@ -438,6 +438,11 @@ export function initSettings(): void {
         else if (t.id === 'ai-model') void setSetting('ai.model', t.value.trim());
         else if (t.id === 'ai-thres') void setSetting('ai.autoConfirmThreshold', Number(t.value));
       });
+      // A renderer-induced change can consume the browser's native change flag.
+      // The next real blur still commits our dirty draft; the editor deduplicates both events.
+      el.addEventListener('focusout', (e) => {
+        handleAiKeyChange(e.target as HTMLInputElement);
+      });
       el.addEventListener('input', (e) => {
         const t = e.target as HTMLInputElement;
         if (handleVoiceSettingsInput(t)) return;

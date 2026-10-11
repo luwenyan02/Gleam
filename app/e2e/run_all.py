@@ -14,6 +14,7 @@ PROJECT_ROOT = APP_ROOT.parent
 URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4617/')
 EXTERNAL_URL = 'GLEAM_E2E_URL' in os.environ
 TESTS = (
+    'test_runner_unit.py',
     'test_ai_key_settings.py',
     'test_entry_feedback.py', 'test_short_voice.py', 'test_short_voice_interaction.py', 'test_voice_diagnostics.py', 'test_settings_declutter.py', 'test_chat_ledger_context.py', 'test_chat_ledger_analysis.py', 'test_chat_markdown.py',
     'test_acceptance.py', 'test_refund.py', 'test_m3.py', 'test_ux_m1.py', 'test_ux_m2.py',
@@ -77,6 +78,7 @@ def main() -> int:
             )
             wait_for_server(server)
 
+        failures = []
         for test in TESTS:
             result = subprocess.run(
                 [sys.executable, str(Path(__file__).parent / test)],
@@ -84,7 +86,10 @@ def main() -> int:
                 env=env,
             )
             if result.returncode != 0:
-                return result.returncode
+                failures.append((test, result.returncode))
+        if failures:
+            print(f"Browser acceptance failed: {failures}", file=sys.stderr, flush=True)
+            return 1
         # Publishable previews use their own fresh, fictional browser contexts.
         # Keep this separate from the regression suites and leave outputs in .tmp.
         return subprocess.run(

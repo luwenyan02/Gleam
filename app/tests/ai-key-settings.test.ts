@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 const mocks = vi.hoisted(() => ({ set: vi.fn(), remove: vi.fn(), emit: vi.fn(), toast: vi.fn() }));
@@ -13,6 +13,7 @@ function input(value = '', placeholder = maskSecret('fixture-old-private-main-ke
 }
 async function flush(): Promise<void> { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 beforeEach(() => { vi.clearAllMocks(); mocks.set.mockResolvedValue(undefined); mocks.remove.mockResolvedValue(undefined); });
+afterEach(() => vi.unstubAllGlobals());
 
 it.each([undefined, null, ''])('does not invent a saved-key summary for %s', value => expect(maskSecret(value)).toBe(''));
 it.each(['a', '1234567890', '123456789012345', '🔑🔑🔑🔑🔑🔑🔑🔑🔑🔑'])('fully masks a short secret without length disclosure', value => {
@@ -110,6 +111,54 @@ it('rerender keeps only a user-edited input node, never reconstructing a raw sav
   expect(current).toBe(field); expect(current.value).toBe('fixture-unsaved-draft');
   expect(current.placeholder).toBe('replacement-masked-summary');
 });
+it('render detachment change and focusout do not save a draft, but the later real blur saves exactly once', async () => {
+  const draft = 'fixture-unsubmitted-main-key';
+  const field = input(draft); handleAiKeyInput(field);
+  vi.stubGlobal('document', { activeElement: field });
+  let current = field;
+  const container = { isConnected: true, querySelector: () => current } as unknown as HTMLElement;
+  const restore = preserveAiKeyDraft(container);
+  // Chromium commits native input editing when a full rerender removes the focused node.
+  // Both change and focusout must remain inert throughout that render transaction.
+  handleAiKeyChange(field); handleAiKeyChange(field);
+  expect(field.value).toBe(draft); expect(isAiKeyWritePending()).toBe(false);
+  const replacement = input(); replacement.replaceWith = vi.fn(node => { current = node as HTMLInputElement; });
+  current = replacement; restore();
+  expect(current).toBe(field); expect(field.focus).toHaveBeenCalledWith({ preventScroll: true });
+  await flush(); expect(mocks.set).not.toHaveBeenCalled(); expect(mocks.remove).not.toHaveBeenCalled();
+  // The native change flag may have been consumed by detachment. A real focusout must
+  // still save the dirty draft, and a duplicate change must not produce another write.
+  handleAiKeyChange(field); handleAiKeyChange(field); await flush();
+  expect(mocks.set).toHaveBeenCalledExactlyOnceWith('ai.apiKey', draft);
+  expect(field.value).toBe(''); expect(field.placeholder).toBe(maskSecret(draft));
+});
+it('repeated unrelated renders preserve a dirty draft until intentional blur', async () => {
+  const draft = 'fixture-draft-through-refreshes';
+  const field = input(draft); handleAiKeyInput(field);
+  let current = field;
+  const container = { isConnected: true, querySelector: () => current } as unknown as HTMLElement;
+  for (let i = 0; i < 3; i++) {
+    const restore = preserveAiKeyDraft(container);
+    handleAiKeyChange(field);
+    const replacement = input(); replacement.replaceWith = vi.fn(node => { current = node as HTMLInputElement; });
+    current = replacement; restore();
+    expect(current.value).toBe(draft);
+  }
+  await flush(); expect(mocks.set).not.toHaveBeenCalled();
+  handleAiKeyChange(field); await flush();
+  expect(mocks.set).toHaveBeenCalledExactlyOnceWith('ai.apiKey', draft);
+});
+it('a missing replacement ends render suppression instead of leaving the editor permanently blocked', async () => {
+  const field = input('fixture-missing-replacement'); handleAiKeyInput(field);
+  let current: HTMLInputElement | null = field;
+  const container = { querySelector: () => current } as unknown as HTMLElement;
+  const restore = preserveAiKeyDraft(container);
+  handleAiKeyChange(field);
+  current = null; restore();
+  expect(mocks.set).not.toHaveBeenCalled();
+  handleAiKeyChange(field); await flush();
+  expect(mocks.set).toHaveBeenCalledExactlyOnceWith('ai.apiKey', 'fixture-missing-replacement');
+});
 it('rerender does not preserve an untouched input or reinsert a previously submitted key', async () => {
   const field = input('fixture-submitted-main-key');
   handleAiKeyInput(field); handleAiKeyChange(field); await flush();
@@ -124,6 +173,7 @@ it('the settings surface uses the empty key editor, refresh epoch guard and raw-
   expect(source).toContain('aiKeyInputHtml(aiKey)');
   expect(source).toContain('aiKeyEpoch !== getAiKeySettingsEpoch()');
   expect(source).toContain('preserveAiKeyDraft(el)');
+  expect(source).toMatch(/addEventListener\('focusout',[\s\S]*?handleAiKeyChange\(/);
   expect(source).toMatch(/handleAiKeyInput\(t\)[\s\S]*?invalidateVoiceConnectionTest\(/);
   expect(source).not.toContain('value="${esc(aiKey');
 });
