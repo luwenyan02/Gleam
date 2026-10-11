@@ -27,11 +27,11 @@ import static org.junit.Assert.*;
  * stopped, saves/recreates the Activity, and uses the actual Capacitor @PermissionCallback.
  * No microphone, notifications, grant/revoke operation, or permission dialog is involved.
  */
-@androidx.test.filters.SdkSuppress(minSdkVersion = 26)
+@androidx.test.filters.SdkSuppress(minSdkVersion = 29)
 @RunWith(AndroidJUnit4.class)
 public class GleamPermissionRestorationProbeTest {
     @SuppressWarnings("unchecked")
-    private static void queueSyntheticPermissionResult(BridgeActivity activity) {
+    private static String queueSyntheticPermissionResult(BridgeActivity activity) {
         try {
             Bridge bridge = activity.getBridge();
             BootResultProbePlugin plugin = (BootResultProbePlugin) bridge.getPlugin("BootResultProbe").getInstance();
@@ -62,35 +62,87 @@ public class GleamPermissionRestorationProbeTest {
                 .putExtra(ActivityResultContracts.RequestMultiplePermissions.EXTRA_PERMISSION_GRANT_RESULTS, new int[0]);
             assertTrue(registry.dispatchResult(keys.get(key), Activity.RESULT_OK, result));
             assertEquals("stopped callback must await restoration/start", 0, BootResultProbePlugin.permissionResults.get());
+            return key;
         } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
+    }
+    private static boolean savedBundleContainsPending(Bundle bundle, String key) {
+        if (bundle == null || key == null) return false;
+        Bundle pending = bundle.getBundle("KEY_COMPONENT_ACTIVITY_PENDING_RESULT");
+        if (pending != null && pending.containsKey(key)) return true;
+        for (String child : bundle.keySet()) {
+            Object value = bundle.get(child);
+            if (value instanceof Bundle && savedBundleContainsPending((Bundle) value, key)) return true;
+        }
+        return false;
     }
     private static <T extends BridgeActivity> boolean runProbe(Class<T> host) throws Exception {
         BootResultProbePlugin.permissionResults.set(0);
         BootResultProbePlugin.permissionCall = null;
         BootResultProbePlugin.permissionOwner = null;
         try (ActivityScenario<T> scenario = ActivityScenario.launch(GleamNativeBootLifecycleTest.intent(host))) {
-            scenario.moveToState(Lifecycle.State.CREATED);
             java.util.concurrent.atomic.AtomicReference<T> original = new java.util.concurrent.atomic.AtomicReference<>();
-            scenario.onActivity(activity -> { original.set(activity); queueSyntheticPermissionResult(activity); });
+            scenario.onActivity(activity -> {
+                assertTrue("probe requires framework targetSdk>=P stop-before-save ordering",
+                    activity.getApplicationInfo().targetSdkVersion >= android.os.Build.VERSION_CODES.P);
+                original.set(activity);
+            });
+            java.util.concurrent.atomic.AtomicReference<String> queuedKey = new java.util.concurrent.atomic.AtomicReference<>();
+            java.util.concurrent.atomic.AtomicBoolean queuedWhileStopped = new java.util.concurrent.atomic.AtomicBoolean();
+            java.util.concurrent.atomic.AtomicBoolean pendingInActualSavedBundle = new java.util.concurrent.atomic.AtomicBoolean();
+            java.util.concurrent.atomic.AtomicBoolean pendingInRecreatedRegistry = new java.util.concurrent.atomic.AtomicBoolean();
             java.util.concurrent.atomic.AtomicReference<T> recreated = new java.util.concurrent.atomic.AtomicReference<>();
             java.util.concurrent.atomic.AtomicBoolean originalRestarted = new java.util.concurrent.atomic.AtomicBoolean();
+            android.app.Application application = original.get().getApplication();
+            android.app.Application.ActivityLifecycleCallbacks snapshots = new android.app.Application.ActivityLifecycleCallbacks() {
+                @Override public void onActivityCreated(Activity a, Bundle state) {}
+                @Override public void onActivityStarted(Activity a) {}
+                @Override public void onActivityResumed(Activity a) {}
+                @Override public void onActivityPaused(Activity a) {}
+                @Override public void onActivityStopped(Activity a) {
+                    if (a != original.get() || queuedKey.get() != null) return;
+                    assertEquals("inject only after AndroidX removed active callbacks", Lifecycle.State.CREATED,
+                        original.get().getLifecycle().getCurrentState());
+                    // targetSdk >= P saves state AFTER onStop. Queue during this callback,
+                    // not after moveToState(CREATED) returns with an already-cached old Bundle.
+                    queuedKey.set(queueSyntheticPermissionResult(original.get()));
+                    queuedWhileStopped.set(true);
+                }
+                @Override public void onActivitySaveInstanceState(Activity a, Bundle state) {}
+                @Override public void onActivityPostSaveInstanceState(Activity a, Bundle state) {
+                    if (a == original.get()) pendingInActualSavedBundle.set(savedBundleContainsPending(state, queuedKey.get()));
+                }
+                @Override public void onActivityDestroyed(Activity a) {}
+            };
             androidx.test.runner.lifecycle.ActivityLifecycleCallback observer = (activity, stage) -> {
-                if (activity == original.get() && (stage == androidx.test.runner.lifecycle.Stage.RESTARTED
+                if (activity == original.get() && queuedWhileStopped.get()
+                        && (stage == androidx.test.runner.lifecycle.Stage.RESTARTED
                         || stage == androidx.test.runner.lifecycle.Stage.STARTED
                         || stage == androidx.test.runner.lifecycle.Stage.RESUMED)) originalRestarted.set(true);
                 if (host.isInstance(activity) && activity != original.get()
-                        && stage == androidx.test.runner.lifecycle.Stage.CREATED) recreated.set(host.cast(activity));
+                        && stage == androidx.test.runner.lifecycle.Stage.CREATED) {
+                    T replacement = host.cast(activity);
+                    Bundle pending = (Bundle) BootLifecycleFixtureActivity.field(replacement.getActivityResultRegistry(),
+                        ActivityResultRegistry.class, "pendingResults");
+                    pendingInRecreatedRegistry.set(pending.containsKey(queuedKey.get()));
+                    recreated.set(replacement);
+                }
             };
             androidx.test.runner.lifecycle.ActivityLifecycleMonitor monitor =
                 androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance();
+            application.registerActivityLifecycleCallbacks(snapshots);
             monitor.addLifecycleCallback(observer);
             try {
-                // ActivityScenario.recreate() resumes the ORIGINAL host before recreation, flushing
-                // its pending result. Direct framework recreation avoids that false restoration pass.
+                scenario.moveToState(Lifecycle.State.CREATED);
+                assertTrue("onStop did not queue synthetic result before framework save", queuedWhileStopped.get());
+                assertTrue("actual framework saved Bundle omitted queued AndroidX result", pendingInActualSavedBundle.get());
+                assertEquals(0, BootResultProbePlugin.permissionResults.get());
+                // ActivityScenario.recreate() resumes the ORIGINAL host before recreation,
+                // flushing its result. Direct framework recreation keeps the old host stopped.
                 GleamNativeBootLifecycleTest.ui(() -> original.get().recreate());
                 GleamNativeBootLifecycleTest.await("stopped host was not recreated", () -> recreated.get() != null);
                 assertFalse("original host restarted before recreation and could consume pending result", originalRestarted.get());
                 assertNotSame(original.get(), recreated.get());
+                assertTrue("recreated AndroidX registry did not receive pending saved result", pendingInRecreatedRegistry.get());
                 scenario.moveToState(Lifecycle.State.RESUMED);
                 GleamNativeBootLifecycleTest.await("AndroidX restored permission callback swallowed", () -> BootResultProbePlugin.permissionResults.get() == 1);
                 assertSame("callback must target the recreated Activity, not static evidence from old host",
@@ -100,7 +152,10 @@ public class GleamPermissionRestorationProbeTest {
                 Thread.sleep(250);
                 assertEquals("permission callback duplicated", 1, BootResultProbePlugin.permissionResults.get());
                 return retained;
-            } finally { monitor.removeLifecycleCallback(observer); }
+            } finally {
+                monitor.removeLifecycleCallback(observer);
+                application.unregisterActivityLifecycleCallbacks(snapshots);
+            }
         }
     }
     @Test public void pendingPermissionResultMatchesUngatedCapacitorBaselineAndReportsCallRetention() throws Exception {
@@ -114,6 +169,8 @@ public class GleamPermissionRestorationProbeTest {
             report.putBoolean("baseline_permission_callback_received_by_new_activity", true);
             report.putBoolean("gated_permission_callback_received_by_new_activity", true);
             report.putBoolean("original_activity_never_restarted_before_recreation", true);
+            report.putBoolean("pending_result_verified_in_actual_framework_saved_bundle", true);
+            report.putBoolean("pending_result_verified_in_recreated_androidx_registry", true);
             report.putBoolean("baseline_permission_call_retained", baseline);
             report.putBoolean("gated_permission_call_retained", gated);
             report.putString("permission_limitation", gated ? "none_observed_in_synthetic_recreation_probe_not_real_system_permission_or_process_death" :

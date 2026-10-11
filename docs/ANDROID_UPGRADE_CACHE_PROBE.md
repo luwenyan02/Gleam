@@ -26,10 +26,9 @@
 
 ## 尚待验证
 
-- 候选主 WebView 导航闸门与同步 Bridge 初始化的实际 Android 编译、安装运行。
-- 保存状态、Activity 重建和真正的进程死亡恢复；原生 Activity/权限结果与分享/深链事件不丢失、不重复。
-- 失败、重试、暂停/恢复、迟到回调及跨 Activity 全局 worker 拦截器所有权。
-- 精确历史 APK 网页资源与当前资源的升级，而非只用最小合成页面。
+- 权限 pending result 确实进入保存 Bundle 后，新实例的回调交付与原调用保留程度；区分 Capacitor 既有行为及闸门差异。
+- 最终提交上的完整生命周期、真正进程死亡及浏览器 PWA 自动更新/离线回归；不同提交的通过项不拼成未经重跑的全绿。
+- 独立最终代码审查，尤其是失败/重试、全局 worker 所有权及旧文档脚本边界。
 - 更多受支持 Android/WebView 提供者；用户手机实际覆盖安装验收。
 
 禁止为使测试通过而清空应用数据、改源、删除 IndexedDB/localStorage/Keystore，或把网页浏览器测试当作 Android 生命周期测试。
@@ -56,3 +55,17 @@
 此项本地通过 3 项新单元测试、完整 1,073 项单元测试、类型检查及构建。新增浏览器真实自动更新/离线回归与 Android 端最终运行尚待 CI；本地现有 Chromium 因操作系统 UNIX socket EPERM 未启动，未宣称浏览器通过。
 
 覆盖安装夹具使用同包名、全新测试专用 debug 签名的两个自产 APK。旧包中 28 个原始网页资源逐个校验，原生部分为当前测试夹具；先保存实际缓存 HTML 摘要与合成状态，再 `adb install -r` 更新，不清数据或卸载。新包核对包版本、同一签名、旧缓存页面不执行、新页面及 IDB/localStorage/原生偏好/Keystore 保留。它不证明历史正式 native APK 或用户签名兼容。首次已构建两包，签名校验脚本因工具实际输出 `V2 Signer:` 而未接受；解析已按实际输出修正，仍核验唯一签名、全新测试公钥、包名/版本/debug 标记及 instrumentation 目标，没有跳过签名核验。
+
+## `53ccbc` 覆盖安装与历史资源实测
+
+提交 `53ccbcddd48117ab34cfb7788061e144b6158586`，原生运行 [38157633775](https://github.com/luwenyan02/Gleam/actions/runs/38157633775)：
+
+- 覆盖安装 job `114523775043` 于 2026-10-11 17:05 UTC 成功。旧包种子测试和覆盖后核验各 `OK (1 test)`；三包 SHA256、唯一同一 debug 签名及版本先核验，再执行无清数据的 `adb install -r`。
+- 源夹具 `1.10.5/11005` → 当前 `1.11.0/11100`。旧受控文档确实来自旧缓存，模块路径为原始旧值；DOM 未 mount、主题脚本未运行、无 Android Bridge/Capacitor 对象。新页面模块为当前值、旧控制器已消失、根注册为 0。
+- 合成账目哨兵 localStorage、独立 IndexedDB、真实 GleamDB 设置中的主题、原生 SharedPreferences 与 Android Keystore 解密值保持；实际旧缓存 HTML 的 SHA256 亦保持，未清空缓存来使测试成功。
+- artifact `11709511937` 已读回，ZIP SHA256 `d7fa9b196a6f725cc724887de290b4ade8d9af9bc8e85ab9ac309b26674ddff1`，提供者为 `com.google.android.webview 124.0.6367.219`，Android 35。此证据仍只覆盖自产 debug 夹具，不证明历史正式 native APK 签名兼容。
+- 同次 lifecycle job `114523775456` 中，原始能力探针、精确历史资产单 APK 升级、导航闸门、Bridge/Bundle、分享/深链、失败重试、子 Activity 结果与合成数据/Keystore测试通过。
+- 该 lifecycle job 总结果为失败：修正后的权限恢复探针在未加闸门的 baseline 就未观察到新 Activity 回调，gated 对照尚未执行。正在区分 Android 保存 Bundle 时机与底层恢复行为；不能宣称权限恢复已通过，亦不能把基线失败归因于闸门。其后的真正进程死亡阶段未运行。
+- 同提交普通 CI 的 Web 单测（79 文件 / 1,081 项）、离线 AI 评估（242/242）、Android 单测与编译、浏览器精确旧资源升级诊断通过；完整浏览器回归于 17:19 UTC 成功，其中新 PWA 测试确认真实 worker 自动更新刷新、离线重载，以及模拟原生连续重载零注册。后续文件修改不得继承此提交未重跑的证据。
+
+权限失败诊断的源依据：[Android 15 ActivityThread.callActivityOnStop](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-15.0.0_r1/core/java/android/app/ActivityThread.java#L5323-L5346) 在 target >= P 时先 onStop 再保存，并在已有 r.state 时不重新保存。旧探针在 moveToState(CREATED) 返回后才注入，可能错过实际保存。当前修正把注入放入 onActivityStopped，新增 onActivityPostSaveInstanceState 实际 Bundle 与新 registry 同 key 断言；没有手写替换 saved Bundle，也未放宽一次回调或接收者身份检查。修正运行尚待下一提交。

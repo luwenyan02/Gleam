@@ -29,14 +29,20 @@ callback paths. The permission diagnostic seeds a raw pending result into the re
 registry without a permission request. It directly recreates the stopped host, verifies that the
 original Activity never restarts to consume the pending result, and requires the callback receiver
 to be the distinct new Activity. It does not use ActivityScenario.recreate() for this pending flow.
+This diagnostic requires API29+ and targetSdk>=P: it injects during Application.onActivityStopped,
+after AndroidX unbinds callbacks and before Android saves state. It verifies the key in the actual
+framework saved Bundle using onActivityPostSaveInstanceState and again in the new AndroidX registry.
 It compares an ordinary ungated CapacitorWebView/Bridge host against MainActivity and explicitly
 reports callback call retention. The earlier CI 38154622179 reported nonnull calls in both hosts,
-but that apparent restoration
-pass is retracted: ActivityScenario.recreate() first resumes the original host and flushed its
+but that apparent restoration pass is retracted: ActivityScenario.recreate() first resumes the original host and flushed its
 pending result before recreation. The earlier evidence establishes old-instance stopped/resumed
 callback parity only. The corrected identity-verified probe must be rerun before any recreation
-retention conclusion. Current Capacitor saves activity calls but does not persist its permission-call
-queue. If the corrected probe reports null in both hosts, that is an inherited limitation,
+retention conclusion. CI38157633775's subsequent zero-callback baseline also did not establish a
+Capacitor restoration failure: that revision injected after moveToState(CREATED) had already saved
+the old framework Bundle, which stopped-host recreation reused. The latest probe injects before
+that actual save and requires both saved-Bundle and new-registry evidence; zero callbacks after
+those checks remains a hard failure. Current Capacitor saves activity calls but does not persist
+its permission-call queue. If the corrected probe reports null in both hosts, that is an inherited limitation,
 NOT full permission restoration acceptance. There is no microphone or system
 permission dialog, grant, revoke, or security-setting operation.
 
@@ -113,4 +119,4 @@ Do not replace the kill step with force-stop: force-stop cancels the task/result
 flow. Do not run any permission requests or live provider calls. The verification-only test skips in
 ordinary runs lacking `expected_original_pid`, and must not be presented as covered by the first
 suite. No automated stage has been executed in the local workspace: only Java syntax was parsed;
-Android type compilation and emulator execution are pending the parent's existing CI.
+Android compilation and emulator execution have run. Commit 44f7288978387a18d920835ad0a42f24524cbbff passed the external PID-kill process-restoration stage (run 38154622179); commit 53ccbcddd48117ab34cfb7788061e144b6158586 passed real install-replace and historical assets but stopped at the permission diagnostic before that stage. The corrected permission probe and full final-head process-restoration stage still require execution. See docs/ANDROID_UPGRADE_CACHE_PROBE.md for exact scoped evidence.
