@@ -30,6 +30,7 @@ public class BootLifecycleFixtureActivity extends MainActivity {
     }
 
     @Override protected void load() {
+        BootFixtureNetworkFence.installDocumentFence(findViewById(com.getcapacitor.android.R.id.webview));
         registerPlugin(BootFixtureHttpPlugin.class);
         registerPlugin(BootFixtureWebDavPlugin.class);
         registerPlugin(BootFixtureSpeechPlugin.class);

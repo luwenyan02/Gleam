@@ -45,6 +45,11 @@ adb -s emulator-5554 shell am instrument -w -r -e class com.gleam.shiguang.Upgra
 grep -F 'OK (1 test)' "$OUT/instrumentation.txt"
 ! grep -E 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED' "$OUT/instrumentation.txt"
 
+# Exact old public assets seed before any current app opens its real synthetic schema.
+adb -s emulator-5554 shell am instrument -w -r -e gleamEphemeralFixture true -e class com.gleam.shiguang.GleamHistoricalAssetsUpgradeTest com.gleam.shiguang.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/historical-assets.txt"
+grep -F 'OK (1 test)' "$OUT/historical-assets.txt"
+! grep -E 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED' "$OUT/historical-assets.txt"
+
 # A fresh instrumentation process exercises real Bridge lifecycle without resetting app data.
 adb -s emulator-5554 shell am instrument -w -r -e class com.gleam.shiguang.GleamBootWebViewInstrumentationTest,com.gleam.shiguang.GleamNativeBootLifecycleTest,com.gleam.shiguang.GleamPermissionRestorationProbeTest,com.gleam.shiguang.GleamNativeBootUpgradeIntegrationTest com.gleam.shiguang.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/boot-integration.txt"
 grep -F 'OK (7 tests)' "$OUT/boot-integration.txt"

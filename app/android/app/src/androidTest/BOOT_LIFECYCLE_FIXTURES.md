@@ -37,7 +37,10 @@ only in fixture hosts with rejecting debug adapters. The generated config is loa
 only CapacitorHttp.enabled is disabled before Bridge initialization. This preserves actual main
 boot/AndroidX/result/plugin restoration lifecycle but does NOT exercise live HTTP/WebDAV/speech
 provider implementations. Both local HTTP interceptor paths are denied before the local server
-can proxy them. There are no real provider calls or microphone requests.
+can proxy them. There are no real provider calls or microphone requests. A test-only localhost document-start
+script also rejects off-origin fetch/XHR and all beacon/WebSocket/EventSource/Worker/SharedWorker
+creation, installed before Bridge loads its initial document. Unsupported document-start providers
+fail the fixture rather than silently weakening this boundary.
 
 The debug-only network fence delegates actual Bridge page/error/render callbacks, serves only
 HTTPS localhost requests through the local asset server, returns 403 for all others, and never

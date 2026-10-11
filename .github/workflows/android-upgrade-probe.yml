@@ -33,6 +33,11 @@ jobs:
         working-directory: app
       - name: Verify generated native worker routing configuration
         run: node -e "const c=require('./app/android/app/src/main/assets/capacitor.config.json');if(c.android?.resolveServiceWorkerRequests!==false)throw Error('Unexpected automatic worker routing')"
+      - name: Package verified historical APK public assets only in the test APK
+        run: |
+          python3 app/e2e/upgrade_fixtures.py
+          mkdir -p app/android/app/src/androidTest/assets/upgrade-fixtures
+          cp app/e2e/fixtures/upgrade/manifest.json app/e2e/fixtures/upgrade/gleam-1.10.5-public.zip app/android/app/src/androidTest/assets/upgrade-fixtures/
       - name: Compile isolated synthetic Android probe without running a device
         run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
         working-directory: app/android

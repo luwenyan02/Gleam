@@ -19,6 +19,7 @@ public class BootBaselineFixtureActivity extends BridgeActivity {
         view.setId(com.getcapacitor.android.R.id.webview);
         container.addView(view, new FrameLayout.LayoutParams(-1, -1));
         setContentView(container);
+        BootFixtureNetworkFence.installDocumentFence(view);
         registerPlugin(BootFixtureHttpPlugin.class);
         registerPlugin(BootFixtureWebDavPlugin.class);
         registerPlugin(BootFixtureSpeechPlugin.class);

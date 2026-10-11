@@ -36,6 +36,19 @@ final class BootFixtureNetworkFence {
         catch (org.json.JSONException failure) { throw new AssertionError(failure); }
         return config;
     }
+    static void installDocumentFence(WebView view) {
+        if (!androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            throw new AssertionError("Fixture requires WebView document-start script support for no-service boundary");
+        }
+        String script = "(()=>{const deny=()=>{throw Error('SYNTHETIC_FIXTURE_NETWORK_BLOCKED')};"
+            + "window.WebSocket=deny;window.EventSource=deny;window.Worker=deny;window.SharedWorker=deny;"
+            + "const local=u=>{try{const x=new URL(typeof u==='string'?u:u.url,location.href);return x.origin==='https://localhost'&&!x.pathname.startsWith('/_capacitor_http_interceptor_')&&!x.pathname.startsWith('/_capacitor_https_interceptor_')}catch{return false}};"
+            + "const originalFetch=window.fetch.bind(window);window.fetch=(u,o)=>local(u)?originalFetch(u,o):Promise.reject(Error('SYNTHETIC_FIXTURE_NETWORK_BLOCKED'));"
+            + "const originalOpen=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u,...args){if(!local(u))deny();return originalOpen.call(this,m,u,...args)};"
+            + "if(navigator.sendBeacon)navigator.sendBeacon=()=>false;})()";
+        androidx.webkit.WebViewCompat.addDocumentStartJavaScript(view, script,
+            Collections.singleton("https://localhost"));
+    }
     static void install(Bridge bridge) {
         WebView view = bridge.getWebView();
         WebViewClient delegate = view.getWebViewClient();

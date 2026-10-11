@@ -35,6 +35,7 @@ public class BootProcessRestorationFixtureActivity extends MainActivity {
         Log.i("BootProcessProbe", "created pid=" + Process.myPid() + " restored=" + restoredSyntheticState);
     }
     @Override protected void load() {
+        BootFixtureNetworkFence.installDocumentFence(findViewById(com.getcapacitor.android.R.id.webview));
         registerPlugin(BootFixtureHttpPlugin.class);
         registerPlugin(BootFixtureWebDavPlugin.class);
         registerPlugin(BootFixtureSpeechPlugin.class);
