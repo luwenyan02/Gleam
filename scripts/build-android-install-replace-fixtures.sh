@@ -97,11 +97,15 @@ done
 python3 - "$OUT" <<'PY'
 import hashlib, json, pathlib, re, sys
 p = pathlib.Path(sys.argv[1]); signatures = []
+def fixture_signer(text):
+    digests = re.findall(r'^(?:Signer #\d+|V2 Signer:) certificate SHA-256 digest: ([0-9a-fA-F]{64})$', text, re.MULTILINE)
+    assert digests and len(digests) == text.count('certificate SHA-256 digest:'), 'Unrecognized certificate output'
+    unique = {digest.lower() for digest in digests}
+    assert len(unique) == 1, 'Expected one unique fixture signing certificate'
+    return unique.pop()
 for stage in ('old', 'current', 'test'):
     text = (p / f'{stage}-signer.txt').read_text()
-    found = re.findall(r'Signer #1 certificate SHA-256 digest: (\w+)', text)
-    assert len(found) == 1, f'Missing unique debug signer: {stage}'
-    signatures.append(found[0])
+    signatures.append(fixture_signer(text))
 assert len(set(signatures)) == 1, 'Harness debug signatures do not match'
 assert signatures[0].lower() == hashlib.sha256((p/'fixture-signing-cert.der').read_bytes()).hexdigest(), 'APKs were not signed by the fresh fixture-only debug key'
 def package(stage):

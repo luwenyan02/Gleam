@@ -51,6 +51,8 @@ jobs:
       - name: Compile isolated synthetic Android probe without running a device
         run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
         working-directory: app/android
+      - name: Check strict fixture signing certificate parsers
+        run: python3 scripts/test-android-fixture-signer.py
       - name: Build same-package debug install-replace harnesses
         if: matrix.scenario == 'install-replace'
         run: GLEAM_EPHEMERAL_FIXTURE=true bash scripts/build-android-install-replace-fixtures.sh

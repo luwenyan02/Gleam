@@ -40,6 +40,9 @@ import { initNativeWidget } from './features/entry/nativeWidget';
 import { initAiInbox } from './features/ai-inbox/aiInbox';
 import { enforceAppLock } from './features/settings/lock';
 import { migrateLegacySecrets } from './core/secretStore';
+import { registerWebPwa } from './core/registerWebPwa';
+
+registerWebPwa();
 
 async function bootstrap(): Promise<void> {
   injectIcons();

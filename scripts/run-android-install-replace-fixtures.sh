@@ -22,10 +22,16 @@ done
 python3 - "$BUILD" "$OUT" <<'PY'
 import json, pathlib, re, sys
 build, out = map(pathlib.Path, sys.argv[1:]); facts = json.loads((build/'scope.json').read_text())
+def fixture_signer(text):
+    digests = re.findall(r'^(?:Signer #\d+|V2 Signer:) certificate SHA-256 digest: ([0-9a-fA-F]{64})$', text, re.MULTILINE)
+    assert digests and len(digests) == text.count('certificate SHA-256 digest:'), 'Unrecognized certificate output'
+    unique = {digest.lower() for digest in digests}
+    assert len(unique) == 1, 'Expected one unique fixture signing certificate'
+    return unique.pop()
 assert facts['source_fixture_sha256'] == 'c6411b17b13e9cd495662f88a607dfbd848c2c06d7c3713f2c5b5c96b16c996e'
 for stage in ('old','current','test'):
-    signers = re.findall(r'Signer #1 certificate SHA-256 digest: (\w+)', (out/f'{stage}-signer.txt').read_text())
-    assert signers == [facts['debug_signer_sha256']], f'Unexpected paired signer: {stage}'
+    signer = fixture_signer((out/f'{stage}-signer.txt').read_text())
+    assert signer == facts['debug_signer_sha256'], f'Unexpected paired signer: {stage}'
 for stage in ('old','current'):
     text = (out/f'{stage}-badging.txt').read_text()
     match = re.search(r"package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", text)
