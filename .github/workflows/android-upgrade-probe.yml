@@ -4,7 +4,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/android-upgrade-probe.yml'
-      - 'app/android/app/src/androidTest/**'
+      - 'app/android/app/src/**'
+      - 'app/capacitor.config.ts'
       - 'scripts/*android*probe*'
 
 permissions:
@@ -30,6 +31,8 @@ jobs:
         working-directory: app
       - run: npm run build && npx cap sync android
         working-directory: app
+      - name: Verify generated native worker routing configuration
+        run: node -e "const c=require('./app/android/app/src/main/assets/capacitor.config.json');if(c.android?.resolveServiceWorkerRequests!==false)throw Error('Unexpected automatic worker routing')"
       - name: Compile isolated synthetic Android probe without running a device
         run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
         working-directory: app/android

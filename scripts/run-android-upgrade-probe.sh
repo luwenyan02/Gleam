@@ -44,3 +44,10 @@ adb -s emulator-5554 install "$TEST_APK"
 adb -s emulator-5554 shell am instrument -w -r -e class com.gleam.shiguang.UpgradeWebViewProbeTest com.gleam.shiguang.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/instrumentation.txt"
 grep -F 'OK (1 test)' "$OUT/instrumentation.txt"
 ! grep -E 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED' "$OUT/instrumentation.txt"
+
+# A fresh instrumentation process exercises real Bridge lifecycle without resetting app data.
+adb -s emulator-5554 shell am instrument -w -r -e class com.gleam.shiguang.GleamBootWebViewInstrumentationTest,com.gleam.shiguang.GleamNativeBootLifecycleTest,com.gleam.shiguang.GleamPermissionRestorationProbeTest,com.gleam.shiguang.GleamNativeBootUpgradeIntegrationTest com.gleam.shiguang.test/androidx.test.runner.AndroidJUnitRunner | tee "$OUT/boot-integration.txt"
+grep -F 'OK (7 tests)' "$OUT/boot-integration.txt"
+! grep -E 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_ABORTED' "$OUT/boot-integration.txt"
+
+bash scripts/run-android-process-probe.sh
