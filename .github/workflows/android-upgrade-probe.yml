@@ -1,0 +1,60 @@
+name: Android upgrade probe
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/android-upgrade-probe.yml'
+      - 'app/android/app/src/androidTest/**'
+      - 'scripts/*android*probe*'
+
+permissions:
+  contents: read
+
+jobs:
+  native_webview_probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - run: npm ci --ignore-scripts
+        working-directory: app
+      - run: npm run build && npx cap sync android
+        working-directory: app
+      - name: Compile isolated synthetic Android probe without running a device
+        run: ./gradlew assembleDebug assembleDebugAndroidTest
+        working-directory: app/android
+      - name: Verify existing approved SDK terms before installation
+        run: python3 scripts/verify-android-probe-license.py
+      - name: Install official emulator and isolated system image without accepting new terms
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'emulator' 'system-images;android-35;google_apis;x86_64' </dev/null
+      - name: Grant this disposable runner user access to the existing KVM group
+        run: |
+          test "$(stat -c '%G:%a' /dev/kvm)" = 'kvm:660'
+          getent group kvm
+          sudo usermod -aG kvm "$(id -un)"
+          test "$(stat -c '%G:%a' /dev/kvm)" = 'kvm:660'
+      - name: Run synthetic isolated Android WebView capability probe
+        run: sg kvm -c 'bash scripts/run-android-upgrade-probe.sh'
+      - name: Preserve native probe evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-upgrade-probe-${{ github.run_id }}
+          path: |
+            .tmp/android-upgrade-probe/**
+            app/android/app/build/reports/androidTests/**
+            app/android/app/build/outputs/androidTest-results/**
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
