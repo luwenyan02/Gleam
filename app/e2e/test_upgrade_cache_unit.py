@@ -5,6 +5,7 @@ from io import BytesIO
 import json
 from pathlib import Path
 import stat
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -192,6 +193,143 @@ class DiagnosticTests(unittest.TestCase):
     def test_no_browser_or_socket_required_for_import_and_fixture_checks(self):
         with patch.object(diagnostic, 'ThreadingHTTPServer', side_effect=AssertionError('No sockets in unit tests')):
             self.assertEqual(set(load_fixtures()), {'1.10.5', '1.10.6'})
+
+
+class WorkerActivationTests(unittest.TestCase):
+    """Run the actual async browser helper against controlled, socket-free objects."""
+
+    def wait_result(self, scenario):
+        harness = r"""
+const fs = require('node:fs');
+const {script, scenario} = JSON.parse(fs.readFileSync(0, 'utf8'));
+const oldWorker = {state: 'activated', scriptURL: 'http://local/sw.js'};
+const newWorker = {state: 'activated', scriptURL: 'http://local/sw.js'};
+const replacement = {state: 'activated', scriptURL: 'http://local/sw.js'};
+const registration = {active: newWorker, installing: null, waiting: null};
+const serviceWorker = {controller: newWorker, getRegistration: async () => registration};
+global.window = {__upgradeWorkerUpdate: {worker: newWorker}};
+Object.defineProperty(globalThis, 'navigator', {value: {serviceWorker}, configurable: true});
+let mutateDuringRead = () => {};
+if (scenario === 'install_starts_during_cache_read') {
+  registration.active = oldWorker;
+  serviceWorker.controller = oldWorker;
+  window.__upgradeWorkerUpdate.worker = oldWorker;
+  mutateDuringRead = () => {
+    newWorker.state = 'installing';
+    registration.installing = newWorker;
+    window.__upgradeWorkerUpdate.worker = newWorker;
+  };
+} else if (scenario === 'controller_still_old') {
+  serviceWorker.controller = oldWorker;
+} else if (scenario === 'controller_activating') {
+  newWorker.state = 'activating';
+} else if (scenario === 'identity_changes_during_cache_read') {
+  mutateDuringRead = () => {
+    registration.active = replacement;
+    serviceWorker.controller = replacement;
+    window.__upgradeWorkerUpdate.worker = replacement;
+  };
+} else if (scenario === 'failed_new_worker_left_populated_cache') {
+  newWorker.state = 'redundant';
+  registration.active = oldWorker;
+  serviceWorker.controller = oldWorker;
+} else if (scenario === 'stable_initial_worker') {
+  delete window.__upgradeWorkerUpdate;
+}
+const cache = {
+  keys: async () => [{url: 'http://local/index.html?revision=new'}],
+  match: async () => ({text: async () => {mutateDuringRead(); return '<fixture>';}})
+};
+global.caches = {keys: async () => ['fixture-cache'], open: async () => cache};
+global.DOMParser = class {
+  parseFromString() {return {querySelector: () => ({getAttribute: () => '/assets/new.js'})};}
+};
+(async () => {
+  const result = await eval('(' + script + ')')('/assets/new.js');
+  process.stdout.write(JSON.stringify(result));
+})().catch((error) => {console.error(error); process.exitCode = 1;});
+"""
+        completed = subprocess.run(
+            ['node', '-e', harness],
+            input=json.dumps({'script': diagnostic.WAIT_FOR_WORKER, 'scenario': scenario}),
+            text=True, capture_output=True, check=True, timeout=10,
+        )
+        return json.loads(completed.stdout)
+
+    def test_update_tracker_keeps_actual_candidate_through_lifecycle_timing(self):
+        harness = r"""
+const fs = require('node:fs');
+const {script, scenario} = JSON.parse(fs.readFileSync(0, 'utf8'));
+const oldWorker = {state: 'activated'};
+const newWorker = {state: 'installing'};
+let listener;
+const registration = {
+  active: oldWorker, installing: null, waiting: null,
+  addEventListener: (name, callback) => {
+    if (name !== 'updatefound') throw new Error('Unexpected event ' + name);
+    listener = callback;
+  },
+  update: async () => {
+    if (scenario === 'late_updatefound' || scenario === 'already_activated') return;
+    registration.installing = newWorker;
+    listener();
+    if (scenario === 'failed_install') {
+      registration.installing = null;
+      newWorker.state = 'redundant';
+    } else if (scenario === 'activation_during_update') {
+      registration.installing = null;
+      newWorker.state = 'activated';
+      registration.active = newWorker;
+    }
+  }
+};
+if (scenario === 'already_activated') {
+  newWorker.state = 'activated';
+  registration.active = newWorker;
+}
+global.window = {};
+Object.defineProperty(globalThis, 'navigator', {
+  value: {serviceWorker: {getRegistration: async () => registration}}, configurable: true
+});
+(async () => {
+  await eval('(' + script + ')')();
+  if (scenario === 'late_updatefound') {
+    registration.installing = newWorker;
+    listener();
+  }
+  process.stdout.write(JSON.stringify(window.__upgradeWorkerUpdate.worker === newWorker));
+})().catch((error) => {console.error(error); process.exitCode = 1;});
+"""
+        for scenario in ('installing', 'late_updatefound', 'already_activated',
+                         'activation_during_update', 'failed_install'):
+            with self.subTest(scenario=scenario):
+                result = subprocess.run(
+                    ['node', '-e', harness],
+                    input=json.dumps({'script': diagnostic.START_WORKER_UPDATE, 'scenario': scenario}),
+                    text=True, capture_output=True, check=True, timeout=10,
+                )
+                self.assertTrue(json.loads(result.stdout))
+
+    def test_rechecks_installation_after_awaited_cache_reads(self):
+        self.assertFalse(self.wait_result('install_starts_during_cache_read'))
+
+    def test_new_active_worker_must_also_control_this_document(self):
+        self.assertFalse(self.wait_result('controller_still_old'))
+
+    def test_activating_controller_is_not_ready_for_reload(self):
+        self.assertFalse(self.wait_result('controller_activating'))
+
+    def test_worker_identity_must_stay_the_same_through_cache_inspection(self):
+        self.assertFalse(self.wait_result('identity_changes_during_cache_read'))
+
+    def test_failed_new_worker_cannot_pass_using_its_partial_cache(self):
+        self.assertFalse(self.wait_result('failed_new_worker_left_populated_cache'))
+
+    def test_exact_new_worker_activated_and_controlling_page_passes(self):
+        self.assertTrue(self.wait_result('stable_updated_worker'))
+
+    def test_initial_worker_without_update_tracking_can_become_ready(self):
+        self.assertTrue(self.wait_result('stable_initial_worker'))
 
 
 if __name__ == '__main__':

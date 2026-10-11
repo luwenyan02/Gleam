@@ -98,14 +98,42 @@ WORKER_SNAPSHOT = """async () => {
       installing: describe(registration.installing)
     } : null,
     controllerChangesThisDocument: window.__upgradeControllerChanges,
+    updateTarget: describe(window.__upgradeWorkerUpdate?.worker),
+    updateTargetIsController: window.__upgradeWorkerUpdate
+      ? window.__upgradeWorkerUpdate.worker === navigator.serviceWorker.controller : null,
+    updateTargetIsActive: window.__upgradeWorkerUpdate
+      ? window.__upgradeWorkerUpdate.worker === registration?.active : null,
     caches: cachesSeen
   };
 }"""
 
+START_WORKER_UPDATE = """async () => {
+  const registration = await navigator.serviceWorker.getRegistration();
+  if (!registration) throw new Error('Missing service worker before update');
+  const previousActive = registration.active;
+  const tracked = {worker: registration.installing || registration.waiting || previousActive};
+  window.__upgradeWorkerUpdate = tracked;
+  // update() can resolve before installation/activation finishes. Keep the
+  // actual candidate object, including an updatefound delivered after resolve.
+  registration.addEventListener('updatefound', () => {
+    if (registration.installing) tracked.worker = registration.installing;
+  });
+  await registration.update();
+  if (registration.installing || registration.waiting) {
+    tracked.worker = registration.installing || registration.waiting;
+  } else if (registration.active !== previousActive) {
+    tracked.worker = registration.active;
+  }
+}"""
+
 WAIT_FOR_WORKER = """async (expectedModule) => {
   const registration = await navigator.serviceWorker.getRegistration();
-  if (!navigator.serviceWorker.controller || !registration ||
-      registration.active?.state !== 'activated' || registration.installing || registration.waiting) return false;
+  const worker = window.__upgradeWorkerUpdate?.worker || registration?.active;
+  const ready = (current) => worker && current &&
+    worker.state === 'activated' && current.active === worker &&
+    navigator.serviceWorker.controller === worker && !current.installing && !current.waiting &&
+    (!window.__upgradeWorkerUpdate || window.__upgradeWorkerUpdate.worker === worker);
+  if (!ready(registration)) return false;
   for (const name of await caches.keys()) {
     const cache = await caches.open(name);
     for (const key of await cache.keys()) {
@@ -115,7 +143,11 @@ WAIT_FOR_WORKER = """async (expectedModule) => {
       const html = await response.text();
       const source = new DOMParser().parseFromString(html, 'text/html')
         .querySelector('script[type="module"]')?.getAttribute('src');
-      if (source === expectedModule) return true;
+      if (source === expectedModule) {
+        // New precache entries alone do not prove activation. Any await above
+        // can let a new installation begin or change the active/controller pair.
+        return !!ready(await navigator.serviceWorker.getRegistration());
+      }
     }
   }
   return false;
@@ -223,6 +255,10 @@ def validate_snapshot(snapshot, fixtures, served_version, required_version=None)
     worker = snapshot['service_worker']
     assert worker['controller'] is not None, f'{phase}: no controlling service worker'
     assert worker['registration'] is not None, f'{phase}: no worker registration'
+    if phase == 'after_worker_update_without_explicit_reload':
+        assert worker['updateTarget']['state'] == 'activated', f'{phase}: update target not activated'
+        assert worker['updateTargetIsController'] and worker['updateTargetIsActive'], f'{phase}: update target not controlling/active'
+        assert not worker['registration']['installing'] and not worker['registration']['waiting'], f'{phase}: update still pending'
     build = snapshot['build_info_no_cache']
     assert build['status'] == 200 and build['body'] == {'version': served_version}, f'{phase}: stale build-info probe'
     assert build['cache_mode'] == 'no-store', f'{phase}: build-info probe did not bypass HTTP cache'
@@ -302,11 +338,7 @@ def run_diagnostic(browser, origin, state, report):
         first = record('first_navigation_after_asset_replacement', NEW)
 
         # The app/worker may already have updated. Do not require stale behavior.
-        page.evaluate("""async () => {
-          const registration = await navigator.serviceWorker.getRegistration();
-          if (!registration) throw new Error('Missing service worker before update');
-          await registration.update();
-        }""")
+        page.evaluate(START_WORKER_UPDATE)
         page.wait_for_function(WAIT_FOR_WORKER, arg=module_url(state.fixtures[NEW]), timeout=30000)
         record('after_worker_update_without_explicit_reload', NEW)
 

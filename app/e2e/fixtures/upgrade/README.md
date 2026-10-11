@@ -27,8 +27,8 @@ python e2e/test_upgrade_cache_unit.py
 python e2e/test_upgrade_cache.py
 ```
 
-The unit tests require only the Python standard library: they start no socket or
-browser. The browser diagnostic requires the repository's pinned Playwright and
+The unit tests use the Python standard library and Node.js to execute mocked
+JavaScript lifecycle checks. They start no socket or browser. The browser diagnostic requires the repository's pinned Playwright and
 installed Chromium. It does not use `GLEAM_E2E_URL`, a user's browser profile, an
 existing preview, or the user's real app storage.
 
@@ -38,7 +38,9 @@ the original service workers to run. It logs four phases:
 
 1. Old package loaded, with the old main script and About version asserted
 2. First explicit navigation after replacement
-3. Worker update/activation without another test-initiated reload
+3. Worker update/activation without another test-initiated reload; the tracked
+   update candidate must be activated and be both the active worker and page
+   controller, rechecked after asynchronous cache inspection
 4. Second explicit navigation, which must show the new script and About version
 
 Every phase reports the rendered About version, main module URL, worker/controller
