@@ -14,7 +14,7 @@
 .short-voice-consent p{margin:0}.short-voice-consent details{margin:0 0 6px}.short-voice-consent summary,.short-voice-help summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-size:13px;color:var(--muted);gap:6px}
 .short-voice-consent summary::after,.short-voice-help summary::after{content:'›';display:inline-block;transform:rotate(90deg)}.short-voice-consent details[open] summary::after,.short-voice-help[open] summary::after{transform:rotate(-90deg)}
 .short-voice-start{width:100%;min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px}
-.short-voice-editor-head{display:flex;align-items:center;justify-content:space-between;min-height:44px;gap:8px;font-size:14px}.short-voice-editor-head .btn{min-height:44px;padding:8px 12px;font-size:13px}
+.short-voice-editor-head{display:flex;align-items:center;justify-content:space-between;min-height:44px;gap:8px;font-size:14px}.short-voice-editor-head label{white-space:nowrap}.short-voice-editor-head .btn{flex:0 0 auto;width:auto;min-height:44px;padding:8px 12px;font-size:13px}
 .short-voice-status:empty,.short-voice-actions:not(:has(button:not([hidden]))){display:none}
 .short-voice-send p{margin:0 0 6px}.short-voice-send [data-sv-destination]{font-size:12px;color:var(--muted)}.short-voice-help{margin-top:0}.short-voice-help p{margin:0;font-size:13px;line-height:1.6;color:var(--muted)}
 /* Decorative state animation, never presented as measured microphone amplitude. */

@@ -20,7 +20,9 @@ def run(page, width, motion):
     page.add_init_script(MOCK)
     page.route('https://**/*', lambda route: route.abort())
     page.on('request', lambda req: requests.append(req.url) if req.url.startswith('https://') else None)
-    page.goto(URL); page.locator('#fab').wait_for(); seed_config(page); open_entry_voice(page)
+    page.goto(URL); page.locator('#fab').wait_for(); seed_config(page)
+    page.locator('#fab').click(); page.locator('#note').fill('语音之前的虚构草稿')
+    page.locator('#btn-voice').click(); page.locator('[data-sv-text]').wait_for()
     activity = page.locator('[data-sv-activity]')
     count = lambda method: page.evaluate('(m)=>window.__voiceCalls.filter(x=>x.method===m).length', method)
 
@@ -54,6 +56,7 @@ def run(page, width, motion):
     expect(activity).to_be_hidden(); expect(page.locator('[data-sv-send-panel]')).to_be_visible()
     expect(page.locator('[data-sv-voice-prompt]')).to_be_hidden()
     expect(page.locator('[data-sv-preview]')).to_be_hidden()
+    assert page.locator('.short-voice-editor-head label').evaluate('(el)=>{const range=document.createRange();range.selectNodeContents(el);return range.getClientRects().length===1;}')
     assert not requests; capture('review')
     page.locator('[data-sv-text]').fill('修改后午餐25元现金')
     expect(page.locator('[data-sv-send-panel]')).to_be_hidden()
@@ -72,9 +75,15 @@ def run(page, width, motion):
     page.locator('[data-sv-start]').click(); expect(activity).to_be_visible(); previous = count('cancel')
     page.go_back(); expect(page.locator('.short-voice-mask')).to_have_count(0)
     expect(page.locator('#keypad')).to_be_visible(); assert count('cancel') == previous + 1
+    lower_layer = page.evaluate('history.state.gleamLayer')
     before = count('start'); page.go_forward(); assert count('start') == before
     expect(page.locator('.short-voice-mask')).to_have_count(0)
-    page.locator('#btn-voice').click(); expect(page.locator('[data-sv-start]')).to_be_enabled()
+    page.wait_for_function('(id)=>history.state.gleamLayer===id', arg=lower_layer)
+    expect(page.locator('#keypad')).to_be_visible()
+    expect(page.locator('#note')).to_have_value('语音之前的虚构草稿')
+    page.go_back(); expect(page.locator('#sheet.open')).to_have_count(0)
+    assert count('start') == before
+    open_entry_voice(page); expect(page.locator('[data-sv-start]')).to_be_enabled()
     page.evaluate("window.__voiceError='SPEECH_PERMISSION_DENIED'")
     page.locator('[data-sv-start]').click()
     expect(page.locator('[data-sv-status]')).to_contain_text('麦克风未获授权')
