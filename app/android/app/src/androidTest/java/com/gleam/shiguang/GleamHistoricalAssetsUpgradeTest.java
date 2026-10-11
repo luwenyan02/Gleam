@@ -214,7 +214,7 @@ public class GleamHistoricalAssetsUpgradeTest {
             WebView seed = seedRef.get();
             try {
                 awaitJs(seed, "Boolean(document.getElementById('fab'))", "true");
-                assertEquals(JSONObject.quote(OLD_MODULE), js(seed, MODULE_QUERY));
+                assertEquals(OLD_MODULE, new org.json.JSONTokener(js(seed, MODULE_QUERY)).nextValue());
                 awaitJs(seed, "navigator.serviceWorker.controller?.scriptURL", "\"https://localhost/sw.js\"");
                 assertTrue("exact old entry module must really have been served", baselineModules.get() > 0);
                 js(seed, "(()=>{localStorage.setItem('gleam-theme','dark');localStorage.setItem('" + KEEP + "','synthetic-ledger');window.fixtureSeed=false;const q=indexedDB.open('" + DB + "',1);q.onupgradeneeded=()=>q.result.createObjectStore('sentinel');q.onsuccess=()=>{const d=q.result;const t=d.transaction('sentinel','readwrite');t.objectStore('sentinel').put('synthetic-ledger-idb','keep');t.oncomplete=()=>{d.close();window.fixtureSeed=true}};})()");
@@ -228,7 +228,7 @@ public class GleamHistoricalAssetsUpgradeTest {
                 ui(seed::reload);
                 GleamNativeBootLifecycleTest.await("controlled historical navigation did not finish", () -> seedDocuments.get() > beforeReload);
                 awaitJs(seed, "Boolean(document.getElementById('fab')) && document.documentElement.getAttribute('data-theme')==='dark'", "true");
-                assertEquals(JSONObject.quote(OLD_MODULE), js(seed, MODULE_QUERY));
+                assertEquals(OLD_MODULE, new org.json.JSONTokener(js(seed, MODULE_QUERY)).nextValue());
                 // Workbox's exact cached original index is checked after the controlled reload.
                 js(seed, "window.fixtureCacheHash=null;caches.match('https://localhost/index.html',{ignoreSearch:true}).then(r=>{if(!r)throw Error('no cached index');return r.arrayBuffer()}).then(b=>crypto.subtle.digest('SHA-256',b)).then(b=>window.fixtureCacheHash=Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('')).catch(()=>window.fixtureCacheHash='failed')");
                 awaitJs(seed, "window.fixtureCacheHash", "\"41e734024cf167e0bb190ff35c6bf14748296133aeee497388ba2dbb2edf2078\"");
@@ -254,7 +254,7 @@ public class GleamHistoricalAssetsUpgradeTest {
                     "[\"" + OLD_MODULE + "\",\"https://localhost/sw.js\",null,0,\"undefined\",\"undefined\"]", quarantineFacts.get());
                 WebView current = BootLifecycleFixtureActivity.latest.mainView();
                 awaitJs(current, "Boolean(document.getElementById('fab'))", "true");
-                assertEquals(JSONObject.quote(currentModule), js(current, MODULE_QUERY));
+                assertEquals(currentModule, new org.json.JSONTokener(js(current, MODULE_QUERY)).nextValue());
                 assertEquals("null", js(current, "navigator.serviceWorker.controller"));
                 assertEquals("\"synthetic-ledger\"", js(current, "localStorage.getItem('" + KEEP + "')"));
                 js(current, "(()=>{window.fixtureRead=null;const q=indexedDB.open('" + DB + "',1);q.onsuccess=()=>{const d=q.result;const t=d.transaction('sentinel');const r=t.objectStore('sentinel').get('keep');r.onsuccess=()=>{window.fixtureRead=r.result;d.close()}};})()");
