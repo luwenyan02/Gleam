@@ -22,8 +22,8 @@ import static org.junit.Assert.*;
 @RunWith(AndroidJUnit4.class)
 public class UpgradeWebViewProbeTest {
     private static final String ORIGIN = "https://localhost/";
-    private static final String SCRIPT_COUNTS = "['upgrade-probe-old-runs','probe-module','probe-external','probe-load','probe-error','probe-timer'].map(k=>Number(localStorage.getItem(k)||0))";
-    private static final String OLD = "<!doctype html><meta name=probe-document content=old><body onload=\"localStorage.setItem('probe-load',Number(localStorage.getItem('probe-load')||0)+1)\"><img src='/probe-invalid.png' onerror=\"localStorage.setItem('probe-error',Number(localStorage.getItem('probe-error')||0)+1)\"><script>localStorage.setItem('upgrade-probe-old-runs',String(Number(localStorage.getItem('upgrade-probe-old-runs')||0)+1));window.probeVersion='old';setTimeout(()=>localStorage.setItem('probe-timer',Number(localStorage.getItem('probe-timer')||0)+1),0);</script><script src='/old-probe.js'></script><script type=module>localStorage.setItem('probe-module',Number(localStorage.getItem('probe-module')||0)+1)</script>";
+    private static final String SCRIPT_COUNTS = "['upgrade-probe-old-runs','probe-module','probe-external','probe-load','probe-error','probe-timer','probe-smil'].map(k=>Number(localStorage.getItem(k)||0))";
+    private static final String OLD = "<!doctype html><meta name=probe-document content=old><body onload=\"localStorage.setItem('probe-load',Number(localStorage.getItem('probe-load')||0)+1)\"><img src='/probe-invalid.png' onerror=\"localStorage.setItem('probe-error',Number(localStorage.getItem('probe-error')||0)+1)\"><script>localStorage.setItem('upgrade-probe-old-runs',String(Number(localStorage.getItem('upgrade-probe-old-runs')||0)+1));window.probeVersion='old';setTimeout(()=>localStorage.setItem('probe-timer',Number(localStorage.getItem('probe-timer')||0)+1),0);</script><script src='/old-probe.js'></script><script type=module>localStorage.setItem('probe-module',Number(localStorage.getItem('probe-module')||0)+1)</script><svg><rect width=10 height=10><animate attributeName=x from=0 to=10 begin=\"0s;1s\" dur=0.1s onbegin=\"localStorage.setItem('probe-smil',Number(localStorage.getItem('probe-smil')||0)+1)\" /></rect></svg>";
     private static final String CURRENT = "<!doctype html><meta name=probe-document content=current><script>window.probeVersion='new';</script>";
     private static final String SW = "self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open('upgrade-probe-cache').then(c=>c.put('/',new Response(" + quote(OLD) + ",{headers:{'Content-Type':'text/html'}}))));});self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));self.addEventListener('fetch',e=>{if(e.request.mode==='navigate')e.respondWith(caches.open('upgrade-probe-cache').then(c=>c.match('/')));});";
 
@@ -96,7 +96,7 @@ public class UpgradeWebViewProbeTest {
             controlled = view(); WebView c = controlled; ui(()->c.loadUrl(ORIGIN));
             await(c,"window.probeVersion","\"old\"");
             await(c,"localStorage.getItem('upgrade-probe-old-runs')","\"1\"");
-            await(c,SCRIPT_COUNTS,"[1,1,1,1,1,1]");
+            await(c,SCRIPT_COUNTS,"[1,1,1,1,1,1,2]");
             destroy(c); controlled = null;
             cleaner = view(); WebView q = cleaner;
             // This is the capability under test, not assumed to have normal-browser semantics.
@@ -125,14 +125,19 @@ public class UpgradeWebViewProbeTest {
                 quarantine.loadUrl(ORIGIN);
             });
             assertTrue("JS-disabled same-origin navigation timed out",loaded.await(15,TimeUnit.SECONDS));
-            ui(() -> quarantine.getSettings().setJavaScriptEnabled(true));
+            String disabledEval = js(quarantine,"1+1");
+            android.os.Bundle evaluation = new android.os.Bundle();
+            evaluation.putString("native_evaluation_while_js_disabled",disabledEval);
+            InstrumentationRegistry.getInstrumentation().sendStatus(0,evaluation);
+            // If privileged native evaluation works, never re-enable document scripts.
+            if (!"2".equals(disabledEval)) ui(() -> quarantine.getSettings().setJavaScriptEnabled(true));
             assertEquals("\"old\"",js(quarantine,"document.querySelector('meta[name=probe-document]').content"));
             assertEquals("\"https://localhost/sw.js\"",js(quarantine,"navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL"));
             assertEquals("\"undefined\"",js(quarantine,"typeof window.probeVersion"));
             assertEquals("\"1\"",js(quarantine,"localStorage.getItem('upgrade-probe-old-runs')"));
-            assertEquals("[1,1,1,1,1,1]",js(quarantine,SCRIPT_COUNTS));
-            Thread.sleep(300);
-            assertEquals("[1,1,1,1,1,1]",js(quarantine,SCRIPT_COUNTS));
+            assertEquals("[1,1,1,1,1,1,2]",js(quarantine,SCRIPT_COUNTS));
+            Thread.sleep(1500);
+            assertEquals("[1,1,1,1,1,1,2]",js(quarantine,SCRIPT_COUNTS));
             assertEquals("\"undefined\"",js(quarantine,"typeof window.probeVersion"));
             js(quarantine,"window.probeClean=false;window.probeStage='enumerate';navigator.serviceWorker.getRegistrations().then(async rs=>{window.probeStage='validate';window.probeCount=rs.length;for(const r of rs){if(r.scope!==location.origin+'/')throw Error('scope');const ws=[r.active,r.waiting,r.installing].filter(Boolean);if(!ws.length||ws.some(w=>w.scriptURL!==location.origin+'/sw.js'))throw Error('script');window.probeStage='unregister';if(!await r.unregister())throw Error('unregister');}window.probeStage='recheck';if((await navigator.serviceWorker.getRegistrations()).length)throw Error('remaining');window.probeClean=true;}).catch(e=>window.probeClean=window.probeStage+':'+(e.name==='InvalidStateError'?'no-provider':'failed'));");
             await(quarantine,"window.probeClean","true");
@@ -140,7 +145,7 @@ public class UpgradeWebViewProbeTest {
             destroy(quarantine); cleaner = null;
             current = view(); WebView n = current; ui(()->n.loadUrl(ORIGIN));
             await(n,"window.probeVersion","\"new\"");
-            assertEquals("[1,1,1,1,1,1]",js(n,SCRIPT_COUNTS));
+            assertEquals("[1,1,1,1,1,1,2]",js(n,SCRIPT_COUNTS));
             assertEquals("\"1\"",js(n,"localStorage.getItem('upgrade-probe-old-runs')"));
             assertEquals("\"synthetic-preserve\"",js(n,"localStorage.getItem('upgrade-probe-sentinel')"));
             js(n,"window.probeDbRead=null;const r=indexedDB.open('upgrade-probe-idb',1);r.onsuccess=()=>{const db=r.result;const q=db.transaction('sentinel').objectStore('sentinel').get('keep');q.onsuccess=()=>{window.probeDbRead=q.result;db.close();};};");
