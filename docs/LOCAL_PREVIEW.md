@@ -4,7 +4,7 @@
 
 ## 首次初始化（只做一次）
 
-专用分支是私有仓库 `luwenyan02/Gleam` 的 `preview/orbstack`，包含最新 main 和已确认的预览改动，不自动合并 main，也不发布正式版本。Cloud 端准备、验证和提交后，须经用户批准才能推送；每次交付需核对远端 SHA。随后本地点击更新，下载这个分支的最新提交。
+专用分支是私有仓库 `luwenyan02/Gleam` 的 `preview/orbstack`，用于尚未合入 main 的预览改动；云环境默认绑定仍为 `main`，正式基线不变。用户于 2026-10-12 已持续授权 Cloud 端在验证通过后直接正常推送到此预览分支，无需每次重复批准；每次交付核对远端 SHA 和对应 `Preview checks` CI。合入 main 或正式发布仍需单独批准。
 
 1. 打开 OrbStack，解压 `gleam-orbstack-sync.zip` 到固定目录。
 2. 本机需要 macOS Git 和此私有仓库的读取权限。现有 Git 凭据可以复用；Cloud 的登录不会传到 Mac，首次没有权限时脚本会停止并提示。安装 Git 可用 macOS Command Line Tools；**不需要本机 Node、npm 或 Python**。
@@ -17,7 +17,7 @@
 
 ## 后续每次验证
 
-Cloud 修改完成并经批准推送 `preview/orbstack` 后，双击同一个 **更新拾光预览.command**。已有标签页通过 Vite 更新；必要时刷新页面。无需重新下载 ZIP、复制 dist 或重装容器依赖。
+Cloud 修改验证通过、推送 `preview/orbstack` 并核对 CI 后，双击同一个 **更新拾光预览.command**。已有标签页通过 Vite 更新；必要时刷新页面。无需重新下载 ZIP、复制 dist 或重装容器依赖。也可自行在专用预览检出中拉取此分支，再用启动助手更新；依赖变化执行 `up`，单文件挂载变化执行 `reload`。本机验收结果由用户反馈。
 
 - 普通源码、CSS、public 和 server 目录修改：快进 Git，复用容器与镜像，使用 Vite 热更新；部分 server/模块变化需要网页刷新。
 - 依赖清单、lockfile、vendor、Dockerfile 或构建上下文变化：重建依赖镜像并重新创建容器。
