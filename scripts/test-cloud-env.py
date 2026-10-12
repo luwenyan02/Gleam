@@ -43,9 +43,11 @@ class BootstrapTests(unittest.TestCase):
         cloud.no_local_env_files()
 
     def test_existing_proxy_route_is_preserved_and_loopback_stays_local(self):
-        with patch.dict(os.environ, {'HTTPS_PROXY': 'http://proxy.invalid:8080', 'NO_PROXY': 'example.invalid'}, clear=True):
+        with patch.dict(os.environ, {'HTTPS_PROXY': 'http://proxy.invalid:8080', 'NO_PROXY': 'example.invalid',
+                                     'NODE_EXTRA_CA_CERTS': '/fictional/platform-ca.crt'}, clear=True):
             env = cloud.environment()
         self.assertEqual(env['HTTPS_PROXY'], 'http://proxy.invalid:8080')
+        self.assertEqual(env['NODE_EXTRA_CA_CERTS'], '/fictional/platform-ca.crt')
         self.assertIn('example.invalid', env['NO_PROXY'].split(','))
         self.assertIn('127.0.0.1', env['NO_PROXY'].split(','))
         self.assertIn('localhost', env['no_proxy'].split(','))

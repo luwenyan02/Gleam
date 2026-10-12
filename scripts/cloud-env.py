@@ -45,7 +45,9 @@ def environment():
     # Preserve the platform's existing transport route without printing it or
     # changing network policy. Do not copy application credentials/configuration.
     for key in ('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
-                'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy'):
+                'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
+                'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
+                'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE', 'NODE_USE_SYSTEM_CA'):
         if key in os.environ:
             env[key] = os.environ[key]
     # Local test traffic must stay local even when the platform uses a proxy.

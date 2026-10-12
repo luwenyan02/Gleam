@@ -16,7 +16,7 @@ python3 scripts/cloud-env.py verify
 - `.node-version` 固定官方 Node 22.23.3，随包 npm 10.9.9，与 `app/package.json` 的 `packageManager` 一致。脚本从 nodejs.org 下载，并在解压前核对入库的 SHA-256；没有全局安装、shell profile 编辑或自动版本升级。
 - Node、Python 虚拟环境、浏览器、HOME 和空白起始缓存均放在 `.tmp/cloud-env/`；应用依赖通过 `npm ci --ignore-scripts` 按 `app/package-lock.json` 安装在本 checkout 的 `app/node_modules/`。该命令会替换现有 node_modules，不修改锁文件；使用与 CI 相同的安装策略。
 - 浏览器库按 `app/e2e/requirements.txt` 固定 Playwright 1.59.0，并下载该版本匹配的 Chromium。Python 本身要求 3.11+；pip 的间接依赖与宿主系统库不构成完整 OS 镜像锁定，报告应记录实际版本。当前不是逐字节可复现镜像承诺。
-- 子命令使用白名单环境变量与隔离 HOME，仅保留平台已有 HTTP(S) 代理传输设置并确保 localhost 直连，不输出代理值；不继承真实服务 Key、`NODE_OPTIONS`、用户 npm/pip 配置、既有预览 URL 或浏览器覆盖路径。若 app 内存在 `.env`/`.env.*`（示例文件除外），setup/verify/run 会在读取内容前停止；应使用无私有配置的干净 checkout，不删除用户原文件。
+- 子命令使用白名单环境变量与隔离 HOME，仅保留平台已有 HTTP(S) 代理与公开 CA 证书路径设置并确保 localhost 直连，不输出代理值；保留 TLS 校验，不增加证书或关闭验证；不继承真实服务 Key、`NODE_OPTIONS`、用户 npm/pip 配置、既有预览 URL 或浏览器覆盖路径。若 app 内存在 `.env`/`.env.*`（示例文件除外），setup/verify/run 会在读取内容前停止；应使用无私有配置的干净 checkout，不删除用户原文件。
 - `check` 会实际启动 Chromium。缺少系统库时，根据真实错误，在获准的环境中执行 `python3 scripts/cloud-env.py run python3 -m playwright install-deps chromium`；这一步可能需要系统安装权限。脚本不自动提权，不设置 `--no-sandbox` 或修改设备/网络权限。若被平台拒绝，保留错误和最小依赖清单，不换执行环境绕过。
 - 下载需要访问 nodejs.org、registry.npmjs.org、pypi.org/files.pythonhosted.org 以及 Playwright 官方浏览器下载 CDN。若平台禁止联网，应由用户配置允许的安装阶段或预装依赖；不要自行更改保存环境联网权限。
 
