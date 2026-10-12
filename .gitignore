@@ -10,6 +10,7 @@
 outputs/
 uploads/
 release/
+deliverables/
 
 # Private fixtures and credentials
 wacai.xls

@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { readFileSync } from 'node:fs';
 import { voiceBridge } from './server/voiceBridge';
+import { previewWorker } from './server/previewWorker';
 
 const appVersion = (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }).version;
 
@@ -10,6 +11,7 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(appVersion),
   },
   plugins: [
+    previewWorker(),
     voiceBridge(loadEnv('development', process.cwd(), 'DASHSCOPE_').DASHSCOPE_WORKSPACE_ID),
     {
       name: 'gleam-build-info',

@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: deploy/preview/Dockerfile
-    image: gleam-preview:local
+    image: ${GLEAM_PREVIEW_IMAGE:-gleam-preview:local}
     init: true
     restart: unless-stopped
     # OrbStack forwards host-network loopback ports to macOS. Keeping Vite on

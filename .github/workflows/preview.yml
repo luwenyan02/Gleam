@@ -1,0 +1,32 @@
+name: Preview checks
+
+on:
+  push:
+    branches: [preview/orbstack]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: python3 scripts/test-preview-sync.py
+      - run: npm ci --ignore-scripts
+        working-directory: app
+      - run: npm run check:secrets
+        working-directory: app
+      - run: npm run test:unit
+        working-directory: app
+      - run: npm run build
+        working-directory: app
