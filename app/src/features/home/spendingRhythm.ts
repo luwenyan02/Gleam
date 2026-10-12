@@ -5,13 +5,10 @@ import { openLedgerSearch } from '../search/search';
 export function spendingRhythmHtml(): string {
   return `<details class="card spending-rhythm" id="hm-rhythm" hidden>
     <summary>
-      <span class="rhythm-heading"><strong>消费节奏</strong><span class="rhythm-period">最近 7 天 · 含今天</span></span>
+      <span class="rhythm-heading"><strong>消费节奏</strong><span class="rhythm-period">最近 7 天</span></span>
       <span class="rhythm-total">净支出 <strong class="num" id="rhythm-total">—</strong></span>
-      <span class="rhythm-meta" id="rhythm-meta"></span>
     </summary>
     <div class="rhythm-days" aria-label="每日净支出，点日期查看明细"></div>
-    <p class="rhythm-help">左右滑动 · 点日期核对明细</p>
-    <p class="rhythm-policy"></p>
   </details>`;
 }
 
@@ -28,10 +25,6 @@ export async function refreshSpendingRhythm(el: HTMLElement): Promise<void> {
   if (!el.isConnected) return;
   const card = el.querySelector<HTMLElement>('#hm-rhythm')!;
   card.querySelector('#rhythm-total')!.textContent = formatFenCny(result.expense);
-  card.querySelector('#rhythm-meta')!.textContent = result.expenseCount
-    ? `有支出记录 ${result.spendingDays} 天 · 按账单发生日期`
-    : '这 7 天还没有支出记录';
-  card.querySelector('.rhythm-policy')!.textContent = `${result.countAsIncome ? '报销计收入，不冲减支出' : '报销冲抵原支出日'}；退款保留负值。记录天数含补账与导入，不代表连续打卡。`;
   const days = card.querySelector<HTMLElement>('.rhythm-days')!;
   // Retain button identity, focus, scroll position and expanded state on same-day refresh.
   const keys = result.days.map(day => day.key).join(',');

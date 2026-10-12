@@ -11,7 +11,7 @@ OUT = Path(__file__).parents[2] / '.tmp/tests/e2e/spending-rhythm'
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = p.chromium.launch(executable_path=os.environ.get('GLEAM_E2E_CHROMIUM'))
         for width in (360, 390, 430, 1024):
             context = browser.new_context(viewport={'width': width, 'height': 844},
                                           timezone_id='America/New_York', service_workers='block')
@@ -24,9 +24,14 @@ def main():
             card = page.locator('#hm-rhythm')
             expect(card).to_be_visible()
             expect(card).not_to_have_attribute('open', '')
-            expect(page.locator('#rhythm-meta')).to_have_text('这 7 天还没有支出记录')
+            expect(page.locator('#rhythm-total')).to_have_text('¥0.00')
             accessible = card.locator('summary').aria_snapshot()
             assert '最近 7 天' in accessible and '净支出' in accessible, accessible
+            assert '含今天' not in accessible, accessible
+            expect(card.locator('#rhythm-meta, .rhythm-help, .rhythm-policy')).to_have_count(0)
+            collapsed = card.bounding_box()
+            assert 44 <= collapsed['height'] <= 80, collapsed
+            page.screenshot(path=str(OUT / f'rhythm-collapsed-{width}.png'), animations='disabled')
             card.locator('summary').click()
             expect(card.locator('.rhythm-day')).to_have_count(7)
             expect(card.locator('.rhythm-count').first).to_have_text('无记录')
@@ -46,10 +51,10 @@ def main():
             ]
             seed(page, entries)
             expect(page.locator('#rhythm-total')).to_contain_text('11.67')
-            expect(page.locator('#rhythm-meta')).to_contain_text('有支出记录 2 天')
             card.locator('summary').click()
             expect(card.locator('.rhythm-amount').nth(1)).to_have_text('-3.33')
             expect(card.locator('.rhythm-amount').nth(3)).to_have_text('5.00')
+            page.screenshot(path=str(OUT / f'rhythm-expanded-{width}.png'), animations='disabled')
             # Exact daily expense filter, with refund sign preserved and focus returned.
             day = card.locator('.rhythm-day').nth(1)
             day.click()

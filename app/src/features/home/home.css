@@ -67,13 +67,12 @@
 
 /* 消费节奏：次要趋势默认收起；七日按钮保持触控尺寸，可横滑核对。 */
 .spending-rhythm{padding:0 14px;margin-bottom:12px}
-.spending-rhythm>summary{cursor:pointer;min-height:44px;padding:12px 0;list-style-position:inside}
+.spending-rhythm>summary{cursor:pointer;min-height:44px;padding:8px 0;list-style-position:inside}
 .rhythm-heading{display:inline-flex;align-items:baseline;gap:8px;max-width:100%;flex-wrap:wrap}
 .rhythm-heading strong{font-size:var(--text-body)}
-.rhythm-period,.rhythm-meta,.rhythm-policy,.rhythm-help{font-size:var(--text-small);color:var(--muted);line-height:1.6}
-.rhythm-total{display:block;font-size:var(--text-meta);margin-top:6px;color:var(--muted)}
+.rhythm-period{font-size:var(--text-small);color:var(--muted);line-height:1.6}
+.rhythm-total{display:block;font-size:var(--text-meta);margin-top:2px;color:var(--muted)}
 .rhythm-total strong{color:var(--expense);font-size:calc(20px * var(--seed-type));overflow-wrap:anywhere}
-.rhythm-meta{display:block;margin-top:2px}
 .rhythm-days{display:flex;gap:4px;overflow-x:auto;padding:2px 0 6px;overscroll-behavior-x:contain}
 .rhythm-day{flex:1 0 auto;width:max-content;min-width:68px;min-height:112px;padding:6px 4px;background:var(--surface);border-radius:var(--r-s);text-align:center}
 .rhythm-day:focus-visible,.spending-rhythm>summary:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
@@ -86,5 +85,3 @@
 .rhythm-chart:before{content:'';position:absolute;left:0;right:0;top:26px;height:1px;background:var(--border)}
 .rhythm-bar{position:absolute;width:16px;left:calc(50% - 8px);bottom:28px;height:var(--rhythm-bar-height);background:var(--expense);border-radius:3px 3px 0 0}
 .rhythm-day.is-negative .rhythm-bar{top:27px;bottom:auto;background:var(--income);border-radius:0 0 3px 3px}
-.rhythm-help{margin-top:3px}
-.rhythm-policy{padding:6px 0 12px}
