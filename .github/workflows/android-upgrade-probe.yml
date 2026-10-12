@@ -1,0 +1,88 @@
+name: Android upgrade probe
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/android-upgrade-probe.yml'
+      - 'app/android/app/**'
+      - 'app/capacitor.config.ts'
+      - 'scripts/*android*probe*'
+      - 'scripts/*android*fixtures*'
+      - 'app/e2e/fixtures/upgrade/**'
+
+concurrency:
+  group: android-upgrade-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  native_webview_probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [lifecycle, install-replace]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - run: npm ci --ignore-scripts
+        working-directory: app
+      - run: npm run build && npx cap sync android
+        working-directory: app
+      - name: Verify generated native worker routing configuration
+        run: node -e "const c=require('./app/android/app/src/main/assets/capacitor.config.json');if(c.android?.resolveServiceWorkerRequests!==false)throw Error('Unexpected automatic worker routing')"
+      - name: Package verified historical APK public assets only in the test APK
+        run: |
+          python3 app/e2e/upgrade_fixtures.py
+          mkdir -p app/android/app/src/androidTest/assets/upgrade-fixtures
+          cp app/e2e/fixtures/upgrade/manifest.json app/e2e/fixtures/upgrade/gleam-1.10.5-public.zip app/android/app/src/androidTest/assets/upgrade-fixtures/
+      - name: Compile isolated synthetic Android probe without running a device
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
+        working-directory: app/android
+      - name: Check strict fixture signing certificate parsers
+        run: python3 scripts/test-android-fixture-signer.py
+      - name: Build same-package debug install-replace harnesses
+        if: matrix.scenario == 'install-replace'
+        run: GLEAM_EPHEMERAL_FIXTURE=true bash scripts/build-android-install-replace-fixtures.sh
+      - name: Verify existing approved SDK terms before installation
+        run: python3 scripts/verify-android-probe-license.py
+      - name: Install official emulator and isolated system image without accepting new terms
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --channel=0 'emulator' 'system-images;android-35;google_apis;x86_64' </dev/null
+      - name: Grant this disposable runner user access to the existing KVM group
+        run: |
+          test "$(stat -c '%G:%a' /dev/kvm)" = 'kvm:660'
+          getent group kvm
+          sudo usermod -aG kvm "$(id -un)"
+          test "$(stat -c '%G:%a' /dev/kvm)" = 'kvm:660'
+      - name: Run synthetic isolated Android WebView capability probe
+        env:
+          GLEAM_INSTALL_REPLACE_ONLY: ${{ matrix.scenario == 'install-replace' }}
+        run: sg kvm -c 'bash scripts/run-android-upgrade-probe.sh'
+      - name: Preserve native probe evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-upgrade-probe-${{ matrix.scenario }}-${{ github.run_id }}
+          path: |
+            .tmp/android-upgrade-probe/**
+            .tmp/android-install-replace-build/*.txt
+            .tmp/android-install-replace-build/*.json
+            .tmp/android-install-replace-build/*.sha256
+            app/android/app/build/reports/androidTests/**
+            app/android/app/build/outputs/androidTest-results/**
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7

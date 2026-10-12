@@ -1,5 +1,7 @@
 """普通账单凭证闭环，全部图片为 canvas 合成的虚构测试素材。"""
 import base64
+import json
+import time
 import os
 from pathlib import Path
 from playwright.sync_api import expect, sync_playwright
@@ -35,6 +37,47 @@ def counts(page):
 def select(page, files):
     page.locator('#receipt-editor input[type=file]').set_input_files(files)
     page.wait_for_function("!document.querySelector('[data-receipt-add]').disabled")
+
+
+GEOMETRY = r"""() => {
+  const panel=document.querySelector('#sp-entry-view.open');
+  return Array.from(panel?.querySelectorAll('[data-view-receipt]') ?? [], (e,index) => {
+    const rect=e.getBoundingClientRect(), css=getComputedStyle(e), ancestors=[];
+    for(let node=e;node;node=node.parentElement) {
+      const style=getComputedStyle(node);
+      ancestors.push({tag:node.tagName,id:node.id,transform:style.transform,
+        animations:node.getAnimations().map(a=>a.playState)});
+    }
+    return {index,width:rect.width,height:rect.height,x:rect.x,y:rect.y,
+      layoutWidth:e.offsetWidth,computedWidth:parseFloat(css.width),flexBasis:css.flexBasis,
+      display:css.display,visibility:css.visibility,transform:css.transform,ancestors};
+  });
+}"""
+
+
+def stable_receipt_geometry(page, width):
+    deadline, previous, stable = time.monotonic() + 9, None, 0
+    snapshot = []
+    while time.monotonic() < deadline:
+        snapshot = page.evaluate(GEOMETRY)
+        ready = len(snapshot) == 9 and all(
+            row['width'] > 0 and row['height'] > 0 and row['visibility'] == 'visible'
+            and not any('running' in node['animations'] for node in row['ancestors'])
+            for row in snapshot)
+        stable = stable + 1 if ready and snapshot == previous else 0
+        if stable >= 2:
+            return snapshot
+        previous = snapshot
+        page.wait_for_timeout(50)
+    receipt_geometry_failure(page, width, snapshot, 'geometry did not settle')
+
+
+def receipt_geometry_failure(page, width, snapshot, reason):
+    diagnostic = {'viewport': width, 'reason': reason, 'receipts': snapshot}
+    (OUT / f'geometry-failure-{width}.json').write_text(json.dumps(diagnostic, ensure_ascii=False, indent=2))
+    print('RECEIPT_GEOMETRY ' + json.dumps(diagnostic, ensure_ascii=False), flush=True)
+    page.screenshot(path=str(OUT / f'geometry-failure-{width}.png'), animations='disabled')
+    raise AssertionError('Receipt thumbnails must remain at least 144px: ' + json.dumps(diagnostic, ensure_ascii=False))
 
 
 def run(page, width):
@@ -89,7 +132,13 @@ def run(page, width):
     assert page.locator('#receipt-editor .receipt-strip').evaluate('e => e.scrollWidth > e.clientWidth')
     page.locator('#keypad [data-k="save"]').click(); page.locator('#sheet.open').wait_for(state='detached')
     page.wait_for_function("document.querySelectorAll('[data-view-receipt]').length === 9")
-    assert page.locator('[data-view-receipt]').evaluate_all('(es) => es.every(e => e.getBoundingClientRect().width >= 144)')
+    geometry = stable_receipt_geometry(page, width)
+    # Keep the actual 144px layout requirement. Only tolerate millionth-of-a-pixel
+    # DOMRect subtraction noise; this cannot accept a genuinely shrunken control.
+    if not all(row['computedWidth'] >= 144 and row['layoutWidth'] >= 144
+               and row['width'] + 1e-6 >= 144 for row in geometry):
+        receipt_geometry_failure(page, width, geometry, 'thumbnail below 144px')
+    print('RECEIPT_GEOMETRY ' + json.dumps({'viewport': width, 'receipts': geometry}), flush=True)
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
     page.locator('#sp-entry-view [aria-label="账单凭证"]').scroll_into_view_if_needed(); page.wait_for_timeout(350)
     page.screenshot(path=str(OUT / f'detail-nine-{width}.png'), animations='disabled')

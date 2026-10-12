@@ -19,6 +19,8 @@ export default defineConfig({
     },
     VitePWA({
       registerType: 'autoUpdate',
+      // Native WebViews use packaged assets; only browsers should install the PWA worker.
+      injectRegister: false,
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
         name: '拾光',
@@ -37,6 +39,9 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Explicit because disabling injected registration also disables plugin autoUpdate defaults.
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
       },
     }),

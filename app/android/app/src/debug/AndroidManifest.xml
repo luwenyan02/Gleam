@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Internal fixtures are absent from release and add no permissions. -->
+    <application>
+        <activity android:name=".BootInstallReplaceBaselineActivity" android:exported="false" />
+        <activity android:name=".BootLifecycleFixtureActivity" android:exported="false" />
+        <activity android:name=".BootBaselineFixtureActivity" android:exported="false" />
+        <activity android:name=".BootResultFixtureActivity" android:exported="false" />
+        <!-- Explicitly adb-addressable ONLY in debug; no release component or permission. -->
+        <activity android:name=".BootProcessRestorationFixtureActivity" android:exported="true" />
+        <activity android:name=".BootProcessResultFixtureActivity" android:exported="false" android:process=":boot_result" />
+    </application>
+</manifest>
