@@ -42,6 +42,14 @@ class BootstrapTests(unittest.TestCase):
         (cloud.APP / '.env.example').touch()
         cloud.no_local_env_files()
 
+    def test_existing_proxy_route_is_preserved_and_loopback_stays_local(self):
+        with patch.dict(os.environ, {'HTTPS_PROXY': 'http://proxy.invalid:8080', 'NO_PROXY': 'example.invalid'}, clear=True):
+            env = cloud.environment()
+        self.assertEqual(env['HTTPS_PROXY'], 'http://proxy.invalid:8080')
+        self.assertIn('example.invalid', env['NO_PROXY'].split(','))
+        self.assertIn('127.0.0.1', env['NO_PROXY'].split(','))
+        self.assertIn('localhost', env['no_proxy'].split(','))
+
     def test_missing_local_runtime_does_not_fall_back_to_preinstalled_tools(self):
         with patch.object(cloud.subprocess, 'check_output') as command:
             with self.assertRaisesRegex(RuntimeError, 'run setup'):
