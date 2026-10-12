@@ -1,5 +1,9 @@
 # 开发指南
 
+## 云任务入口
+
+先读 [项目状态与交接](PROJECT_STATUS.md)。Gleam 云任务使用 `python3 scripts/cloud-env.py setup` 初始化、`python3 scripts/cloud-env.py verify` 完整验证；固定 Node 22.23.3/npm 10.9.9 和 Playwright 1.59.0。干净依赖恢复、系统库要求与持久性边界见 [云环境指南](CLOUD_DEVELOPMENT.md)。Android 构建继续由现有 GitHub CI 执行，不在云网页任务读取签名材料。
+
 ## 环境
 
 - Node.js 22

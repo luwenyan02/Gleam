@@ -4,13 +4,15 @@
 
 [![Android](https://img.shields.io/badge/Android-Capacitor-3DDC84)](https://capacitorjs.com/)
 [![PWA](https://img.shields.io/badge/PWA-offline--ready-D66A2C)](https://developer.mozilla.org/docs/Web/Progressive_web_apps)
-[![v1.8.0](https://img.shields.io/badge/release-v1.8.0-orange)](https://github.com/luwenyan02/Gleam/releases/tag/v1.8.0)
+[![v1.11.1](https://img.shields.io/badge/release-v1.11.1-orange)](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.1)
 
 记清每一笔钱，也留住日常的小片段。拾光把账目、账户、预算报表和生活记录放在同一个本地应用中：可以快速记一笔、写一句随记，也可以和拾光聊聊，再把选中的片段整理成周刊。数据默认保存在设备内；云备份、AI 识别与生活 AI 均为用户主动配置的可选能力。
 
-> [v1.8.0 已于 2026-10-02 发布](https://github.com/luwenyan02/Gleam/releases/tag/v1.8.0)，提供 Android APK 与 SHA-256 校验文件。自动化检查已通过，真实设备的安装、输入法、返回手势和备份恢复等仍未验证；安装前请阅读发布说明与下方升级提示。
+> [v1.11.1 已于 2026-10-12 正式发布](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.1)，用户已在手机完成覆盖安装验收。提供 Android APK 与 SHA-256 校验文件；正式附件沿用已验收原包，未重新构建。
 
-当前源码为 **v1.11.0 整合候选版**，整合首页七日消费节奏与已在 1.10.7 验收的 Android 短语音、Key 和界面优化。消费节奏使用既有账务口径，语音发送与入账仍由用户确认。整合版完整 CI 与原证书 APK 校验通过后先预发布，手机验收后转正式；不将 1.10.7 的验收等同于本版验收。原生升级缓存自动修复仍单独验证，未纳入本版。不能直接覆盖云端签名的 v1.8.0／v1.8.1；安装前须把可用加密备份另存到应用之外。构建与验证边界见[发布指南](docs/release.md)。
+当前正式基线为 **v1.11.1**，源码和标签对应 `e96e31b7de2a90adfcb5a8fd2b58e428956a8d39`，[最终 CI](https://github.com/luwenyan02/Gleam/actions/runs/38195964629) 通过。本版保留首页七日消费节奏与短语音功能，修复 Android 升级后仍加载旧网页缓存的问题，保留账目、设置及安全存储。自动化环境为 API 35 / WebView 124.0.6367.219，加上用户手机验收，不代表所有设备组合均已验证。权限过程被 Activity 重建打断后，需主动重新发起语音。
+
+仍不能直接覆盖旧云端证书签名的 v1.8.0／v1.8.1；升级前保留应用之外的可用加密备份。当前状态和后续工作见[项目交接](docs/PROJECT_STATUS.md)，云端开发恢复见[云环境指南](docs/CLOUD_DEVELOPMENT.md)。持续语音暂缓；本轮环境维护不合并或发布。
 
 ## 为什么是拾光
 
@@ -86,13 +88,24 @@
 
 ## 安装与使用
 
-- Android 7.0 及以上：从 [v1.8.0 发布页](https://github.com/luwenyan02/Gleam/releases/tag/v1.8.0) 下载 APK 与 SHA-256 校验文件；安装前阅读对应版本的验证范围和升级提示。
+- Android 7.0 及以上：从 [v1.11.1 发布页](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.1) 下载 APK 与 SHA-256 校验文件；安装前阅读对应版本的验证范围和升级提示。
 - 本轮复用原本地证书，不能直接覆盖云端签名的 v1.8.0／v1.8.1。使用这两个云端版本的用户，应先在“我的 → 数据与备份”导出加密备份并另存到应用之外，确认副本可读取，再考虑卸载、安装与恢复；卸载会删除应用内数据，没有可用外部备份时不要卸载。原本地签名系列不应仅因版本较旧而卸载；签名一致也不能代替真机覆盖更新与恢复验收。
-- v1.8.0 已作为普通 GitHub Release 发布；这一发布状态不等同于完成真机验收，具体待验项目以发布说明为准。
+- v1.11.1 已正式发布并完成用户手机覆盖安装验收；其他系统与 WebView 组合仍需单独验证，范围以发布说明为准。
 - PWA 通过网页生产构建和预览使用；实时语音仅在配置了本机中转的开发服务中可用。
 - 自行构建的方法见[发布指南](docs/release.md)；本地 APK 与校验文件保存在被 Git 忽略的 `release/` 目录，不进入源码历史。
 
-## 本地开发
+## 开发环境
+
+Codex Cloud 的 Gleam 环境使用可重建工具链；从仓库根目录执行：
+
+```sh
+python3 scripts/cloud-env.py setup
+python3 scripts/cloud-env.py verify
+```
+
+固定 Node 22.23.3/npm 10.9.9、按锁文件安装依赖及 Playwright 1.59.0；首次安装需要联网，系统库前置条件和干净 checkout 验证见[云环境指南](docs/CLOUD_DEVELOPMENT.md)。Android 构建继续使用 GitHub CI。任务磁盘与缓存不作永久保留保证。
+
+以下为原有本地电脑预览流程：
 
 日常网页预览由 OrbStack 后台常驻提供，固定使用 <http://localhost:5173/>。在项目根目录运行：
 
@@ -102,7 +115,7 @@ sh scripts/preview-local.sh up
 
 源码修改自动更新，不必保留终端窗口。依赖或环境配置变化后重新执行该命令；状态、停止和排错见[本地预览说明](docs/LOCAL_PREVIEW.md)。OrbStack 必须处于运行状态。不要同时启动另一份占用 5173 的临时服务。
 
-需要 Node.js 22、npm 10；运行端到端测试还需要 Python 3.11+ 和 Playwright。
+需要 Node.js 22、npm 10（精确云工具链版本见 `.node-version` 和 `app/package.json`）；运行端到端测试还需要 Python 3.11+ 和 Playwright。
 
 ```bash
 cd app
@@ -125,7 +138,7 @@ npm run test:e2e
 
 ## 版本与验收
 
-v1.8.0 发布提交 `8707ddc` 的[完整 CI](https://github.com/luwenyan02/Gleam/actions/runs/36982150269)已通过：321 项 TypeScript 单元测试、35 个浏览器回归套件与 7 项 Android 单元测试，并完成生产构建、依赖审计和敏感信息检查。APK 的签名、版本及内嵌网页资源另行核验，详见[发布说明](https://github.com/luwenyan02/Gleam/releases/tag/v1.8.0)。
+v1.11.1 正式提交 `e96e31b7de2a90adfcb5a8fd2b58e428956a8d39` 的[最终 CI](https://github.com/luwenyan02/Gleam/actions/runs/38195964629) 已通过，用户已验收手机覆盖安装。详细发布、升级限制和历史原生自动化范围见[正式发布说明](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.1)与[项目状态](docs/PROJECT_STATUS.md)。上面的 v1.8.0 截图仅为历史界面演示，不作为当前版本验收证据。
 
 完整功能变化和历史验证记录见[更新记录](CHANGELOG.md)。这些结果对应明确的发布提交，不能代替后续版本或真实设备的验收。
 
