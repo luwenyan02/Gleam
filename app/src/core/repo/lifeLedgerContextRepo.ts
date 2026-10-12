@@ -5,13 +5,16 @@ import { summarizeLedgerEntries } from '../ledgerQuery';
 import { formatFen } from '../money';
 import { formatAccountingRange, monthKey, shiftMonthKey } from '../period';
 import { accountingMonthRange, getAccountingMonth } from './periodRepo';
+import { dayKey } from './entryRepo';
 import { getSetting } from './settingsRepo';
 import { ledgerEntriesInRange, monthRange } from './statsRepo';
 
 export interface LifeLedgerScope {
   month: string;
-  period: 'calendar' | 'accounting';
+  period: 'calendar' | 'accounting' | 'recent';
   includeIncome: boolean;
+  /** 近30天的本地截止日期；确认后固定，跨午夜或重试不悄悄换范围。 */
+  endDate?: string;
   /** 不设置时保留单月摘要；范围只能扩展到相邻两月或所选月结束的六个月。 */
   analysis?: 'compare' | 'trend';
 }
@@ -50,20 +53,38 @@ interface ReviewSnapshot { serialized: string; fingerprint: string; periods: Per
 const snapshots = new WeakMap<LifeLedgerReview, ReviewSnapshot>();
 const categoryShareEligibility = new WeakMap<LifeLedgerSummary, boolean>();
 const STALE_REVIEW = '账本或统计范围已变化，请重新确认后发送';
+const RECENT_MONTH = /(?:最近|近|过去)\s*(?:(?:1|一)\s*个?\s*月|(?:30|三十)\s*天)/;
+
+export function recentLifeLedgerScope(now = Date.now(), includeIncome = false): LifeLedgerScope {
+  const endDate = dayKey(now);
+  return { month: endDate.slice(0, 7), period: 'recent', endDate, includeIncome };
+}
+
+export function lifeLedgerScopeLabel(scope: LifeLedgerScope): string {
+  return scope.period === 'recent' ? '近30天' : `${scope.month} ${scope.period === 'calendar' ? '自然月' : '财务月'}`;
+}
+
+function recentRange(endDate: string) {
+  const [year, month, day] = endDate.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  if (!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(endDate)
+    || year < 100 || dayKey(date.getTime()) !== endDate) throw new Error('请选择有效的账本范围');
+  return { from: new Date(year, month - 1, day - 29).getTime(), to: new Date(year, month - 1, day + 1).getTime() };
+}
 
 /** 仅识别读取本人账本的意图；不让模型决定是否读取或扩大范围。 */
 export function isLifeLedgerQuestion(question: string): boolean {
   const text = question.trim();
   const request = text.replace(/^(?:(?:请你|请|帮我|帮忙|麻烦你|麻烦|能否|可以|能不能|你能|我想请你|我想让你|我想)\s*)*/, '');
   // 引用里的账本问题、写作/开发任务和通用方法咨询仍属于普通聊天。
-  if (/润色|改写|翻译|复述|造句|措辞|这(?:句话|段话)|(?:写|编写|设计|开发|实现).{0,24}(?:代码|脚本|SQL|程序|软件|应用|功能|系统|机器人|提示词|文案)/i.test(text)
-    || /^(?:(?:我想知道|我想了解|知道|了解|请问|我|你)\s*)*(?:(?:分析|解释|讲解|说明)(?:一下)?\s*)?(?:如何|怎么|怎样)(?:才能|能|可以)?(?:查看|查询|统计|分析|增加|提高|减少|降低|设计|计算|知道|判断|了解)/.test(request)
+  if (/润色|改写|翻译|复述|造句|措辞|这(?:句话|段话|段文字|篇文章|份报告)|(?:写|编写|设计|开发|实现).{0,24}(?:代码|脚本|SQL|程序|软件|应用|功能|系统|机器人|提示词|文案)/i.test(text)
+    || /^(?:(?:我想知道|我想了解|知道|了解|请问|我|你)\s*)*(?:(?:分析|总结|整理|解释|讲解|说明)(?:一下)?\s*)?(?:如何|怎么|怎样)(?:才能|能|可以)?(?:查看|查询|统计|分析|增加|提高|减少|降低|设计|计算|知道|判断|了解)/.test(request)
     || /消费(?:观|主义|税)|(?:收入|收支)(?:概念|定义|区别)/.test(text)) return false;
   const subject = /消费|支出|收入|收支|账单|账本|记账数据|花了?多少|花销|开销|开支|花的钱/.test(text);
-  const anchor = /我的|本人|自己的|账本|账单|记账数据|本月|这(?:个)?月|上(?:个)?月|财务月|月度|近[6六]个?月|最近[6六]个?月|\d{1,4}(?:年|月)|\d{4}-\d{2}/.test(text);
+  const anchor = RECENT_MONTH.test(text) || /我的|本人|自己的|账本|账单|记账数据|本月|这(?:个)?月|上(?:个)?月|财务月|月度|近[6六]个?月|最近[6六]个?月|\d{1,4}(?:年|月)|\d{4}-\d{2}/.test(text);
   // 要求主动查询，而非「我昨天查看了账单」等叙述。单独的「我」或月份不构成请求。
-  const action = /^(?:分析|对比|比较|统计|汇总|查询|查看|查查|查一下|看看|看一下|算算|算一下|计算)/.test(request)
-    || /^(?:根据|基于|结合|用).{0,24}(?:账本|账单|记账数据).{0,12}(?:分析|统计|汇总|查|算)/.test(text);
+  const action = /^(?:分析|总结|整理|分类|分一下|读取|调取|对比|比较|统计|汇总|查询|查看|查查|查一下|看看|看一下|算算|算一下|计算)/.test(request)
+    || /^(?:根据|基于|结合|用).{0,24}(?:账本|账单|记账数据).{0,12}(?:分析|总结|整理|统计|汇总|查|算)/.test(text);
   const directQuestion = /(?:消费|支出|收入|收支|花销|开销|开支|账单)(?:情况|构成|分布)?(?:有|是|一共|总共|合计|为|\s)*(?:多少(?:钱|元)?|几笔|有哪些|如何|怎么样|怎样)[？?。！!\s]*$/.test(text)
     || /花(?:了|掉)?多少(?:钱|元)?[？?。！!\s]*$|有哪些(?:消费|支出|收入|账单|开支)[？?。！!\s]*$/.test(text);
   return subject && anchor && (action || directQuestion);
@@ -71,6 +92,7 @@ export function isLifeLedgerQuestion(question: string): boolean {
 
 /** 建议只是选择器初值，发送前始终展示并允许改选月份。 */
 export async function suggestLifeLedgerScope(question: string, now = Date.now()): Promise<LifeLedgerScope> {
+  if (RECENT_MONTH.test(question)) return recentLifeLedgerScope(now, /收支|收入/.test(question));
   const period = /财务月|记账周期/.test(question) ? 'accounting' : 'calendar';
   const date = new Date(now);
   let month = period === 'accounting' ? await getAccountingMonth(now) : monthKey(date.getFullYear(), date.getMonth());
@@ -109,7 +131,8 @@ function roundedPercent(numerator: number, denominator: number): number | null {
 }
 
 async function buildPeriod(scope: LifeLedgerScope, asIncome: boolean, categories: Category[]): Promise<PeriodSnapshot> {
-  const range = scope.period === 'accounting' ? await accountingMonthRange(scope.month) : monthRange(scope.month);
+  const range = scope.period === 'recent' ? recentRange(scope.endDate!)
+    : scope.period === 'accounting' ? await accountingMonthRange(scope.month) : monthRange(scope.month);
   const items = (await ledgerEntriesInRange(range.from, range.to, asIncome))
     .filter(item => item.type === 'expense' || (scope.includeIncome && item.type === 'income'));
   const expenses = items.filter(item => item.type === 'expense');
@@ -134,7 +157,7 @@ async function buildPeriod(scope: LifeLedgerScope, asIncome: boolean, categories
   const categoryItems = ranked.length <= 12 ? ranked.map(row => row.rows)
     : [...ranked.slice(0, 12).map(row => row.rows), ranked.slice(12).flatMap(row => row.rows)];
   const summary: LifeLedgerSummary = {
-    scope: { month: scope.month, period: scope.period, includeIncome: scope.includeIncome },
+    scope: { month: scope.month, period: scope.period, includeIncome: scope.includeIncome, ...(scope.endDate ? { endDate: scope.endDate } : {}) },
     range: { ...range, label: formatAccountingRange(range) }, currency: 'CNY', unit: 'fen', reimbursementMode: mode,
     totals: {
       expenseFen: net(expenses),
@@ -184,12 +207,13 @@ function validReviewMonth(month: string): boolean {
 /** 只在本机按已选的固定周期聚合，不读取账户余额、标签、凭证或生活记录。 */
 export async function getLifeLedgerReview(question: string, scope: LifeLedgerScope): Promise<LifeLedgerReview> {
   if (!question.trim() || question.length > 8000) throw new Error('请先填写 8000 字以内的问题');
-  if (!validReviewMonth(scope.month) || !['calendar', 'accounting'].includes(scope.period)
+  if (!validReviewMonth(scope.month) || !['calendar', 'accounting', 'recent'].includes(scope.period)
+    || (scope.period === 'recent' ? typeof scope.endDate !== 'string' || scope.endDate.slice(0, 7) !== scope.month || scope.analysis !== undefined : scope.endDate !== undefined)
     || typeof scope.includeIncome !== 'boolean' || (scope.analysis !== undefined && scope.analysis !== 'compare' && scope.analysis !== 'trend')) {
     throw new Error('请选择有效的账本范围');
   }
   const selectedScope = { month: scope.month, period: scope.period, includeIncome: scope.includeIncome,
-    ...(scope.analysis ? { analysis: scope.analysis } : {}) };
+    ...(scope.endDate ? { endDate: scope.endDate } : {}), ...(scope.analysis ? { analysis: scope.analysis } : {}) };
   // 同一只读事务固定账目、分类和设置，防止多周期读取期间混合不同版本。
   return db.transaction('r', db.entries, db.categories, db.settings, async () => {
     const asIncome = await getSetting('reimburse.countAsIncome');
@@ -199,7 +223,7 @@ export async function getLifeLedgerReview(question: string, scope: LifeLedgerSco
     for (let index = 1 - length; index <= 0; index++) {
       const month = index === 0 ? selectedScope.month : shiftMonthKey(selectedScope.month, index).padStart(7, '0');
       if (!validReviewMonth(month)) throw new Error('请选择有效的账本范围');
-      periods.push(await buildPeriod({ month, period: selectedScope.period, includeIncome: selectedScope.includeIncome }, asIncome, categories));
+      periods.push(await buildPeriod({ ...selectedScope, month }, asIncome, categories));
     }
     const selected = periods[periods.length - 1].summary;
     const summary: LifeLedgerSummary = selectedScope.analysis ? { ...selected, scope: selectedScope, analysis: {
@@ -231,12 +255,13 @@ export function lifeLedgerCategoryShares(summary: LifeLedgerSummary): Array<numb
 export function getLifeLedgerFollowUps(review: LifeLedgerReview): Array<{ label: string; question: string; scope: LifeLedgerScope }> {
   const { month, period, includeIncome, analysis } = review.summary.scope;
   const subject = includeIncome ? '收支' : '支出';
-  const selected = `${month} ${period === 'calendar' ? '自然月' : '财务月'}`;
-  return ([undefined, 'compare', 'trend'] as const).filter(mode => mode !== analysis).map(mode => ({
-    label: mode === 'compare' ? '对比上月' : mode === 'trend' ? '近6个月趋势' : '查看单月',
+  const monthlyPeriod = period === 'recent' ? 'calendar' : period;
+  const selected = `${month} ${monthlyPeriod === 'calendar' ? '自然月' : '财务月'}`;
+  return ([undefined, 'compare', 'trend'] as const).filter(mode => period === 'recent' || mode !== analysis).map(mode => ({
+    label: mode === 'compare' ? '对比上月' : mode === 'trend' ? '近6个月趋势' : period === 'recent' ? '查看本月' : '查看单月',
     question: mode === 'compare' ? `对比我的 ${selected}${subject}与上一个月。`
       : mode === 'trend' ? `分析我的截至 ${selected}的近6个月${subject}趋势。` : `分析我的 ${selected}${subject}。`,
-    scope: { month, period, includeIncome, ...(mode ? { analysis: mode } : {}) },
+    scope: { month, period: monthlyPeriod, includeIncome, ...(mode ? { analysis: mode } : {}) },
   }));
 }
 
@@ -270,13 +295,13 @@ export async function getLifeLedgerEvidence(review: LifeLedgerReview, selection:
   const included = index === undefined ? undefined : new Set(period.categoryItems[index]);
   const items = period.items.filter(item => item.type === selection.type && (!included || included.has(item)));
   return { items, summary: period.summary,
-    label: `${period.summary.scope.month} ${category?.name ?? (selection.type === 'income' ? '收入' : '支出')}（${period.summary.range.label}）` };
+    label: `${lifeLedgerScopeLabel(period.summary.scope)} ${category?.name ?? (selection.type === 'income' ? '收入' : '支出')}（${period.summary.range.label}）` };
 }
 
 /** 用户看到的全部金融数值与真正发送的摘要来自同一对象。 */
 function periodReviewLines(s: LifeLedgerSummary): string[] {
   return [
-    `范围：${s.scope.month} ${s.scope.period === 'calendar' ? '自然月' : '财务月'}（${s.range.label}）`,
+    `范围：${lifeLedgerScopeLabel(s.scope)}（${s.range.label}）`,
     '数据：该范围内当前已记账的数据；货币为人民币。',
     `支出 ${s.totals.expenseCount} 笔，原始支出 ¥${formatFen(s.totals.grossExpenseFen)}`,
     `退款 ${s.totals.refundCount} 笔，冲抵 ¥${formatFen(s.totals.refundFen)}`,
@@ -302,7 +327,7 @@ export function lifeLedgerReviewText(review: LifeLedgerReview): string {
         : `净支出变化 ${analysis.change.expenseChangePercent}%`] : []),
     '转账和借贷不计收支；回收站账单不参与统计。',
     analysis ? '不含账户余额、账户名、商家、备注、标签、凭证、逐笔明细、上述范围外月份或历史聊天。'
-      : '不含账户余额、账户名、商家、备注、标签、凭证、逐笔明细、其他月份或历史聊天。',
+      : '不含账户余额、账户名、商家、备注、标签、凭证、逐笔明细、范围外账单或历史聊天。',
   ].join('\n');
 }
 

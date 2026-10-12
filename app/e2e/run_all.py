@@ -16,7 +16,7 @@ EXTERNAL_URL = 'GLEAM_E2E_URL' in os.environ
 TESTS = (
     'test_runner_unit.py',
     'test_web_pwa_registration.py',
-    'test_spending_rhythm.py',
+    'test_spending_rhythm.py', 'test_chat_ledger_recent.py',
     'test_upgrade_cache_unit.py', 'test_upgrade_cache.py',
     'test_ai_key_settings.py',
     'test_app_version.py',
