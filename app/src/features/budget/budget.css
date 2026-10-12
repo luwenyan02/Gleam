@@ -6,5 +6,6 @@
 .bd-empty{text-align:center;padding:20px 0 14px}
 .bd-empty .btn{max-width:200px;margin:14px auto 0}
 
-.bd-period { display:flex; gap:8px; overflow-x:auto; margin-bottom:12px; }
-.bd-period .btn { flex-shrink:0; min-height:44px; white-space:nowrap; }
+.bd-period{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.bd-period .btn{flex:none;min-height:44px;width:auto}
+.bd-range{margin:0 0 12px;padding-left:2px}

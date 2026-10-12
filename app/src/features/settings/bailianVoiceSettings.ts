@@ -26,8 +26,10 @@ export async function bailianVoiceSettingsHtml(): Promise<string> {
       <div class="voice-key-label"><label for="voice-bailian-key">语音Key</label><label class="voice-key-source"><input id="voice-key-shared" type="checkbox"${shared ? ' checked' : ''}${readiness.supported ? '' : ' disabled'}>与 API Key 相同</label></div>
       <input id="voice-bailian-key" type="password" value="" maxlength="512" placeholder="${esc(masked || (shared ? '请先填写 API Key' : '输入语音 Key'))}" aria-label="语音Key" autocomplete="new-password"${shared ? ' readonly' : ''}${readiness.supported ? '' : ' disabled'}>
     </div>
-    ${readiness.supported ? '' : '<p class="settings-status" role="status">仅 Android 可用</p>'}
-    ${voiceConnectionTestHtml(readiness.supported, readiness.hasKey, readiness)}
+    <div class="settings-status-row">
+      ${readiness.supported ? '' : '<p class="settings-status" role="status">仅 Android 可用</p>'}
+      ${voiceConnectionTestHtml(readiness.supported, readiness.hasKey, readiness)}
+    </div>
   </section>`;
 }
 

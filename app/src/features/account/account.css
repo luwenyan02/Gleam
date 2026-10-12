@@ -9,12 +9,6 @@
 .asset .big{font-size:calc(30px * var(--seed-type));font-weight:700;margin:4px 0 12px}
 .asset-row{display:flex;gap:24px;font-size:12px;color:var(--muted)}
 .asset-row .num{font-weight:600;color:var(--fg);margin-left:6px}
-.acct-hero{color:var(--on-accent);border:none;
-  background:linear-gradient(140deg, color-mix(in oklab, var(--seed-accent) 84%, var(--mc-deep)), color-mix(in oklab, var(--seed-accent) 72%, var(--seed-primary)) 88%);
-  box-shadow:0 12px 26px color-mix(in oklab, var(--seed-accent) 28%, transparent)}
-.acct-hero .label{color:color-mix(in srgb, var(--on-accent) 78%, transparent)}
-.acct-hero .asset-row{color:color-mix(in srgb, var(--on-accent) 80%, transparent)}
-.acct-hero .asset-row .num{color:var(--on-accent)}
 .balance-trend{position:relative;margin-top:14px;border-top:1px solid var(--border);min-width:0}
 .balance-trend-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;cursor:pointer;list-style:none}
 .balance-trend-heading::-webkit-details-marker{display:none}
@@ -58,9 +52,6 @@
 .acct-group.folded .group-head{border-bottom:none}
 .acct-account-row{gap:10px}.acct-row-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}.acct-row-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
 .acct-account-row .row-note{display:block;overflow:hidden;margin-left:0;text-overflow:ellipsis;white-space:nowrap}.acct-account-row .acct-amt{flex:none}
-
-/* ── 已隐藏账户 ── */
-.restore-link{margin-left:auto;flex:none;font-size:11.5px;color:var(--primary);font-weight:600;padding:6px 10px;border-radius:999px;background:var(--accent-soft)}
 
 /* ── 账户抽屉（详情/表单，App 新增） ── */
 .acct-sheet-head{display:flex;align-items:center;gap:12px;margin-bottom:4px}
@@ -113,11 +104,16 @@
 .account-detail-entry{position:sticky;z-index:6;bottom:calc(4px + var(--safe-bottom));display:flex;align-items:center;justify-content:center;gap:7px;width:100%;min-height:50px;margin-top:12px;border-radius:14px;background:var(--primary);color:var(--on-accent);font-size:13px;font-weight:650;box-shadow:0 10px 24px color-mix(in oklab,var(--seed-primary) 28%,transparent)}
 .account-detail-entry:active{transform:scale(.98)}
 
-/* 挖财式清晰分组：白卡、深字、细分隔，金额不再置于浑浊渐变上。 */
+/* 账户详情保持清晰白卡；账户总览的插画仅放在数字汇总区。 */
 .acct-hero,.account-detail-hero{background:var(--surface);color:var(--fg);border:1px solid var(--border);box-shadow:none}
+.acct-hero{padding:0;overflow:hidden}
+.asset-summary{--overview-image:url('/art/account-overview.webp');--overview-overlay:linear-gradient(90deg,color-mix(in srgb,var(--overview-shade) 26%,transparent),color-mix(in srgb,var(--overview-shade) 48%,transparent) 70%,color-mix(in srgb,var(--overview-shade) 25%,transparent));padding:14px 16px}
+.asset-summary .label{font-size:var(--text-meta);letter-spacing:0}
+.asset-summary .big{font-size:calc(32px * var(--seed-type));line-height:1.2;margin:8px 0 14px;overflow-wrap:anywhere}
+.asset-summary .label,.asset-summary .asset-row,.asset-summary .num{color:inherit}
+.asset-summary .asset-row{flex-wrap:wrap;gap:6px 20px;font-size:var(--text-meta)}
+.acct-hero>.balance-trend{margin-top:0;border-top:0;padding:0 16px 8px}
 .account-detail-hero::after{display:none}
-.acct-hero .label,.acct-hero .asset-row{color:var(--muted)}
-.acct-hero .asset-row .num{color:var(--fg)}
 .account-current-balance>p,.account-flow-total,.spark-cap,.account-detail-top small{opacity:1;color:var(--muted)}
 .account-current-balance>h3.neg{color:var(--expense)}
 .account-detail-actions{border-color:var(--border)}
@@ -162,4 +158,4 @@
 .cr-pays li { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--sub); padding:2px 0; }
 .cr-pays li .restore-link { margin-left:auto; }
 .cr-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
-.cr-actions .btn { min-height:40px; }
+.cr-actions .btn { min-height:44px; }

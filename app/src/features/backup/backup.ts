@@ -81,7 +81,7 @@ async function refresh(): Promise<void> {
     <h3 class="bk-group-title">立即备份</h3>
     <section class="card backup-status" aria-label="立即备份">
       <span class="bs-ic">${iconHtml('ic-cloud', 26)}</span>
-      <p class="big num">${counts.total.toLocaleString('zh-CN')} <small>条记录 · 本机 IndexedDB</small></p>
+      <p class="big num">${counts.total.toLocaleString('zh-CN')} <small>条记录</small></p>
       <p class="sub">数据均保存在本机 · 上次备份 <b>${lastAt ? fmtTime(lastAt) : '从未备份'}</b></p>
       <div class="bs-stats" aria-label="本地数据概览">
         <span>账单 <b class="num">${counts.liveEntries.toLocaleString('zh-CN')}</b></span>
@@ -89,7 +89,7 @@ async function refresh(): Promise<void> {
         <span>备份历史 <b class="num">${records.length}</b></span>
       </div>
       <button class="btn primary" data-act="backup">立即备份（下载 .skbak）</button>
-      <p class="tiny" style="margin-top:8px">生成完整备份包（.skbak，可全量恢复），支持口令加密 · 保存到本机后可自行上传网盘</p>
+      <p class="tiny" style="margin-top:8px">完整备份支持口令加密，也可另存网盘</p>
     </section>
 
     <h3 class="bk-group-title">云端配置</h3>
@@ -136,7 +136,7 @@ async function refresh(): Promise<void> {
         <button class="chip" id="bk-month" data-act="month-pick">${fmtMonth(exMonth)}</button>
         <button class="btn ghost" data-act="excel">导出 Excel</button>
       </div>
-      <p class="tiny" style="margin-top:8px">拾光账单_YYYY-MM.xlsx · 与挖财模版同构 12 列，用于查看与交换普通流水；无法还原关联的退款行会在导入预检中阻止。完整迁移请使用 .skbak</p>
+      <p class="tiny" style="margin-top:8px">Excel 用于查看与交换账单，不能完整恢复退款关联。完整迁移请用 .skbak</p>
     </section>
 
     <section class="card" id="migrate-block" aria-label="账单导入">
@@ -151,7 +151,7 @@ async function refresh(): Promise<void> {
         <button class="btn ghost" data-act="pick-import" id="bk-import-pick">${IMPORT_COPY[importSource].button}</button>
         <button class="btn primary" disabled>开始导入</button>
       </div>
-      <p class="tiny">支持 .xlsx / .xls · 导入前会自动创建一次本地快照，7 天内可撤销 · 详细字段规则见 docs/data-backup.md</p>
+      <p class="tiny">支持 .xlsx / .xls，导入前自动备份，7 天内可撤销</p>
     </section>`;
 
   // [R06] 云端备份区挂载（内部自行异步加载配置与云端列表）

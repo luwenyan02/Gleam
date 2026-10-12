@@ -44,7 +44,7 @@ export default defineConfig({
         // Explicit because disabling injected registration also disables plugin autoUpdate defaults.
         skipWaiting: true,
         clientsClaim: true,
-        globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,png,webp,svg,woff2}'],
       },
     }),
   ],

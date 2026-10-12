@@ -63,17 +63,17 @@ export function initTagMerchant(): void {
       let merchants: Merchant[] = [];
 
       el.innerHTML = `
-        <p class="sub" style="padding:0 2px 10px">记一笔时可给账单打标签、选商家 · 标签用于报表排行统计，常用商家自动排前</p>
+        <p class="sub" style="padding:0 2px 10px">标签归类账单，常用商家自动排前</p>
         <section class="card list" aria-label="标签管理">
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 2px 0">
+          <div class="card-heading" style="padding:10px 2px 0">
             <h3 class="card-title" style="padding:0">标签</h3>
             <button class="restore-link" id="tm-addtag">新建标签</button>
           </div>
           <div id="tm-tags"></div>
         </section>
         <section class="card list" style="margin-top:12px" aria-label="商家管理">
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 2px 0">
-            <h3 class="card-title" style="padding:0">商家 · 按使用频次排序</h3>
+          <div class="card-heading" style="padding:10px 2px 0">
+            <h3 class="card-title" style="padding:0">商家</h3>
             <button class="restore-link" id="tm-addshop">新建商家</button>
           </div>
           <div id="tm-shops"></div>
@@ -92,7 +92,7 @@ export function initTagMerchant(): void {
             </button>
             <button class="icon-btn tm-edit" data-edit-tag="${t.id}" aria-label="编辑标签 ${esc(t.name)}">${iconHtml('ic-pen', 16)}</button>
           </div>`).join('')
-          : '<p class="sub" style="padding:12px 2px">还没有标签 · 记一笔时打的标签会出现在这里</p>';
+          : '<p class="sub" style="padding:12px 2px">还没有标签，记账时可添加</p>';
 
         el.querySelector('#tm-shops')!.innerHTML = merchants.length ? merchants.map((m) => `
           <div class="tm-manage-row">
@@ -103,7 +103,7 @@ export function initTagMerchant(): void {
             </button>
             <button class="icon-btn tm-edit" data-edit-shop="${m.id}" aria-label="编辑商家 ${esc(m.name)}">${iconHtml('ic-pen', 16)}</button>
           </div>`).join('')
-          : '<p class="sub" style="padding:12px 2px">还没有商家 · 记一笔时选过的商家会出现在这里</p>';
+          : '<p class="sub" style="padding:12px 2px">还没有商家，记账时可选择</p>';
       }
 
       el.addEventListener('click', (e) => {

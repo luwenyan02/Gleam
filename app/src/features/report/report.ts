@@ -286,10 +286,8 @@ function renderTrend(d: ReportData['trend']): void {
     s += `<rect x="${Math.max(0, cx - slot / 2).toFixed(1)}" y="22" width="${slot.toFixed(1)}" height="${plotBottom - 20}" fill="transparent"/></g>`;
     s += `<text x="${cx.toFixed(1)}" y="${plotBottom + 18}" text-anchor="middle" font-size="${n > 8 ? 8.5 : 10}" fill="var(--muted)">${lb}</text>`;
   });
-  const expenseTotal = d.expense.reduce((sum, amount) => sum + amount, 0);
-  const incomeTotal = d.incomes.reduce((sum, amount) => sum + amount, 0);
   box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" aria-label="收支趋势柱状图，可选择柱形查看明细">${s}</svg>`;
-  cap.textContent = `橙色为支出 · 绿色为收入 · 合计支出 ${formatFenCny(expenseTotal)}，收入 ${formatFenCny(incomeTotal)} · 点击柱形查看明细`;
+  cap.textContent = '橙色支出 · 绿色收入 · 点柱形看明细';
 }
 
 /** 支出构成环形图：直接展示前五项，其余合并为“其他”，各区段可下钻。 */

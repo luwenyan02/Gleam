@@ -5,7 +5,7 @@
 .lock-overlay .lk-sub{font-size:13px;color:var(--muted)}
 .lock-overlay input{width:min(260px,80vw);text-align:center;letter-spacing:6px;font-size:18px;border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:12px}
 .lock-overlay .btn{width:min(260px,80vw)}
-.lock-overlay .lk-bio{font-size:13px;color:var(--primary);font-weight:600;padding:8px 16px;border-radius:999px;background:var(--accent-soft)}
+.lock-overlay .lk-bio{font-size:13px;color:var(--primary);font-weight:600;padding:8px 16px;min-height:44px;border:1px solid var(--border);border-radius:var(--r-s);background:var(--bg)}
 .lock-overlay .lk-err{font-size:12.5px;color:var(--danger,#d0552e);min-height:18px}
 
 /* 设置页 PIN 抽屉输入 */
@@ -32,6 +32,9 @@
 /* 语音诊断的长域名/错误代码在窄屏换行，操作仍保持可触达。 */
 
 .settings-status{font-size:13px;line-height:1.5;margin:4px 0;overflow-wrap:anywhere;color:var(--muted)}
+.settings-status-row{display:flex;align-items:center;gap:12px;min-height:44px}
+.settings-status-row>.settings-status{flex:1;margin:0}
+.settings-status-row>.ai-actions{flex:none;margin-left:auto}
 .settings-manual{font-size:14px;line-height:1.75;color:var(--fg);overflow-wrap:anywhere}
 .settings-manual section+section{margin-top:22px}.settings-manual h4{font-size:15px;margin:0 0 8px}.settings-manual p{margin:0 0 10px}
 #sp-settings .field .sub{text-align:right;overflow-wrap:anywhere}

@@ -512,25 +512,25 @@ async function refresh(): Promise<void> {
   el.innerHTML = `
     ${configured ? '' : `
     <section class="card ai-guide">
-      <p><b>先配置 AI 接口</b></p>
-      <p class="sub">填写 OpenAI 兼容 API 地址、模型与 Key 后，即可识别截图与短信</p>
+      <p><b>先设置 AI 记账</b></p>
+      <p class="sub">完成设置后，即可识别截图与文字</p>
       <button class="btn primary" data-act="go-settings">去设置</button>
     </section>`}
     <section class="card ai-input" aria-label="添加素材">
-      <textarea id="ai-text" rows="3" placeholder="粘贴短信 / 扣款通知 / 账单文本，如：昨天午饭花了28元 支付宝"></textarea>
+      <textarea id="ai-text" rows="3" placeholder="粘贴短信或账单，例如：午饭 28 元"></textarea>
       <div class="ai-actions">
         <button class="btn ghost" data-act="pick-img">${iconHtml('ic-camera', 16)} 选择截图</button>
         <button class="btn ghost" data-act="short-voice">${iconHtml('ic-mic', 16)} 短语音</button>
         <button class="btn primary" data-act="recognize-text">识别文本</button>
       </div>
       <input type="file" id="ai-file" accept="image/*" multiple hidden>
-      <p class="tiny">安卓端可直接把支付截图 / 短信「分享」给拾光；识别经你配置的 AI 接口完成</p>
+      <p class="tiny">分享截图或粘贴文字，AI 自动识别记账</p>
     </section>
     ${raws.map((it) => rawCardHtml(it, it.attachmentId != null ? urlByAtt.get(it.attachmentId) : undefined)).join('')}
     ${ready.length ? `
     <div class="ai-sec-head"><h3>待确认 ${ready.length} 笔</h3><button class="chip" data-act="confirm-all">全部确认入账</button></div>
     ${ready.map((it) => readyCardHtml(it, it.attachmentId != null ? urlByAtt.get(it.attachmentId) : undefined)).join('')}` : ''}
-    ${!raws.length && !ready.length ? '<p class="ai-empty sub">收件箱是空的：分享截图或粘贴文本，AI 帮你记账</p>' : ''}
+    ${!raws.length && !ready.length ? '<p class="ai-empty sub">添加截图或文字，开始 AI 记账</p>' : ''}
     ${batches.length ? `
     <section class="card" aria-label="最近 AI 入账">
       <h3 class="card-title">最近 AI 入账</h3>

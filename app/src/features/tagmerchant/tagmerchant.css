@@ -1,9 +1,8 @@
 /**
  * 拾光 · 标签与商家样式（features/tagmerchant，PRD 4.13）
- * 列表复用 base.css 的 .card.list/.row；.restore-link 与 account.css 同定义，
- * 自备避免模块加载顺序依赖。
+ * 列表与行内操作统一复用 base.css，避免模块加载顺序改变按钮样式。
  */
-.restore-link{margin-left:auto;flex:none;font-size:11.5px;color:var(--primary);font-weight:600;padding:6px 10px;border-radius:999px;background:var(--accent-soft)}
+/* 行内操作沿用 base.css 的 .restore-link，避免全局样式随模块加载覆盖。 */
 
 /* 抽屉头 */
 .tm-sheet-head{display:flex;align-items:center;gap:12px;margin-bottom:4px}

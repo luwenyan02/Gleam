@@ -383,7 +383,7 @@ function renderStep(): void {
   if (!el?.isConnected || !st) return;
   if (st.step === 2) el.innerHTML = stepsHtml(2) + precheckHtml(st);
   else if (st.step === 3) el.innerHTML = stepsHtml(3) + mappingHtml(st);
-  else if (st.step === 4) el.innerHTML = `${stepsHtml(4)}<section class="card"><h3 class="card-title">正在导入…</h3><p class="sub">已自动创建快照，正在事务化写入，请勿关闭页面</p></section>`;
+  else if (st.step === 4) el.innerHTML = `${stepsHtml(4)}<section class="card"><h3 class="card-title">正在导入…</h3><p class="sub">已自动备份，正在导入，请勿关闭页面</p></section>`;
   else el.innerHTML = stepsHtml(5) + reportHtml(st);
 }
 

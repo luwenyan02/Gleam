@@ -74,7 +74,7 @@ async function refresh(): Promise<void> {
 
   const d = new Date();
   const selectedYear = selectedAnnualYear;
-  const periodControls = `<div class="bd-period"><button class="btn" data-act="period">${annual ? selectedYear + '年' : month} ▾</button><button class="btn" data-act="mode">${annual ? '查看月预算' : '查看年度预算'}</button>${annual ? '' : '<button class="btn" data-act="copy">复制上期</button>'}</div>${annual ? '' : `<p class="tiny" style="text-align:center;margin:-4px 0 10px">${rangeText}</p>`}`;
+  const periodControls = `<div class="bd-period"><button class="btn compact neutral" data-act="period">${annual ? selectedYear + '年' : month} ▾</button><button class="btn compact neutral" data-act="mode">${annual ? '月度预算' : '年度预算'}</button>${annual ? '' : '<button class="btn compact neutral" data-act="copy">复制上期</button>'}</div>${annual ? '' : `<p class="tiny bd-range">${rangeText}</p>`}`;
   if (annual) {
     const range = yearRange(selectedYear);
     const [limit, summary] = await Promise.all([getAnnualBudget(selectedYear), rangeSummary(range.from, range.to)]);
@@ -96,11 +96,11 @@ async function refresh(): Promise<void> {
     const barCls = usedPct > 100 ? 'over' : usedPct > timePct ? 'warn' : 'ok';
     let hint: string;
     if (usedPct > 100) {
-      hint = `预算已超支 ${formatFenCny(used - budget.totalLimit)} —— 建议压缩本月剩余开销`;
+      hint = `已超支 ${formatFenCny(used - budget.totalLimit)}，适当减少开销`;
     } else if (usedPct > timePct) {
-      hint = `截至 ${d.getMonth() + 1}月${d.getDate()}日，周期进度 ${timePct.toFixed(1)}%，但预算已用 ${usedPct.toFixed(1)}% —— 消费偏快，注意后面的节奏`;
+      hint = `时间 ${timePct.toFixed(1)}% · 已用 ${usedPct.toFixed(1)}% · 消费偏快`;
     } else {
-      hint = `时间进度 ${timePct.toFixed(1)}%，预算已用 ${usedPct.toFixed(1)}% —— 节奏稳健，继续保持`;
+      hint = `时间 ${timePct.toFixed(1)}% · 已用 ${usedPct.toFixed(1)}% · 节奏稳健`;
     }
     overviewHtml = `
       <section class="card budget-overview" aria-label="本期总预算">
@@ -112,7 +112,7 @@ async function refresh(): Promise<void> {
           <p>剩余<span class="num">${formatFenCny(remain)}</span></p>
           ${month === currentMonth ? `<p>日均可用<span class="num">${formatFenCny(daily)}</span></p>` : ''}
         </div>
-        <p class="tiny" style="margin-top:8px">${month === currentMonth ? hint : `按 ${rangeText} 统计`}</p>
+        ${month === currentMonth ? `<p class="tiny" style="margin-top:8px">${hint}</p>` : ''}
       </section>`;
   } else {
     overviewHtml = `
@@ -150,7 +150,7 @@ async function refresh(): Promise<void> {
       ${rowsHtml || '<p class="sub" style="padding:8px 0 12px">还没有分类子预算 · 点右上角设置，按支出大类分配额度</p>'}
       <p class="bd-legend"><span><i style="background:var(--income)"></i>进度良好</span><span><i style="background:var(--primary)"></i>消费偏快</span><span><i style="background:var(--over)"></i>已超支</span></p>
     </section>
-    <p class="tiny" style="text-align:center">本期结束时未用完的预算不结转 · ${budget?.autoRenew !== false ? '下期自动按本期额度延续，可在预算设置中关闭' : '已关闭自动延续，下期需重新设置'}</p>`;
+    <p class="tiny" style="text-align:center">剩余预算不结转 · ${budget?.autoRenew !== false ? '下期沿用本期额度' : '下期需重新设置'}</p>`;
 }
 
 /* ── 预算设置抽屉 ── */

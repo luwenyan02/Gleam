@@ -29,6 +29,8 @@
   --over:color-mix(in oklab, #B3261E 78%, var(--seed-fg));
   --danger:var(--over);
   --on-accent:#FFFFFF;
+  --on-overview:#FFFFFF;
+  --overview-shade:#15110D;
   --mc-deep:#AA3820;
   --mc-a:color-mix(in oklab, var(--seed-primary) 80%, var(--mc-deep));
   --mc-b:color-mix(in oklab, var(--seed-primary) 92%, var(--mc-deep));

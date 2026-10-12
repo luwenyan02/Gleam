@@ -20,8 +20,8 @@ async function refresh(): Promise<void> {
   const payable = accounts.reduce((sum, a) => sum + Math.max(-a.balance, 0), 0);
   el.innerHTML = `
     <section class="card lo-sum" aria-label="应收应付总览">
-      <div><p class="label">别人欠我</p><p class="big in num">${formatFenCny(receivable)}</p><p class="tiny">应收合计</p></div>
-      <div><p class="label">我欠别人</p><p class="big out num">${formatFenCny(payable)}</p><p class="tiny">应付合计</p></div>
+      <div><p class="label">别人欠我</p><p class="big in num">${formatFenCny(receivable)}</p></div>
+      <div><p class="label">我欠别人</p><p class="big out num">${formatFenCny(payable)}</p></div>
     </section>
     <section class="card list" aria-label="应收应付账户列表">
       ${accounts.map(account => `<button class="row" data-loan-account="${account.id}">
@@ -31,7 +31,7 @@ async function refresh(): Promise<void> {
       </button>`).join('') || '<p class="sub" style="padding:18px">暂无应收应付账户；可在这里新建，或从账户页添加。</p>'}
     </section>
     <button class="btn ghost" data-new-loan-account>新建应收应付账户</button>
-    <p class="tiny" style="margin-top:12px">与账户页共用余额和流水。借贷本金按双账户转账处理，不计入收支。</p>`;
+    <p class="tiny" style="margin-top:12px">借贷本金不计收支，余额与账户页同步</p>`;
 }
 
 export function initLoan(): void {

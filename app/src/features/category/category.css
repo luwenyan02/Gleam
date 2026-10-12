@@ -1,9 +1,8 @@
 /**
  * 拾光 · 分类管理样式（features/category，PRD 4.11）
  * 列表行复用 base.css 的 .card.list/.row/.e-ic；此处为图标选择宫格与拖动排序反馈。
- * .restore-link 与 account.css 同定义，自备避免模块加载顺序依赖。
+ * .restore-link 统一使用 base.css 中的按钮样式。
  */
-.restore-link{margin-left:auto;flex:none;font-size:11.5px;color:var(--primary);font-weight:600;padding:6px 10px;border-radius:999px;background:var(--accent-soft)}
 
 /* 图标选择宫格（53 枚） */
 .icon-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;padding:6px 0 2px}

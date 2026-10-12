@@ -2,7 +2,7 @@
 
 /* ── A. 搜索栏：字段选择器 + 输入框 + 取消 ── */
 .sr-topbar{display:flex;align-items:center;gap:8px;padding:0 0 10px}
-.sr-field-btn{display:flex;align-items:center;gap:4px;min-height:44px;padding:7px 10px;border-radius:999px;border:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--fg);white-space:nowrap;flex:none}
+.sr-field-btn{display:flex;align-items:center;gap:4px;min-height:44px;padding:7px 10px;border-radius:var(--r-s);border:1px solid var(--border);background:var(--bg);font-size:12px;color:var(--fg);white-space:nowrap;flex:none}
 .sr-field-btn svg.ic{width:12px;height:12px;stroke-width:2.2}
 .sr-input-wrap{flex:1;min-width:0;min-height:44px;display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:0 4px 0 12px}
 .sr-input-wrap .sr-ic{color:var(--muted);display:flex;flex:none}

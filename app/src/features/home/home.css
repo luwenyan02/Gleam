@@ -2,19 +2,21 @@
 
 .month-card{
   border-radius:var(--r-l);
-  padding:calc(15px * var(--seed-density)) calc(16px * var(--seed-density));
+  padding:0;
   margin-bottom:calc(10px * var(--seed-density));
   color:var(--fg);
   background:var(--surface);
   border:1px solid var(--border);
   box-shadow:none;
+  overflow:hidden;
 }
+.mc-overview{--overview-image:url('/art/home-overview.webp');padding:calc(15px * var(--seed-density)) calc(16px * var(--seed-density))}
 .mc-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.mc-label{font-size:var(--text-meta);color:var(--muted)}
-.mc-unit{font-size:var(--text-small);color:var(--faint);white-space:nowrap}
+.mc-label{font-size:var(--text-meta);color:var(--on-overview)}
+.mc-unit{font-size:var(--text-small);color:var(--on-overview);white-space:nowrap}
 .month-card .num{font-family:var(--font-body);font-variant-numeric:tabular-nums lining-nums;letter-spacing:0}
-.mc-amt{font-size:calc(34px * var(--seed-type));font-weight:650;margin:8px 0 18px;color:var(--expense);overflow-wrap:anywhere;line-height:1.2}
-.mc-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding-top:12px;border-top:1px solid var(--border)}
+.mc-amt{font-size:calc(34px * var(--seed-type));font-weight:650;margin:8px 0 0;color:var(--on-overview);overflow-wrap:anywhere;line-height:1.2}
+.mc-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:12px 16px 14px;border-top:1px solid var(--border)}
 .mc-row>div{min-width:0}
 .mc-row p:first-child{color:var(--muted);font-size:12px;margin-bottom:6px}
 .mc-row .num{font-size:calc(14px * var(--seed-type));font-weight:600;white-space:nowrap;line-height:1.4}
@@ -48,7 +50,8 @@
 .hm-more{text-align:center;padding:6px 0 12px}
 
 @media (max-width:360px){
-  .month-card{padding:13px 14px}
+  .mc-overview{padding:13px 14px}
+  .mc-row{padding-left:14px;padding-right:14px}
   .mc-amt{font-size:calc(32px * var(--seed-type))}
   .mc-row .num{font-size:calc(13px * var(--seed-type))}
   .home-empty{padding:12px!important}

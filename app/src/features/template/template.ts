@@ -35,7 +35,7 @@ export function initTemplateManage(): void {
       let templates: QuickTemplate[] = [];
 
       el.innerHTML = `
-        <p class="sub" style="padding:0 2px 10px">常用的「分类 + 金额」存成模板，记一笔抽屉里一键填好 · 点行可编辑，上下箭头调顺序</p>
+        <p class="sub" style="padding:0 2px 10px">保存常用账单，记账时一键填写</p>
         <div id="tm-list"></div>
         <button class="btn ghost" id="tm-add">新建模板</button>`;
 

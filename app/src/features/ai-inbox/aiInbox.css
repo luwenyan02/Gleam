@@ -51,4 +51,4 @@
 
 /* 卡片操作按钮行 */
 .ai-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
-.ai-actions .btn{flex:0 0 auto;width:auto;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:10px 16px}
+.ai-actions .btn{flex:0 0 auto;width:auto;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:9px 12px;font-size:var(--text-meta);letter-spacing:0}

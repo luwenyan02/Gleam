@@ -55,19 +55,27 @@ main.viewport{position:absolute;top:var(--safe-top);bottom:calc(var(--tabbar-h) 
 .card-title{font-size:var(--text-body);font-weight:600;margin-bottom:12px;letter-spacing:.02em}
 .sub{font-size:var(--text-meta);color:var(--muted);line-height:1.6}
 .tiny{font-size:var(--text-small);color:var(--faint);line-height:1.6}
-.chip{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:999px;border:1px solid var(--border);background:var(--surface);font-size:var(--text-meta);color:var(--muted);transition:all .18s;white-space:nowrap}
+p.sub,p.tiny,.chart-cap,.settings-status{text-wrap:balance}
+.card-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px;margin-bottom:8px}
+.card-heading .card-title{min-width:0;margin-bottom:0}
+.card-heading>button{flex:none}
+.overview-art{color:var(--on-overview);background-color:var(--mc-deep);background-image:var(--overview-overlay,linear-gradient(90deg,color-mix(in srgb,var(--overview-shade) 26%,transparent),color-mix(in srgb,var(--overview-shade) 48%,transparent) 70%,color-mix(in srgb,var(--overview-shade) 67%,transparent))),var(--overview-image);background-size:cover;background-position:center}
+.chip{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 13px;border-radius:var(--r-s);border:1px solid var(--border);background:var(--bg);font-size:var(--text-meta);color:var(--muted);transition:all .18s;white-space:nowrap}
 button.chip,.tab,.fab,.icon-btn,.btn,button.row,.seg button,.qa,.lf-check{min-width:44px;min-height:44px}
 .chip:not(:disabled):active{transform:scale(.97)}
 .chip.active{background:var(--accent-soft);border-color:var(--primary);color:var(--primary);font-weight:600}
-.chip.tag{background:var(--gold-soft);border-color:transparent;color:color-mix(in oklab, var(--seed-accent) 70%, var(--seed-fg));font-size:11px;padding:5px 11px}
+.chip.tag{border-radius:999px;background:var(--gold-soft);border-color:transparent;color:color-mix(in oklab, var(--seed-accent) 70%, var(--seed-fg));font-size:11px;padding:5px 11px}
 .chip.danger{color:var(--over);border-color:color-mix(in oklab, var(--over) 36%, var(--seed-bg))}
 .icon-btn{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--surface);border:1px solid var(--border);color:var(--muted);transition:all .18s}
 .icon-btn:active{transform:scale(.92)}
-.btn{display:block;width:100%;padding:14px;border-radius:calc(var(--r) - 2px);font-size:calc(14px * var(--seed-type));font-weight:600;text-align:center;transition:all .18s;letter-spacing:.04em}
+.btn{display:block;width:100%;padding:14px;border-radius:var(--r-s);font-size:calc(14px * var(--seed-type));font-weight:600;text-align:center;transition:all .18s;letter-spacing:.04em}
+.btn.compact,.field>.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;width:auto;padding:9px 12px;font-size:var(--text-meta);letter-spacing:0;white-space:nowrap}
+.btn.neutral{background:var(--bg);border:1px solid var(--border);color:var(--fg)}
+.btn:disabled,.chip:disabled,.restore-link:disabled{opacity:.45}
 .btn.primary{background:var(--primary);color:var(--on-accent);box-shadow:none}
 .btn.primary:disabled{opacity:.45;box-shadow:none;cursor:default}
 .btn.primary:not(:disabled):active{transform:scale(.98)}
-.btn.ghost{border:1.5px solid var(--border);color:var(--fg);background:var(--surface)}
+.btn.ghost{border:1px solid var(--border);color:var(--fg);background:var(--bg)}
 .switch{width:44px;height:44px;flex:none;position:relative;background:transparent}
 .switch::before{content:"";position:absolute;inset:9px 0;border-radius:13px;background:var(--border);transition:background .2s}
 .switch::after{content:"";position:absolute;top:12px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--surface);box-shadow:0 1px 4px rgba(0,0,0,.2);transition:transform .2s}
@@ -101,8 +109,8 @@ button.chip,.tab,.fab,.icon-btn,.btn,button.row,.seg button,.qa,.lf-check{min-wi
 .e-amt.in{color:var(--income)}
 
 /* ── 分段控件 / 报表 ───────────────── */
-.seg{display:inline-flex;background:color-mix(in oklab, var(--seed-fg) 6%, var(--seed-surface));border-radius:999px;padding:3px;gap:2px}
-.seg button{padding:7px 18px;border-radius:999px;font-size:14px;color:var(--muted);transition:all .18s}
+.seg{display:inline-flex;background:color-mix(in oklab, var(--seed-fg) 6%, var(--seed-surface));border-radius:var(--r-s);padding:3px;gap:2px}
+.seg button{padding:7px 18px;border-radius:calc(var(--r-s) - 2px);font-size:14px;color:var(--muted);transition:all .18s}
 .seg button:active{transform:scale(.96)}
 .seg button.active{background:var(--surface);color:var(--fg);font-weight:600;box-shadow:var(--shadow-sm)}
 .seg.mini button{padding:5px 12px;font-size:11.5px}
@@ -137,7 +145,7 @@ button.chip,.tab,.fab,.icon-btn,.btn,button.row,.seg button,.qa,.lf-check{min-wi
 .row .chev svg.ic{width:15px;height:15px}
 .acct-amt{margin-left:auto;font-size:13px;font-weight:600}
 .acct-amt.neg{color:var(--expense)}
-.restore-link{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px}
+.restore-link{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;margin-left:auto;min-width:44px;min-height:44px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--r-s);background:var(--bg);color:var(--primary);font-size:var(--text-meta);font-weight:600;white-space:nowrap}
 
 /* ── 首页快捷区 ───────────────────── */
 .quick-row{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;padding:12px 6px}

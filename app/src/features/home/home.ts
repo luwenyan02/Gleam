@@ -90,8 +90,10 @@ function renderSkeleton(el: HTMLElement): void {
     <section class="card home-reminders" id="hm-reminders" aria-label="应用内提醒" hidden></section>
 
     <section class="month-card" id="hm-month" aria-label="本期收支总览" hidden>
-      <div class="mc-heading"><p class="mc-label"></p><span class="mc-unit">单位：元</span></div>
-      <p class="mc-amt num"><span id="m-spend">0.00</span></p>
+      <div class="mc-overview overview-art">
+        <div class="mc-heading"><p class="mc-label"></p><span class="mc-unit">单位：元</span></div>
+        <p class="mc-amt num"><span id="m-spend">0.00</span></p>
+      </div>
       <div class="mc-row">
         <div><p>收入</p><p class="num" id="m-income"></p></div>
         <div><p>结余</p><p class="num" id="m-balance"></p></div>

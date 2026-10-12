@@ -139,15 +139,17 @@ async function refresh(): Promise<void> {
         <h1 class="brand sm">账户</h1>
         <p class="sub">${subHead}</p>
       </div>
-      <div class="account-head-actions"><button data-account-manage>管理</button><button class="icon-btn" data-add aria-label="添加账户">${iconHtml('ic-plus')}</button></div>
+      <div class="account-head-actions"><button class="chip" data-account-manage>管理</button><button class="icon-btn" data-add aria-label="添加账户">${iconHtml('ic-plus')}</button></div>
     </header>
 
     <section class="card asset acct-hero">
-      <p class="label">净资产</p>
-      <p class="big num">${formatFenCny(worth.net)}</p>
-      <div class="asset-row">
-        <p>总资产<span class="num">${formatFenCny(worth.assets)}</span></p>
-        <p>总负债<span class="num">${formatFenCny(worth.debts)}</span></p>
+      <div class="asset-summary overview-art">
+        <p class="label">净资产</p>
+        <p class="big num">${formatFenCny(worth.net)}</p>
+        <div class="asset-row">
+          <p>总资产<span class="num">${formatFenCny(worth.assets)}</span></p>
+          <p>总负债<span class="num">${formatFenCny(worth.debts)}</span></p>
+        </div>
       </div>
       ${balanceTrendHtml(trend, '净资产', netTrendState)}
     </section>
@@ -156,7 +158,7 @@ async function refresh(): Promise<void> {
       <section class="card">
         <p class="sub" style="text-align:center;padding:18px 0">还没有可展示的账户<br>点右上角 <b>＋</b> 添加现金、储蓄卡、网络账户或信用卡</p>
       </section>`}
-    <p class="tiny" style="text-align:center;padding:4px 0 10px">点击账户查看流水 · 排序、隐藏及净资产范围请进入管理</p>`;
+    <p class="tiny" style="text-align:center;padding:4px 0 10px">点账户看流水，更多设置见「管理」</p>`;
 }
 
 /* ── 账户详情抽屉（流水 / 编辑 / 对账 / 隐藏） ── */
