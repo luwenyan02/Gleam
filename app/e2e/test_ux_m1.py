@@ -17,6 +17,18 @@ SCREENSHOTS = Path(os.environ.get(
 SCREENSHOTS.mkdir(parents=True, exist_ok=True)
 
 
+def assert_advanced_action_row(page) -> None:
+    selectors = ['[data-tpl-manage]', '#chip-tag', '#chip-shop', '#life-toggle']
+    buttons = [page.locator(selector) for selector in selectors]
+    boxes = [button.bounding_box() for button in buttons]
+    assert all(box is not None for box in boxes), '四个记账入口均须可见'
+    assert max(box['y'] for box in boxes) - min(box['y'] for box in boxes) < 1, '四个记账入口应在同一行'
+    for button, box in zip(buttons, boxes):
+        assert box['width'] >= 44 and box['height'] >= 44, '记账入口须保持触控范围'
+        assert button.evaluate('e=>e.scrollWidth<=e.clientWidth+1'), '记账入口不能截断操作文字'
+    assert page.locator('#advanced-fields').evaluate('e=>e.scrollWidth<=e.clientWidth+1')
+
+
 def assert_basic_workspace(page, width: int, height: int) -> None:
     page.goto(URL)
     page.wait_for_load_state('networkidle')
@@ -69,6 +81,7 @@ def assert_basic_workspace(page, width: int, height: int) -> None:
     page.click('[data-act="toggle-advanced"]')
     assert page.locator('#advanced-fields').get_attribute('hidden') is None
     assert page.inner_text('#amt') == amount_before, '展开高级项不应丢失金额草稿'
+    assert_advanced_action_row(page)
 
     page.click('[data-act="toggle-advanced"]')
     assert page.locator('#advanced-fields').get_attribute('hidden') is not None

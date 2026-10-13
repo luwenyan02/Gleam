@@ -502,7 +502,8 @@ function renderCats(): void {
     ? '选择这笔往来的资金方向'
     : c.showAllCategories ? '选择后自动回到常用分类' : '';
   categoryHead.querySelector('small')!.hidden = !isLoan && !c.showAllCategories;
-  q('#tpl-row').hidden = c.type !== 'expense';
+  q('#tpl-row').hidden = c.type !== 'expense' || c.templates.length === 0;
+  q('[data-tpl-manage]').hidden = c.type !== 'expense';
   q('#cat-grid').hidden = isTransfer;
   q('#transfer-block').hidden = !isTransfer;
   q('#loan-block').hidden = !isLoan;
@@ -826,7 +827,7 @@ function bindEvents(el: HTMLElement): void {
   });
 
   // 速记模板：一键填充分类 + 金额
-  el.querySelector('#tpl-row')!.addEventListener('click', (e) => {
+  el.querySelector('#advanced-fields')!.addEventListener('click', (e) => {
     const manage = (e.target as HTMLElement).closest('[data-tpl-manage]');
     if (manage) { closeSheet(); openSubpage('sp-template-manage'); return; }
     const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tpl]');

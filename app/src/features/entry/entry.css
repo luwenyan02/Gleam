@@ -58,8 +58,12 @@
 .primary-meta .chip span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .primary-meta .advanced-toggle{color:var(--primary)}
 .advanced-fields{margin-top:7px;padding:10px 0 2px;border-top:1px dashed var(--border)}
-.advanced-fields .tpl-row{padding-bottom:6px}
-.advanced-meta{display:flex;flex-wrap:wrap;overflow:visible;padding-top:4px}
+.advanced-fields .tpl-row{padding:6px 0 2px}
+.advanced-meta{display:flex;flex-wrap:nowrap;gap:6px;overflow:visible;padding-top:0}
+.advanced-meta .chip{flex:1;min-width:44px;padding:9px 8px;font-size:var(--text-meta);gap:4px}
+.advanced-meta [data-tpl-manage],.advanced-meta #life-toggle{flex:1.15}
+.advanced-meta .chip span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.advanced-meta .chip svg{flex:none}
 #sheet.entry-workspace .note{min-height:44px;margin:8px 0 0;padding:10px 12px;background:var(--surface)}
 #sheet.entry-workspace .keypad{flex:none;gap:6px}
 #sheet.entry-workspace .keypad button{height:46px;min-width:44px}
