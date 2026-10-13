@@ -107,7 +107,7 @@
 /* 账户详情保持清晰白卡；账户总览的插画仅放在数字汇总区。 */
 .acct-hero,.account-detail-hero{background:var(--surface);color:var(--fg);border:1px solid var(--border);box-shadow:none}
 .acct-hero{padding:0;overflow:hidden}
-.asset-summary{--overview-image:url('/art/account-overview.webp');--overview-overlay:linear-gradient(90deg,color-mix(in srgb,var(--overview-shade) 26%,transparent),color-mix(in srgb,var(--overview-shade) 48%,transparent) 70%,color-mix(in srgb,var(--overview-shade) 25%,transparent));padding:14px 16px}
+.asset-summary{--overview-image:url('/art/account-overview.webp');--overview-overlay:linear-gradient(0deg,color-mix(in srgb,var(--overview-shade) 50%,transparent) 0 56px,transparent 100px),linear-gradient(90deg,color-mix(in srgb,var(--overview-shade) 26%,transparent),color-mix(in srgb,var(--overview-shade) 48%,transparent) 70%,color-mix(in srgb,var(--overview-shade) 25%,transparent));padding:14px 16px}
 .asset-summary .label{font-size:var(--text-meta);letter-spacing:0}
 .asset-summary .big{font-size:calc(32px * var(--seed-type));line-height:1.2;margin:8px 0 14px;overflow-wrap:anywhere}
 .asset-summary .label,.asset-summary .asset-row,.asset-summary .num{color:inherit}
