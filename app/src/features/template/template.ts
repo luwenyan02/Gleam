@@ -1,9 +1,7 @@
 /**
  * 拾光 · 速记模板管理（features/template，覆盖 sp-template-manage）
- * 「分类 + 金额 + 名称」一键记账模板的增删改与排序：
- * 列表行显示名称 / 分类名 / 金额，上下移按钮写 sortOrder；
- * 新建与编辑走 openSheet 抽屉（名称输入 + 金额输入 + 支出分类树选择），删除需确认。
- * 入口：我的页「速记模板」行 + 记一笔抽屉速记区「管理」；数据一律经 templateRepo。
+ * 名称、金额、分类与可选账户预设的增删改与排序。
+ * 入口：我的页「速记模板」与首页速记选择框的设置图标；数据一律经 repo。
  */
 import './template.css';
 import { iconHtml } from '../../assets/icons';
@@ -11,6 +9,8 @@ import { esc } from '../../core/esc';
 import { formatFen, parseYuanToFen } from '../../core/money';
 import { addTemplate, updateTemplate, deleteTemplate, listTemplates } from '../../core/repo/templateRepo';
 import { listExpenseTree } from '../../core/repo/categoryRepo';
+import { listAccounts } from '../../core/repo/accountRepo';
+import { openPickList } from '../../shared/pickList';
 import { registerSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { showToast } from '../shell/toast';
@@ -41,9 +41,10 @@ export function initTemplateManage(): void {
 
       async function refresh(): Promise<void> {
         if (!el.isConnected) return;
-        const [tpls, tree] = await Promise.all([listTemplates(), listExpenseTree()]);
+        const [tpls, tree, accounts] = await Promise.all([listTemplates(), listExpenseTree(), listAccounts(true)]);
         if (!el.isConnected) return;
         templates = tpls;
+        const accountNames = new Map(accounts.map(account => [account.id, account.name]));
         const catNames = new Map<number, string>();
         for (const g of tree) {
           catNames.set(g.parent.id, g.parent.name);
@@ -55,7 +56,7 @@ export function initTemplateManage(): void {
               <div class="row tm-item" data-id="${t.id}" role="button" tabindex="0">
                 <span class="e-ic sm">${iconHtml('ic-bolt', 17)}</span>
                 <div class="tm-main"><b>${esc(t.name)}</b>
-                  <span class="row-note">${esc(catNames.get(t.categoryId) ?? '分类已删除')} · ¥${formatFen(t.amount)}</span></div>
+                  <span class="row-note">${esc(catNames.get(t.categoryId) ?? '分类已删除')} · ${esc(t.accountId == null ? '自动选择账户' : accountNames.get(t.accountId) ?? '账户已删除')} · ¥${formatFen(t.amount)}</span></div>
                 <span class="tm-sort">
                   <button class="icon-btn tm-up" data-move="-1" data-idx="${i}" aria-label="上移"${i === 0 ? ' disabled' : ''}>${iconHtml('ic-left', 15)}</button>
                   <button class="icon-btn tm-down" data-move="1" data-idx="${i}" aria-label="下移"${i === templates.length - 1 ? ' disabled' : ''}>${iconHtml('ic-right', 15)}</button>
@@ -105,7 +106,7 @@ export function initTemplateManage(): void {
 /* ── 新建 / 编辑抽屉 ─────────────────── */
 
 /**
- * 模板表单抽屉：名称 + 金额 + 支出分类树选择；编辑模式带删除（confirmDialog 确认）。
+ * 模板表单抽屉：名称、金额、账户与支出分类；编辑模式带删除确认。
  * @param tpl 编辑的模板，缺省为新建
  * @param onSaved 保存/删除成功后的回调（列表刷新）
  */
@@ -115,9 +116,12 @@ function openTplForm(tpl: QuickTemplate | undefined, onSaved: () => void): void 
     ariaLabel: title,
     onClose: () => sheetAbort?.abort(),
     async render(el) {
-      const tree = await listExpenseTree();
+      const [tree, allAccounts] = await Promise.all([listExpenseTree(), listAccounts(true)]);
       if (!el.isConnected) return;
       let categoryId = tpl?.categoryId;
+      let accountId = tpl?.accountId;
+      const accounts = allAccounts.filter(account => account.group !== 'receivable' && (!account.hidden || account.id === accountId));
+      const accountLabel = () => accountId == null ? '自动选择' : accounts.find(account => account.id === accountId)?.name ?? '账户不可用，请重选';
 
       el.innerHTML = `
         <div class="cm-sheet-head">
@@ -127,6 +131,7 @@ function openTplForm(tpl: QuickTemplate | undefined, onSaved: () => void): void 
         <div class="sheet-scroll">
           <div class="field"><span>名称</span><input class="note" id="tf-name" maxlength="12" placeholder="如 早餐" value="${tpl ? esc(tpl.name) : ''}" style="margin-bottom:0;flex:1"></div>
           <div class="field"><span>金额</span><input class="note" id="tf-amount" inputmode="decimal" placeholder="如 15 或 12.5" value="${tpl ? formatFen(tpl.amount) : ''}" style="margin-bottom:0;flex:1"></div>
+          <div class="field tm-account-field"><span>账户</span><button class="chip" id="tf-account" type="button" aria-label="选择模板账户">${iconHtml('ic-wallet', 16)}<span>${esc(accountLabel())}</span>${iconHtml('ic-right', 14)}</button></div>
           <p class="tiny" style="padding:6px 0 0">选择支出分类</p>
           <div class="tm-cats" id="tf-cats">
             ${tree.map((g) => `
@@ -148,6 +153,19 @@ function openTplForm(tpl: QuickTemplate | undefined, onSaved: () => void): void 
           for (const c of el.querySelectorAll<HTMLElement>('[data-cat]')) c.classList.toggle('active', c === cat);
           return;
         }
+        if (target.closest('#tf-account')) {
+          openPickList({
+            container: el, title: '选择模板账户', selected: accountId ?? 'auto',
+            items: [{ value: 'auto', label: '自动选择', icon: 'ic-wallet' }, ...accounts.map(account => ({
+              value: account.id, label: account.name, icon: 'ic-wallet', note: account.hidden ? '已隐藏' : undefined,
+            }))],
+            onPick(value) {
+              accountId = value === 'auto' ? undefined : Number(value);
+              el.querySelector('#tf-account span')!.textContent = accountLabel();
+            },
+          });
+          return;
+        }
         const act = target.closest<HTMLElement>('[data-act]')?.dataset.act;
         if (act === 'close') closeSheet();
         else if (act === 'save') void save();
@@ -166,8 +184,13 @@ function openTplForm(tpl: QuickTemplate | undefined, onSaved: () => void): void 
           return;
         }
         if (amount <= 0) { showToast('金额需大于 0'); return; }
-        if (tpl) await updateTemplate(tpl.id, { name, amount, categoryId });
-        else await addTemplate({ name, amount, categoryId });
+        try {
+          if (tpl) await updateTemplate(tpl.id, { name, amount, categoryId, accountId });
+          else await addTemplate({ name, amount, categoryId, accountId });
+        } catch (error) {
+          showToast(error instanceof Error ? error.message : '模板未保存，请重试');
+          return;
+        }
         closeSheet();
         showToast(tpl ? '模板已更新' : `已新建模板「${name}」`);
         onSaved();

@@ -35,6 +35,8 @@ export interface PickListOptions {
   selected?: string | number;
   /** 是否显示搜索栏（默认 items.length > 15 时自动开启） */
   searchable?: boolean;
+  /** 搜索框右侧的图标操作；执行前先关闭选择浮层。 */
+  searchAction?: { icon: string; label: string; onClick(): void };
   /** 选中回调 */
   onPick(value: string | number, label: string): void;
   /** 取消回调（点遮罩区域） */
@@ -78,6 +80,16 @@ export function openPickList(opts: PickListOptions): void {
     searchInput.placeholder = '搜索…';
     searchInput.setAttribute('aria-label', '搜索选项');
     wrap.appendChild(searchInput);
+    if (opts.searchAction) {
+      const action = document.createElement('button');
+      action.className = 'icon-btn picker-search-action';
+      action.type = 'button';
+      action.setAttribute('aria-label', opts.searchAction.label);
+      action.title = opts.searchAction.label;
+      action.innerHTML = iconHtml(opts.searchAction.icon, 18);
+      action.addEventListener('click', () => { close(); opts.searchAction!.onClick(); });
+      wrap.appendChild(action);
+    }
     panel.appendChild(wrap);
   }
 

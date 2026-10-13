@@ -57,7 +57,7 @@ export async function updateAccount(
  * 删除账户。要求先处理关联账单（存在未删除关联账单时抛错），不进回收站。
  */
 export async function deleteAccount(id: number): Promise<void> {
-  await db.transaction('rw', [db.accounts, db.entries, db.recurringRules, db.creditStatements], async () => {
+  await db.transaction('rw', [db.accounts, db.entries, db.recurringRules, db.creditStatements, db.quickTemplates], async () => {
     const account = await db.accounts.get(id);
     if (!account) return;
     if (account.balance !== 0) throw new Error('仅余额为 0 的空账户可以删除');
@@ -67,6 +67,8 @@ export async function deleteAccount(id: number): Promise<void> {
     if (historicalEntries > 0) throw new Error(`该账户仍有 ${historicalEntries} 笔历史业务引用，不能删除`);
     const recurring = await db.recurringRules.where('accountId').equals(id).count();
     if (recurring > 0) throw new Error(`该账户仍被 ${recurring} 条周期账引用，不能删除`);
+    const templates = await db.quickTemplates.filter(template => template.accountId === id).count();
+    if (templates > 0) throw new Error(`该账户仍被 ${templates} 个速记模板引用，请先修改模板账户`);
     const statements = await db.creditStatements.where('accountId').equals(id).count();
     if (statements > 0) throw new Error(`该账户仍有 ${statements} 期信用卡账单，不能删除`);
     await db.accounts.delete(id);

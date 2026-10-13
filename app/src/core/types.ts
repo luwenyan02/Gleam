@@ -247,6 +247,8 @@ export interface QuickTemplate extends Timestamps {
   /** 金额，单位分 */
   amount: number;
   categoryId: number;
+  /** 缺省时沿用记账默认账户，兼容旧模板。 */
+  accountId?: number;
   sortOrder: number;
 }
 

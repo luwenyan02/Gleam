@@ -12,7 +12,7 @@ import { parseYuanToFen, formatFen } from '../../core/money';
 import {
   LOAN_KINDS, LOAN_KIND_META,
   type Account, type Category, type Entry, type EntryType, type LoanKind,
-  type Merchant, type QuickTemplate, type Tag,
+  type Merchant, type Tag,
 } from '../../core/types';
 import {
   getEntry, getEntryTagIds, dayKey, listEntries,
@@ -27,7 +27,6 @@ import { listLoanAccounts, getLoanAccount, ensureLoanAccount } from '../../core/
 import type { NewLifeNote } from '../../core/repo/lifeRepo';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
 import { openSheet, closeSheet } from '../shell/sheet';
-import { openSubpage } from '../shell/router';
 import { setFabAction } from '../shell/shell';
 import { showToast } from '../shell/toast';
 import { openDateTimeWheel } from '../../shared/dateTimeWheel';
@@ -140,7 +139,6 @@ interface SheetCtx {
   expenseTree: { parent: Category; children: Category[] }[];
   incomeCats: Category[];
   accounts: Account[];
-  templates: QuickTemplate[];
   tags: Tag[];
   merchants: Merchant[];
   loanAccounts: Account[];
@@ -203,6 +201,9 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     if (account.group === 'receivable') loanAccounts.push(account);
   }
   await includeSelectedAccount(options.presetAccountId);
+  if (options.entryId == null) {
+    await includeSelectedAccount(templates.find(template => template.id === options.templateId)?.accountId);
+  }
 
   const expenseCats = tree.flatMap((group) => group.children.length ? group.children : [group.parent]);
   const accountIds = new Set(accounts.map((account) => account.id));
@@ -250,7 +251,7 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     date: initialDate,
     bx: false, tk: false,
     tagIds: [],
-    expenseTree: tree, incomeCats, accounts, templates, tags, merchants, loanAccounts, lastUsed,
+    expenseTree: tree, incomeCats, accounts, tags, merchants, loanAccounts, lastUsed,
     quickExpenseCats,
     quickIncomeCats,
     recommendationHistory: recentEntries,
@@ -332,6 +333,12 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
       c.categoryId = tpl.categoryId;
       c.categorySelectionLocked = true;
       c.amt = String(tpl.amount / 100);
+      if (tpl.accountId != null && !hasPresetAccount) {
+        const account = accounts.find(candidate => candidate.id === tpl.accountId && candidate.group !== 'receivable');
+        c.accountId = account?.id;
+        c.accountSelectionLocked = true;
+        if (!account) showToast('模板账户不可用，请重新选择账户');
+      }
       refreshEntryRecommendations(c);
     }
   }
@@ -406,7 +413,7 @@ function renderSheet(el: HTMLElement, note: string): void {
           ${iconHtml('ic-set', 16)}<span id="advanced-label">更多</span>
         </button>
       </div>
-      ${renderAdvancedFields(c.templates)}
+      ${renderAdvancedFields()}
     </div>
     <div class="keypad" id="keypad" aria-label="计算器键盘">
       <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button><button data-k="+" class="op" aria-label="加">+</button><button data-k="del" class="op" aria-label="删除一位">${iconHtml('ic-del')}</button>
@@ -502,8 +509,6 @@ function renderCats(): void {
     ? '选择这笔往来的资金方向'
     : c.showAllCategories ? '选择后自动回到常用分类' : '';
   categoryHead.querySelector('small')!.hidden = !isLoan && !c.showAllCategories;
-  q('#tpl-row').hidden = c.type !== 'expense' || c.templates.length === 0;
-  q('[data-tpl-manage]').hidden = c.type !== 'expense';
   q('#cat-grid').hidden = isTransfer;
   q('#transfer-block').hidden = !isTransfer;
   q('#loan-block').hidden = !isLoan;
@@ -760,7 +765,7 @@ function bindEvents(el: HTMLElement): void {
   const boundContext = ctx!;
   let noteSessionType = boundContext.type;
   let categoryPointerDown = false;
-  const categoryControls = '#cat-grid .cat, #seg [data-type], #tpl-row [data-tpl]';
+  const categoryControls = '#cat-grid .cat, #seg [data-type]';
   // 先让手选点击落到原按钮；备注失焦不能重绘并吞掉尚未派发的 click。
   const pointerDown = (event: PointerEvent) => {
     categoryPointerDown = !!(event.target as Element).closest(categoryControls);
@@ -824,28 +829,6 @@ function bindEvents(el: HTMLElement): void {
     }
     renderCats();
     refreshMeta();
-  });
-
-  // 速记模板：一键填充分类 + 金额
-  el.querySelector('#advanced-fields')!.addEventListener('click', (e) => {
-    const manage = (e.target as HTMLElement).closest('[data-tpl-manage]');
-    if (manage) { closeSheet(); openSubpage('sp-template-manage'); return; }
-    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tpl]');
-    if (!btn || !ctx) return;
-    const tpl = ctx.templates.find((t) => t.id === Number(btn.dataset.tpl));
-    if (!tpl) return;
-    ctx.templateId = tpl.id;
-    ctx.categoryId = tpl.categoryId;
-    ctx.categorySelectionLocked = true;
-    ctx.amt = String(tpl.amount / 100);
-    ctx.prev = null;
-    ctx.prevAmount = null;
-    ctx.op = null;
-    refreshEntryRecommendations(ctx);
-    renderCats();
-    refreshMeta();
-    refreshAmt();
-    showToast(`已按模板填好：${tpl.name}，点保存即可入账`);
   });
 
   // 账户 / 转出转入 / 借贷对象与账户：选择浮层

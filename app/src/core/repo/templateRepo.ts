@@ -19,8 +19,11 @@ export type NewQuickTemplate = Omit<QuickTemplate, 'id' | 'createdAt' | 'updated
  * @returns 模板 id
  */
 export async function addTemplate(input: NewQuickTemplate): Promise<number> {
-  const maxSort = (await db.quickTemplates.orderBy('sortOrder').last())?.sortOrder ?? 0;
-  const id = await db.quickTemplates.add(stamp({ sortOrder: maxSort + 1, ...input }) as QuickTemplate);
+  const id = await db.transaction('rw', db.quickTemplates, db.accounts, async () => {
+    await validateAccount(input.accountId);
+    const maxSort = (await db.quickTemplates.orderBy('sortOrder').last())?.sortOrder ?? 0;
+    return db.quickTemplates.add(stamp({ sortOrder: maxSort + 1, ...input }) as QuickTemplate);
+  });
   emitAfterCommit('templates-changed');
   return id;
 }
@@ -28,10 +31,19 @@ export async function addTemplate(input: NewQuickTemplate): Promise<number> {
 /** 更新模板（名称 / 金额 / 分类 / 排序） */
 export async function updateTemplate(
   id: number,
-  patch: Partial<Pick<QuickTemplate, 'name' | 'amount' | 'categoryId' | 'sortOrder'>>,
+  patch: Partial<Pick<QuickTemplate, 'name' | 'amount' | 'categoryId' | 'accountId' | 'sortOrder'>>,
 ): Promise<void> {
-  await db.quickTemplates.update(id, { ...patch, updatedAt: now() });
+  await db.transaction('rw', db.quickTemplates, db.accounts, async () => {
+    await validateAccount(patch.accountId);
+    await db.quickTemplates.update(id, { ...patch, updatedAt: now() });
+  });
   emitAfterCommit('templates-changed');
+}
+
+async function validateAccount(id: number | undefined): Promise<void> {
+  if (id == null) return;
+  const account = await db.accounts.get(id);
+  if (!account || account.group === 'receivable') throw new Error('请选择可用于记账的资金账户');
 }
 
 /** 删除模板 */

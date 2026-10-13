@@ -34,9 +34,9 @@
 }
 
 /* ── 搜索栏 ── */
-.picker-search{padding:8px 16px 4px;flex:none}
+.picker-search{display:flex;align-items:center;gap:8px;padding:8px 16px 4px;flex:none}
 .picker-search input{
-  width:100%;min-height:44px;padding:9px 12px;
+  flex:1;min-width:0;width:100%;min-height:44px;padding:9px 12px;
   border-radius:var(--r-s);
   border:1px solid var(--border);
   font-size:14px;color:var(--fg);
@@ -46,10 +46,12 @@
 }
 .picker-search input:focus{border-color:var(--primary)}
 .picker-search input::placeholder{color:var(--faint)}
+.picker-search-action{flex:none;background:var(--bg)}
 
 /* ── 列表区 ── */
 .picker-list{
   overflow-y:auto;
+  overscroll-behavior:contain;
   padding-bottom:env(safe-area-inset-bottom, 0px);
   scrollbar-width:none;
   min-height:0;

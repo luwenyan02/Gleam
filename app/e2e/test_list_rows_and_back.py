@@ -265,11 +265,14 @@ def account_balances(page,width):
 
 def sheet_to_subpage(page,width):
     fixture(page)
-    page.locator('#fab').click();page.locator('[data-act="toggle-advanced"]').click()
-    page.locator('[data-tpl-manage]').click();page.locator('#sp-template-manage.open').wait_for()
+    page.locator('.tab[data-page="page-mine"]').click()
+    page.locator('#page-mine [data-sub="sp-template-manage"]').click()
+    page.locator('#sp-template-manage.open').wait_for()
+    page.locator('#tm-add').click();page.locator('#tf-name').wait_for()
+    page.locator('#sheet [data-act="close"]').click()
     page.wait_for_timeout(450)
     assert page.locator('#sheet.open').count()==0
-    assert page.evaluate('history.state.gleamSubDepth')==1,'关闭抽屉的异步返回吞掉了新页面历史'
+    assert page.evaluate('history.state.gleamSubDepth')==1,'关闭模板表单不能吞掉管理页历史'
     assert page.evaluate('!history.state.gleamLayer'),'子页不应继承已关闭弹层标记'
     page.go_back();page.wait_for_timeout(450)
     assert page.locator('#sp-template-manage').count()==0
@@ -277,12 +280,13 @@ def sheet_to_subpage(page,width):
 
 def rapid_navigation_back(page,width):
     fixture(page)
-    page.locator('#fab').click();page.locator('[data-act="toggle-advanced"]').click()
-    page.evaluate('''()=>{document.querySelector('[data-tpl-manage]').click();document.dispatchEvent(new CustomEvent('gleam:system-back'))}''')
+    page.locator('.tab[data-page="page-mine"]').click()
+    page.locator('#page-mine [data-sub="sp-template-manage"]').wait_for()
+    page.evaluate('''()=>{document.querySelector('#page-mine [data-sub="sp-template-manage"]').click();document.dispatchEvent(new CustomEvent('gleam:system-back'))}''')
     page.wait_for_timeout(500)
     assert page.locator('#sp-template-manage').count()==0
     assert page.evaluate('history.state.gleamSubDepth')==0,'已关闭的子页仍被写入空历史层'
-    page.locator('#btn-search').click();page.locator('#sp-search.open').wait_for()
+    page.locator('#tab-home').click();page.locator('#btn-search').click();page.locator('#sp-search.open').wait_for()
     page.go_back();page.wait_for_timeout(450)
     assert page.locator('#sp-search').count()==0,'空历史层导致后续页面需要多按一次返回'
 

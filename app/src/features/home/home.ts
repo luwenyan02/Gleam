@@ -165,8 +165,9 @@ async function openService(key: HomeService): Promise<void> {
   }
   const templates = await listTemplates();
   if (!templates.length) { openSubpage('sp-template-manage'); return; }
-  if (templates.length === 1) { await openEntrySheet({ templateId: templates[0].id }); return; }
-  openPickList({ container: root!, title: '选择速记模板', searchable: true,
+  const container = root!.closest<HTMLElement>('.app') ?? root!;
+  openPickList({ container, title: '选择速记模板', searchable: true,
+    searchAction: { icon: 'ic-set', label: '速记模板设置', onClick: () => openSubpage('sp-template-manage') },
     items: templates.map(t => ({ value: t.id, label: t.name, note: formatFenCny(t.amount) })),
     onPick: id => { void openEntrySheet({ templateId: Number(id) }); },
   });

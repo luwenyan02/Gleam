@@ -14,3 +14,6 @@
 .tm-cats::-webkit-scrollbar{display:none}
 .tm-cat-sec{font-size:10.5px;letter-spacing:.14em;color:var(--faint);padding:10px 2px 6px}
 .tm-cat-row{display:flex;flex-wrap:wrap;gap:7px}
+.tm-account-field>#tf-account{flex:1;min-width:0;justify-content:flex-start}
+.tm-account-field>#tf-account span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.tm-account-field>#tf-account svg{flex:none}

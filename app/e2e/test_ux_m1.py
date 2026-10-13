@@ -18,11 +18,12 @@ SCREENSHOTS.mkdir(parents=True, exist_ok=True)
 
 
 def assert_advanced_action_row(page) -> None:
-    selectors = ['[data-tpl-manage]', '#chip-tag', '#chip-shop', '#life-toggle']
+    selectors = ['#chip-tag', '#chip-shop', '#life-toggle']
     buttons = [page.locator(selector) for selector in selectors]
     boxes = [button.bounding_box() for button in buttons]
-    assert all(box is not None for box in boxes), '四个记账入口均须可见'
-    assert max(box['y'] for box in boxes) - min(box['y'] for box in boxes) < 1, '四个记账入口应在同一行'
+    assert all(box is not None for box in boxes), '三个记账入口均须可见'
+    assert max(box['y'] for box in boxes) - min(box['y'] for box in boxes) < 1, '三个记账入口应在同一行'
+    assert page.locator('#advanced-fields #tpl-row, #advanced-fields [data-tpl], #advanced-fields [data-tpl-manage]').count() == 0, '速记只从首页进入'
     for button, box in zip(buttons, boxes):
         assert box['width'] >= 44 and box['height'] >= 44, '记账入口须保持触控范围'
         assert button.evaluate('e=>e.scrollWidth<=e.clientWidth+1'), '记账入口不能截断操作文字'
