@@ -248,19 +248,23 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
 
     body.innerHTML = `
       <section class="account-detail-hero">
-        <div class="account-detail-top"><span>${ACCOUNT_GROUP_NAMES[acct.group]}</span><small>${esc(repayNote(acct) ?? acct.note ?? '人民币账户')}</small></div>
-        <div class="account-balance-overview${limit ? ' has-limit' : ''}">
-          <div class="account-current-balance"><p>当前余额</p><h3 class="num${acct.balance < 0 ? ' neg' : ''}">${formatFenCny(acct.balance)}</h3></div>
-          ${limit ? `<div class="credit-limit-side">
-            <p><span>信用额度</span><b class="num">${formatFenCny(limit.limit)}</b></p>
-            <p><span>${limit.overLimit > 0 ? '已超额' : '剩余额度'}</span><b class="num${limit.overLimit > 0 ? ' neg' : ''}">${formatFenCny(limit.overLimit || limit.remaining)}</b></p>
-          </div>` : ''}
+        <div class="account-detail-overview overview-art">
+          <div class="account-detail-top"><span>${ACCOUNT_GROUP_NAMES[acct.group]}</span><small>${esc(repayNote(acct) ?? acct.note ?? '人民币账户')}</small></div>
+          <div class="account-balance-overview${limit ? ' has-limit' : ''}">
+            <div class="account-current-balance"><p>当前余额</p><h3 class="num${acct.balance < 0 ? ' neg' : ''}">${formatFenCny(acct.balance)}</h3></div>
+            ${limit ? `<div class="credit-limit-side">
+              <p><span>信用额度</span><b class="num">${formatFenCny(limit.limit)}</b></p>
+              <p><span>${limit.overLimit > 0 ? '已超额' : '剩余额度'}</span><b class="num${limit.overLimit > 0 ? ' neg' : ''}">${formatFenCny(limit.overLimit || limit.remaining)}</b></p>
+            </div>` : ''}
+          </div>
+          <div class="account-flow-total"><span>总流入 <b class="num">${formatFenCny(totalIn)}</b></span><span>总流出 <b class="num">${formatFenCny(totalOut)}</b></span></div>
         </div>
-        <div class="account-flow-total"><span>总流入 <b class="num">${formatFenCny(totalIn)}</b></span><span>总流出 <b class="num">${formatFenCny(totalOut)}</b></span></div>
-        ${balanceTrendHtml(trend, '账户余额', trendState)}
-        <div class="account-detail-actions">
-          <button data-account-action="edit">${iconHtml('ic-pen', 17)}编辑</button>
-          <button data-account-action="reconcile">${iconHtml('ic-swap', 17)}对账</button>
+        <div class="account-detail-controls">
+          ${balanceTrendHtml(trend, '账户余额', trendState)}
+          <div class="account-detail-actions">
+            <button data-account-action="edit">${iconHtml('ic-pen', 17)}编辑</button>
+            <button data-account-action="reconcile">${iconHtml('ic-swap', 17)}对账</button>
+          </div>
         </div>
       </section>
       <div class="account-months" id="account-months">

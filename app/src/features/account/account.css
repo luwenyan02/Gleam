@@ -104,10 +104,11 @@
 .account-detail-entry{position:sticky;z-index:6;bottom:calc(4px + var(--safe-bottom));display:flex;align-items:center;justify-content:center;gap:7px;width:100%;min-height:50px;margin-top:12px;border-radius:14px;background:var(--primary);color:var(--on-accent);font-size:13px;font-weight:650;box-shadow:0 10px 24px color-mix(in oklab,var(--seed-primary) 28%,transparent)}
 .account-detail-entry:active{transform:scale(.98)}
 
-/* 账户详情保持清晰白卡；账户总览的插画仅放在数字汇总区。 */
+/* 总览和详情的插画仅放在数字汇总区，趋势与操作保留纯色底。 */
 .acct-hero,.account-detail-hero{background:var(--surface);color:var(--fg);border:1px solid var(--border);box-shadow:none}
 .acct-hero{padding:0;overflow:hidden}
-.asset-summary{--overview-image:url('/art/account-overview.webp');--overview-overlay:linear-gradient(0deg,color-mix(in srgb,var(--overview-shade) 50%,transparent) 0 56px,transparent 100px),linear-gradient(90deg,color-mix(in srgb,var(--overview-shade) 26%,transparent),color-mix(in srgb,var(--overview-shade) 48%,transparent) 70%,color-mix(in srgb,var(--overview-shade) 25%,transparent));padding:14px 16px}
+.asset-summary,.account-detail-overview{--overview-image:url('/art/account-overview.webp');--overview-overlay:linear-gradient(0deg,color-mix(in srgb,var(--overview-shade) 50%,transparent) 0 56px,transparent 100px),linear-gradient(90deg,color-mix(in srgb,var(--overview-shade) 26%,transparent),color-mix(in srgb,var(--overview-shade) 48%,transparent) 70%,color-mix(in srgb,var(--overview-shade) var(--overview-right-shade,25%),transparent))}
+.asset-summary{padding:14px 16px}
 .asset-summary .label{font-size:var(--text-meta);letter-spacing:0}
 .asset-summary .big{font-size:calc(32px * var(--seed-type));line-height:1.2;margin:8px 0 14px;overflow-wrap:anywhere}
 .asset-summary .label,.asset-summary .asset-row,.asset-summary .num{color:inherit}
@@ -122,6 +123,15 @@
 .account-detail-top,.account-current-balance>p,.account-flow-total,.spark-cap{font-size:var(--text-small)}
 .account-month-balance b{font-size:var(--text-body)}
 .account-detail-entry{box-shadow:none}
+.account-detail-hero{padding:0}
+.account-detail-overview{--overview-right-shade:65%;padding:18px 18px 16px}
+.account-detail-overview .account-detail-top{font-size:12px;letter-spacing:0;align-items:baseline}
+.account-detail-overview .account-detail-top small{font-size:12px;text-align:right;overflow-wrap:anywhere;min-width:0}
+.account-detail-overview .account-detail-top>span{flex-shrink:0}
+.account-detail-overview .account-current-balance>p,.account-detail-overview .account-flow-total{font-size:12px}
+.account-detail-overview .account-current-balance>p,.account-detail-overview .account-current-balance>h3.neg,.account-detail-overview .account-flow-total,.account-detail-overview .account-detail-top small{color:inherit}
+.account-detail-overview .account-flow-total{flex-wrap:wrap;gap:6px 16px}
+.account-detail-controls{padding:0 18px 15px}
 .acct-form .field{align-items:flex-start;flex-direction:column;gap:8px}
 .acct-form .field>span{width:auto;font-size:13px;color:var(--fg)}
 .acct-form input.note,.acct-type-grid{width:100%;min-width:0}
@@ -137,7 +147,7 @@
 .account-manage-sheet .row{min-height:54px}.account-manage-sheet .row>span:nth-child(2){flex:none}.account-manage-sheet .row-note{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.account-manage-sheet .danger{color:var(--expense)}
 
 @media (max-width:360px){
-  .account-detail-hero{padding-left:15px;padding-right:15px}
+  .account-detail-overview,.account-detail-controls{padding-left:15px;padding-right:15px}
   .account-balance-overview.has-limit{grid-template-columns:minmax(0,1fr) minmax(126px,.82fr);gap:9px}.credit-limit-side{padding-left:9px;padding-right:9px}
   .account-manage-row{gap:6px}.account-manage-row>.e-ic{display:none}.account-manage-sort .icon-btn{min-width:40px;width:40px}.account-settings-link{min-width:42px}
   .account-month-head{grid-template-columns:43px 1fr auto auto;padding-left:11px;padding-right:11px;gap:7px}
