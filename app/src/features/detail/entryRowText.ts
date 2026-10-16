@@ -20,6 +20,8 @@ export function entryRowText(
   } else if (entry.type === 'loan') {
     const kind = LOAN_KIND_META[entry.loanKind ?? 'borrow'];
     title = kind.name; icon = kind.icon;
+  } else if (entry.sourceAdjustment) {
+    title += entry.amount === 0 ? '（零金额）' : entry.type === 'expense' ? '退款' : '冲回';
   } else if (entry.refundFlag) {
     title += '退款';
   }
@@ -40,6 +42,6 @@ export function entryRowText(
     title, icon,
     note: note && note !== title && note !== '余额对账调整' ? note : '',
     meta: `${time} · ${account}${status ? ` · ${status}` : ''}`,
-    neutral: entry.type !== 'expense' || entry.refundFlag === true,
+    neutral: entry.type !== 'expense' || entry.refundFlag === true || entry.amount <= 0,
   };
 }

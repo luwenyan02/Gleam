@@ -1,3 +1,4 @@
+import { entryDisplayAmount } from '../../core/entryAmount';
 /**
  * 拾光 · 首页流水时间线（PRD 4.2）
  * 页头（日期与节气）、月度总览卡（与预算中心同源 budgetUsage）、快捷五宫格、
@@ -396,11 +397,11 @@ function entryHtml(
 ): string {
   const text = entryRowText(entry, catMap, acctNames);
   const note = text.note ? ` <span class="e-sub">· ${esc(text.note)}</span>` : '';
-  const inflow = entry.type === 'income' || entry.refundFlag || entry.loanKind === 'borrow' || entry.loanKind === 'collect';
+  const inflow = entryDisplayAmount(entry) >= 0;
   const transfer = entry.type === 'transfer';
   return swipeEntry(entry, `<span class="e-ic${text.neutral ? ' neutral' : ''}">${iconHtml(text.icon)}</span>
     <div class="e-main"><p class="e-title">${esc(text.title)}${note}</p><p class="e-meta">${esc(text.meta)}</p></div>
-    <p class="e-amt num${transfer ? '' : inflow ? ' in' : ' out'}">${transfer ? '' : inflow ? '+' : '-'}${formatFen(entry.amount)}</p>`);
+    <p class="e-amt num${transfer ? '' : inflow ? ' in' : ' out'}">${formatFen(entryDisplayAmount(entry), { sign: !transfer })}</p>`);
 }
 
 function swipeEntry(entry: LedgerItem, content: string): string {

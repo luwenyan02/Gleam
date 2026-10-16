@@ -41,7 +41,7 @@ export function getRefundEntryId(): number | undefined {
 }
 
 export function canRefund(entry: Entry): boolean {
-  return entry.type === 'expense' && !entry.refundFlag
+  return entry.type === 'expense' && !entry.refundFlag && !entry.sourceAdjustment
     && entry.reconcileBeforeBalance == null && entry.reconcileTargetBalance == null;
 }
 
@@ -120,6 +120,10 @@ export function bindEntrySwipeActions(container: HTMLElement): void {
 
 /** 统一执行详情页、明细页和首页的账单动作。 */
 export async function runEntryQuickAction(action: EntryQuickAction, entry: Entry): Promise<'deleted' | 'done' | 'opened'> {
+  if (entry.sourceAdjustment && (action === 'edit' || action === 'copy')) {
+    showToast('挖财原始冲回/零额记录保留原值，可删除后重新导入');
+    return 'done';
+  }
   if (action === 'edit') {
     void openEntrySheet({ entryId: entry.id });
     return 'opened';

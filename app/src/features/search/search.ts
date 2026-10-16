@@ -1,3 +1,4 @@
+import { entryDisplayAmount } from '../../core/entryAmount';
 import { nextLocalDayStart } from '../../core/queryValidation';
 /**
  * 拾光 · 全局搜索（重做版，参考挖财记账 UX）
@@ -166,10 +167,10 @@ function dateRangeClass(range: DateRange): string {
 
 /* ── 账单标题 / 金额渲染 ── */
 function amountHtml(e: Entry): string {
-  if (e.type === 'expense') return e.refundFlag
-    ? `<span class="num" style="color:var(--income)">+${formatFen(e.amount)}</span>`
-    : `<span class="num" style="color:var(--danger,#d0552e)">-${formatFen(e.amount)}</span>`;
-  if (e.type === 'income') return `<span class="num" style="color:var(--primary)">+${formatFen(e.amount)}</span>`;
+  if (e.type === 'expense' || e.type === 'income') {
+    const amount = entryDisplayAmount(e);
+    return `<span class="num" style="color:var(${amount >= 0 ? '--income' : '--danger,#d0552e'})">${formatFen(amount, { sign: true })}</span>`;
+  }
   return `<span class="num">${formatFen(e.amount)}</span>`;
 }
 

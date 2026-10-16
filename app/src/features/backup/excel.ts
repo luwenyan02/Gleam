@@ -38,7 +38,7 @@ function yuanText(fen: number): string {
 function dateText(ts: number): string {
   const d = new Date(ts);
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 /** 借贷双账户按实际资金流向输出，供导出/导入往返保真。 */
@@ -101,7 +101,7 @@ export async function exportMonthExcel(month: string): Promise<number> {
     .slice()
     .sort((a, b) => a.occurredAt - b.occurredAt)
     .map((e) => {
-      const amt = yuanText(e.amount);
+      const amt = yuanText(e.refundFlag ? -e.amount : e.amount);
       const payee = '';
       let account = '';
       if (e.type === 'transfer') {
@@ -122,7 +122,7 @@ export async function exportMonthExcel(month: string): Promise<number> {
         '自己',
         (tagNamesByEntry.get(e.id) ?? []).join(','),
         e.merchantId != null ? merchantName.get(e.merchantId) ?? '' : '',
-        e.refundFlag ? '退款' : e.type === 'expense' && e.reimburseStatus === 'done' ? '已报销' : '',
+        e.refundFlag || e.amount < 0 ? '退款' : e.type === 'expense' && e.reimburseStatus === 'done' ? '已报销' : '',
         e.note ?? '',
       ];
     });

@@ -1,3 +1,4 @@
+import { entryDisplayAmount } from '../../core/entryAmount';
 /**
  * 拾光 · 日历账单（features/calendar，PRD 4.5）
  * 月历 + 所选日汇总与统一明细列表：点明细进详情，任意可记账日期可补一笔；
@@ -166,9 +167,10 @@ async function refresh(): Promise<void> {
     const rows = dayEntries.map((item) => {
       const text = entryRowText(item, catMap, accountNames);
       const note = text.note ? ` <span class="e-sub">· ${esc(text.note)}</span>` : '';
-      const amount = item.type === 'expense'
-        ? (item.refundFlag ? `<span class="num" style="color:var(--income)">+${formatFen(item.amount)}</span>` : `<span class="num" style="color:var(--danger,#d0552e)">-${formatFen(item.amount)}</span>`)
-        : item.type === 'income' ? `<span class="num" style="color:var(--primary)">+${formatFen(item.amount)}</span>` : `<span class="num">${formatFen(item.amount)}</span>`;
+      const signed = entryDisplayAmount(item);
+      const amount = item.type === 'expense' || item.type === 'income'
+        ? `<span class="num" style="color:var(${signed >= 0 ? '--income' : '--danger,#d0552e'})">${formatFen(signed, { sign: true })}</span>`
+        : `<span class="num">${formatFen(item.amount)}</span>`;
       return `<button class="row" data-eid="${item.id}"><span class="e-ic${text.neutral ? ' neutral' : ''}">${iconHtml(text.icon, 18)}</span><div class="e-main"><p class="e-title">${esc(text.title)}${note}</p><p class="e-meta">${esc(text.meta)}</p></div>${amount}</button>`;
     }).join('');
     detailHtml = `

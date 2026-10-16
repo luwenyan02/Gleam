@@ -1,3 +1,4 @@
+import { entryDisplayAmount } from '../../core/entryAmount';
 /**
  * 拾光 · 单条账单只读详情子页（sp-entry-view）
  * 头部金额卡、字段列表、关联退款展示与底部操作栏（编辑 / 复制 / 删除 / 退款）。
@@ -63,8 +64,7 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
     const icon = reconciliation || entry.type === 'transfer' ? 'ic-swap'
       : entry.type === 'loan' ? LOAN_KIND_META[entry.loanKind ?? 'borrow'].icon
         : cat?.icon ?? 'ic-coin';
-    const inflow = entry.type === 'income' || entry.refundFlag
-      || entry.loanKind === 'borrow' || entry.loanKind === 'collect';
+    const inflow = entryDisplayAmount(entry) >= 0;
     const accountText = entry.type === 'transfer' || entry.type === 'loan'
       ? `${accountMap.get(entry.fromAccountId ?? -1)?.name ?? '账户'} → ${accountMap.get(entry.toAccountId ?? -1)?.name ?? '账户'}`
       : account?.name ?? '未选择账户';
@@ -81,18 +81,19 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
       <section class="entry-view-hero">
         <span class="entry-view-icon${entry.refundFlag ? ' refund' : ''}">${iconHtml(icon, 22)}</span>
         <div><p>${typeName(entry)}</p><h3>${esc(categoryText)}</h3></div>
-        <strong class="num ${inflow ? 'in' : 'out'}">${inflow ? '+' : '-'}${formatFen(entry.amount)}</strong>
+        <strong class="num ${inflow ? 'in' : 'out'}">${formatFen(entryDisplayAmount(entry), { sign: true })}</strong>
       </section>
       <section class="card list entry-view-fields">
         <div class="detail-field"><span>时间</span><b class="num">${fullDateTime(entry.occurredAt)}</b></div>
-        <div class="detail-field"><span>${entry.type === 'expense' ? (entry.refundFlag ? '退款账户' : '付款账户') : '资金账户'}</span><b>${esc(accountText)}</b></div>
+        <div class="detail-field"><span>${entry.type === 'expense' ? (entry.refundFlag || entry.amount < 0 ? '退款账户' : '付款账户') : '资金账户'}</span><b>${esc(accountText)}</b></div>
         <div class="detail-field"><span>分类</span><b>${esc(categoryText)}</b></div>
         <div class="detail-field"><span>商家</span><b>${merchant ? `<button class="chip" data-view-merchant="${merchant.id}">${esc(merchant.name)} ›</button>` : '无商家'}</b></div>
-        ${entry.type === 'expense' && !entry.refundFlag ? `<div class="detail-field"><span>报销</span><b>${reimbursement}</b></div>` : ''}
+        ${entry.type === 'expense' && !entry.refundFlag && !entry.sourceAdjustment ? `<div class="detail-field"><span>报销</span><b>${reimbursement}</b></div>` : ''}
         ${selectedTags.length ? `<div class="detail-field"><span>标签</span><b>${selectedTags.map(tag => `<button class="chip" data-view-tag="${tag.id}">#${esc(tag.name)} ›</button>`).join(' ')}</b></div>` : ''}
       </section>
       <section class="card list entry-view-fields compact">
         <div class="detail-field"><span>来源</span><b>${sourceText}</b></div>
+        ${entry.sourceAdjustment ? `<div class="detail-field"><span>原始记录</span><b>挖财第 ${entry.sourceAdjustment.rowNo} 行 · 保留原值，不支持编辑</b></div>` : ''}
         ${entry.refundFlag ? `<div class="detail-field"><span>关联原账单</span><b>${original ? `${esc(typeName(original))} · ${formatFenCny(original.amount)}` : '原账单已删除'}</b></div>` : ''}
       </section>
       <section class="entry-view-note${entry.note ? '' : ' empty'}">${entry.note ? esc(entry.note) : '无备注'}</section>

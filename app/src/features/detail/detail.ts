@@ -1,3 +1,4 @@
+import { entryDisplayAmount } from '../../core/entryAmount';
 import { loanAccountId } from '../../core/loanLedger';
 /**
  * 拾光 · 账单明细子页（PRD 4.3）：全量账单列表（分块渲染 + 滚动加载）、
@@ -203,9 +204,8 @@ async function renderDetail(body: HTMLElement): Promise<void> {
 
   function entryAmt(entry: Entry): string {
     if (entry.type === 'transfer') return `<p class="e-amt num">${formatFen(entry.amount)}</p>`;
-    const inflow = entry.type === 'income' || entry.refundFlag
-      || entry.loanKind === 'borrow' || entry.loanKind === 'collect';
-    return `<p class="e-amt num ${inflow ? 'in' : 'out'}">${inflow ? '+' : '-'}${formatFen(entry.amount)}</p>`;
+    const inflow = entryDisplayAmount(entry) >= 0;
+    return `<p class="e-amt num ${inflow ? 'in' : 'out'}">${formatFen(entryDisplayAmount(entry), { sign: true })}</p>`;
   }
 
   function updateBatchBar(): void {

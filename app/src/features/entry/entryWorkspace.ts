@@ -8,6 +8,7 @@ export interface CategoryUsage {
   occurredAt: number;
   deletedAt?: number;
   refundFlag?: boolean;
+  amount?: number;
 }
 
 /** 本地时间粗粒度分段；刻意保持固定、可解释，不做模型推断。 */
@@ -40,7 +41,7 @@ export function rankFrequentCategories(
   for (const entry of entries) {
     if (options.entryType != null && entry.type !== options.entryType) continue;
     if (entry.deletedAt != null && entry.deletedAt !== 0) continue;
-    if (entry.refundFlag) continue;
+    if (entry.refundFlag || (entry.amount != null && entry.amount <= 0)) continue;
     if (entry.categoryId == null || !categoryIds.has(entry.categoryId)) continue;
     if (entry.occurredAt < from || entry.occurredAt >= now + 1) continue;
     const current = usage.get(entry.categoryId) ?? { count: 0, sameSegmentCount: 0, latest: 0 };
@@ -94,6 +95,7 @@ export interface AccountUsage {
   occurredAt: number;
   deletedAt?: number;
   refundFlag?: boolean;
+  amount?: number;
 }
 
 /**
@@ -115,7 +117,7 @@ export function recommendAccountId(
     for (const entry of entries) {
       if (entry.type !== options.entryType || entry.categoryId !== options.categoryId) continue;
       if (entry.deletedAt != null && entry.deletedAt !== 0) continue;
-      if (entry.refundFlag || entry.accountId == null || !accountIds.has(entry.accountId)) continue;
+      if (entry.refundFlag || (entry.amount != null && entry.amount <= 0) || entry.accountId == null || !accountIds.has(entry.accountId)) continue;
       if (entry.occurredAt < from || entry.occurredAt >= now + 1) continue;
       const current = usage.get(entry.accountId) ?? { count: 0, latest: 0 };
       current.count += 1;

@@ -50,8 +50,15 @@ async function applyEffects(e: Entry, sign: 1 | -1): Promise<void> {
 }
 
 /** 字段合法性校验，非法时抛错 */
-function validate(e: NewEntry | Entry): void {
-  if (!Number.isSafeInteger(e.amount) || e.amount <= 0) throw new Error('金额须为正整数（分）');
+function validate(e: NewEntry | Entry, allowSourceAdjustment = false): void {
+  if (e.sourceAdjustment && (!allowSourceAdjustment || e.sourceAdjustment.source !== 'wacai'
+    || !Number.isSafeInteger(e.sourceAdjustment.rowNo) || e.sourceAdjustment.rowNo < 2
+    || !['expense', 'income'].includes(e.type) || e.amount > 0 || e.refundFlag || e.refundOfEntryId != null
+    || (e.reimburseStatus != null && e.reimburseStatus !== 'none') || e.reimbursedAmount != null
+    || e.reimburseAccountId != null || e.reimbursedAt != null)) {
+    throw new Error('挖财原始冲回/零额记录仅支持原样导入，不支持编辑');
+  }
+  if (!Number.isSafeInteger(e.amount) || (e.amount <= 0 && !e.sourceAdjustment)) throw new Error('金额须为正整数（分）');
   if (!Number.isFinite(e.occurredAt)) throw new Error('occurredAt 非法');
   if (e.refundFlag && e.type !== 'expense') throw new Error('退款记录必须归属支出类型');
   if (e.refundFlag && ((e.reimburseStatus != null && e.reimburseStatus !== 'none')
@@ -141,6 +148,7 @@ export async function updateEntry(id: number, patch: Partial<NewEntry>, tagIds?:
   await db.transaction('rw', [db.entries, db.accounts, db.entryTags], async () => {
     const old = await db.entries.get(id);
     if (!old) throw new Error(`账单不存在：${id}`);
+    if (old.sourceAdjustment) throw new Error('挖财原始冲回/零额记录不支持编辑，可删除后重新导入');
     const next = { ...old, ...patch, updatedAt: now() } as Entry;
     validate(next);
     await validateAccountReferences(next);
@@ -204,7 +212,7 @@ export async function restoreEntry(id: number): Promise<void> {
       }
     }
     await validateAccountReferences(e);
-    validate(e);
+    validate(e, !!e.sourceAdjustment);
     await validateRefundReference(e, id);
     const deletedAt = e.deletedAt;
     await db.entries.update(id, { deletedAt: 0, updatedAt: now() });
@@ -435,6 +443,15 @@ export interface ImportEntryItem {
   tagIds?: number[];
 }
 
+/** 导入事务内回读持久化数据，逐笔核验金额、类型、日期与映射，失败让外层整体回滚。 */
+export async function verifyImportedEntries(ids: number[], items: ImportEntryItem[]): Promise<Entry[]> {
+  const saved = await db.entries.bulkGet(ids);
+  if (saved.length !== items.length || saved.some((entry, i) => !entry ||
+    (['type', 'amount', 'occurredAt', 'accountId', 'categoryId', 'fromAccountId', 'toAccountId', 'loanKind'] as const)
+      .some(key => entry[key] !== items[i].input[key]))) throw new Error('入库核对不一致');
+  return saved as Entry[];
+}
+
 /**
  * [M3] 批量导入：单个事务内写入全部账单 + importBatch 记录，
  * 每笔复用 validate/applyEffects 驱动账户与借贷余额（与手工记账硬规则一致），
@@ -447,7 +464,7 @@ export async function importEntriesBatch(
   items: ImportEntryItem[],
   batch: Omit<ImportBatch, 'id' | 'createdAt' | 'updatedAt'>,
 ): Promise<{ batchId: number; entryIds: number[] }> {
-  for (const it of items) validate(it.input);
+  for (const it of items) validate(it.input, batch.source === 'wacai');
   const result = await db.transaction(
     'rw',
     [db.entries, db.accounts, db.entryTags, db.importBatches],
@@ -492,7 +509,7 @@ export async function settleReimbursement(
     for (const id of ids) {
       const e = await db.entries.get(id);
       if (!e || e.deletedAt !== 0 || e.type !== 'expense' || e.reimburseStatus !== 'pending') continue;
-      if (e.refundFlag) throw new Error('退款记录不能同时报销');
+      if (e.refundFlag || e.sourceAdjustment) throw new Error('退款或冲回记录不能同时报销');
       const amt = amountById?.get(id) ?? e.amount;
       if (!Number.isSafeInteger(amt) || amt <= 0 || amt > e.amount) throw new Error('报销到账金额须为正整数（分），且不能超过原支出');
       await db.entries.update(id, {

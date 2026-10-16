@@ -2,14 +2,14 @@
  * 拾光 · 挖财 Excel 解析器（features/import/wacai）
  * 严格按《拾光-挖财账单导入设计》12 列逐列解析：
  * - 表头须与挖财模版一致（列名 trim 后比对），否则拒绝整个文件；
- * - 日期时间：Excel 序列值或文本，精确到分钟；
+ * - 日期时间：Excel 序列值或文本，保留秒；
  * - 类型列分派四分支（支出/收入/转账/借贷）；
  * - 类别「大类/小类」斜杠拆分；借贷行类别即借入/借出/还款/收款；
  * - 外币按内置参考汇率折算人民币，备注追加原币种金额说明；
  * - 借贷支持「资金账户单值 + 收付款人双边」或「收付账户双边」，解析为资金/应收应付两个账户；
  * - 收付账户（转账）「现金:-1.00, 微信钱包:+1.00」正负拆转出/转入并与金额互校；
  * - 参与人多人分摊只按「自己」份额入账，完整明细追加备注；
- * - 标签逗号拆分；属性「已报销」→ 报销状态；属性「退款」因缺少原支出关联而进入异常待处理；
+ * - 标签逗号拆分；属性「已报销」→ 报销状态；属性「退款」保留原始负数；正金额退款因方向不明确进入异常待处理；
  *   其余无对应字段并入备注不丢信息；
  * - 支出「利息支出」归「其他/利息」（PRD 附录 A 约定）。
  */
@@ -83,12 +83,12 @@ export interface WacaiParseResult {
 
 /* ── 单列解析工具 ── */
 
-/** Excel 序列值 → 本地时间毫秒（按 UTC 分量重建，取整到分钟） */
+/** Excel 序列值 → 本地时间毫秒（按 UTC 分量重建，保留秒） */
 function serialToMs(serial: number): number {
   const utc = new Date(Math.round((serial - 25569) * 86400000));
   const d = new Date(
     utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate(),
-    utc.getUTCHours(), utc.getUTCMinutes(), 0, 0,
+    utc.getUTCHours(), utc.getUTCMinutes(), utc.getUTCSeconds(), 0,
   );
   return d.getTime();
 }
@@ -98,15 +98,15 @@ function parseDateTime(v: unknown): number | undefined {
   if (typeof v === 'number' && Number.isFinite(v)) return serialToMs(v);
   if (typeof v === 'string') {
     const s = v.trim().replace(/\//g, '-');
-    const m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2}))?/.exec(s);
+    const m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/.exec(s);
     if (!m) return undefined;
-    const [year, month, day, hour, minute] = [
-      +m[1], +m[2], +m[3], +(m[4] ?? 0), +(m[5] ?? 0),
+    const [year, month, day, hour, minute, second] = [
+      +m[1], +m[2], +m[3], +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0),
     ];
-    const d = new Date(year, month - 1, day, hour, minute, 0, 0);
+    const d = new Date(year, month - 1, day, hour, minute, second, 0);
     if (!Number.isFinite(d.getTime())
       || d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day
-      || d.getHours() !== hour || d.getMinutes() !== minute) return undefined;
+      || d.getHours() !== hour || d.getMinutes() !== minute || d.getSeconds() !== second) return undefined;
     return d.getTime();
   }
   return undefined;
@@ -115,8 +115,8 @@ function parseDateTime(v: unknown): number | undefined {
 /** 金额单元格（数字或数字文本，保留两位）→ 分；非法抛错 */
 function cellToFen(v: unknown): number {
   const n = typeof v === 'number' ? v : Number(String(v).replace(/[,，\s]/g, ''));
-  if (!Number.isFinite(n) || n < 0) throw new Error(`金额非法：${String(v)}`);
-  return parseYuanToFen(n.toFixed(2));
+  if (!Number.isFinite(n) || v == null || String(v).trim() === '') throw new Error(`金额非法：${String(v)}`);
+  return (n < 0 ? -1 : 1) * parseYuanToFen(Math.abs(n).toFixed(2));
 }
 
 /** 含分隔符或引号的名称按 JSON 字符串编码；普通名称保留旧格式的可读性。 */
@@ -228,7 +228,7 @@ function parseBalancedSides(text: string, amountFen: number, fieldName: string):
 
 /**
  * 读取挖财 Excel 文件并逐行解析。
- * @throws Error 首行表头与挖财 12 列不匹配时拒绝整个文件
+ * @throws Error 找不到挖财 12 列表头或总笔数与实际行数不符时拒绝整个文件
  */
 export async function parseWacaiFile(file: File): Promise<WacaiParseResult> {
   const XLSX = await import('xlsx'); // 按需加载（约 800KB），Vite 自动拆包
@@ -238,11 +238,13 @@ export async function parseWacaiFile(file: File): Promise<WacaiParseResult> {
   const grid = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, defval: null });
   if (!grid.length) throw new Error('工作表为空');
 
-  const header = (grid[0] ?? []).map((c) => cellText(c));
-  for (let i = 0; i < HEADERS.length; i++) {
-    if (header[i] !== HEADERS[i]) {
-      throw new Error(`表头与挖财模版不符：第 ${i + 1} 列应为「${HEADERS[i]}」，实际为「${header[i] || '空'}」`);
-    }
+  const headerIndex = grid.findIndex((row) => HEADERS.every((name, i) => cellText(row[i]) === name));
+  if (headerIndex < 0) throw new Error('表头与挖财模版不符：未找到完整的 12 列账单表头');
+  const declared = grid.slice(0, headerIndex).flat().map(cellText)
+    .map((text) => /^总笔数[：:]\s*([\d,]+)\s*笔$/.exec(text)).find(Boolean);
+  const sourceRowCount = grid.slice(headerIndex + 1).filter((row) => row.some((cell) => cellText(cell) !== '')).length;
+  if (declared && Number(declared[1].replace(/,/g, '')) !== sourceRowCount) {
+    throw new Error(`导出总笔数 ${declared[1]} 与实际数据行 ${sourceRowCount} 不符，请重新导出完整账单`);
   }
 
   const rows: WacaiRow[] = [];
@@ -251,7 +253,7 @@ export async function parseWacaiFile(file: File): Promise<WacaiParseResult> {
   const categoryKeys = new Set<string>();
   const accountNames = new Set<string>();
 
-  for (let r = 1; r < grid.length; r++) {
+  for (let r = headerIndex + 1; r < grid.length; r++) {
     const raw = grid[r] ?? [];
     const rowNo = r + 1;
     // 空行（全部空或仅空白）跳过，不计异常
@@ -285,7 +287,7 @@ export async function parseWacaiFile(file: File): Promise<WacaiParseResult> {
         amountFen = Math.round(amountFen * rate);
         noteParts.push(`原币种 ${currency} ${originYuan}，按导入时参考汇率 ${rate} 折算`);
       }
-      if (amountFen <= 0) throw new Error('金额须大于 0');
+      if (amountFen <= 0 && (type === 'transfer' || type === 'loan')) throw new Error('转账和借贷金额须大于 0');
 
       const catText = cellText(cCat);
       const acctText = cellText(cAcct);
@@ -293,9 +295,9 @@ export async function parseWacaiFile(file: File): Promise<WacaiParseResult> {
       const partText = cellText(cPart);
       const attrText = cellText(cAttr);
 
-      // Excel 不包含 refundOfEntryId。把退款当普通支出会再次扣减账户并放大支出，
-      // 因此无法可靠关联原支出时必须进入异常列表，由用户在原账单上补录退款。
-      if (type === 'expense' && attrText === '退款') {
+      // 官方导出以负金额表达退款/冲回，原样保留即可正确反转余额与收支；
+      // 正金额退款的方向不明，不猜测或虚构原账单关联。
+      if ((type === 'expense' || type === 'income') && attrText === '退款' && amountFen > 0) {
         throw new Error('退款无法关联原支出，已列为异常待处理且默认不导入');
       }
 
@@ -378,9 +380,10 @@ export async function parseWacaiFile(file: File): Promise<WacaiParseResult> {
             const selfFen = self && Number.isFinite(self.signedFen) ? Math.abs(self.signedFen) : 0;
             if (selfFen <= 0) throw new Error(`分摊中「自己」份额无法解析：${partText}`);
             noteParts.push(`分摊明细：${partText}（原总额 ${(originalAmountFen / 100).toFixed(2)}）`);
-            row.amountFen = Math.round(selfFen * currencyRate);
+            row.amountFen = Math.sign(originalAmountFen) * Math.round(selfFen * currencyRate);
           }
         }
+        if (partText && partText !== '自己' && !/[:：]/.test(partText)) noteParts.push(`参与人：${partText}`);
         // 非借贷行收付款人无对应字段 → 备注
         if (payeeText) noteParts.push(`收付款人：${payeeText}`);
         // 属性「已报销」仅标记状态：导出文件无到账账户/金额，入库时不产生到账余额效果（见 import.ts rowToEntry）

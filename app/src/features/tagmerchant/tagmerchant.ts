@@ -1,3 +1,4 @@
+import { entryDisplayAmount } from '../../core/entryAmount';
 /**
  * 拾光 · 标签与商家（features/tagmerchant，PRD 4.13）
  * 标签：列表 / 新建 / 改名 / 删除（删除会移除所有账单关联，提示后确认）；
@@ -246,12 +247,12 @@ function insightEntryHtml(
 ): string {
   const text = entryRowText(entry, categories, accounts);
   const note = text.note ? ` <span class="e-sub">· ${esc(text.note)}</span>` : '';
-  const inflow = entry.type === 'income' || entry.refundFlag || entry.loanKind === 'borrow' || entry.loanKind === 'collect';
+  const inflow = entryDisplayAmount(entry) >= 0;
   const neutral = entry.type === 'transfer';
   return `<button class="entry tm-insight-entry" data-insight-entry="${entry.id}" type="button">
     <span class="e-ic${text.neutral ? ' neutral' : ''}">${iconHtml(text.icon)}</span>
     <span class="e-main"><span class="e-title">${esc(text.title)}${note}</span><span class="e-meta">${esc(text.meta)}</span></span>
-    <span class="e-amt num${neutral ? '' : inflow ? ' in' : ' out'}">${neutral ? '' : inflow ? '+' : '-'}${formatFen(entry.amount)}</span>
+    <span class="e-amt num${neutral ? '' : inflow ? ' in' : ' out'}">${formatFen(entryDisplayAmount(entry), { sign: !neutral })}</span>
   </button>`;
 }
 

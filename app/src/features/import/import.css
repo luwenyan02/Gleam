@@ -26,3 +26,9 @@
 
 .imp-report p{font-size:13px;padding:4px 0}
 .imp-report .big{font-size:calc(26px * var(--seed-type));font-weight:700;padding:6px 0}
+.imp-mode{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+.imp-mode .sub{flex-basis:100%;line-height:1.6}
+.imp-mode .btn,.imp-map .pick-btn{min-height:44px}
+.imp-totals{margin:10px 0;padding:8px 12px;background:var(--surface-2);border-radius:var(--r)}
+.imp-totals p{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.imp-report .btn-row{flex-wrap:wrap}

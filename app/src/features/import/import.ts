@@ -14,18 +14,20 @@ import { listCategories, addCategory } from '../../core/repo/categoryRepo';
 import { listAccounts, addAccount } from '../../core/repo/accountRepo';
 import { ensureTag } from '../../core/repo/tagRepo';
 import { ensureMerchant, touchMerchant } from '../../core/repo/merchantRepo';
-import { saveImportAtomically } from '../../core/repo/importSaveRepo';
+import { clearLedgerForImport, saveImportAtomically, verifyImportBalances, type ImportBalanceCheck } from '../../core/repo/importSaveRepo';
 import {
-  findDuplicates, findLoanDuplicates, findTransferDuplicates, importEntriesBatch,
+  findDuplicates, findLoanDuplicates, findTransferDuplicates, importEntriesBatch, verifyImportedEntries,
   type ImportEntryItem, type NewEntry,
 } from '../../core/repo/entryRepo';
 import { loanDirection } from '../../core/loanLedger';
-import { ACCOUNT_GROUP_NAMES, type Account, type Category } from '../../core/types';
+import { ACCOUNT_GROUP_NAMES, type Account, type Category, type Entry } from '../../core/types';
 import { parseWacaiFile, type ImportSource, type WacaiParseResult, type WacaiRow } from './wacai';
 import { parsePaymentFile } from './payment';
 import { accountUsageKey, buildAccountPlans, type AccountPlan } from './accountMapping';
 import { openPickList, type PickListItem } from '../../shared/pickList';
 import { formatFen } from '../../core/money';
+import { confirmDialog } from '../shell/dialog';
+import { summarizeImport, IMPORT_TYPES, IMPORT_TYPE_NAMES, exportImportReconciliation } from './reconciliation';
 
 /* ── 向导状态 ── */
 
@@ -48,6 +50,9 @@ interface ImportReport {
   fx: number;
   createdCats: number;
   createdAccts: number;
+  importedRows: WacaiRow[];
+  savedEntries: Entry[];
+  balances: ImportBalanceCheck[];
 }
 
 export interface DuplicateCandidate {
@@ -68,6 +73,7 @@ interface WizardState {
   step: 2 | 3 | 4 | 5;
   report?: ImportReport;
   running: boolean;
+  replaceLedger: boolean;
   /** undefined 表示尚未预检；空数组表示已预检且无候选。 */
   duplicateCandidates?: DuplicateCandidate[];
   /** 用户明确确认虽疑似重复仍要导入的 Excel 行号。 */
@@ -162,8 +168,8 @@ async function createCategory(plan: CatPlan, expense: Category[], income: Catego
 
 /* ── 第②步 → 第③步的数据准备 ── */
 
-async function buildPlans(result: WacaiParseResult): Promise<Pick<WizardState, 'cats' | 'accts' | 'expenseCats' | 'incomeCats' | 'accounts'>> {
-  const [expenseCats, incomeCats, accounts] = await Promise.all([
+async function buildPlans(result: WacaiParseResult, replaceLedger = false): Promise<Pick<WizardState, 'cats' | 'accts' | 'expenseCats' | 'incomeCats' | 'accounts'>> {
+  const [expenseCats, incomeCats, accounts] = replaceLedger ? [[], [], []] : await Promise.all([
     listCategories('expense'), listCategories('income'), listAccounts(),
   ]);
   const cats: CatPlan[] = result.categoryKeys.map((full) => {
@@ -233,6 +239,16 @@ async function runImport(): Promise<void> {
   if (!st || st.running) return;
   st.running = true;
   try {
+    if (st.replaceLedger) {
+      if (st.result.issues.length) throw new Error('替换账本前须处理全部格式异常，旧数据未清空');
+      const confirmed = await confirmDialog({
+        title: '清空旧账本并导入？',
+        message: `将替换账单、账户、分类、预算、周期账、速记模板和待入账数据；保留生活记录、应用设置与密钥。先自动保存快照，再原样导入文件中的 ${st.result.rows.length} 笔（相同流水不去重）。`,
+        okText: '备份并替换', danger: true,
+      });
+      if (!confirmed) return;
+      st.duplicateCandidates = [];
+    }
     if (st.duplicateCandidates == null) {
       st.duplicateCandidates = await findDuplicateCandidates(st);
       st.keepDuplicateRows.clear();
@@ -249,6 +265,7 @@ async function runImport(): Promise<void> {
     const createdCats = st.cats.filter((p) => p.choice === 'auto' && p.matchedId == null).length;
     const createdAccts = st.accts.filter((p) => p.choice === 'auto' && p.matchedId == null).length;
     const saved = await saveImportAtomically(async () => {
+      if (st.replaceLedger) await clearLedgerForImport();
       // 映射数组只在事务内使用副本，回滚时不把无效 id 留在向导状态中。
       const expenseCats = st.expenseCats.slice();
       const incomeCats = st.incomeCats.slice();
@@ -292,18 +309,22 @@ async function runImport(): Promise<void> {
         importedRows.push(row);
       }
 
+      const accountsBefore = await listAccounts();
+      let savedEntries: Entry[] = [];
       if (items.length) {
-        await importEntriesBatch(items, {
+        const imported = await importEntriesBatch(items, {
           source: st.result.source ?? 'wacai',
           fileName: st.file.name,
-          counts: { ...st.result.counts, skipped: skippedRows.length },
+          counts: { ...Object.fromEntries(IMPORT_TYPES.map(type => [type, importedRows.filter(row => row.type === type).length])), skipped: skippedRows.length },
           snapshotRef: `导入「${st.file.name}」前`,
         });
+        savedEntries = await verifyImportedEntries(imported.entryIds, items);
         for (const row of importedRows) {
           if (row.merchant) await touchMerchant(merchantIds.get(row.merchant)!);
         }
       }
-      return { expenseCats, incomeCats, items, importedRows, skippedRows };
+      const balances = await verifyImportBalances(accountsBefore, savedEntries);
+      return { expenseCats, incomeCats, items, importedRows, skippedRows, savedEntries, balances };
     });
 
     // 只有事务成功后才接纳新分类 id；失败时保留原映射，可安全重试。
@@ -315,7 +336,8 @@ async function runImport(): Promise<void> {
       imported: items.length,
       skipped: skippedRows.length,
       skippedRows,
-      byType: st.result.counts,
+      byType: Object.fromEntries(IMPORT_TYPES.map(type => [type, saved.savedEntries.filter(entry => entry.type === type).length])) as WacaiParseResult['counts'],
+      importedRows, savedEntries: saved.savedEntries, balances: saved.balances,
       reimburse: importedRows.filter((r) => r.reimburseDone).length,
       loanAccounts: [...new Set(importedRows.filter((r) => r.loanAccountName).map((r) => r.loanAccountName!))],
       fx: importedRows.filter((r) => r.note.includes('按导入时参考汇率')).length,
@@ -341,6 +363,7 @@ function rowToEntry(
 ): NewEntry {
   const base = {
     type: row.type, amount: row.amountFen, occurredAt: row.occurredAt,
+    sourceAdjustment: row.amountFen <= 0 ? { source: 'wacai' as const, rowNo: row.rowNo } : undefined,
     note: row.note || undefined,
     merchantId: row.merchant ? merchantIds.get(row.merchant) : undefined,
   };
@@ -405,9 +428,14 @@ function precheckHtml(st: WizardState): string {
         <p><b>格式异常 ${issues.length} 行（将跳过）</b></p>
         ${issues.map((i) => `<p>第 ${i.rowNo} 行：${esc(i.message)}</p>`).join('')}
       </div>` : ''}
+      ${st.result.source === 'wacai' ? `<div class="imp-mode" role="group" aria-label="导入方式">
+        <button class="btn ${st.replaceLedger ? 'ghost' : 'primary'}" data-act="append-mode" aria-pressed="${!st.replaceLedger}">追加到当前账本</button>
+        <button class="btn ${st.replaceLedger ? 'primary' : 'ghost'}" data-act="replace-mode" aria-pressed="${st.replaceLedger}">清空旧账本后导入</button>
+        <p class="sub">${st.replaceLedger ? '替换账单、账户、分类、预算等；保留生活记录、设置和密钥。相同流水全部保留。' : '保留已有数据，导入前检查疑似重复。'}</p>
+      </div>` : ''}
       <div class="btn-row" style="margin-top:14px">
         <button class="btn ghost" data-act="cancel">取消</button>
-        <button class="btn primary" data-act="to-map"${rows.length ? '' : ' disabled'}>下一步：映射确认</button>
+        <button class="btn primary" data-act="to-map"${rows.length && !(st.replaceLedger && issues.length) ? '' : ' disabled'}>下一步：映射确认</button>
       </div>
     </section>`;
 }
@@ -454,6 +482,7 @@ function mappingHtml(st: WizardState): string {
   return `
     <section class="card imp-map">
       <h3 class="card-title">映射确认</h3>
+      ${st.replaceLedger ? '<p class="sub">替换账本 · 全部新建 · 保留文件中每一笔流水</p>' : ''}
       ${unCats.length || unAccts.length ? `
       <p class="sub">以下项目需确认映射；未匹配项可自动新建，多个同名候选须手动选择</p>
       ${unCats.length ? `
@@ -468,21 +497,24 @@ function mappingHtml(st: WizardState): string {
         <button class="btn ghost" data-act="auto-all">按建议自动处理</button>
       </div>` : '<p class="sub">全部分类与账户均已精确匹配，无需处理 ✓</p>'}
       ${duplicateReview}
-      <p class="tiny" style="margin-top:10px">导入前会先预检疑似重复并自动创建本地快照（7 天内可撤销）</p>
+      <p class="tiny" style="margin-top:10px">${st.replaceLedger ? '导入前自动创建本地快照，保留原文件全部流水' : '导入前会先预检疑似重复并自动创建本地快照'}（7 天内可撤销）</p>
       <div class="btn-row" style="margin-top:8px">
         <button class="btn ghost" data-act="to-pre">上一步</button>
-        <button class="btn primary" data-act="run"${st.accts.some((p) => p.choice == null) ? ' disabled' : ''}>${st.duplicateCandidates?.length ? '按上述选择导入' : '检查重复并导入'}</button>
+        <button class="btn primary" data-act="run"${st.accts.some((p) => p.choice == null) ? ' disabled' : ''}>${st.replaceLedger ? '备份并替换导入' : st.duplicateCandidates?.length ? '按上述选择导入' : '检查重复并导入'}</button>
       </div>
     </section>`;
 }
 
 function reportHtml(st: WizardState): string {
   const r = st.report!;
+  const totals = summarizeImport(r.savedEntries.map(entry => ({ type: entry.type, amountFen: entry.amount })));
   return `
     <section class="card imp-report">
       <h3 class="card-title">导入完成</h3>
       <p class="big num">${r.imported} <small style="font-size:13px;font-weight:400">条成功入账</small></p>
-      <p>支出 ${r.byType.expense} · 收入 ${r.byType.income} · 转账 ${r.byType.transfer} · 借贷 ${r.byType.loan}（解析计数）</p>
+      <p>支出 ${r.byType.expense} · 收入 ${r.byType.income} · 转账 ${r.byType.transfer} · 借贷 ${r.byType.loan}（实际入库）</p>
+      <div class="imp-totals">${IMPORT_TYPES.map(type => `<p>${IMPORT_TYPE_NAMES[type]}${type === 'income' || type === 'expense' ? '净额' : '金额'}<b class="num">¥${formatFen(totals[type].amount)}</b></p>`).join('')}</div>
+      <p class="sub">已逐笔回读核对金额、类型、日期与账户。退款/冲回保留负数；账户按流水净变动计算，期初余额需另行核对。</p>
       <p>跳过疑似重复 ${r.skipped} 条${r.skippedRows.length ? `（行号 ${r.skippedRows.join('、')}）` : ''} · 格式异常跳过 ${st.result.issues.length} 条</p>
       ${r.reimburse ? `<p>报销：${r.reimburse} 条已标记「已报销」（无到账账户信息，仅记状态）</p>` : ''}
       ${r.loanAccounts.length ? `<p>借贷往来：已映射应收/应付账户 ${esc(r.loanAccounts.join('、'))}，两侧余额随账单联动</p>` : ''}
@@ -490,6 +522,7 @@ function reportHtml(st: WizardState): string {
       ${r.createdCats || r.createdAccts ? `<p>自动新建：分类 ${r.createdCats} 项 · 账户 ${r.createdAccts} 项</p>` : ''}
       <p class="tiny" style="margin-top:6px">导入前的数据快照可在「备份与恢复」页一键撤销（保留 7 天）</p>
       <div class="btn-row" style="margin-top:12px">
+        <button class="btn ghost" data-act="export-report">下载核对表</button>
         <button class="btn primary" data-act="done">完成</button>
       </div>
     </section>`;
@@ -511,7 +544,7 @@ export async function openImportWizardFor(file: File, source: ImportSource): Pro
     const result = source === 'wacai' ? await parseWacaiFile(file) : await parsePaymentFile(file, source);
     result.source = source;
     const plans = await buildPlans(result);
-    state = { file, result, ...plans, step: 2, running: false, keepDuplicateRows: new Set() };
+    state = { file, result, ...plans, step: 2, running: false, replaceLedger: false, keepDuplicateRows: new Set() };
     openSubpage('sp-import');
   } catch (err) {
     showToast(err instanceof Error ? err.message : String(err));
@@ -585,6 +618,20 @@ export function initImport(): void {
         const act = target.closest<HTMLElement>('[data-act]')?.dataset.act;
         if (!act) return;
         if (act === 'cancel' || act === 'done') closeSubpage();
+        else if (act === 'export-report' && st.report) {
+          st.running = true;
+          void exportImportReconciliation(st.result, st.report.importedRows, st.report.savedEntries, st.report.balances)
+            .catch(err => showToast(`核对表导出失败：${err instanceof Error ? err.message : String(err)}`))
+            .finally(() => { st.running = false; });
+        }
+        else if (act === 'replace-mode' || act === 'append-mode') {
+          st.running = true;
+          const replace = act === 'replace-mode';
+          void buildPlans(st.result, replace).then(plans => {
+            Object.assign(st, plans); st.replaceLedger = replace;
+            st.duplicateCandidates = undefined; st.keepDuplicateRows.clear(); renderStep();
+          }).catch(err => showToast(`切换导入方式失败：${String(err)}`)).finally(() => { st.running = false; });
+        }
         else if (act === 'to-map') { st.step = 3; renderStep(); }
         else if (act === 'to-pre') { st.step = 2; renderStep(); }
         else if (act === 'auto-all') {

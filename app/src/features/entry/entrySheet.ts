@@ -269,6 +269,7 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
   if (sourceId != null) {
     sourceEntry = await getEntry(sourceId);
     if (!sourceEntry) { showToast('账单不存在或已删除'); return; }
+    if (sourceEntry.sourceAdjustment) { showToast('挖财原始冲回/零额记录保留原值，可删除后重新导入'); return; }
     await Promise.all([...new Set([sourceEntry.accountId, sourceEntry.fromAccountId, sourceEntry.toAccountId])].map(includeSelectedAccount));
     const tagIds = await getEntryTagIds(sourceEntry.id);
     c.type = sourceEntry.type;

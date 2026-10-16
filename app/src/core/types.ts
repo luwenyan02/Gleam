@@ -75,8 +75,10 @@ export interface Timestamps {
 export interface Entry extends Timestamps {
   id: number;
   type: EntryType;
-  /** 金额，单位分，恒为正整数；方向由 type/loanKind 决定 */
+  /** 金额，单位分。手工账单为正整数；sourceAdjustment 保留挖财的负数或零金额 */
   amount: number;
+  /** 原样保留的挖财冲回/零额记录；无原账单编号，不虚构退款关联。 */
+  sourceAdjustment?: { source: 'wacai'; rowNo: number };
   /** 发生时间，毫秒时间戳，精确到分钟 */
   occurredAt: number;
   categoryId?: number;
