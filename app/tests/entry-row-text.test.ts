@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Entry } from '../src/core/types';
-import { entryRowText } from '../src/features/detail/entryRowText';
+import { entryRowText, displayEntryNote } from '../src/features/detail/entryRowText';
 import { canRefund } from '../src/features/detail/entrySwipe';
 
 const categories = new Map([[1,{name:'公交',icon:'ic-bus'}]]);
@@ -38,5 +38,28 @@ describe('首页/搜索/账户共用的明细文案', () => {
     expect(entryRowText({...entry,reimburseStatus:'done'},categories,accounts)).toMatchObject({
       meta:'9月7日 15:50 · 演示现金 · 已报销（到账资料缺失）',
     });
+  });
+});
+
+
+describe('明细隐藏收付款人信息', () => {
+  it.each([
+    ['收付款人：自己', ''],
+    ['虚构巴士；收付款人：自己', '虚构巴士'],
+    ['收付款人: 虚构朋友；正常备注', '正常备注'],
+    ['正常备注；收付款人：自己；原币种 USD 1.00', '正常备注；原币种 USD 1.00'],
+    ['第一行\n收付款人：自己\n第二行', '第一行\n第二行'],
+    ['收付款人：自己；收付款人：虚构朋友', ''],
+    ['联系收付款人：明天再确认', '联系收付款人：明天再确认'],
+    ['第一行；第二行\n第三行', '第一行；第二行\n第三行'],
+  ])('%s → %s', (note, expected) => {
+    const input = { ...entry, note };
+    expect(displayEntryNote(note)).toBe(expected);
+    expect(entryRowText(input, categories, accounts).note).toBe(expected);
+    expect(input.note).toBe(note);
+  });
+  it('没有备注仍为空，不产生分隔符', () => {
+    expect(displayEntryNote(undefined)).toBe('');
+    expect(displayEntryNote('   ')).toBe('');
   });
 });

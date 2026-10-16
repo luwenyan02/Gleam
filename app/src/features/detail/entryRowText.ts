@@ -1,6 +1,19 @@
 import { LOAN_KIND_META, type Entry } from '../../core/types';
 import type { LedgerItem } from '../../core/ledgerEvents';
 
+/** 隐藏导入备注中的收付款人字段，原始备注仍用于编辑和备份。 */
+export function displayEntryNote(note?: string): string {
+  const parts = (note ?? '').trim().split(/([；;\r\n]+)/);
+  let result = '';
+  for (let i = 0; i < parts.length; i += 2) {
+    const text = parts[i];
+    if (!text.trim() || /^收付款人\s*[：:]/.test(text.trim())) continue;
+    if (result) result += parts[i - 1];
+    result += text;
+  }
+  return result.trim();
+}
+
 /** 共用的两行明细文案；只做展示，不修改实体或计算账务金额。 */
 export function entryRowText(
   entry: Entry & { kind?: LedgerItem['kind'] },
@@ -37,7 +50,7 @@ export function entryRowText(
     : entry.reimburseStatus === 'done'
       ? hasReceipt ? '已报销' : '已报销（到账资料缺失）'
       : '';
-  const note = entry.note?.trim();
+  const note = displayEntryNote(entry.note);
   return {
     title, icon,
     note: note && note !== title && note !== '余额对账调整' ? note : '',

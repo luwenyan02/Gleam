@@ -18,9 +18,9 @@ def fixture(page):
       const accounts=[{id:1,name:'演示现金',group:'cash'},{id:2,name:'演示工资卡',group:'debit'},{id:3,name:'演示小林',group:'receivable'}].map(a=>({...a,...stamp,balance:0,hidden:false,countInNetWorth:true,sortOrder:a.id}));
       for(const c of [{id:1,name:'出行',kind:'expense',icon:'ic-bus'},{id:2,name:'公交',kind:'expense',parentId:1,icon:'ic-bus'},{id:3,name:'午餐',kind:'expense',icon:'ic-bowl'},{id:4,name:'工资',kind:'income',icon:'ic-coin'}])tx.objectStore('categories').put({...c,...stamp,sortOrder:c.id});
       const entries=[
-        {id:1,type:'expense',amount:4865025,accountId:1,categoryId:2},
-        {id:2,type:'expense',amount:1200,accountId:1,categoryId:2,refundFlag:true,refundOfEntryId:1},
-        {id:3,type:'expense',amount:5800,accountId:1,categoryId:3,note:'虚构出差工作餐',reimburseStatus:'pending'},
+        {id:1,type:'expense',amount:4865025,accountId:1,categoryId:2,note:'虚构巴士；收付款人：自己'},
+        {id:2,type:'expense',amount:1200,accountId:1,categoryId:2,refundFlag:true,refundOfEntryId:1,note:'收付款人：自己'},
+        {id:3,type:'expense',amount:5800,accountId:1,categoryId:3,note:'虚构出差工作餐；收付款人：虚构同事',reimburseStatus:'pending'},
         {id:4,type:'income',amount:1000000,accountId:2,categoryId:4},
         {id:5,type:'transfer',amount:1000,fromAccountId:1,toAccountId:2},
         {id:6,type:'loan',loanKind:'lend',amount:5200,fromAccountId:1,toAccountId:3},
@@ -64,10 +64,20 @@ def rows(page,width):
         assert '待报销' in page.locator(f'{prefix} [{attribute}="3"]').inner_text()
         assert '已报销' in page.locator(f'{prefix} [{attribute}="7"]').inner_text()
     check('#hm-days','data-entry-row')
+    assert '收付款人' not in page.locator('#hm-days').inner_text()
+    assert '虚构巴士' in page.locator('#hm-days').inner_text()
     page.locator('#page-home').screenshot(path=str(SHOTS/f'list-home-{width}.png'))
+    page.locator('#hm-quick .hm-all').click()
+    page.locator('.picker-mask [data-value="detail"]').click()
+    page.locator('#sp-entry-detail [data-id="1"]').wait_for()
+    assert '收付款人' not in page.locator('#sp-entry-detail').inner_text()
+    assert '虚构巴士' in page.locator('#sp-entry-detail [data-id="1"]').inner_text()
+    page.locator('#sp-entry-detail .sub-head [data-act="back"]').click()
+    page.locator('#sp-entry-detail').wait_for(state='detached')
     page.locator('#btn-search').click();page.locator('#sr-input').fill('演示')
     page.locator('#sr-results [data-eid="1"]').wait_for();page.wait_for_timeout(400)
     check('#sr-results','data-eid')
+    assert '收付款人' not in page.locator('#sr-results').inner_text()
     assert '48,650.25' in page.locator('#sr-results [data-eid="1"]').inner_text()
     assert '虚构出差工作餐' in page.locator('#sr-results [data-eid="3"]').inner_text()
     assert '净支出' in page.locator('#sr-results [data-eid="7"] .sr-net').inner_text()
@@ -77,6 +87,8 @@ def rows(page,width):
     # 统一排版不得破坏详情入口。
     page.locator('#sr-results [data-eid="2"] .entry-swipe-content').click()
     page.locator('#sp-entry-view.open').wait_for()
+    assert page.locator('#sp-entry-view .entry-view-note').inner_text()=='无备注'
+    assert ledger_snapshot(page)==before
 
 def open_draft(page):
     page.locator('#fab').click();page.locator('#keypad [data-k="8"]').click()

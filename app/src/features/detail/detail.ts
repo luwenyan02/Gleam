@@ -1,4 +1,5 @@
 import { entryDisplayAmount } from '../../core/entryAmount';
+import { displayEntryNote } from './entryRowText';
 import { loanAccountId } from '../../core/loanLedger';
 /**
  * 拾光 · 账单明细子页（PRD 4.3）：全量账单列表（分块渲染 + 滚动加载）、
@@ -175,7 +176,8 @@ async function renderDetail(body: HTMLElement): Promise<void> {
 
   function entryText(entry: Entry): { title: string; meta: string } {
     const day = dayLabel(entry.occurredAt);
-    const note = entry.note ? ` <span class="e-sub">· ${esc(entry.note)}</span>` : '';
+    const visibleNote = displayEntryNote(entry.note);
+    const note = visibleNote ? ` <span class="e-sub">· ${esc(visibleNote)}</span>` : '';
     if (entry.type === 'transfer') {
       const from = acctMap.get(entry.fromAccountId ?? -1)?.name ?? '账户';
       const to = acctMap.get(entry.toAccountId ?? -1)?.name ?? '账户';

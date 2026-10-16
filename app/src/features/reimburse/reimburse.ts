@@ -8,6 +8,7 @@
 import './reimburse.css';
 import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
+import { displayEntryNote } from '../detail/entryRowText';
 import { on } from '../../core/store';
 import { formatFen, parseYuanToFen } from '../../core/money';
 import { listEntries, settleReimbursement } from '../../core/repo/entryRepo';
@@ -93,7 +94,8 @@ async function catNameMap(): Promise<Map<number, string>> {
 /** 待报销行标题：备注优先展示（原型「打车 · 滴滴」语义），无备注展示分类名 */
 function rowTitle(e: Entry, cats: Map<number, string>): string {
   const cat = cats.get(e.categoryId ?? -1) ?? '未分类';
-  return e.note ? `${esc(cat)} · ${esc(e.note)}` : esc(cat);
+  const note = displayEntryNote(e.note);
+  return note ? `${esc(cat)} · ${esc(note)}` : esc(cat);
 }
 
 /** 注册报销管理子页（覆盖 sp-reimburse 占位），main.ts 调用一次 */

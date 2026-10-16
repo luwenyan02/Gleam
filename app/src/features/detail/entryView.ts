@@ -1,4 +1,5 @@
 import { entryDisplayAmount } from '../../core/entryAmount';
+import { displayEntryNote } from './entryRowText';
 /**
  * 拾光 · 单条账单只读详情子页（sp-entry-view）
  * 头部金额卡、字段列表、关联退款展示与底部操作栏（编辑 / 复制 / 删除 / 退款）。
@@ -75,6 +76,7 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
     const batch = entry.importBatchId != null ? await getImportBatch(entry.importBatchId) : undefined;
     const sourceText = entry.importBatchId == null ? '手工录入' : batch?.source === 'ai' ? 'AI 记账' : '账单导入';
     const receipts = await listEntryAttachments(entry.id);
+    const visibleNote = displayEntryNote(entry.note);
 
     subpage.querySelector<HTMLElement>('.sub-head h2')!.textContent = typeName(entry);
     body.innerHTML = `
@@ -96,7 +98,7 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
         ${entry.sourceAdjustment ? `<div class="detail-field"><span>原始记录</span><b>挖财第 ${entry.sourceAdjustment.rowNo} 行 · 保留原值，不支持编辑</b></div>` : ''}
         ${entry.refundFlag ? `<div class="detail-field"><span>关联原账单</span><b>${original ? `${esc(typeName(original))} · ${formatFenCny(original.amount)}` : '原账单已删除'}</b></div>` : ''}
       </section>
-      <section class="entry-view-note${entry.note ? '' : ' empty'}">${entry.note ? esc(entry.note) : '无备注'}</section>
+      <section class="entry-view-note${visibleNote ? '' : ' empty'}">${visibleNote ? esc(visibleNote) : '无备注'}</section>
       <section class="card entry-life-story"><button class="chip" data-entry-life>${entry.lifeNoteId ? '看看这笔钱留下的故事 ›' : '这一笔，也有故事？'}</button><p class="sub">随手留一句，也可以只记账。</p></section>
       ${receipts.length ? `<section aria-label="账单凭证"><p class="card-title">凭证 · ${receipts.length}</p><div class="receipt-strip">${receipts.map((receipt, index) => `<button class="receipt-thumb" type="button" data-view-receipt="${index}" aria-label="预览凭证 ${index + 1}">${receiptThumbnail(receipt)}</button>`).join('')}</div></section>` : ''}
       ${refunds.length ? `<section class="refund-links"><p class="card-title">关联退款 · ${refunds.length} 笔</p>${refunds.map((refund) => `<div><span>${fullDateTime(refund.occurredAt)}</span><b class="num">+${formatFen(refund.amount)}</b></div>`).join('')}<p>尚可退款 <b class="num">${formatFenCny(remaining)}</b></p></section>` : ''}
