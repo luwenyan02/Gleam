@@ -148,7 +148,7 @@ async function refresh(): Promise<void> {
         ? `<span class="cd-amt">-${fmtYuan0(rec.expense)}</span>`
         : `<span class="cd-amt refund" aria-label="退款净流入 ${formatFenCny(-rec.expense)}">+${fmtYuan0(-rec.expense)}</span>`
       : '';
-    const dot = rec && rec.income > 0 && mode === 'std' ? '<span class="cd-in"></span>' : '';
+    const dot = rec && rec.income !== 0 && mode === 'std' ? '<span class="cd-in"></span>' : '';
     cells.push(`<button class="${cls}" data-d="${d}" type="button" role="option" aria-selected="${sel}"${sel ? '' : cellStyle(rec, maxOut)}><span class="d-num">${d}</span>${amt}${dot}</button>`);
   }
 
@@ -176,7 +176,7 @@ async function refresh(): Promise<void> {
     detailHtml = `
       <h3 class="card-title">${viewM + 1}月${d}日 · 周${wd}${isCurMonth && d === today.getDate() ? ' <span class="tiny">今天</span>' : ''}</h3>
       ${rec
-        ? `<div class="cd-sum"><span>${rec.expense < 0 ? '净支出' : '支出'}<b${rec.expense < 0 ? ' class="in"' : ''}>${expenseText}</b></span>${rec.income > 0 ? `<span>收入<b class="in">+¥${formatFen(rec.income)}</b></span>` : ''}<span>共 ${rec.count} 笔</span></div>`
+        ? `<div class="cd-sum"><span>${rec.expense < 0 ? '净支出' : '支出'}<b${rec.expense < 0 ? ' class="in"' : ''}>${expenseText}</b></span>${rec.income !== 0 ? `<span>收入${rec.income < 0 ? '净额' : ''}<b class="${rec.income < 0 ? 'out' : 'in'}">${rec.income > 0 ? '+' : ''}${formatFenCny(rec.income)}</b></span>` : ''}<span>共 ${rec.count} 笔</span></div>`
         : '<p class="sub" style="margin-top:6px">这一天还没有记录</p>'}
       ${addChip}
       ${rows ? `<div class="card list" style="margin-top:10px">${rows}</div>` : ''}`;

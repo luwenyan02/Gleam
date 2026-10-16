@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from test_import_safety import open_backup
+from test_stats_safety import seed
 
 URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4617/')
 SHOTS = Path(os.environ.get('GLEAM_E2E_SCREENSHOTS', '../.tmp/tests/wacai-import'))
@@ -78,6 +79,18 @@ def run(page, width):
     page.locator('#sp-import .imp-report').wait_for(timeout=30000)
     assert len(data(page)['entries'])==9
 
+def negative_income_calendar(page):
+    page.goto(URL);page.locator('#fab').wait_for()
+    today = page.evaluate('new Date().setHours(12,0,0,0)')
+    seed(page, [{'id':1,'type':'income','amount':-500,'occurredAt':today,'accountId':1,'categoryId':1,
+                 'sourceAdjustment':{'source':'wacai','rowNo':8}}])
+    page.locator('#hm-quick .hm-all').click();page.get_by_text('日历',exact=True).last.click()
+    page.locator('#sp-calendar .cd-sum').wait_for()
+    assert '收入' in page.locator('#sp-calendar .cd-sum').inner_text(), 'income reversal hidden in daily summary'
+    assert '-¥5.00' in page.locator('#sp-calendar .cd-sum').inner_text()
+    assert '-5.00' in page.locator('#sp-calendar [data-eid="1"]').inner_text()
+    shot(page, f'{page.viewport_size["width"]}-income-reversal')
+
 if __name__=='__main__':
     SHOTS.mkdir(parents=True,exist_ok=True)
     with sync_playwright() as p:
@@ -86,6 +99,7 @@ if __name__=='__main__':
             context=browser.new_context(viewport={'width':width,'height':900},timezone_id='Asia/Shanghai',accept_downloads=True)
             page=context.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
             run(page,width)
+            negative_income_calendar(page)
             assert not errors, errors
             context.close();print(f'PASS wacai_replace width={width}',flush=True)
         browser.close()
