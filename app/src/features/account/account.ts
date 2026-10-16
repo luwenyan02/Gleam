@@ -282,7 +282,10 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
           </section>`;
         }).join('') || '<p class="acct-flow-empty">暂无流水</p>'}
       </div>
-      ${monthsShown < availableMonths ? '<button class="btn ghost" data-account-action="more-months">查看更早的流水</button>' : ''}
+      ${monthsShown < availableMonths ? `<div class="account-history-actions">
+        <button class="btn ghost" data-account-action="all-months">加载全部</button>
+        <button class="btn ghost" data-account-action="more-months">查看更早的流水</button>
+      </div>` : ''}
       <button class="account-detail-entry" id="account-detail-entry" data-account-action="entry">
         ${iconHtml('ic-plus', 18)}<span>从「${esc(acct.name)}」记一笔</span>
       </button>`;
@@ -314,6 +317,7 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     const acct = currentAccount;
     if (!action || !acct) return;
     if (action === 'more-months') { monthsShown += 8; void refreshDetail(); }
+    else if (action === 'all-months') { monthsShown = Infinity; void refreshDetail(); }
     else if (action === 'entry') void openEntrySheet({ presetAccountId: acct.id });
     else if (action === 'edit') void openAccountForm(acct);
     else if (action === 'reconcile') openReconcileSheet(acct);

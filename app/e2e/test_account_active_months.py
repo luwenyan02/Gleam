@@ -12,9 +12,9 @@ def run(page, width):
     page.evaluate("""async()=>{
       const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)});
       const tx=db.transaction(['entries'],'readwrite');
-      for(let i=0;i<10;i++)tx.objectStore('entries').put({id:i+1,type:'income',amount:100,accountId:1,
-        occurredAt:new Date(2010+i,0,2,12).getTime(),reimburseStatus:'none',deletedAt:0,createdAt:1,updatedAt:1});
-      tx.objectStore('entries').put({id:20,type:'income',amount:0,accountId:2,sourceAdjustment:{source:'wacai',rowNo:8},
+      for(let i=0;i<20;i++)tx.objectStore('entries').put({id:i+1,type:'income',amount:100,accountId:1,
+        occurredAt:new Date(2000+i,0,2,12).getTime(),reimburseStatus:'none',deletedAt:0,createdAt:1,updatedAt:1});
+      tx.objectStore('entries').put({id:50,type:'income',amount:0,accountId:2,sourceAdjustment:{source:'wacai',rowNo:8},
         occurredAt:new Date(2015,0,2,12).getTime(),reimburseStatus:'none',deletedAt:0,createdAt:1,updatedAt:1});
       await new Promise(r=>tx.oncomplete=r);db.close();
     }""")
@@ -24,15 +24,29 @@ def run(page, width):
     first=page.locator('.account-month').first
     assert first.get_attribute('data-account-month')=='2019-01'
     assert first.locator('.account-month-head').get_attribute('aria-expanded')=='true'
-    assert first.locator('[data-eid="10"]').is_visible()
+    assert first.locator('[data-eid="20"]').is_visible()
     first.locator('.account-month-head').click()
     page.locator('#sp-account-detail .balance-trend-heading').click();page.wait_for_timeout(250)
     assert page.locator('.account-month').first.locator('.account-month-head').get_attribute('aria-expanded')=='false'
     page.locator('#sp-account-detail .balance-trend-heading').click()
-    page.locator('[data-account-action="more-months"]').click()
-    page.wait_for_function("document.querySelectorAll('.account-month').length===10")
+    load_all=page.locator('[data-account-action="all-months"]')
+    earlier=page.locator('[data-account-action="more-months"]')
+    load_all.scroll_into_view_if_needed();page.wait_for_timeout(300)
+    left=load_all.bounding_box();right=earlier.bounding_box()
+    assert left['x'] < right['x'] and abs(left['y']-right['y']) < 1
+    assert 44 <= left['height'] <= 48 and 44 <= right['height'] <= 48
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    page.screenshot(path=str(OUT/f'load-controls-{width}.png'))
+    earlier.click()
+    page.wait_for_function("document.querySelectorAll('.account-month').length===16")
+    page.locator('[data-account-month="2004-01"] .account-month-head').click()
+    load_all.click()
+    page.wait_for_function("document.querySelectorAll('.account-month').length===20")
+    assert page.locator('[data-account-month="2004-01"] .account-month-head').get_attribute('aria-expanded')=='true'
+    assert page.locator('[data-account-month="2019-01"] .account-month-head').get_attribute('aria-expanded')=='false'
+    assert load_all.count()==0
     assert page.locator('[data-account-action="more-months"]').count()==0
-    assert page.locator('[data-account-month="2010-01"]').count()==1
+    assert page.locator('[data-account-month="2000-01"]').count()==1
     assert page.locator('.account-month').first.locator('.account-month-balance').inner_text().startswith('100.00')
     page.locator('[data-account-action="edit"]').click()
     page.locator('#sheet [data-g="online"]').click()
@@ -53,9 +67,18 @@ def run(page, width):
     page.locator('#sp-account-detail .sub-head [data-act="back"]').click()
     page.locator('#sp-account-detail').wait_for(state='detached')
     assert page.locator('[data-group="online"]').count()==1
+    # Reopening resets pagination; load-all also works directly from the first page.
+    page.locator('[data-acct="1"]').click();page.locator('[data-account-action="all-months"]').wait_for()
+    assert page.locator('.account-month').count()==8
+    page.locator('[data-account-action="all-months"]').click()
+    page.wait_for_function("document.querySelectorAll('.account-month').length===20")
+    assert page.locator('[data-account-action="all-months"], [data-account-action="more-months"]').count()==0
+    page.locator('#sp-account-detail .sub-head [data-act="back"]').click()
+    page.locator('#sp-account-detail').wait_for(state='detached')
     page.locator('[data-acct="2"]').click();page.locator('.account-month').wait_for()
     assert page.locator('.account-month').count()==1
-    assert page.locator('[data-eid="20"]').is_visible()
+    assert page.locator('[data-account-action="all-months"]').count()==0
+    assert page.locator('[data-eid="50"]').is_visible()
     page.locator('#sp-account-detail .sub-head [data-act="back"]').click()
     page.locator('#sp-account-detail').wait_for(state='detached')
     page.locator('[data-acct="4"]').click()
