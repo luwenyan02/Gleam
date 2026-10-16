@@ -435,7 +435,7 @@ function precheckHtml(st: WizardState): string {
       </div>` : ''}
       <div class="btn-row" style="margin-top:14px">
         <button class="btn ghost" data-act="cancel">取消</button>
-        <button class="btn primary" data-act="to-map"${rows.length && !(st.replaceLedger && issues.length) ? '' : ' disabled'}>下一步：映射确认</button>
+        <button class="btn primary" data-act="to-map"${rows.length && !(st.replaceLedger && issues.length) ? '' : ' disabled'}>下一步</button>
       </div>
     </section>`;
 }
