@@ -1,4 +1,4 @@
-import type { Account, AccountGroup } from '../../core/types';
+import { ACCOUNT_GROUPS, type Account, type AccountGroup } from '../../core/types';
 import type { WacaiRow } from './wacai';
 
 export type AccountUsage = 'general' | 'fund' | 'loan';
@@ -20,13 +20,22 @@ export function accountUsageKey(usage: AccountUsage, name: string): string {
 }
 
 function guessGroup(name: string): AccountGroup {
-  if (/信用|贷记|花呗|白条/.test(name)) return 'credit';
-  if (/证券|基金|股票|投资|理财/.test(name)) return 'investment';
+  if (/现金|现钞|备用金/.test(name)) return 'cash';
+  if (/信用|贷记/.test(name)) return 'credit';
   if (/应收|应付|欠款/.test(name)) return 'receivable';
   if (/储值|预付|购物卡|公交卡|饭卡|校园卡/.test(name)) return 'stored';
-  if (/微信|支付宝|钱包|余额|零钱|网商|云闪付/.test(name)) return 'online';
-  if (/银行|储蓄|借记|存折|卡/.test(name)) return 'debit';
+  // 平台理财与月付属于网络账户，不能先被“理财/白条”分到投资或信用卡。
+  if (/微信|支付宝|钱包|余额|零钱|网商|云闪付|花呗|白条|月付|翼支付|永辉付|京东金融|百度理财|金蛋理财|爱钱进|拍拍贷|恒天财富|玖富|宜人贷|和信贷/.test(name)) return 'online';
+  if (/证券|基金|股票|投资/.test(name)) return 'investment';
+  if (/银行|储蓄|借记|存折|卡|农行|招行|交行|建行|工行|中行|邮储/.test(name)) return 'debit';
+  if (/理财/.test(name)) return 'investment';
   return 'other';
+}
+
+/** 新建类型可人工确认，借贷双方的账户角色约束不变。 */
+export function allowedAccountGroups(role: AccountPlanRole): AccountGroup[] {
+  return ACCOUNT_GROUPS.filter(group => role === 'loan' ? group === 'receivable'
+    : role === 'fund' ? group !== 'receivable' : true);
 }
 
 function planFor(

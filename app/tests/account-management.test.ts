@@ -110,3 +110,41 @@ describe('账户管理边界', () => {
     expect(await db.accounts.get(empty)).toBeUndefined();
   });
 });
+
+
+describe('账户类型修正', () => {
+  it('改类型只重分组，保留余额、隐藏和所有流水', async () => {
+    const id = await addAccount({ name: '虚构钱包', group: 'other', balance: 550, hidden: true });
+    await db.entries.add({ id: 1, type: 'income', amount: 550, accountId: id, occurredAt: 1,
+      reimburseStatus: 'none', deletedAt: 0, createdAt: 1, updatedAt: 1 });
+    const entries = await db.entries.toArray();
+    await updateAccount(id, { group: 'cash' });
+    expect(await db.accounts.get(id)).toMatchObject({ group: 'cash', balance: 550, hidden: true });
+    expect(await db.entries.toArray()).toEqual(entries);
+  });
+  it('改出信用卡分组清除专属配置，保留负余额', async () => {
+    const id = await addAccount({ name: '虚构月付', group: 'credit', balance: -500, creditLimit: 10000, billingDay: 2, repayDay: 8 });
+    await updateAccount(id, { group: 'online' });
+    const result = await db.accounts.get(id);
+    expect(result).toMatchObject({ group: 'online', balance: -500 });
+    expect(result?.creditLimit).toBeUndefined();
+    expect(result?.billingDay).toBeUndefined();
+    expect(result?.repayDay).toBeUndefined();
+  });
+  it('历史借贷角色不可通过改分组破坏，已删除流水也需可恢复', async () => {
+    const fund = await addAccount({ name: '虚构资金', group: 'other', balance: 0 });
+    const loan = await addAccount({ name: '虚构往来', group: 'receivable', balance: 0 });
+    await db.entries.add({ id: 1, type: 'loan', loanKind: 'lend', amount: 100, fromAccountId: fund, toAccountId: loan,
+      occurredAt: 1, reimburseStatus: 'none', deletedAt: 2, createdAt: 1, updatedAt: 1 });
+    await expect(updateAccount(fund, { group: 'receivable' })).rejects.toThrow('借贷');
+    await expect(updateAccount(loan, { group: 'cash' })).rejects.toThrow('借贷');
+    await updateAccount(fund, { group: 'cash' });
+    expect((await db.accounts.get(loan))?.group).toBe('receivable');
+  });
+  it('已有信用卡账单的账户不能改出信用卡类型', async () => {
+    const id = await addAccount({ name: '虚构信用卡', group: 'credit', balance: 0 });
+    await db.creditStatements.put({ id: 1, accountId: id } as never);
+    await expect(updateAccount(id, { group: 'online' })).rejects.toThrow('信用卡账单');
+    expect((await db.accounts.get(id))?.group).toBe('credit');
+  });
+});

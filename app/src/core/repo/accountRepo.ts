@@ -8,6 +8,7 @@ import { db, now, stamp } from '../db';
 import { ACCOUNT_GROUPS, type Account, type AccountGroup } from '../types';
 import { addEntry } from './entryRepo';
 import { emitAfterCommit as emit } from './transactionEvents';
+import { loanAccountId, loanFundAccountId } from '../loanLedger';
 
 /** 新建账户输入 */
 export type NewAccount = Omit<Account, 'id' | 'createdAt' | 'updatedAt' | 'hidden' | 'countInNetWorth' | 'sortOrder'> &
@@ -41,15 +42,33 @@ export async function updateAccount(
   id: number,
   patch: Partial<Omit<Account, 'id' | 'balance' | 'createdAt' | 'updatedAt'>>,
 ): Promise<void> {
-  const current = await db.accounts.get(id);
-  if (!current) throw new Error(`账户不存在：${id}`);
-  validateCreditFields(
-    patch.group ?? current.group,
-    patch.billingDay ?? current.billingDay,
-    patch.repayDay ?? current.repayDay,
-    patch.creditLimit ?? current.creditLimit,
-  );
-  await db.accounts.update(id, { ...patch, updatedAt: now() });
+  await db.transaction('rw', [db.accounts, db.entries, db.creditStatements], async () => {
+    const current = await db.accounts.get(id);
+    if (!current) throw new Error(`账户不存在：${id}`);
+    const changes = { ...patch };
+    const group = patch.group ?? current.group;
+    if (!ACCOUNT_GROUPS.includes(group)) throw new Error('请选择正确的账户类型');
+    if (group !== current.group) {
+      const invalidLoan = await db.entries.filter(entry => entry.type === 'loan' && (
+        (loanAccountId(entry) === id && group !== 'receivable')
+        || (loanFundAccountId(entry) === id && group === 'receivable')
+      )).first();
+      if (invalidLoan) throw new Error('该类型与历史借贷的资金/应收应付角色冲突');
+      if (current.group === 'credit' && await db.creditStatements.where('accountId').equals(id).count()) {
+        throw new Error('已有信用卡账单的账户不能修改类型');
+      }
+      if (group !== 'credit') {
+        changes.creditLimit = undefined;
+        changes.billingDay = undefined;
+        changes.repayDay = undefined;
+      }
+      const peers = await db.accounts.where('group').equals(group).toArray();
+      changes.sortOrder = peers.reduce((max, account) => Math.max(max, account.sortOrder), 0) + 1;
+    }
+    const next = { ...current, ...changes };
+    validateCreditFields(group, next.billingDay, next.repayDay, next.creditLimit);
+    await db.accounts.update(id, { ...changes, updatedAt: now() });
+  });
   emit('accounts-changed', { id });
 }
 

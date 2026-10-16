@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Entry } from '../src/core/types';
-import { accountFlows, accountMonthRows, accountStatement } from '../src/core/ledgerEvents';
+import { accountFlows, accountMonthRows, accountStatement, accountActiveMonthRows } from '../src/core/ledgerEvents';
 
 const date = (month: number, day: number) => new Date(2026, month - 1, day, 12).getTime();
 const entry = (id: number, patch: Partial<Entry>): Entry => ({
@@ -59,5 +59,28 @@ describe('账户逐笔余额（只读派生）', () => {
     expect(flows).toEqual(first);
     expect(accountStatement(accountFlows(entries,2),1000).map(row=>row.balanceAfter)).toEqual([1000]);
     expect(accountStatement([],0)).toEqual([]);
+  });
+});
+
+
+describe('账户仅展示有流水的月份', () => {
+  it('跨多年空档直接到历史流水，保留零净额月份与期初余额', () => {
+    const source = [entry(1, { type: 'income', amount: 1000, occurredAt: new Date(2015, 0, 1).getTime() }),
+      entry(2, { amount: 1000, occurredAt: new Date(2015, 0, 2).getTime() }),
+      entry(3, { amount: 200, occurredAt: new Date(2020, 5, 1).getTime() })];
+    const rows = accountActiveMonthRows(accountStatement(accountFlows(source, 1), 300));
+    expect(rows.map(r => [r.key, r.income, r.expense, r.closing])).toEqual([
+      ['2020-06', 0, 200, 300], ['2015-01', 1000, 1000, 500],
+    ]);
+    expect(rows.map(r => r.entries.length)).toEqual([1, 2]);
+    expect(accountActiveMonthRows([])).toEqual([]);
+  });
+  it('零金额导入记录也是流水，不应连同空月份一起隐藏', () => {
+    const zero = entry(1, { type: 'income', amount: 0, sourceAdjustment: { source: 'wacai', rowNo: 8 } });
+    const rows = accountActiveMonthRows(accountStatement(accountFlows([zero], 1), 500));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ closing: 500, income: 0, expense: 0 });
+    expect(rows[0].entries[0].id).toBe(1);
+    expect(accountFlows([zero], 2)).toEqual([]);
   });
 });

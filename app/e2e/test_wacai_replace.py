@@ -48,6 +48,28 @@ def run(page, width):
     shot(page,f'{width}-append');mode(page,True);shot(page,f'{width}-replace')
     mode(page,False);mode(page,True)
     page.locator('#sp-import [data-act="to-map"]').click();shot(page,f'{width}-mapping')
+    # New-account group choices preserve fund/loan roles; all choices can be selected.
+    fund = page.locator('#sp-import [data-acct]').filter(has_text='自动新建').first
+    for group in ['cash','credit','debit','online','investment','stored','other']:
+        fund.click()
+        assert page.locator('.picker-mask [data-value="auto:receivable"]').count() == 0
+        page.locator(f'.picker-mask [data-value="auto:{group}"]').click()
+        page.locator('.picker-mask').wait_for(state='detached')
+    fund.click();page.locator('.picker-mask [data-value="auto:cash"]').click()
+    page.locator('.picker-mask').wait_for(state='detached')
+    loan = page.locator('#sp-import [data-acct="loan:虚构朋友"]')
+    loan.click()
+    assert page.locator('.picker-mask .picker-item').count() == 1
+    assert page.locator('.picker-mask [data-value="auto:receivable"]').count() == 1
+    page.locator('.picker-mask [data-value="auto:receivable"]').click()
+    page.locator('.picker-mask').wait_for(state='detached')
+    # General accounts offer all eight groups, including receivables.
+    general = page.locator('#sp-import [data-acct="general:虚构银行卡"]')
+    general.click()
+    assert page.locator('.picker-mask .picker-item').count() == 8
+    shot(page,f'{width}-account-types')
+    page.locator('.picker-mask [data-value="auto:debit"]').click()
+    page.locator('.picker-mask').wait_for(state='detached')
     page.locator('#sp-import [data-act="run"]').click()
     page.locator('#dialog-scrim [data-act="cancel"]').click()
     assert data(page)==before, 'cancel changed data'
@@ -60,6 +82,7 @@ def run(page, width):
     page.locator('#sp-import .imp-report').wait_for(timeout=30000);shot(page,f'{width}-report')
     after=data(page)
     assert len(after['entries'])==9, 'duplicate rows or zero record lost'
+    assert next(a for a in after['accounts'] if a['name']==LONG)['group']=='cash'
     assert after['lifeNotes']==before['lifeNotes']
     assert next(s['value'] for s in after['settings'] if s['key']=='ai.apiKey')=='fictional-key-preserved'
     assert not after['budgets'] and not after['quickTemplates'] and not after['recurringRules']

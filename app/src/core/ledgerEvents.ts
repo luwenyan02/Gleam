@@ -42,9 +42,28 @@ export function accountFlows(entries: readonly Entry[], accountId: number): Acco
   return ledgerItems(entries,true).flatMap(entry=>{
     // 报销已展开为独立事件，原记录只计算本金，避免重复到账。
     const base = entry.kind === 'entry' ? { ...entry, reimbursedAmount: undefined } : entry;
-    const delta = accountEffects(base).filter(effect => effect.accountId === accountId).reduce((sum, effect) => sum + effect.delta, 0);
-    return delta ? [{entry,at:entry.occurredAt,delta}] : [];
+    const effects = accountEffects(base).filter(effect => effect.accountId === accountId);
+    const delta = effects.reduce((sum, effect) => sum + effect.delta, 0);
+    return effects.length ? [{entry,at:entry.occurredAt,delta}] : [];
   });
+}
+
+/** 明细按实际流水月份分组；与连续月份的余额趋势分开，零金额流水仍保留。 */
+export function accountActiveMonthRows(flows: readonly AccountStatementRow[]) {
+  const groups = new Map<string, { key: string; income: number; expense: number; closing: number; entries: LedgerItem[] }>();
+  for (const flow of flows) {
+    const date = new Date(flow.at);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    let row = groups.get(key);
+    if (!row) {
+      row = { key, income: 0, expense: 0, closing: flow.balanceAfter, entries: [] };
+      groups.set(key, row);
+    }
+    row.income += Math.max(0, flow.delta);
+    row.expense += Math.max(0, -flow.delta);
+    row.entries.push(flow.entry);
+  }
+  return [...groups.values()];
 }
 
 export function accountMonthRows(flows: readonly AccountFlow[], balance: number, now: number, months: number) {

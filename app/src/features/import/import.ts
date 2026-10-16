@@ -23,7 +23,7 @@ import { loanDirection } from '../../core/loanLedger';
 import { ACCOUNT_GROUP_NAMES, type Account, type Category, type Entry } from '../../core/types';
 import { parseWacaiFile, type ImportSource, type WacaiParseResult, type WacaiRow } from './wacai';
 import { parsePaymentFile } from './payment';
-import { accountUsageKey, buildAccountPlans, type AccountPlan } from './accountMapping';
+import { accountUsageKey, buildAccountPlans, allowedAccountGroups, type AccountPlan } from './accountMapping';
 import { openPickList, type PickListItem } from '../../shared/pickList';
 import { formatFen } from '../../core/money';
 import { confirmDialog } from '../shell/dialog';
@@ -490,6 +490,7 @@ function mappingHtml(st: WizardState): string {
         ${unCats.map((p) => `<tr><td>${esc(p.name)}${p.type === 'income' ? '（收入）' : ''}</td><td><button class="pick-btn" data-cat="${esc(p.key)}">${catLabel(p)}</button></td></tr>`).join('')}
       </tbody></table>` : ''}
       ${unAccts.length ? `
+      <p class="tiny">新建账户类型按名称建议，点右侧可修改；文件不含原账户类型。</p>
       <table class="map-table" style="margin-top:10px"><thead><tr><th>挖财账户</th><th>拾光处理</th></tr></thead><tbody>
         ${unAccts.map((p) => `<tr><td>${esc(p.name)}${p.role === 'loan' ? '（应收/应付）' : p.role === 'fund' ? '（借贷资金账户）' : '（普通账户）'}</td><td><button class="pick-btn" data-acct="${esc(p.key)}">${acctLabel(p)}</button></td></tr>`).join('')}
       </tbody></table>` : ''}
@@ -586,21 +587,25 @@ export function initImport(): void {
         if (acctBtn) {
           const p = st.accts.find((a) => a.key === acctBtn.dataset.acct);
           if (!p) return;
-          const autoItem: PickListItem = { value: 'auto', label: `自动新建（${ACCOUNT_GROUP_NAMES[p.group]}）` };
+          const newItems: PickListItem[] = allowedAccountGroups(p.role).map(group => ({
+            value: `auto:${group}`, label: `新建：${ACCOUNT_GROUP_NAMES[group]}`, group: '新建账户',
+          }));
           const allowedItems = st.accounts
             .filter((a) => p.role === 'loan' ? a.group === 'receivable' : p.role === 'fund' ? a.group !== 'receivable' : true)
-            .map((a) => ({ value: a.id, label: a.name, note: `${ACCOUNT_GROUP_NAMES[a.group]}${a.hidden ? ' · 已隐藏' : ''} · #${a.id}` }));
+            .map((a) => ({ value: a.id, label: a.name, group: '已有账户', note: `${ACCOUNT_GROUP_NAMES[a.group]}${a.hidden ? ' · 已隐藏' : ''} · #${a.id}` }));
           openPickList({
             container: el,
             title: '选择账户',
-            items: [...(p.ambiguous ? [] : [autoItem]), ...allowedItems],
-            selected: p.choice,
+            items: [...(p.ambiguous ? [] : newItems), ...allowedItems],
+            selected: p.choice === 'auto' ? `auto:${p.group}` : p.choice,
             onPick(value, label) {
-              p.choice = value === 'auto' ? 'auto' : Number(value);
+              const group = allowedAccountGroups(p.role).find(group => value === `auto:${group}`);
+              if (group) { p.group = group; p.choice = 'auto'; }
+              else p.choice = Number(value);
               st.duplicateCandidates = undefined;
               st.keepDuplicateRows.clear();
               const selected = st.accounts.find(account => account.id === p.choice);
-              acctBtn.textContent = selected ? `${label}（${ACCOUNT_GROUP_NAMES[selected.group]}）` : label;
+              acctBtn.textContent = selected ? `${label}（${ACCOUNT_GROUP_NAMES[selected.group]}）` : `自动新建（${ACCOUNT_GROUP_NAMES[p.group]}）`;
               const runBtn = el.querySelector<HTMLButtonElement>('[data-act="run"]');
               if (runBtn) runBtn.disabled = st.accts.some((plan) => plan.choice == null);
             },

@@ -18,7 +18,7 @@ import {
 import { netWorthTrend } from '../../core/repo/statsRepo';
 import { getEntry, listEntries } from '../../core/repo/entryRepo';
 import { listCategories } from '../../core/repo/categoryRepo';
-import { accountFlows, accountMonthRows, accountStatement, type LedgerItem } from '../../core/ledgerEvents';
+import { accountFlows, accountMonthRows, accountStatement, accountActiveMonthRows, type LedgerItem } from '../../core/ledgerEvents';
 import { accountEffects } from '../../core/entryEffects';
 import { registerPage, registerSubpage, openSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
@@ -199,11 +199,6 @@ export function openAccountDetail(id: number): void {
   openSubpage('sp-account-detail');
 }
 
-function monthKey(ts: number): string {
-  const date = new Date(ts);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-}
-
 /** 账户详情：余额趋势、月度流入流出与逐笔流水。 */
 async function renderAccountDetail(body: HTMLElement): Promise<void> {
   const accountId = detailAccountId;
@@ -215,7 +210,8 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
   let currentAccount: Account | undefined;
   let monthsShown = 8;
   let detailToken = 0;
-  const expandedMonths = new Set([monthKey(Date.now())]);
+  const expandedMonths = new Set<string>();
+  let initializedMonths = false;
   body.classList.add('account-detail-body');
 
   async function refreshDetail(): Promise<void> {
@@ -236,10 +232,13 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     const acctNames = new Map<number, string>();
     for (const group of ACCOUNT_GROUPS) for (const account of groups[group]) acctNames.set(account.id, account.name);
 
-    const monthRows = accountMonthRows(flows, acct.balance, Date.now(), monthsShown);
-    const nowDate = new Date();
-    const earliest = new Date(flows.reduce((at, flow) => Math.min(at, flow.at), Date.now()));
-    const availableMonths = (nowDate.getFullYear()-earliest.getFullYear())*12+nowDate.getMonth()-earliest.getMonth()+1;
+    const activeMonths = accountActiveMonthRows(flows);
+    const monthRows = activeMonths.slice(0, monthsShown);
+    const availableMonths = activeMonths.length;
+    if (!initializedMonths && monthRows.length) {
+      expandedMonths.add(monthRows[0].key);
+      initializedMonths = true;
+    }
     const totalIn = flows.reduce((sum, flow) => Math.max(0, flow.delta) + sum, 0);
     const totalOut = flows.reduce((sum, flow) => Math.max(0, -flow.delta) + sum, 0);
     const limit = creditLimitStatus(acct);
@@ -278,10 +277,10 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
               <span class="chev">${iconHtml('ic-right', 15)}</span>
             </button>
             <div class="account-month-entries">
-              ${row.entries.length ? row.entries.map((entry) => flowEntryHtml(entry, targetAccountId, catMap, acctNames, balances.get(entry)!)).join('') : '<p class="acct-flow-empty">本月暂无流水</p>'}
+              ${row.entries.map((entry) => flowEntryHtml(entry, targetAccountId, catMap, acctNames, balances.get(entry)!)).join('')}
             </div>
           </section>`;
-        }).join('')}
+        }).join('') || '<p class="acct-flow-empty">暂无流水</p>'}
       </div>
       ${monthsShown < availableMonths ? '<button class="btn ghost" data-account-action="more-months">查看更早的流水</button>' : ''}
       <button class="account-detail-entry" id="account-detail-entry" data-account-action="entry">
@@ -470,7 +469,7 @@ export async function openAccountForm(acct?: Account, presetGroup: AccountGroup 
         <div class="sheet-scroll acct-form">
           <div class="field"><span>类型</span>
             <div class="chip-group acct-type-grid" id="af-group">
-              ${ACCOUNT_GROUPS.map((g) => `<button class="chip${g === group ? ' active' : ''}" data-g="${g}"${acct ? ' disabled style="opacity:.5"' : ''}>${g === 'debit' ? '储蓄卡' : ACCOUNT_GROUP_NAMES[g]}</button>`).join('')}
+              ${ACCOUNT_GROUPS.map((g) => `<button class="chip${g === group ? ' active' : ''}" data-g="${g}">${g === 'debit' ? '储蓄卡' : ACCOUNT_GROUP_NAMES[g]}</button>`).join('')}
             </div>
           </div>
           <div class="field"><span>名称</span><input class="note" id="af-name" maxlength="20" placeholder="如 招行储蓄卡 ·6688" value="${esc(acct?.name ?? '')}"></div>
@@ -492,7 +491,7 @@ export async function openAccountForm(acct?: Account, presetGroup: AccountGroup 
           return;
         }
         const chip = target.closest<HTMLElement>('[data-g]');
-        if (chip && !acct) {
+        if (chip) {
           group = chip.dataset.g as AccountGroup;
           negative = group === 'credit';
           const sign = el.querySelector<HTMLButtonElement>('#af-sign');
@@ -529,7 +528,7 @@ export async function openAccountForm(acct?: Account, presetGroup: AccountGroup 
           const creditLimit = group === 'credit' && limitRaw ? parseYuanToFen(limitRaw) : undefined;
           if (creditLimit != null && creditLimit <= 0) { showToast('信用额度须大于 0'); return; }
           if (acct) {
-            await updateAccount(acct.id, { name, note, creditLimit, billingDay: group === 'credit' ? billingDay : undefined, repayDay: group === 'credit' ? repayDay : undefined });
+            await updateAccount(acct.id, { name, group, note, creditLimit, billingDay: group === 'credit' ? billingDay : undefined, repayDay: group === 'credit' ? repayDay : undefined });
             closeSheet();
             showToast('账户已更新');
           } else {
