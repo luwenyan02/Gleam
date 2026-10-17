@@ -3,6 +3,7 @@ import { esc } from '../../core/esc';
 import { formatFen, parseYuanToFen } from '../../core/money';
 import { ACCOUNT_GROUPS, ACCOUNT_GROUP_NAMES, type Account, type AccountGroup, type Entry, type EntryType } from '../../core/types';
 import { addAccount } from '../../core/repo/accountRepo';
+import { openPickList } from '../../shared/pickList';
 import { manageOverlay } from '../../shared/overlay';
 import { rankFrequentAccounts } from './entryWorkspace';
 import '../../shared/pickList.css';
@@ -69,12 +70,30 @@ export function openEntryAccountPicker(options: {
     panel.querySelector('[data-add]')!.addEventListener('click', () => {
       heading.hidden = true; search.hidden = true; createHeading.hidden = false;
       list.removeAttribute('role');
+      const groups = options.groups ?? ACCOUNT_GROUPS.filter(g => options.type !== 'loan' || g !== 'receivable');
+      let selectedGroup: AccountGroup = groups[0] ?? 'cash';
       list.innerHTML = `<form class="entry-account-create">
         <label>账户名称<input name="name" maxlength="20" required autocomplete="off"></label>
-        <label>账户类型<span class="entry-account-select"><select name="group">${(options.groups ?? ACCOUNT_GROUPS.filter(g => options.type !== 'loan' || g !== 'receivable')).map(g => `<option value="${g}">${esc(ACCOUNT_GROUP_NAMES[g])}</option>`).join('')}</select>${iconHtml('ic-right', 16)}</span></label>
+        <label>账户类型<button type="button" class="entry-account-type-button" aria-label="账户类型" aria-haspopup="listbox" aria-expanded="false"><span>${esc(ACCOUNT_GROUP_NAMES[selectedGroup])}</span>${iconHtml('ic-right', 16)}</button><input type="hidden" name="group" value="${selectedGroup}"></label>
         <label>初始余额<input name="balance" inputmode="decimal" placeholder="0.00（欠款填负数）"></label>
         <p role="status"></p><div><button type="button" class="btn entry-account-back" data-back>返回</button><button type="submit" class="btn primary">保存并选择</button></div></form>`;
       const form = list.querySelector('form')!;
+      const typeButton = form.querySelector<HTMLButtonElement>('.entry-account-type-button')!;
+      typeButton.addEventListener('click', () => {
+        typeButton.setAttribute('aria-expanded', 'true');
+        openPickList({
+          container: mask, title: '选择账户类型', searchable: false,
+          items: groups.map(group => ({ value: group, label: ACCOUNT_GROUP_NAMES[group] })),
+          selected: selectedGroup,
+          onPick(value) {
+            selectedGroup = value as AccountGroup;
+            form.querySelector<HTMLInputElement>('[name="group"]')!.value = selectedGroup;
+            typeButton.querySelector('span')!.textContent = ACCOUNT_GROUP_NAMES[selectedGroup];
+            typeButton.setAttribute('aria-expanded', 'false');
+          },
+          onCancel() { typeButton.setAttribute('aria-expanded', 'false'); },
+        });
+      });
       form.querySelector('[data-back]')!.addEventListener('click', () => { heading.hidden = false; createHeading.hidden = true; list.setAttribute('role', 'listbox'); render(); });
       form.addEventListener('submit', async event => {
         event.preventDefault(); if (saving) return;

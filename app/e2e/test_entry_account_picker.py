@@ -47,7 +47,7 @@ def run(page,width):
  expect(page.locator('#note')).to_have_value('虚构未保存草稿')
  page.locator('#seg [data-type="income"]').click();page.locator('#acct-btn').click()
  expect(panel.locator('.frequent-account')).to_have_count(3)
- panel.locator('[data-add]').click();panel.locator('[name="name"]').fill('虚构新增账户');panel.locator('[name="group"]').select_option('online')
+ panel.locator('[data-add]').click();panel.locator('[name="name"]').fill('虚构新增账户');panel.locator('.entry-account-type-button').click();page.locator('.picker-mask .picker-item[data-value="online"]').click();page.locator('.entry-account-type-button').wait_for(state='visible');page.wait_for_timeout(250)
  panel.locator('[name="balance"]').fill('-12.34');panel.locator('button[type="submit"]').click();page.locator('.entry-account-mask').wait_for(state='detached')
  expect(page.locator('#acct-name')).to_have_text('虚构新增账户');expect(page.locator('#note')).to_have_value('虚构未保存草稿')
  page.locator('#acct-btn').click();panel.wait_for();page.wait_for_timeout(250);page.evaluate("document.documentElement.dataset.theme='dark'")

@@ -18,7 +18,7 @@
 .entry-account-empty{padding:32px 8px;text-align:center;color:var(--muted)}
 .entry-account-create{display:grid;gap:14px;padding:8px}
 .entry-account-create label{display:grid;gap:6px;font-size:14px}
-.entry-account-create input,.entry-account-create select{min-width:0;width:100%;min-height:44px;border:1px solid var(--border);border-radius:var(--r-s);padding:8px;background:var(--bg);color:var(--fg);font:inherit}
+.entry-account-create input,.entry-account-create .entry-account-type-button{min-width:0;width:100%;min-height:44px;border:1px solid var(--border);border-radius:var(--r-s);padding:8px;background:var(--bg);color:var(--fg);font:inherit}
 .entry-account-create>div{display:flex;gap:12px}.entry-account-create button{min-height:44px;flex:1}
 .frequent-account .picker-item-label{font-size:13px}
 
@@ -26,6 +26,6 @@
 .entry-account-divider{width:1px;height:18px;background:var(--border);flex:none}
 
 .entry-account-back{border:1px solid var(--border);background:var(--bg);color:var(--fg)}
-.entry-account-select{position:relative;display:block;min-width:0}
-.entry-account-select select{appearance:none;-webkit-appearance:none;padding-right:40px}
-.entry-account-select>svg{position:absolute;right:12px;top:50%;transform:translateY(-50%) rotate(90deg);pointer-events:none;color:var(--muted)}
+/* Use the themed in-app picker instead of the platform select menu. */
+.entry-account-type-button{display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left}
+.entry-account-type-button>svg{flex:none;margin-right:4px;transform:rotate(90deg);color:var(--muted)}
