@@ -97,10 +97,11 @@ export function initTagMerchant(): void {
 
         el.querySelector('#tm-shops')!.innerHTML = merchants.length ? merchants.map((m) => `
           <div class="tm-manage-row">
-            <button class="row tm-open" data-open-shop="${m.id}">
-              <span class="e-ic sm">${iconHtml('ic-shop', 17)}</span>${esc(m.name)}
+            <button class="row tm-open tm-shop-open" data-open-shop="${m.id}">
+              <span class="e-ic sm">${iconHtml('ic-shop', 17)}</span>
+              <span class="tm-shop-name">${esc(m.name)}</span>
               <span class="row-note">用过 ${m.useCount} 次</span>
-              <span class="chev" style="margin-left:auto">${iconHtml('ic-right', 15)}</span>
+              <span class="chev">${iconHtml('ic-right', 15)}</span>
             </button>
             <button class="icon-btn tm-edit" data-edit-shop="${m.id}" aria-label="编辑商家 ${esc(m.name)}">${iconHtml('ic-pen', 16)}</button>
           </div>`).join('')

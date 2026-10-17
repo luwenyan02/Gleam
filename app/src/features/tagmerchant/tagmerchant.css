@@ -9,6 +9,9 @@
 .tm-sheet-head .sheet-title{flex:1}
 .tm-manage-row{display:flex;align-items:center;gap:4px;min-width:0}
 .tm-open{flex:1;min-width:0;text-align:left;overflow-wrap:anywhere}.tm-edit{flex:none}
+.tm-shop-open{display:grid;grid-template-columns:34px minmax(0,1fr) auto 15px}
+.tm-shop-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tm-shop-open .row-note{margin-left:0;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 .tm-tag-dot{display:inline-block;flex:none;width:12px;height:12px;border-radius:50%;background:var(--tag-color)}
 .tm-insight-hero{display:flex;align-items:center;gap:12px;margin:18px 0}
 .tm-insight-hero>div{flex:1;min-width:0}.tm-insight-hero h3{font-size:20px;overflow-wrap:anywhere}.tm-insight-hero p{font-size:13px;color:var(--muted)}

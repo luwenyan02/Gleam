@@ -1,11 +1,65 @@
 """标签/商家详情、颜色、范围、返回与联想的真实浏览器验收。"""
 import os
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 from test_acceptance_fixes import seed
 
 URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4601/')
 OUT = Path(__file__).parents[2] / '.tmp/tests/e2e/entities'
+
+def merchant_list_layout(page, width):
+    merchants = [
+        {'id': 21, 'name': '虚构小店', 'useCount': 7},
+        {'id': 22, 'name': '虚构商家这是导入账单中的很长很长的分店名称', 'useCount': 12},
+        {'id': 23, 'name': 'FictionalMerchantWithAVeryLongUnbrokenBranchName', 'useCount': 999},
+        {'id': 24, 'name': '虚构新店', 'useCount': 0},
+        {'id': 25, 'name': '虚构高频商家', 'useCount': 10000},
+    ]
+    page.evaluate('''async merchants => {
+      const db = await new Promise(resolve => { const r = indexedDB.open('GleamDB'); r.onsuccess = () => resolve(r.result); });
+      const tx = db.transaction('merchants', 'readwrite');
+      const store = tx.objectStore('merchants'); store.clear();
+      for (const merchant of merchants) store.put({...merchant, createdAt: 1, updatedAt: 1});
+      await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); });
+      db.close();
+    }''', merchants)
+    page.reload(); page.locator('#fab').wait_for()
+    page.locator('.tab[data-page="page-mine"]').click()
+    page.locator('#page-mine [data-sub="sp-tags"]').click()
+    expect(page.locator('[data-open-shop]')).to_have_count(len(merchants))
+    for scale in (1, 1.3):
+        page.evaluate('scale => document.documentElement.style.setProperty("--seed-type", String(scale))', scale)
+        page.wait_for_timeout(350)
+        counts = page.locator('#tm-shops .row-note').evaluate_all('''els => els.map(el => {
+          const r = document.createRange(); r.selectNodeContents(el);
+          const rects = [...r.getClientRects()];
+          return {right: r.getBoundingClientRect().right, lines: rects.length};
+        })''')
+        assert max(c['right'] for c in counts) - min(c['right'] for c in counts) <= 1, counts
+        assert all(c['lines'] == 1 for c in counts), counts
+        for merchant in merchants:
+            row = page.locator(f'[data-open-shop="{merchant["id"]}"]')
+            expect(row.locator('.tm-shop-name')).to_have_text(merchant['name'])
+            expect(row.locator('.row-note')).to_have_text(f'用过 {merchant["useCount"]} 次')
+            name = row.locator('.tm-shop-name').bounding_box()
+            count = row.locator('.row-note').bounding_box()
+            arrow = row.locator('.chev').bounding_box()
+            edit = page.locator(f'[data-edit-shop="{merchant["id"]}"]').bounding_box()
+            assert name['width'] > 0 and name['x'] + name['width'] + 8 <= count['x']
+            assert count['x'] + count['width'] + 8 <= arrow['x']
+            assert arrow['x'] + arrow['width'] <= edit['x']
+            assert edit['width'] >= 44 and edit['height'] >= 44
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
+        page.screenshot(path=str(OUT / f'merchant-list-{width}-{scale}.png'), animations='disabled')
+    page.evaluate('document.documentElement.style.removeProperty("--seed-type")')
+    page.locator('[data-edit-shop="22"]').click()
+    expect(page.locator('#tm-name')).to_have_value(merchants[1]['name'])
+    page.locator('#sheet [data-act="close"]').click()
+    page.locator('#sheet.open').wait_for(state='detached')
+    page.locator('[data-open-shop="22"]').click()
+    expect(page.locator('.tm-insight-hero h3')).to_have_text(merchants[1]['name'])
+    page.locator('#sp-entity-insight .sub-head [data-act="back"]').click()
+    expect(page.locator('#sp-tags[aria-hidden="false"] [data-open-shop]')).to_have_count(len(merchants))
 
 def run(page, width):
     errors = []
@@ -56,6 +110,8 @@ def run(page, width):
     assert page.locator('[data-note-idx],#note-suggest').count() == 0
     assert page.locator('#note').input_value() == '虚构'
     page.locator('#sheet-close').click()
+    page.locator('#sheet.open').wait_for(state='detached')
+    merchant_list_layout(page, width)
     assert not errors, errors
 
 if __name__ == '__main__':
