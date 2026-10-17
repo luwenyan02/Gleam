@@ -1,7 +1,7 @@
 """Regression gates from the September acceptance audit; all data is fictional."""
 import os
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 
 URL=os.environ.get('GLEAM_E2E_URL','http://127.0.0.1:4601/')
 SHOTS=Path(os.environ.get('GLEAM_E2E_SCREENSHOTS',Path(__file__).parents[2]/'.tmp/tests/e2e/screenshots'))
@@ -61,7 +61,10 @@ def reimburse(page):
     page.locator('#sp-search .sub-head [data-act="back"]').click();page.locator('#sp-search').wait_for(state='detached')
     page.locator('.tab[data-page="page-acct"]').click();page.locator('[data-acct]').first.click();page.locator('.account-flow-total').wait_for()
     assert '60.00' in page.locator('.account-flow-total').inner_text()
-    assert '0.00' in page.locator('.account-month').nth(1).locator('.account-month-balance').inner_text()
+    # Only months with transactions are listed; this fixture has one active month.
+    months=page.locator('.account-month')
+    expect(months).to_have_count(1)
+    expect(months.first.locator('.account-month-balance .num')).to_have_text('-40.00')
     page.reload();page.wait_for_selector('#fab');seed(page,received=6000,income=True);report(page)
     # 首页时间线也会展示只读到账行；此处验收搜索下钻结果，需限定在搜索结果内。
     page.locator('[data-summary-type="income"]').click();page.locator('#sr-results [data-reimbursement]').wait_for()

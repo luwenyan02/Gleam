@@ -129,7 +129,8 @@ def main() -> int:
             labels = page.locator('#sp-settings .sub-body>section.card').evaluate_all(
                 "els => els.map(el => el.getAttribute('aria-label'))"
             )
-            assert labels == ['记账偏好', '备份', '数据', 'AI 记账', '百炼短语音', '通知', '外观', '安全', '关于'], f'设置分组或顺序不符：{labels}'
+            assert labels == ['记账偏好', '数据', 'AI 记账', '百炼短语音', '通知', '外观', '安全', '关于'], f'设置分组或顺序不符：{labels}'
+            assert page.locator('#sp-settings [data-freq], #sp-settings [data-sw="ntf-backup"]').count() == 0
             assert '当前标签页会话' not in page.inner_text('#sp-settings section[aria-label="AI 记账"]')
             page.click('#sp-settings [data-act="settings-manual"]')
             page.wait_for_selector('#sheet.open[aria-label="拾光使用手册"]')
