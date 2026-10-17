@@ -1,20 +1,22 @@
 # 构建与 GitHub 发布指南
 
-## v1.11.5 当前构建授权（2026-10-17）
+## v1.11.7 公开安装包更新源（2026-10-17）
 
-用户授权将预览 `b0c892338430fc5dbe9e33560276a7e6a2607260` 合并 main，生成 `1.11.5` / `11105` 原 F979 证书签名安装包供手机测试。须以最终 main 完整 CI 的 APK 和同次网页资源进行签名与核验；本轮不创建正式 Release。GitHub 当前最新正式版仍为 v1.11.1，因此本包配置 Token 后应显示无更高版本；后续须发布更高版本的完整附件才能测试应用内下载升级。
+用户同意源码保持私有，单独使用公开的 `luwenyan02/Gleam-Releases` 存放安装包与版本说明，并生成无需手机 Token 的新版。版本为 `1.11.7` / `11107`，沿用原 F979 证书；最终签名包须来自同一最终 main 提交的成功 CI。公开仓库不得上传源码、CI 诊断文件、凭据或签名材料，只发布已核验 APK 与 SHA-256。
+
+此前 v1.11.6 已在私有源码仓库正式发布；v1.11.5/1.11.6 仍使用私有更新源，需要先手动覆盖安装 v1.11.7 才能使用匿名检查更新。此说明不表示手机覆盖安装已验收。
 
 ## Android 应用内检查新版
 
 入口为「我的 → 关于拾光」，或「设置 → 关于拾光 → 检查新版」。仅 Android 提供，点击检查才访问 GitHub，不在启动时自动检查。
 
-仓库保持私有。用户在 GitHub 创建 Fine-grained personal access token，Repository access 只选择 `luwenyan02/Gleam`，Repository permissions 的 Contents 设为 Read-only（Metadata 按 GitHub 默认只读），并选择合适有效期。在 App 的「GitHub 访问设置」填入，点击「保存并验证」；过期后在此替换。不要把 Token 发到聊天、写入 APK 或加入 Git。Token 由 Android Keystore 加密，仅供原生更新通道读取，不包含在 `.skbak` 备份中。
+源码仓库 `luwenyan02/Gleam` 保持私有；安装包仓库 `luwenyan02/Gleam-Releases` 公开。App 匿名访问公开仓库，不要求填写 Token，也不内置发布凭据。打开更新面板时会清理旧版本保存的更新 Token，不读取其明文；清理失败不阻止匿名检查。
 
-更新源为该仓库 `/releases/latest`，只使用正式 Release。每次发布递增 `package.json` 的三段版本（minor/patch 均小于 100，与现有 Android versionCode 规则一致），标签为 `vX.Y.Z`，并同时附上原 F979 证书签名的 `Gleam-vX.Y.Z.apk` 和 `Gleam-vX.Y.Z.apk.sha256`。校验文件使用 `sha256sum` 格式，文件名必须与 APK 一致；不能使用 CI 无签名包。先在草稿中上传完整附件，再将 Release 正式发布并设为 latest，避免用户检查时看到不完整附件。此说明不自动授权创建或改动 Release。
+更新源为 `https://api.github.com/repos/luwenyan02/Gleam-Releases/releases/latest`，只使用正式 Release。每次发布递增 `package.json` 的三段版本（minor/patch 均小于 100，与现有 Android versionCode 规则一致），标签为 `vX.Y.Z`，并同时附上原 F979 证书签名的 `Gleam-vX.Y.Z.apk` 和 `Gleam-vX.Y.Z.apk.sha256`。校验文件使用 `sha256sum` 格式，文件名必须与 APK 一致；不能使用 CI 无签名包。先在草稿中上传完整附件，再将 Release 正式发布并设为 latest，避免用户检查时看到不完整附件。此说明不自动授权创建或改动 Release。
 
-App 比较手机实际安装的 versionCode，只接受更高版本。下载经原生 HTTPS 通道；Token 仅发送给固定 GitHub API，不转发给附件 CDN。下载至应用缓存，最多 150 MB，核验文件大小、SHA-256、包名、版本、当前签名和原 F979 签名；取消或失败清理半成品。点击「安装新版」后交给 Android 系统确认；若系统要求允许此来源安装，授权后返回再点安装。拒绝或取消安装不会自动重试，也不表示更新成功。关闭/重启后可重新检查和下载，缓存不能当作持久备份。
+App 比较手机实际安装的 versionCode，只接受更高版本。下载经原生 HTTPS 通道；GitHub API 与附件 CDN 请求均不发送凭据。下载至应用缓存，最多 150 MB，核验文件大小、SHA-256、包名、版本、当前签名和原 F979 签名；取消或失败清理半成品。点击「安装新版」后交给 Android 系统确认；若系统要求允许此来源安装，授权后返回再点安装。拒绝或取消安装不会自动重试，也不表示更新成功。关闭/重启后可重新检查和下载，缓存不能当作持久备份。
 
-真实私有 Token 下载、安装来源授权及覆盖安装仍需 Android 手机验收；浏览器模拟桥和 JVM 校验测试不能替代这一步。
+公开附件下载、安装来源授权及覆盖安装仍需 Android 手机验收；浏览器模拟桥和 JVM 校验测试不能替代这一步。
 
 通过 GitHub 维护源码与文档。仅在获得发布授权后交付最终合并提交对应的 Android 安装包；安装包与校验文件通过 GitHub Releases 分发，不进入源码历史。环境维护不会补发历史版本或调整历史 Release。
 

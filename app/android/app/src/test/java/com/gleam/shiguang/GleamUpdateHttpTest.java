@@ -17,16 +17,26 @@ public class GleamUpdateHttpTest {
         if(location!=null) result.header("Location",location);
         return result.build();
     }
-    @Test public void authenticatesOnlyTheFirstApiHop() throws Exception {
+    @Test public void downloadsAnonymouslyOnEveryHop() throws Exception {
         List<Request> requests=new ArrayList<>();
         OkHttpClient client=new OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).addInterceptor(chain->{
             Request request=chain.request(); requests.add(request);
             return requests.size()==1 ? response(request,302,"https://release-assets.githubusercontent.com/example") : response(request,200,null);
         }).build();
-        try(Response ignored=GleamUpdateHttp.get(client,guard,GleamUpdateRelease.API+"/assets/21","synthetic_readonly_token",true)) {}
+        try(Response ignored=GleamUpdateHttp.get(client,guard,GleamUpdateRelease.API+"/assets/21",true)) {}
         assertEquals(2,requests.size());
-        assertEquals("Bearer synthetic_readonly_token",requests.get(0).header("Authorization"));
+        assertNull(requests.get(0).header("Authorization"));
         assertNull(requests.get(1).header("Authorization"));
+    }
+    @Test public void checksPublicReleasesWithoutCredentials() throws Exception {
+        OkHttpClient client=new OkHttpClient.Builder().addInterceptor(chain->{
+            Request request=chain.request();
+            assertEquals("https://api.github.com/repos/luwenyan02/Gleam-Releases/releases/latest",request.url().toString());
+            assertNull(request.header("Authorization"));
+            assertEquals("application/vnd.github+json",request.header("Accept"));
+            return response(request,200,null);
+        }).build();
+        try(Response ignored=GleamUpdateHttp.get(client,guard,GleamUpdateRelease.API+"/latest",false)) {}
     }
     @Test public void forbidsUntrustedRedirectsAndClassifiesAuthFailures() throws Exception {
         for(int status:new int[]{302,401,403,404,429,500}) {
@@ -34,16 +44,16 @@ public class GleamUpdateHttpTest {
             OkHttpClient client=new OkHttpClient.Builder().followRedirects(false).addInterceptor(chain->{
                 requests.add(chain.request()); return response(chain.request(),status,"https://evil.example/steal");
             }).build();
-            try { GleamUpdateHttp.get(client,guard,GleamUpdateRelease.API+"/assets/21","synthetic_token",true); fail(); }
+            try { GleamUpdateHttp.get(client,guard,GleamUpdateRelease.API+"/assets/21",true); fail(); }
             catch(GleamUpdateHttp.Failure error) {
                 assertEquals(status==302 ? "DOWNLOAD_SOURCE" : status==401 ? "AUTH" : status==404 ? "NOT_FOUND" : status==403 || status==429 ? "FORBIDDEN" : "NETWORK",error.code);
             }
             assertEquals(1,requests.size());
         }
     }
-    @Test public void neverSendsTokenToAnArbitraryInitialUrl() throws Exception {
+    @Test public void rejectsAnArbitraryInitialUrl() throws Exception {
         OkHttpClient client=new OkHttpClient.Builder().addInterceptor(chain->{ fail("Network must not be called"); return null; }).build();
-        try { GleamUpdateHttp.get(client,guard,"https://api.github.com/repos/other/repo/releases/latest","synthetic_token",false); fail(); }
+        try { GleamUpdateHttp.get(client,guard,"https://api.github.com/repos/other/repo/releases/latest",false); fail(); }
         catch(GleamUpdateHttp.Failure error) { assertEquals("DOWNLOAD_SOURCE",error.code); }
     }
 }

@@ -7,7 +7,7 @@ import { appUpdate, supportsAppUpdate, updateError, type AppUpdate } from './app
 
 export function openAbout(info: AppVersionInfo): void {
   const android = supportsAppUpdate();
-  let alive = true, busy = false, ready = false, hasToken = false, downloaded = false;
+  let alive = true, busy = false, ready = false, downloaded = false;
   let requestId = '';
   let update: AppUpdate | undefined;
   const events = new AbortController();
@@ -16,8 +16,6 @@ export function openAbout(info: AppVersionInfo): void {
     onClose() {
       alive = false; events.abort();
       if (busy && requestId) void appUpdate.cancel({ requestId }).catch(() => {});
-      const input = document.querySelector<HTMLInputElement>('#update-token');
-      if (input) input.value = '';
     },
     render(el) {
       el.innerHTML = `<div class="sheet-head"><h3 class="sheet-title">关于拾光</h3><button class="icon-btn" data-update-close aria-label="关闭关于拾光">${iconHtml('ic-close')}</button></div>
@@ -32,35 +30,23 @@ export function openAbout(info: AppVersionInfo): void {
               <button class="btn primary" data-update-install hidden>安装新版</button>
             </section>
             <button class="btn" data-update-cancel hidden>取消操作</button>
-            <details data-update-config><summary>GitHub 访问设置</summary>
-              <p class="sub">更新来源：luwenyan02/Gleam 的正式 Release。</p>
-              <p class="sub">使用 Fine-grained Token，仅选择 Gleam 仓库，将 Contents 设为 Read-only。Token 仅在本机加密保存，不进入备份。</p>
-              <label for="update-token">只读 GitHub Token</label>
-              <input id="update-token" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="填写 Token" disabled>
-              <div class="about-token-actions"><button class="btn" data-update-save disabled>保存并验证</button><button class="btn" data-update-clear hidden>移除 Token</button></div>
-            </details>
+
           </div>` : ''}
         </div>`;
       el.querySelector('[data-update-close]')!.addEventListener('click', closeSheet, { signal: events.signal });
       if (!android) return;
       const find = <T extends HTMLElement>(name: string) => el.querySelector<T>(`[data-update-${name}]`)!;
-      const token = el.querySelector<HTMLInputElement>('#update-token')!;
       const status = (text: string) => { if (alive) find('status').textContent = text; };
       const sync = () => {
         if (!alive) return;
-        find<HTMLButtonElement>('check').disabled = busy || !ready || !hasToken;
+        find<HTMLButtonElement>('check').disabled = busy || !ready;
         find<HTMLButtonElement>('check').textContent = busy ? '处理中…' : '检查新版';
-        token.disabled = busy || !ready;
-        find<HTMLButtonElement>('save').disabled = busy || !ready || !token.value.trim();
-        find<HTMLButtonElement>('clear').disabled = busy || !ready;
-        find('clear').hidden = !hasToken;
         find('cancel').hidden = !busy;
         find('release').hidden = !update?.available;
         find<HTMLButtonElement>('download').disabled = busy;
         find('download').hidden = downloaded;
         find<HTMLButtonElement>('install').disabled = busy;
         find('install').hidden = !downloaded;
-        token.placeholder = hasToken ? '已保存，填写新 Token 可替换' : '填写 Token';
       };
       const run = async (text: string, action: (id: string) => Promise<void>) => {
         if (busy || !ready) return;
@@ -69,19 +55,6 @@ export function openAbout(info: AppVersionInfo): void {
         catch (error) { status(updateError(error)); }
         finally { busy = false; sync(); }
       };
-      token.addEventListener('input', sync, { signal: events.signal });
-      find('save').addEventListener('click', () => void run('正在验证仓库读取权限…', async id => {
-        await appUpdate.saveToken({ requestId: id, token: token.value.trim() });
-        if (!alive) return;
-        token.value = ''; hasToken = true; update = undefined; downloaded = false;
-        status('Token 已保存，可以检查新版'); find<HTMLDetailsElement>('config').open = false;
-      }), { signal: events.signal });
-      find('clear').addEventListener('click', () => void run('正在移除 Token…', async id => {
-        await appUpdate.clearToken({ requestId: id });
-        if (!alive) return;
-        token.value = ''; hasToken = false; update = undefined; downloaded = false;
-        status('Token 已移除');
-      }), { signal: events.signal });
       find('check').addEventListener('click', () => void run('正在检查 GitHub 正式发布…', async id => {
         update = undefined; downloaded = false; sync();
         const result = await appUpdate.check({ requestId: id });
@@ -109,11 +82,10 @@ export function openAbout(info: AppVersionInfo): void {
           void appUpdate.cancel({ requestId }).catch(error => status(updateError(error)));
         }
       }, { signal: events.signal });
-      void appUpdate.configuration().then(config => {
+      void appUpdate.configuration().then(() => {
         if (!alive) return;
-        ready = true; hasToken = config.hasToken;
-        find<HTMLDetailsElement>('config').open = !hasToken;
-        status(hasToken ? '点击检查 GitHub 上的新版安装包' : '请先配置只读 GitHub Token'); sync();
+        ready = true;
+        status('点击检查新版安装包'); sync();
       }).catch(error => status(updateError(error)));
     },
   });
