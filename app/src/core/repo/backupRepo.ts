@@ -59,6 +59,16 @@ export function countDump(dump: TableDump): Record<string, number> {
 export function sanitizeDumpForBackup(dump: TableDump): TableDump {
   const settings = (dump.settings ?? []).map((row) => {
     const r = row as { key: string; value: unknown };
+    if (r.key === 'cloud.email.token') return { ...r, value: '' };
+    if (r.key === 'cloud.email') {
+      const cfg = r.value as Record<string, unknown> | null;
+      let endpoint = '';
+      try {
+        const url = new URL(String(cfg?.endpoint ?? ''));
+        if (url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash) endpoint = url.href.replace(/\/$/, '');
+      } catch { /* 不转存备份中夹带的无效地址或凭据。 */ }
+      return { ...r, value: { endpoint, recipient: typeof cfg?.recipient === 'string' ? cfg.recipient : '' } };
+    }
     if (r.key === 'ai.apiKey' || r.key === 'voice.bailian.apiKey') return { ...r, value: '' };
     if (r.key === 'life.aiEnabled') return { ...r, value: false };
     if (r.key === 'cloud.webdav') return { ...r, value: { ...(r.value as Record<string, unknown>), password: '' } };

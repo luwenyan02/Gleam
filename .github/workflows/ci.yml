@@ -71,6 +71,7 @@ jobs:
           cache-dependency-path: app/package-lock.json
       - run: npm ci --ignore-scripts
       - run: python3 ../scripts/test-cloud-env.py
+      - run: python3 -m unittest discover -s ../services/mail-backup -p 'test_*.py' -v
       - run: npm audit --audit-level=high
       - run: npm run check:secrets
       - run: npm run test:unit

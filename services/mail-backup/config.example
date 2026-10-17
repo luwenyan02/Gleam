@@ -1,0 +1,9 @@
+# Environment-file template. Fill a private copy on your own server.
+GLEAM_MAIL_SMTP_USER=
+GLEAM_MAIL_SMTP_AUTH_CODE=
+GLEAM_MAIL_TO=
+GLEAM_MAIL_TOKEN=
+# Exact web origins, separated by commas; no trailing slash or wildcard.
+GLEAM_MAIL_ALLOWED_ORIGINS=http://localhost:5173,https://localhost
+GLEAM_MAIL_PORT=8788
+GLEAM_MAIL_STATE=/var/lib/gleam-mail/requests.sqlite3

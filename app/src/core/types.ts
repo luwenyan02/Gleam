@@ -402,7 +402,7 @@ export interface BackupRecord extends Timestamps {
   fileName: string;
   /** 文件大小（字节） */
   size: number;
-  provider: 'aliyun' | 'baidu' | 'local' | 'webdav' | 's3';
+  provider: 'aliyun' | 'baidu' | 'local' | 'webdav' | 's3' | 'email';
   entryCount: number;
   encrypted: boolean;
 }
@@ -505,6 +505,8 @@ export const SETTING_DEFAULTS = {
   /** 生活 AI 必须由用户在本机显式开启；备份恢复不会继承开启状态。 */
   'life.aiEnabled': false as boolean,
   /* ── [R06] 云备份设置键 ── */
+  /** 邮箱发送服务配置；访问令牌仅存 SecretStore，QQ 授权码仅存发送服务。 */
+  'cloud.email': { endpoint: '', recipient: '' } as { endpoint: string; recipient: string },
   /** 云备份通道：无 / WebDAV / S3 兼容对象存储 */
   'cloud.provider': 'none' as 'none' | 'webdav' | 's3',
   /** WebDAV 非敏感配置；password 字段仅作旧版迁移占位。 */

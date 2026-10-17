@@ -22,6 +22,7 @@ import { backupFileName, buildSkbak, parseSkbak, sniffEncrypted, type SkbakManif
 import { saveBlobFile } from './download';
 import { exportMonthExcel } from './excel';
 import { mountCloudBackup } from './cloudBackup';
+import { mountEmailBackup } from './emailBackup';
 import { openImportWizardFor } from '../import/import';
 import type { ImportSource } from '../import/wacai';
 import { openMonthWheel } from '../../shared/dateTimeWheel';
@@ -94,6 +95,7 @@ async function refresh(): Promise<void> {
 
     <h3 class="bk-group-title">云端配置</h3>
     <section class="card list" id="cloud-backup" aria-label="云端备份"></section>
+    <section class="card" id="email-backup" aria-label="邮箱备份"></section>
 
     <section class="card" aria-label="备份提醒设置">
       <h3 class="card-title">备份提醒</h3>
@@ -124,7 +126,7 @@ async function refresh(): Promise<void> {
       <h3 class="card-title" style="padding:10px 2px 0">备份历史</h3>
       ${records.length ? records.map((r) => `
         <div class="row"><span class="e-ic neutral">${iconHtml(r.encrypted ? 'ic-lock' : 'ic-file', 18)}</span>
-          <div class="e-main"><p class="e-title">${esc(r.fileName)}</p><p class="e-meta">${fmtSize(r.size)} · ${r.provider === 'webdav' ? '已上传 WebDAV' : r.provider === 's3' ? '已上传 S3' : '已下载到本机'} · ${r.entryCount} 条账单${r.encrypted ? ' · 已加密' : ''}</p></div>
+          <div class="e-main"><p class="e-title">${esc(r.fileName)}</p><p class="e-meta">${fmtSize(r.size)} · ${r.provider === 'email' ? '邮件服务器已接收' : r.provider === 'webdav' ? '已上传 WebDAV' : r.provider === 's3' ? '已上传 S3' : '已下载到本机'} · ${r.entryCount} 条账单${r.encrypted ? ' · 已加密' : ''}</p></div>
         </div>`).join('') : '<p class="sub" style="padding:8px 2px">还没有备份记录，点上方「立即备份」生成第一份</p>'}
       <p class="tiny" style="padding:6px 2px 10px">恢复为全量替换：会先自动创建当前数据的本地快照，7 天内可撤销</p>
     </section>
@@ -156,6 +158,8 @@ async function refresh(): Promise<void> {
 
   // [R06] 云端备份区挂载（内部自行异步加载配置与云端列表）
   const cloudHost = el.querySelector<HTMLElement>('#cloud-backup');
+  const emailHost = el.querySelector<HTMLElement>('#email-backup');
+  if (emailHost) mountEmailBackup(emailHost, () => void refresh());
   if (cloudHost) {
     mountCloudBackup(cloudHost, {
       onChanged: () => void refresh(),

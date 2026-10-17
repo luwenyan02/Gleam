@@ -26,6 +26,10 @@
 .cb-file .restore-link{margin-left:8px}
 .cb-file .restore-link:first-of-type{margin-left:auto}
 .cb-file .cb-del{color:var(--danger);background:color-mix(in oklab, var(--danger) 10%, var(--surface))}
+.eb-hint{margin:8px 0 12px}
+.eb-destination{overflow-wrap:anywhere;margin-bottom:12px}
+.eb-result{margin-top:12px;overflow-wrap:anywhere}
+#email-backup .cb-actions .btn{min-height:44px}
 
 /* 备份口令抽屉 */
 .bk-form .note{width:100%;border:1px solid var(--border);border-radius:calc(var(--r) - 4px);background:var(--surface);padding:11px 12px;font-size:13.5px;margin-bottom:10px}
