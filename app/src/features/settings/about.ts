@@ -34,10 +34,9 @@ export function openAbout(info: AppVersionInfo): void {
             <button class="btn" data-update-cancel hidden>取消操作</button>
             <details data-update-config><summary>GitHub 访问设置</summary>
               <p class="sub">更新来源：luwenyan02/Gleam 的正式 Release。</p>
-              <p class="sub">使用 Fine-grained Token，仅选择 Gleam 仓库，将 Contents 设为 Read-only。Token 仅在本机加密保存，不进入备份。</p>
               <label for="update-token">只读 GitHub Token</label>
-              <div class="about-token-input"><input id="update-token" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="255" placeholder="粘贴或填写 Token" disabled><button class="btn" type="button" data-update-paste disabled>粘贴</button></div>
-              <div class="about-token-actions"><button class="btn" data-update-save disabled>保存并验证</button><button class="btn" data-update-clear hidden>移除 Token</button></div>
+              <div class="about-token-input"><input id="update-token" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="255" placeholder="点击右侧粘贴" readonly disabled><button class="btn secondary" type="button" data-update-paste disabled>粘贴</button></div>
+              <div class="about-token-actions"><button class="btn primary" data-update-save disabled>保存并验证</button><button class="btn secondary" data-update-clear hidden>移除 Token</button></div>
             </details>
           </div>` : ''}
         </div>`;
@@ -61,7 +60,7 @@ export function openAbout(info: AppVersionInfo): void {
         find('download').hidden = downloaded;
         find<HTMLButtonElement>('install').disabled = busy;
         find('install').hidden = !downloaded;
-        token.placeholder = hasToken ? '已保存，填写新 Token 可替换' : '粘贴或填写 Token';
+        token.placeholder = hasToken ? '已保存，可粘贴替换' : '点击右侧粘贴';
       };
       const run = async (text: string, action: (id: string) => Promise<void>) => {
         if (busy || !ready) return;
@@ -70,7 +69,6 @@ export function openAbout(info: AppVersionInfo): void {
         catch (error) { status(updateError(error)); }
         finally { busy = false; sync(); }
       };
-      token.addEventListener('input', sync, { signal: events.signal });
       find('paste').addEventListener('click', () => void run('正在粘贴…', async () => {
         const result = await appUpdate.readClipboard();
         if (!alive) return;
@@ -121,7 +119,7 @@ export function openAbout(info: AppVersionInfo): void {
         if (!alive) return;
         ready = true; hasToken = config.hasToken;
         find<HTMLDetailsElement>('config').open = !hasToken;
-        status(hasToken ? '点击检查 GitHub 上的新版安装包' : '请先配置只读 GitHub Token'); sync();
+        status(hasToken ? '' : '请先配置只读 GitHub Token'); sync();
       }).catch(error => status(updateError(error)));
     },
   });

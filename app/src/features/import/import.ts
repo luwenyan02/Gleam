@@ -5,6 +5,7 @@
  * 解析规则见 wacai.ts；导入经 entryRepo.importEntriesBatch 复用硬规则驱动余额。
  * 重复预检：相同时间、类型、金额和账户仅作为疑似重复，默认跳过，用户可逐条确认保留。
  */
+import { categoryIcon } from '../../core/categoryIcons';
 import './import.css';
 import { esc } from '../../core/esc';
 import { registerSubpage, openSubpage, closeSubpage } from '../shell/router';
@@ -146,8 +147,8 @@ function matchCategory(type: 'expense' | 'income', name: string, expense: Catego
  */
 async function createCategory(plan: CatPlan, expense: Category[], income: Category[]): Promise<number> {
   if (plan.type === 'income') {
-    const id = await addCategory({ name: plan.name, icon: 'ic-coin', kind: 'income' });
-    income.push({ id, name: plan.name, icon: 'ic-coin', kind: 'income' } as Category);
+    const id = await addCategory({ name: plan.name, icon: categoryIcon({ name: plan.name, kind: 'income' }), kind: 'income' });
+    income.push({ id, name: plan.name, icon: categoryIcon({ name: plan.name, kind: 'income' }), kind: 'income' } as Category);
     return id;
   }
   const [big, small] = plan.name.includes('/')
@@ -155,14 +156,14 @@ async function createCategory(plan: CatPlan, expense: Category[], income: Catego
     : ['其他', plan.name];
   let bigCat = expense.find((c) => c.parentId == null && c.name === big);
   if (!bigCat) {
-    const bigId = await addCategory({ name: big, icon: 'ic-tag', kind: 'expense' });
-    bigCat = { id: bigId, name: big, icon: 'ic-tag', kind: 'expense' } as Category;
+    const bigId = await addCategory({ name: big, icon: categoryIcon({ name: big, kind: 'expense' }), kind: 'expense' });
+    bigCat = { id: bigId, name: big, icon: categoryIcon({ name: big, kind: 'expense' }), kind: 'expense' } as Category;
     expense.push(bigCat);
   }
   const exist = expense.find((c) => c.parentId === bigCat!.id && c.name === small);
   if (exist) return exist.id;
-  const id = await addCategory({ name: small, icon: 'ic-tag', kind: 'expense', parentId: bigCat.id });
-  expense.push({ id, name: small, icon: 'ic-tag', kind: 'expense', parentId: bigCat.id } as Category);
+  const id = await addCategory({ name: small, icon: categoryIcon({ name: small, kind: 'expense' }), kind: 'expense', parentId: bigCat.id });
+  expense.push({ id, name: small, icon: categoryIcon({ name: small, kind: 'expense' }), kind: 'expense', parentId: bigCat.id } as Category);
   return id;
 }
 

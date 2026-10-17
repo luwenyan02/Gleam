@@ -13,13 +13,14 @@ export const ICON_IDS = [
   'ic-set', 'ic-cal', 'ic-bolt', 'ic-mic', 'ic-repeat', 'ic-del', 'ic-loan-in', 'ic-loan-out',
   'ic-repay', 'ic-collect', 'ic-sun', 'ic-moon', 'ic-fruit', 'ic-cone', 'ic-park', 'ic-shirt',
   'ic-bottle', 'ic-tag', 'ic-shop', 'ic-trash', 'ic-eye',
-  'ic-ai',
+  'ic-ai', 'ic-plane',
 ] as const;
 
 export type IconId = (typeof ICON_IDS)[number];
 
 const SPRITE = `<svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
+    <symbol id="ic-plane" viewBox="0 0 24 24"><path d="m3 10 8 2 7-7a2.1 2.1 0 0 1 3 3l-7 7 2 6-2 1-4-5-5-4z"/><path d="m10 17-3 3"/></symbol>
     <symbol id="ic-home" viewBox="0 0 24 24"><path d="M4 11.2 12 4.5l8 6.7V19a1 1 0 0 1-1 1h-4.6v-5.2H9.6V20H5a1 1 0 0 1-1-1z"/></symbol>
     <symbol id="ic-chart" viewBox="0 0 24 24"><path d="M5.5 20v-8M12 20V5M18.5 20v-5.5M3.5 20h17"/></symbol>
     <symbol id="ic-book" viewBox="0 0 24 24"><path d="M5 5A2 2 0 0 1 7 3h12v15.5H7A2 2 0 0 0 5 20.5z"/><path d="M5 18.5A2 2 0 0 1 7 16.5h12"/></symbol>

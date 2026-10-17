@@ -14,3 +14,7 @@
 .about-token-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.about-token-actions .btn{flex:1 1 130px}
 
 .about-token-input{display:flex;align-items:center;gap:8px}.about-token-input input{flex:1;min-width:0;user-select:text;-webkit-user-select:text;-webkit-touch-callout:default}.about-token-input .btn{flex:none;width:auto;min-width:64px;padding:10px 12px}
+
+.about-status:empty{display:none}
+.about-update .btn.secondary{background:var(--surface);border:1px solid var(--border);color:var(--fg)}
+.about-update .btn.secondary:disabled{opacity:.45;cursor:default}

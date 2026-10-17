@@ -1,4 +1,5 @@
 import { iconHtml } from '../../assets/icons';
+import { categoryIcon } from '../../core/categoryIcons';
 import { esc } from '../../core/esc';
 import type { Category } from '../../core/types';
 
@@ -13,7 +14,7 @@ export function selectQuickCategories(
 
 export function renderCategoryButton(category: Category, selected: boolean): string {
   return `<button class="cat${selected ? ' sel' : ''}" data-id="${category.id}" type="button" role="option" aria-selected="${selected}">
-    <span class="cat-ic">${iconHtml(category.icon)}</span><span>${esc(category.name)}</span></button>`;
+    <span class="cat-ic">${iconHtml(categoryIcon(category))}</span><span>${esc(category.name)}</span></button>`;
 }
 
 export function renderCategoryToggle(expanded: boolean): string {

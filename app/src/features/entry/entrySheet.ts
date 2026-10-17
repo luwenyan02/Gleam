@@ -8,6 +8,7 @@
  */
 import { openEntryAccountPicker } from './entryAccountPicker';
 import { iconHtml } from '../../assets/icons';
+import { categoryIcon } from '../../core/categoryIcons';
 import { esc } from '../../core/esc';
 import { parseYuanToFen, formatFen } from '../../core/money';
 import {
@@ -494,7 +495,7 @@ function updatePick(): void {
     return;
   }
   const cat = findCategory(c.categoryId);
-  q('#pick-ic').innerHTML = iconHtml(cat?.icon ?? 'ic-coin');
+  q('#pick-ic').innerHTML = iconHtml(cat ? categoryIcon(cat) : 'ic-coin');
   q('#pick-name').textContent = cat?.name ?? '选择分类';
 }
 
