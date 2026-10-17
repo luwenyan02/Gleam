@@ -11,12 +11,13 @@ OUT = Path(__file__).parents[2] / '.tmp/tests/e2e/app-update'
 MOCK = MOCK_NATIVE + r'''
 window.__updateCalls=[]; window.__updateHasToken=false; window.__updateAvailable=true;
 window.__updateError=''; window.__updateHold=false; window.__updatePermission=true;
-window.Capacitor.PluginHeaders.push({name:'GleamUpdate',methods:['configuration','saveToken','clearToken','check','download','install','cancel'].map(name=>({name,rtype:'promise'}))});
+window.Capacitor.PluginHeaders.push({name:'GleamUpdate',methods:['configuration','readClipboard','saveToken','clearToken','check','download','install','cancel'].map(name=>({name,rtype:'promise'}))});
 const originalUpdatePromise=window.Capacitor.nativePromise;
 window.Capacitor.nativePromise=async function(plugin,method,options={}) {
   if(plugin!=='GleamUpdate') return originalUpdatePromise.call(this,plugin,method,options);
   window.__updateCalls.push({method,requestId:options.requestId});
   if(method==='configuration') return {hasToken:window.__updateHasToken};
+  if(method==='readClipboard') { if(window.__clipboardError) throw {code:window.__clipboardError}; return {text:'  synthetic_token_for_offline_tests  '}; }
   if(method==='cancel') { if(window.__rejectUpdate) window.__rejectUpdate({code:'CANCELLED'}); return {}; }
   if(window.__updateError) throw {code:window.__updateError,message:'PRIVATE_TOKEN_RESPONSE'};
   if(method==='saveToken') {window.__updateHasToken=true; return {};}
@@ -50,7 +51,15 @@ def run(page, width):
     expect(status).to_contain_text('请先配置')
     expect(check).to_be_disabled()
     assert page.evaluate('window.__updateCalls.map(c=>c.method)') == ['configuration']
-    sheet.locator('#update-token').fill('synthetic_token_for_offline_tests')
+    assert sheet.locator('[data-update-paste]').count()==1
+    page.evaluate("window.__clipboardError='CLIPBOARD_EMPTY'")
+    sheet.locator('[data-update-paste]').click(); expect(status).to_contain_text('剪贴板中没有文本')
+    expect(sheet.locator('[data-update-save]')).to_be_disabled()
+    page.evaluate("window.__clipboardError=''")
+    sheet.locator('[data-update-paste]').click()
+    expect(sheet.locator('#update-token')).to_have_value('synthetic_token_for_offline_tests')
+    expect(sheet.locator('#update-token')).to_have_attribute('type','password')
+    assert not any(c['method']=='saveToken' for c in page.evaluate('window.__updateCalls'))
     sheet.locator('[data-update-save]').click()
     expect(status).to_contain_text('Token 已保存')
     expect(sheet.locator('#update-token')).to_have_value('')

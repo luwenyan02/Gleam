@@ -8,6 +8,7 @@ export interface AppUpdate {
   notes?: string;
 }
 interface UpdateBridge {
+  readClipboard(): Promise<{ text: string }>;
   configuration(): Promise<{ hasToken: boolean }>;
   saveToken(options: { requestId: string; token: string }): Promise<void>;
   clearToken(options: { requestId: string }): Promise<void>;
@@ -23,6 +24,9 @@ export const supportsAppUpdate = () => Capacitor.isNativePlatform() && Capacitor
 export function updateError(error: unknown): string {
   const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
   const messages: Record<string, string> = {
+    CLIPBOARD_EMPTY: '剪贴板中没有文本，请先复制 Token',
+    CLIPBOARD_INVALID: '剪贴板内容过长，请只复制 Token',
+    CLIPBOARD_UNAVAILABLE: '无法读取剪贴板，请长按输入框选择粘贴',
     TOKEN_REQUIRED: '请先配置只读 GitHub Token', TOKEN_INVALID: 'Token 格式不正确，请重新填写',
     AUTH: 'Token 已失效或过期，请重新配置',
     FORBIDDEN: 'GitHub 暂时拒绝访问，请检查读取权限或稍后重试',

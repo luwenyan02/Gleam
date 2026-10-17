@@ -36,7 +36,7 @@ export function openAbout(info: AppVersionInfo): void {
               <p class="sub">更新来源：luwenyan02/Gleam 的正式 Release。</p>
               <p class="sub">使用 Fine-grained Token，仅选择 Gleam 仓库，将 Contents 设为 Read-only。Token 仅在本机加密保存，不进入备份。</p>
               <label for="update-token">只读 GitHub Token</label>
-              <input id="update-token" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="填写 Token" disabled>
+              <div class="about-token-input"><input id="update-token" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="255" placeholder="粘贴或填写 Token" disabled><button class="btn" type="button" data-update-paste disabled>粘贴</button></div>
               <div class="about-token-actions"><button class="btn" data-update-save disabled>保存并验证</button><button class="btn" data-update-clear hidden>移除 Token</button></div>
             </details>
           </div>` : ''}
@@ -51,6 +51,7 @@ export function openAbout(info: AppVersionInfo): void {
         find<HTMLButtonElement>('check').disabled = busy || !ready || !hasToken;
         find<HTMLButtonElement>('check').textContent = busy ? '处理中…' : '检查新版';
         token.disabled = busy || !ready;
+        find<HTMLButtonElement>('paste').disabled = busy || !ready;
         find<HTMLButtonElement>('save').disabled = busy || !ready || !token.value.trim();
         find<HTMLButtonElement>('clear').disabled = busy || !ready;
         find('clear').hidden = !hasToken;
@@ -60,7 +61,7 @@ export function openAbout(info: AppVersionInfo): void {
         find('download').hidden = downloaded;
         find<HTMLButtonElement>('install').disabled = busy;
         find('install').hidden = !downloaded;
-        token.placeholder = hasToken ? '已保存，填写新 Token 可替换' : '填写 Token';
+        token.placeholder = hasToken ? '已保存，填写新 Token 可替换' : '粘贴或填写 Token';
       };
       const run = async (text: string, action: (id: string) => Promise<void>) => {
         if (busy || !ready) return;
@@ -70,6 +71,13 @@ export function openAbout(info: AppVersionInfo): void {
         finally { busy = false; sync(); }
       };
       token.addEventListener('input', sync, { signal: events.signal });
+      find('paste').addEventListener('click', () => void run('正在粘贴…', async () => {
+        const result = await appUpdate.readClipboard();
+        if (!alive) return;
+        token.value = result.text.trim();
+        token.focus();
+        status('已粘贴，点击“保存并验证”');
+      }), { signal: events.signal });
       find('save').addEventListener('click', () => void run('正在验证仓库读取权限…', async id => {
         await appUpdate.saveToken({ requestId: id, token: token.value.trim() });
         if (!alive) return;

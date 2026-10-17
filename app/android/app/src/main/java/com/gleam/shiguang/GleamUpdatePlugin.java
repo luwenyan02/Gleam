@@ -1,6 +1,9 @@
 package com.gleam.shiguang;
 
 import android.content.Intent;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
@@ -57,6 +60,20 @@ public final class GleamUpdatePlugin extends Plugin {
                     : error instanceof InterruptedIOException ? "TIMEOUT" : error instanceof IOException ? "NETWORK" : "INVALID";
                 call.reject("更新操作未完成", code);
             } finally { synchronized (GleamUpdatePlugin.this) { if (active==op) active=null; } }
+        });
+    }
+    /** Only invoked by the explicit Paste button; never polls or saves clipboard contents. */
+    @PluginMethod public void readClipboard(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            try {
+                ClipboardManager manager=(ClipboardManager)getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                ClipData clip=manager==null ? null : manager.getPrimaryClip();
+                CharSequence text=clip==null || clip.getItemCount()==0 ? null : clip.getItemAt(0).getText();
+                String value=text==null ? "" : text.toString().trim();
+                if (value.isEmpty()) { call.reject("剪贴板中没有文本", "CLIPBOARD_EMPTY"); return; }
+                if (value.length()>255) { call.reject("剪贴板内容过长", "CLIPBOARD_INVALID"); return; }
+                JSObject result=new JSObject(); result.put("text", value); call.resolve(result);
+            } catch (Exception error) { call.reject("无法读取剪贴板", "CLIPBOARD_UNAVAILABLE"); }
         });
     }
     @PluginMethod public void configuration(PluginCall call) {
