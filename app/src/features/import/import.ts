@@ -162,8 +162,8 @@ async function createCategory(plan: CatPlan, expense: Category[], income: Catego
   }
   const exist = expense.find((c) => c.parentId === bigCat!.id && c.name === small);
   if (exist) return exist.id;
-  const id = await addCategory({ name: small, icon: categoryIcon({ name: small, kind: 'expense' }), kind: 'expense', parentId: bigCat.id });
-  expense.push({ id, name: small, icon: categoryIcon({ name: small, kind: 'expense' }), kind: 'expense', parentId: bigCat.id } as Category);
+  const id = await addCategory({ name: small, icon: categoryIcon({ name: small, kind: 'expense' }, big), kind: 'expense', parentId: bigCat.id });
+  expense.push({ id, name: small, icon: categoryIcon({ name: small, kind: 'expense' }, big), kind: 'expense', parentId: bigCat.id } as Category);
   return id;
 }
 

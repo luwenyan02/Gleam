@@ -6,14 +6,14 @@ from playwright.sync_api import sync_playwright, expect
 URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4617/')
 OUT = Path(__file__).parents[2] / '.tmp/tests/e2e/category-icons'
 CASES = {
-    'expense': [('饮料水果','ic-fruit'), ('羽毛球','ic-pulse'), ('停车费','ic-park'),
-                ('网游电玩','ic-film'), ('家居百货','ic-bottle'), ('夜宵','ic-moon'),
-                ('服饰鞋包','ic-shirt'), ('电子数码','ic-camera'), ('打车','ic-car'),
+    'expense': [('饮料水果','ic-fruit'), ('羽毛球','ic-racket'), ('停车费','ic-park'),
+                ('网游电玩','ic-gamepad'), ('家居百货','ic-basket'), ('夜宵','ic-moon'),
+                ('服饰鞋包','ic-shirt'), ('电子数码','ic-device'), ('打车','ic-car'),
                 ('飞机','ic-plane'), ('地铁','ic-metro'), ('午餐','ic-bowl'),
                 ('晚餐','ic-moon'), ('零食','ic-cone'), ('早餐','ic-sun'),
-                ('保养维修','ic-set'), ('买菜原料','ic-cart'), ('住宿房租','ic-house')],
-    'income': [('利息','ic-coin'), ('报销款','ic-file'), ('公积金','ic-house'),
-               ('工资薪水','ic-brief'), ('其他','ic-wallet'), ('红包','ic-gift'), ('报销','ic-file')],
+                ('保养维修','ic-tools'), ('买菜原料','ic-basket'), ('住宿房租','ic-house'), ('虚构投资项目','ic-chart')],
+    'income': [('利息','ic-percent'), ('报销款','ic-file'), ('公积金','ic-house'),
+               ('工资薪水','ic-brief'), ('其他','ic-wallet'), ('红包','ic-envelope'), ('报销','ic-file')],
 }
 
 def run(page, width):
@@ -24,8 +24,9 @@ def run(page, width):
       const db=await new Promise(resolve=>{const r=indexedDB.open('GleamDB');r.onsuccess=()=>resolve(r.result)});
       const tx=db.transaction('categories','readwrite'), store=tx.objectStore('categories');
       store.clear(); let id=1;
+      store.put({id:1000,name:'投资',kind:'expense',icon:'ic-tag',sortOrder:1000,createdAt:1,updatedAt:1});
       for(const [kind,items] of Object.entries(cases)) for(const [name] of items)
-        store.put({id:id++,name,kind,icon:kind==='expense'?'ic-tag':'ic-coin',sortOrder:id,createdAt:1,updatedAt:1});
+        store.put({id:id++,name,kind,parentId:name==='虚构投资项目'?1000:undefined,icon:kind==='expense'?'ic-tag':'ic-coin',sortOrder:id,createdAt:1,updatedAt:1});
       store.put({id:100,name:'自选图标',kind:'income',icon:'ic-cup',sortOrder:100,createdAt:1,updatedAt:1});
       await new Promise(resolve=>tx.oncomplete=resolve); db.close();
     }''', CASES)

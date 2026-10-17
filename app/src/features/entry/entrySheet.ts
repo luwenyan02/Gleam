@@ -435,6 +435,10 @@ function renderSheet(el: HTMLElement, note: string): void {
 
 const q = <T extends HTMLElement = HTMLElement>(sel: string): T => sheetEl!.querySelector<T>(sel)!;
 
+function categoryParentName(category: Category): string | undefined {
+  return ctx?.expenseTree.find(group => group.parent.id === category.parentId)?.parent.name;
+}
+
 function findCategory(id: number | undefined): Category | undefined {
   if (id == null || !ctx) return undefined;
   for (const g of ctx.expenseTree) {
@@ -495,7 +499,7 @@ function updatePick(): void {
     return;
   }
   const cat = findCategory(c.categoryId);
-  q('#pick-ic').innerHTML = iconHtml(cat ? categoryIcon(cat) : 'ic-coin');
+  q('#pick-ic').innerHTML = iconHtml(cat ? categoryIcon(cat, categoryParentName(cat)) : 'ic-coin');
   q('#pick-name').textContent = cat?.name ?? '选择分类';
 }
 
@@ -542,17 +546,17 @@ function renderCats(): void {
       grid.innerHTML = c.expenseTree.map((group) => {
         const choices = group.children.length ? group.children : [group.parent];
         return `<div class="cat-sec">${esc(group.parent.name)}</div>` +
-          choices.map((cat) => renderCategoryButton(cat, cat.id === c.categoryId)).join('');
+          choices.map((cat) => renderCategoryButton(cat, cat.id === c.categoryId, categoryParentName(cat))).join('');
       }).join('') + renderCategoryToggle(true);
     } else {
       grid.innerHTML = selectQuickCategories(c.quickExpenseCats, findCategory(c.categoryId))
-        .map((cat) => renderCategoryButton(cat, cat.id === c.categoryId)).join('') + renderCategoryToggle(false);
+        .map((cat) => renderCategoryButton(cat, cat.id === c.categoryId, categoryParentName(cat))).join('') + renderCategoryToggle(false);
     }
   } else if (c.type === 'income') {
     const choices = c.showAllCategories
       ? c.incomeCats
       : selectQuickCategories(c.quickIncomeCats, findCategory(c.categoryId));
-    grid.innerHTML = choices.map((cat) => renderCategoryButton(cat, cat.id === c.categoryId)).join('') +
+    grid.innerHTML = choices.map((cat) => renderCategoryButton(cat, cat.id === c.categoryId, categoryParentName(cat))).join('') +
       renderCategoryToggle(c.showAllCategories);
   }
   if (isTransfer) {

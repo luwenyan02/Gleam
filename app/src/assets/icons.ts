@@ -1,8 +1,10 @@
 /**
  * 拾光 · SVG 图标库
- * 原样迁移自原型 index.html（L410-466），共 53 枚 symbol，id 与原型一致。
+ * 基础图标沿用原型，分类专用图标在 categorySymbols.ts 维护。
  * 使用方式：`<svg class="ic"><use href="#ic-wallet"/></svg>`
  */
+
+import { CATEGORY_SYMBOLS } from './categorySymbols';
 
 /** 全部图标 id（供分类管理图标选择器等场景枚举） */
 export const ICON_IDS = [
@@ -14,12 +16,14 @@ export const ICON_IDS = [
   'ic-repay', 'ic-collect', 'ic-sun', 'ic-moon', 'ic-fruit', 'ic-cone', 'ic-park', 'ic-shirt',
   'ic-bottle', 'ic-tag', 'ic-shop', 'ic-trash', 'ic-eye',
   'ic-ai', 'ic-plane',
+  ...Object.keys(CATEGORY_SYMBOLS) as (keyof typeof CATEGORY_SYMBOLS)[],
 ] as const;
 
 export type IconId = (typeof ICON_IDS)[number];
 
 const SPRITE = `<svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
+    ${Object.entries(CATEGORY_SYMBOLS).map(([id, paths]) => `<symbol id="${id}" viewBox="0 0 24 24">${paths}</symbol>`).join('')}
     <symbol id="ic-plane" viewBox="0 0 24 24"><path d="m3 10 8 2 7-7a2.1 2.1 0 0 1 3 3l-7 7 2 6-2 1-4-5-5-4z"/><path d="m10 17-3 3"/></symbol>
     <symbol id="ic-home" viewBox="0 0 24 24"><path d="M4 11.2 12 4.5l8 6.7V19a1 1 0 0 1-1 1h-4.6v-5.2H9.6V20H5a1 1 0 0 1-1-1z"/></symbol>
     <symbol id="ic-chart" viewBox="0 0 24 24"><path d="M5.5 20v-8M12 20V5M18.5 20v-5.5M3.5 20h17"/></symbol>

@@ -12,9 +12,9 @@ export function selectQuickCategories(
   return [selected, ...categories.filter((item) => item.id !== selected.id)].slice(0, limit);
 }
 
-export function renderCategoryButton(category: Category, selected: boolean): string {
+export function renderCategoryButton(category: Category, selected: boolean, parentName?: string): string {
   return `<button class="cat${selected ? ' sel' : ''}" data-id="${category.id}" type="button" role="option" aria-selected="${selected}">
-    <span class="cat-ic">${iconHtml(categoryIcon(category))}</span><span>${esc(category.name)}</span></button>`;
+    <span class="cat-ic">${iconHtml(categoryIcon(category, parentName))}</span><span>${esc(category.name)}</span></button>`;
 }
 
 export function renderCategoryToggle(expanded: boolean): string {
