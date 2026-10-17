@@ -22,6 +22,7 @@ export function openEntryAccountPicker(options: {
     panel.style.height = `${Math.round(options.container.getBoundingClientRect().height * .624)}px`;
     panel.innerHTML = `<div class="entry-account-header">
       <div class="entry-account-heading"><h4>${esc(options.title)}</h4><button type="button" class="entry-account-search-button" data-search aria-label="搜索账户">${iconHtml('ic-search')}</button><span class="entry-account-divider" aria-hidden="true"></span><button type="button" data-add>添加账户</button></div>
+      <div class="entry-account-heading entry-account-create-heading" hidden><h4>添加账户</h4></div>
       <div class="entry-account-search" hidden><input type="search" aria-label="搜索账户" placeholder="搜索账户"><button type="button" data-cancel-search>取消</button></div>
     </div><div class="picker-list" role="listbox" aria-label="${esc(options.title)}"></div>`;
     mask.append(panel); options.container.append(mask);
@@ -35,6 +36,7 @@ export function openEntryAccountPicker(options: {
     requestAnimationFrame(() => panel.classList.add('open'));
     const list = panel.querySelector<HTMLElement>('.picker-list')!;
     const heading = panel.querySelector<HTMLElement>('.entry-account-heading')!;
+    const createHeading = panel.querySelector<HTMLElement>('.entry-account-create-heading')!;
     const search = panel.querySelector<HTMLElement>('.entry-account-search')!;
     const input = search.querySelector('input')!;
     const frequent = rankFrequentAccounts(options.accounts, options.entries, options.type);
@@ -65,14 +67,15 @@ export function openEntryAccountPicker(options: {
     });
     input.addEventListener('input', render);
     panel.querySelector('[data-add]')!.addEventListener('click', () => {
-      heading.hidden = true; search.hidden = true;
-      list.innerHTML = `<form class="entry-account-create"><h4>添加账户</h4>
+      heading.hidden = true; search.hidden = true; createHeading.hidden = false;
+      list.removeAttribute('role');
+      list.innerHTML = `<form class="entry-account-create">
         <label>账户名称<input name="name" maxlength="20" required autocomplete="off"></label>
-        <label>账户类型<select name="group">${(options.groups ?? ACCOUNT_GROUPS.filter(g => options.type !== 'loan' || g !== 'receivable')).map(g => `<option value="${g}">${esc(ACCOUNT_GROUP_NAMES[g])}</option>`).join('')}</select></label>
+        <label>账户类型<span class="entry-account-select"><select name="group">${(options.groups ?? ACCOUNT_GROUPS.filter(g => options.type !== 'loan' || g !== 'receivable')).map(g => `<option value="${g}">${esc(ACCOUNT_GROUP_NAMES[g])}</option>`).join('')}</select>${iconHtml('ic-right', 16)}</span></label>
         <label>初始余额<input name="balance" inputmode="decimal" placeholder="0.00（欠款填负数）"></label>
-        <p role="status"></p><div><button type="button" data-back>返回</button><button type="submit" class="btn primary">保存并选择</button></div></form>`;
+        <p role="status"></p><div><button type="button" class="btn entry-account-back" data-back>返回</button><button type="submit" class="btn primary">保存并选择</button></div></form>`;
       const form = list.querySelector('form')!;
-      form.querySelector('[data-back]')!.addEventListener('click', () => { heading.hidden = false; render(); });
+      form.querySelector('[data-back]')!.addEventListener('click', () => { heading.hidden = false; createHeading.hidden = true; list.setAttribute('role', 'listbox'); render(); });
       form.addEventListener('submit', async event => {
         event.preventDefault(); if (saving) return;
         const data = new FormData(form), name = String(data.get('name')).trim();

@@ -24,3 +24,8 @@
 
 .entry-account-search-button{display:flex;align-items:center;justify-content:center;border:0;border-radius:0;background:transparent;box-shadow:none;padding:0}
 .entry-account-divider{width:1px;height:18px;background:var(--border);flex:none}
+
+.entry-account-back{border:1px solid var(--border);background:var(--bg);color:var(--fg)}
+.entry-account-select{position:relative;display:block;min-width:0}
+.entry-account-select select{appearance:none;-webkit-appearance:none;padding-right:40px}
+.entry-account-select>svg{position:absolute;right:12px;top:50%;transform:translateY(-50%) rotate(90deg);pointer-events:none;color:var(--muted)}
