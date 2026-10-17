@@ -12,6 +12,9 @@ describe('首页/搜索/账户共用的明细文案', () => {
   it('分类只出现在标题，副行固定显示日期时间与账户', () => {
     expect(entryRowText(entry,categories,accounts)).toMatchObject({title:'公交',meta:'9月7日 15:50 · 演示现金',icon:'ic-bus',neutral:false});
   });
+  it('按天分组时省略日期，保留时间、账户和状态', () => {
+    expect(entryRowText({...entry,reimburseStatus:'pending'},categories,accounts,{hideDate:true}).meta).toBe('15:50 · 演示现金 · 待报销');
+  });
   it('退款通过标题表达，不再重复分类和退款标签', () => {
     expect(entryRowText({...entry,refundFlag:true},categories,accounts)).toMatchObject({title:'公交退款',meta:'9月7日 15:50 · 演示现金',neutral:true});
   });

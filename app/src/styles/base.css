@@ -102,7 +102,7 @@ button.chip,.tab,.fab,.icon-btn,.btn,button.row,.seg button,.qa,.lf-check{min-wi
 .e-ic.sm svg.ic{width:17px;height:17px}
 .e-main{flex:1;min-width:0}
 .e-title{font-size:var(--text-body);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.e-title .e-sub{color:var(--muted);font-weight:400}
+.e-title .e-sub{font-size:var(--text-meta);color:var(--muted);font-weight:400}
 .e-meta{font-size:var(--text-meta);color:var(--faint);margin-top:3px;line-height:1.45;word-break:keep-all;overflow-wrap:anywhere}
 .e-amt{font-size:calc(16px * var(--seed-type));font-weight:600;white-space:nowrap}
 .e-amt.out{color:var(--expense)}
@@ -272,10 +272,10 @@ button.chip,.tab,.fab,.icon-btn,.btn,button.row,.seg button,.qa,.lf-check{min-wi
 .entry-view-hero{display:flex;align-items:center;gap:12px;padding:17px 16px;margin:2px 0 14px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);box-shadow:var(--shadow-sm)}
 .entry-view-icon{width:44px;height:44px;display:grid;place-items:center;flex:none;border-radius:15px;background:var(--accent-soft);color:var(--primary)}
 .entry-view-icon.refund{background:color-mix(in oklab,var(--income) 13%,var(--surface));color:var(--income)}
-.entry-view-hero>div{flex:1;min-width:0}.entry-view-hero>div p{font-size:9.5px;color:var(--faint);letter-spacing:.1em;margin-bottom:3px}.entry-view-hero h3{font-size:15px;font-weight:620}
+.entry-view-hero>div{flex:1;min-width:0}.entry-view-hero>div p{font-size:var(--text-meta);color:var(--muted);margin-bottom:3px}.entry-view-hero h3{font-size:15px;font-weight:620}
 .entry-view-hero>strong{font-size:22px;font-weight:700}.entry-view-hero>strong.in{color:var(--income)}.entry-view-hero>strong.out{color:var(--expense)}
 .entry-view-fields{padding:2px 16px;margin-bottom:12px}
-.detail-field{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:54px;border-bottom:1px solid var(--border);font-size:12.5px}
+.detail-field{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:54px;border-bottom:1px solid var(--border);font-size:var(--text-body)}
 .detail-field:last-child{border-bottom:0}.detail-field>span{color:var(--muted);flex:none}.detail-field>b{font-weight:500;text-align:right;overflow-wrap:anywhere}
 .entry-view-fields.compact .detail-field{min-height:48px}
 .entry-view-note{min-height:64px;margin-bottom:12px;padding:15px 16px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);font-size:12.5px;line-height:1.65}

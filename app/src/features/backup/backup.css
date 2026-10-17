@@ -1,14 +1,14 @@
 /* 拾光 · 备份与恢复子页（视觉迁自原型 index.html L307-323） */
-.backup-status{text-align:center;padding:calc(24px * var(--seed-density)) var(--pad)}
-.bs-ic{width:52px;height:52px;margin:0 auto 12px;border-radius:50%;background:var(--accent-soft);color:var(--primary);display:flex;align-items:center;justify-content:center}
+#sp-backup .backup-status{text-align:left;padding:calc(16px * var(--seed-density)) var(--pad)}
+#sp-backup .bs-ic{width:44px;height:44px;flex:none;margin:0;border-radius:50%;background:var(--accent-soft);color:var(--primary);display:flex;align-items:center;justify-content:center}
 .bk-group-title{padding:3px 4px 8px;font-size:11px;letter-spacing:.14em;color:var(--faint);font-weight:650}
-.bs-ic svg.ic{width:26px;height:26px}
-.backup-status .big{font-size:calc(30px * var(--seed-type));font-weight:700}
-.backup-status .big small{font-size:13px;font-weight:400;color:var(--muted);font-family:var(--font-body)}
-.backup-status .sub{margin:6px 0 18px}
+#sp-backup .bs-ic svg.ic{width:26px;height:26px}
+#sp-backup .backup-status .big{font-size:calc(24px * var(--seed-type));font-weight:700}
+#sp-backup .backup-status .big small{font-size:13px;font-weight:400;color:var(--muted);font-family:var(--font-body)}
+#sp-backup .backup-status .sub{margin:2px 0 0;overflow-wrap:anywhere}
 
 /* [R09] 状态卡计数行 */
-.bs-stats{display:flex;justify-content:center;gap:18px;margin:-8px 0 16px;font-size:12px;color:var(--muted)}
+.bs-stats{display:flex;flex-wrap:wrap;gap:6px 16px;margin:12px 0;font-size:12px;color:var(--muted)}
 .bs-stats b{font-weight:700;color:var(--fg)}
 
 /* [R06] 云端备份区 */
@@ -49,3 +49,5 @@
 .bk-month{display:flex;gap:10px;align-items:center}
 .bk-month .chip{flex:1;text-align:center;font-size:13px}
 .bk-month .btn{width:auto;padding:10px 18px;font-size:12.5px}
+
+.bs-summary{display:flex;align-items:center;gap:12px}.bs-summary>div{min-width:0}#sp-backup .backup-status>.tiny{text-align:center}

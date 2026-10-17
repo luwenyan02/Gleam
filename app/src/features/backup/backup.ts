@@ -78,16 +78,16 @@ async function refresh(): Promise<void> {
   el.innerHTML = `
     <h3 class="bk-group-title">立即备份</h3>
     <section class="card backup-status" aria-label="立即备份">
-      <span class="bs-ic">${iconHtml('ic-cloud', 26)}</span>
+      <div class="bs-summary"><span class="bs-ic">${iconHtml('ic-cloud', 24)}</span><div>
       <p class="big num">${counts.total.toLocaleString('zh-CN')} <small>条记录</small></p>
-      <p class="sub">数据均保存在本机 · 上次备份 <b>${lastAt ? fmtTime(lastAt) : '从未备份'}</b></p>
+      <p class="sub">上次备份 <b>${lastAt ? fmtTime(lastAt) : '尚未备份'}</b></p></div></div>
       <div class="bs-stats" aria-label="本地数据概览">
         <span>账单 <b class="num">${counts.liveEntries.toLocaleString('zh-CN')}</b></span>
         <span>生活记录 <b class="num">${counts.liveLifeNotes.toLocaleString('zh-CN')}</b></span>
         <span>备份历史 <b class="num">${records.length}</b></span>
       </div>
       <button class="btn primary" data-act="backup">立即备份（下载 .skbak）</button>
-      <p class="tiny" style="margin-top:8px">完整备份支持口令加密，也可另存网盘</p>
+      <p class="tiny" style="margin-top:8px">支持口令加密 · 可另存网盘</p>
     </section>
 
     <h3 class="bk-group-title">云端配置</h3>

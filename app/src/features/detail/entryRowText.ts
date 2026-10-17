@@ -19,6 +19,7 @@ export function entryRowText(
   entry: Entry & { kind?: LedgerItem['kind'] },
   categories: ReadonlyMap<number, { name: string; icon: string }>,
   accounts: ReadonlyMap<number, string>,
+  options: { hideDate?: boolean } = {},
 ) {
   const category = categories.get(entry.categoryId ?? -1);
   let title = category?.name ?? (entry.type === 'income' ? '收入' : '支出');
@@ -39,7 +40,7 @@ export function entryRowText(
     title += '退款';
   }
   const date = new Date(entry.occurredAt);
-  const time = `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  const time = `${options.hideDate ? '' : `${date.getMonth() + 1}月${date.getDate()}日 `}${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
   const account = entry.type === 'loan' || entry.type === 'transfer'
     ? `${accounts.get(entry.fromAccountId ?? -1) ?? '—'} → ${accounts.get(entry.toAccountId ?? -1) ?? '—'}`
     : accounts.get(entry.accountId ?? -1) ?? '账户';

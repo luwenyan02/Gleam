@@ -57,7 +57,7 @@ def rows(page,width):
             actual_title=row.locator('.e-title').inner_text()
             meta=row.locator('.e-meta').first.inner_text()
             if actual_title.split(' · ')[0]!=title:issues.append(f'{prefix} #{ident} title: {actual_title!r}')
-            if not meta.startswith(f'{date} · {account}'):issues.append(f'{prefix} #{ident} meta: {meta!r}')
+            if not meta.startswith(f'{"15:50" if prefix == "#hm-days" else date} · {account}'):issues.append(f'{prefix} #{ident} meta: {meta!r}')
             if not row.locator('.e-ic').count():issues.append(f'{prefix} #{ident} missing icon')
             # 首页会异步整段刷新；在同一次求值中查找当前节点，避免量到刚被替换的旧节点。
             page.wait_for_function('selector=>document.querySelector(selector)?.getBoundingClientRect().width>0',arg=f'{prefix} [{attribute}="{ident}"] .e-main')

@@ -395,7 +395,7 @@ function entryHtml(
   catMap: Map<number, Category>,
   acctNames: Map<number, string>,
 ): string {
-  const text = entryRowText(entry, catMap, acctNames);
+  const text = entryRowText(entry, catMap, acctNames, { hideDate: true });
   const note = text.note ? ` <span class="e-sub">· ${esc(text.note)}</span>` : '';
   const inflow = entryDisplayAmount(entry) >= 0;
   const transfer = entry.type === 'transfer';
