@@ -41,6 +41,10 @@
 .balance-trend-values strong{color:var(--fg);font-weight:500;overflow-wrap:anywhere}
 
 /* ── 分组列表 ── */
+.acct-group.card.list{padding:0;overflow:hidden}
+.acct-group>.group-head{padding:calc(19px * var(--seed-density)) calc(16px * var(--seed-density));background:color-mix(in srgb,var(--fg) 7%,var(--surface))}
+.acct-group>.g-rows{padding:0 calc(14px * var(--seed-density)) calc(6px * var(--seed-density))}
+
 .account-head-actions{display:flex;align-items:center;gap:4px}.account-head-actions>[data-account-manage]{min-width:52px;min-height:44px;padding:0 8px;color:var(--primary);font-size:var(--text-meta);font-weight:600}
 .group-head{font-size:var(--text-body);color:var(--muted);letter-spacing:.08em;font-weight:600}
 .group-head .g-count{font-size:var(--text-meta);color:var(--faint);font-weight:400;margin-left:2px}
