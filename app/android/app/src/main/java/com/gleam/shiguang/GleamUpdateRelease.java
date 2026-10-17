@@ -7,7 +7,7 @@ import org.json.JSONObject;
 
 /** Pure policy shared by release discovery, download and JVM regression tests. */
 final class GleamUpdateRelease {
-    static final String REPOSITORY = "luwenyan02/Gleam-Releases";
+    static final String REPOSITORY = "luwenyan02/Gleam";
     static final String API = "https://api.github.com/repos/" + REPOSITORY + "/releases";
     static final long MAX_APK = 150L * 1024 * 1024;
     final long id, apkId, checksumId, size, code;

@@ -16,8 +16,8 @@ it.each(['AUTH', 'FORBIDDEN', 'NOT_FOUND', 'CHECKSUM', 'SIGNATURE', 'NETWORK', '
   expect(result).not.toMatch(/PRIVATE|private\.example/);
   expect(result.length).toBeGreaterThan(3);
 });
-it('gives distinct recovery instructions for public-source access, integrity and installation', () => {
-  expect(updateError({ code: 'AUTH' })).not.toMatch(/Token|凭据|重新配置/);
+it('gives distinct recovery instructions for credentials, integrity and installation', () => {
+  expect(updateError({ code: 'AUTH' })).toContain('重新配置');
   expect(updateError({ code: 'CHECKSUM' })).toContain('重新下载');
   expect(updateError({ code: 'SIGNATURE' })).toContain('无法覆盖');
   expect(updateError({ code: 'RECHECK' })).toContain('重新检查');

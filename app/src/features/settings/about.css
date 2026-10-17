@@ -6,3 +6,9 @@
 .about-status{min-height:24px;line-height:1.6}
 .about-update section{display:flex;flex-direction:column;gap:12px}
 .about-release-notes{white-space:pre-wrap;font-size:14px;line-height:1.65;max-height:28dvh;overflow:auto}
+.about-update details{border-top:1px solid var(--border);padding-top:8px}
+.about-update summary{cursor:pointer;min-height:44px;align-content:center;font-weight:600}
+.about-update details p{margin:8px 0;line-height:1.6}
+.about-update label{display:block;margin:12px 0 6px;font-size:14px}
+.about-update input{box-sizing:border-box;width:100%;min-height:44px;border:1px solid var(--border);border-radius:var(--r-s);padding:10px 12px;background:var(--surface);color:var(--fg);font:inherit}
+.about-token-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.about-token-actions .btn{flex:1 1 130px}

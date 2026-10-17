@@ -12,7 +12,7 @@ final class GleamUpdateHttp {
         void check() throws Exception;
         void track(Call call);
     }
-    static Response get(OkHttpClient client, Guard guard, String initial, boolean asset) throws Exception {
+    static Response get(OkHttpClient client, Guard guard, String initial, String token, boolean asset) throws Exception {
         if (!(initial.equals(GleamUpdateRelease.API+"/latest") || initial.matches(java.util.regex.Pattern.quote(GleamUpdateRelease.API)+"/assets/[1-9][0-9]*"))) throw new Failure("DOWNLOAD_SOURCE");
         String url=initial;
         for (int redirects=0;redirects<=3;redirects++) {
@@ -20,7 +20,7 @@ final class GleamUpdateHttp {
             Request.Builder request=new Request.Builder().url(url).header("User-Agent", "Gleam-Android-Updater")
                 .header("Accept", asset ? "application/octet-stream" : "application/vnd.github+json")
                 .header("Cache-Control", "no-cache");
-            if (redirects==0) request.header("X-GitHub-Api-Version", "2022-11-28");
+            if (redirects==0) request.header("Authorization", "Bearer "+token).header("X-GitHub-Api-Version", "2022-11-28");
             Call network=client.newCall(request.build()); guard.track(network);
             Response response=network.execute();
             int status=response.code();

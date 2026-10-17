@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import okhttp3.*;
 import org.json.JSONObject;
 
-/** Explicit user requests only; fixed public release repository; no credentials. */
+/** Explicit user requests only; fixed private repository and native-only credentials. */
 @CapacitorPlugin(name="GleamUpdate")
 public final class GleamUpdatePlugin extends Plugin {
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
@@ -60,11 +60,37 @@ public final class GleamUpdatePlugin extends Plugin {
         });
     }
     @PluginMethod public void configuration(PluginCall call) {
-        // Remove the obsolete private-repository credential without decrypting it.
-        // Cleanup failure must not block anonymous update checks.
-        try { GleamSecretsPlugin.clearLegacyUpdateToken(getContext()); }
-        catch (Exception ignored) {}
-        call.resolve();
+        try {
+            JSObject result=new JSObject(); result.put("hasToken", GleamSecretsPlugin.readUpdateToken(getContext())!=null);
+            call.resolve(result);
+        } catch (Exception error) { call.reject("请重新配置 GitHub Token", "STORAGE"); }
+    }
+    @PluginMethod public void saveToken(PluginCall call) {
+        submit(call, op -> {
+            String token=call.getString("token");
+            if (token==null || !token.matches("[A-Za-z0-9_]{20,255}")) throw new Failure("TOKEN_INVALID");
+            // Verify access without changing an existing working token on authentication failure.
+            readJson(op, token);
+            op.check();
+            try { GleamSecretsPlugin.saveUpdateToken(getContext(), token); }
+            catch (Exception error) { throw new Failure("STORAGE"); }
+            clearDownload(); candidate=null;
+            return new JSObject();
+        });
+    }
+    @PluginMethod public void clearToken(PluginCall call) {
+        submit(call, op -> {
+            try { GleamSecretsPlugin.saveUpdateToken(getContext(), null); }
+            catch (Exception error) { throw new Failure("STORAGE"); }
+            clearDownload(); candidate=null; return new JSObject();
+        });
+    }
+    private String token() throws Exception {
+        final String token;
+        try { token=GleamSecretsPlugin.readUpdateToken(getContext()); }
+        catch (Exception error) { throw new Failure("STORAGE"); }
+        if (token==null) throw new Failure("TOKEN_REQUIRED");
+        return token;
     }
     private PackageInfo installed() throws Exception { return getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), signatureFlags()); }
     private long code(PackageInfo info) { return Build.VERSION.SDK_INT>=28 ? info.getLongVersionCode() : info.versionCode; }
@@ -72,7 +98,7 @@ public final class GleamUpdatePlugin extends Plugin {
     @PluginMethod public void check(PluginCall call) {
         submit(call, op -> {
             clearDownload(); candidate=null;
-            JSONObject release=readJson(op);
+            JSONObject release=readJson(op, token());
             GleamUpdateRelease update;
             try { update=GleamUpdateRelease.parse(release, code(installed())); }
             catch (Exception error) { throw new Failure("RELEASE_INVALID"); }
@@ -85,17 +111,17 @@ public final class GleamUpdatePlugin extends Plugin {
             return result;
         });
     }
-    private JSONObject readJson(Operation op) throws Exception {
-        try (Response response=open(op, GleamUpdateRelease.API+"/latest", false)) {
+    private JSONObject readJson(Operation op, String token) throws Exception {
+        try (Response response=open(op, GleamUpdateRelease.API+"/latest", token, false)) {
             return new JSONObject(new String(readBounded(response, 1024*1024), StandardCharsets.UTF_8));
         }
     }
-    private Response open(Operation op, String initial, boolean asset) throws Exception {
+    private Response open(Operation op, String initial, String token, boolean asset) throws Exception {
         try {
             return GleamUpdateHttp.get(client, new GleamUpdateHttp.Guard() {
                 public void check() throws Exception { op.check(); }
                 public void track(Call call) { op.network=call; if (op.cancelled.get()) call.cancel(); }
-            }, initial, asset);
+            }, initial, token, asset);
         } catch (GleamUpdateHttp.Failure error) { throw new Failure(error.code); }
     }
 
@@ -118,9 +144,9 @@ public final class GleamUpdatePlugin extends Plugin {
     }
     @PluginMethod public void download(PluginCall call) {
         submit(call, op -> {
-            GleamUpdateRelease update=selected(call); clearDownload();
+            GleamUpdateRelease update=selected(call); String token=token(); clearDownload();
             String expected;
-            try (Response response=open(op, GleamUpdateRelease.API+"/assets/"+update.checksumId, true)) {
+            try (Response response=open(op, GleamUpdateRelease.API+"/assets/"+update.checksumId, token, true)) {
                 try { expected=GleamUpdateRelease.checksum(new String(readBounded(response, 1024), StandardCharsets.UTF_8), update.name); }
                 catch (IllegalArgumentException error) { throw new Failure("CHECKSUM"); }
             }
@@ -129,7 +155,7 @@ public final class GleamUpdatePlugin extends Plugin {
             boolean complete=false;
             try {
                 MessageDigest digest=MessageDigest.getInstance("SHA-256"); long size=0;
-                try (Response response=open(op, GleamUpdateRelease.API+"/assets/"+update.apkId, true);
+                try (Response response=open(op, GleamUpdateRelease.API+"/assets/"+update.apkId, token, true);
                      InputStream in=response.body().byteStream(); FileOutputStream out=new FileOutputStream(part)) {
                     if (response.body().contentLength()>GleamUpdateRelease.MAX_APK) throw new Failure("CHECKSUM");
                     byte[] buffer=new byte[32768]; int read;
