@@ -12,7 +12,7 @@ GitHub Actions 账户付款／额度阻塞尚未解除，本地构建和检查�
 
 ## Android 应用内检查新版
 
-入口为「我的 → 关于拾光」，或「设置 → 关于拾光 → 检查新版」。仅 Android 提供，点击检查才访问 GitHub，不在启动时自动检查。
+入口为「我的 → 关于和帮助 → 关于拾光」。手册整理预览已移除设置中的重复入口；此前版本也可从「设置 → 关于拾光 → 检查新版」进入。仅 Android 提供，点击检查才访问 GitHub，不在启动时自动检查。
 
 仓库保持私有。用户在 GitHub 创建 Fine-grained personal access token，Repository access 只选择 `luwenyan02/Gleam`，Repository permissions 的 Contents 设为 Read-only（Metadata 按 GitHub 默认只读），并选择合适有效期。在 App 的「GitHub 访问设置」填入，点击「保存并验证」；过期后在此替换。不要把 Token 发到聊天、写入 APK 或加入 Git。Token 由 Android Keystore 加密，仅供原生更新通道读取，不包含在 `.skbak` 备份中。
 

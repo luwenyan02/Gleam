@@ -78,12 +78,13 @@ it('a stalled read is bounded and its late result cannot replace a newer verifie
   expect((await getAppVersion()).appVersion).toBe('92.0.0');
   expect(mocks.getInfo).toHaveBeenCalledTimes(2);
 });
-it('settings and mine use the shared reader without relabeling the backup manifest', () => {
+it('mine and about own shared version display without relabeling the backup manifest', () => {
   const settings = readFileSync('src/features/settings/settings.ts', 'utf8');
   const mine = readFileSync('src/features/mine/mine.ts', 'utf8');
-  expect(settings).toContain('getAppVersion()'); expect(settings).toContain('data-app-version');
-  expect(settings).toContain('data-interface-version');
-  expect(mine).toContain('getAppVersion()'); expect(mine).toContain('aboutVersionText(');
+  expect(settings).not.toContain('data-app-version');
+  expect(settings).not.toContain('data-interface-version');
+  expect(mine).toContain('getAppVersion()'); expect(mine).toContain('openAbout(displayedVersion)');
+  expect(readFileSync('src/features/settings/about.ts', 'utf8')).toContain('aboutVersionText(info)');
   expect(mine).not.toContain('v${APP_VERSION} · PWA');
   expect(readFileSync('src/features/backup/skbak.ts', 'utf8')).toContain('appVersion: APP_VERSION');
 });

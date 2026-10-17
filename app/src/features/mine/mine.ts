@@ -7,7 +7,7 @@
  * 视觉结构与原型 index.html #page-mine（L740-762）一致。
  */
 import './mine.css';
-import { aboutVersionText, appVersionText, getAppVersion, type AppVersionInfo } from '../../core/appVersion';
+import { appVersionText, getAppVersion, type AppVersionInfo } from '../../core/appVersion';
 import { esc } from '../../core/esc';
 import { iconHtml } from '../../assets/icons';
 import { on } from '../../core/store';
@@ -19,7 +19,7 @@ import { listLoanAccounts } from '../../core/repo/loanRepo';
 import { registerPage, openSubpage } from '../shell/router';
 import { showToast } from '../shell/toast';
 import { openAbout } from '../settings/about';
-import { supportsAppUpdate } from '../settings/appUpdate';
+import { openSettingsManual } from '../settings/settingsManual';
 
 /* ── 模块状态 ── */
 let body: HTMLElement | undefined;
@@ -108,6 +108,11 @@ async function refresh(): Promise<void> {
     `, '外观与安全')}
     <section class="mine-group" aria-label="关于和帮助">
       <h3>关于和帮助</h3><div class="card list">
+      <button class="row" data-help-manual>
+        <span class="e-ic">${iconHtml('ic-book', 18)}</span>使用手册
+        <span class="row-note">操作说明与图解</span>
+        <span class="chev">${iconHtml('ic-right', 15)}</span>
+      </button>
       <button class="row" data-about>
         <span class="e-ic">${iconHtml('ic-file', 18)}</span>关于拾光
         <span class="row-note" data-app-version>${esc(appVersionText(appVersion))} · ${appVersion.platform}</span>
@@ -133,10 +138,8 @@ export function initMine(): void {
           try { openSubpage(sub.dataset.sub!); } catch { showToast('该功能即将上线'); }
           return;
         }
-        if (target.closest('[data-about]') && displayedVersion) {
-          if (supportsAppUpdate()) openAbout(displayedVersion);
-          else showToast(`${aboutVersionText(displayedVersion)} · 记录，是为了被时间照亮`);
-        }
+        if (target.closest('[data-help-manual]')) openSettingsManual();
+        if (target.closest('[data-about]') && displayedVersion) openAbout(displayedVersion);
       });
       void refresh();
     },

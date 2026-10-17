@@ -19,7 +19,7 @@ def run(page, width, motion):
     page.locator('[data-page="page-mine"]').click()
     page.get_by_role('button', name='应用设置', exact=True).click()
     settings = page.locator('#sp-settings')
-    expect(settings.locator('[data-act="settings-manual"]')).to_be_visible()
+    expect(settings.locator('[data-act="settings-manual"],section[aria-label="关于"]')).to_have_count(0)
     expect(settings.locator('p.tiny, details')).to_have_count(0)
     for text in ('可能产生费用', '使用与隐私说明', '预设核对于', '识别请求直连'):
         expect(settings).not_to_contain_text(text)
@@ -55,7 +55,9 @@ def run(page, width, motion):
         page.wait_for_timeout(220)
         assert_usable(page, f'#sp-settings section[aria-label="{section}"]')
         page.screenshot(path=str(OUT / f'{name}-{width}-{motion}.png'), animations='disabled')
-    manual_button = settings.locator('[data-act="settings-manual"]')
+    expect(page.locator('#voice-bailian-workspace')).to_have_value(initial)
+    page.locator('#sp-settings .sub-head [data-act="back"]').click()
+    manual_button = page.locator('#page-mine [data-help-manual]')
     manual_button.scroll_into_view_if_needed()
     page.screenshot(path=str(OUT / f'about-{width}-{motion}.png'), animations='disabled')
     manual_button.click()
@@ -63,7 +65,9 @@ def run(page, width, motion):
     expect(manual).to_be_visible()
     for text in ('可能产生服务商费用', '设置中的文字 AI 接口', '连接通过不代表录音和实际转写已测试', '关闭页面后不会在系统通知栏准时推送'):
         expect(manual).to_contain_text(text)
-    expect(manual.locator('.manual-figure')).to_have_count(5)
+    expect(manual.locator('.manual-figure')).to_have_count(9)
+    for details in manual.locator('details').all():
+        details.locator('summary').click()
     for picture in manual.locator('.manual-figure img').all():
         picture.scroll_into_view_if_needed()
         expect(picture).to_be_visible()
@@ -71,8 +75,7 @@ def run(page, width, motion):
     zoom = manual.locator('[data-manual-zoom]').first
     zoom.scroll_into_view_if_needed(); zoom.click()
     expect(zoom).to_have_attribute('aria-expanded', 'true')
-    expect(zoom).to_have_accessible_name('缩小图解：开始说话')
-    expect(zoom.locator('.manual-callout')).to_be_in_viewport()
+    expect(zoom).to_have_accessible_name('缩小图解：找到使用手册')
     assert zoom.evaluate('(el)=>el.clientWidth<=Math.max(390,el.parentElement.clientWidth)+1')
     assert_usable(page, '#sheet')
     page.screenshot(path=str(OUT / f'manual-zoom-{width}-{motion}.png'), animations='disabled')
@@ -87,13 +90,12 @@ def run(page, width, motion):
     expect(manual_button).to_be_focused()
     manual_button.click(); page.go_back()
     expect(page.locator('#sheet.open')).to_have_count(0)
-    expect(settings).to_be_visible()
+    expect(page.locator('#page-mine')).to_be_visible()
     settings_history = page.evaluate('history.state')
     page.go_forward()
     page.wait_for_function('(state)=>JSON.stringify(history.state)===JSON.stringify(state)', arg=settings_history)
     expect(page.locator('#sheet.open')).to_have_count(0)
-    expect(settings).to_be_visible()
-    expect(page.locator('#voice-bailian-workspace')).to_have_value(initial)
+    expect(page.locator('#page-mine')).to_be_visible()
     assert operations() == calls
     assert page.evaluate('window.__voiceSnapshot()') == native_before
     assert page.evaluate('window.__micCalls') == 0

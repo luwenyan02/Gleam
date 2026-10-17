@@ -1,14 +1,24 @@
 {
-  "version": "1.10.7",
-  "captureCommit": "649e6cea489db87580ea2cb46767895aafb675e2",
-  "ciRun": 38127094655,
+  "version": "1.11.11",
+  "captureBaseCommit": "e81d35e4268ff1ed2156e83ea3681a5c5c42e257",
+  "captureScript": "app/e2e/capture_manual.py",
+  "captureContext": "Manual/help preview working tree; synthetic ledger; voice uses simulated native bridge, no real microphone or service.",
   "synthetic": true,
   "imagesUnmodified": true,
   "sha256": {
-    "voice-start.png": "8ff7da759b057657eafd73dc4dfd7ec609262f259378852d270a4559f45ad120",
-    "voice-listening.png": "5e93d04a2e2bf7aec0d785234023224b18d80f7194481fb7e595a1ad5d88074b",
-    "voice-review.png": "670f5a8cd2b3bc03968f316cd05b171148af84fb5f3e0c05ced092713a18a79d",
-    "voice-settings.png": "4bd5ce15b44b46ae6737cd01a9cf2fac2bcd1e4bae1202b8d524f80be926c0a7",
-    "manual-entry.png": "5adc4a94d63b18df1e6afa483443ae2ca53e5f3909a23bf8733625cffc07f59f"
+    "account-picker.png": "407859988975c58fdd71dc795ed4553b61474f93991d6c8480c676e8054ed913",
+    "backup.png": "cd056b5d24ddb555b177b28227e4d018f096fa84c820a223556497961943db03",
+    "entry.png": "099270ba856ecd7a7ef622dfdbd477ec43cb10e0cb4a6a53eccab8d6f82d32a6",
+    "manual-entry.png": "8efa492670175d660e328dbce5ba0a19ad789fa78db67f60009bc2bc7fa478c4",
+    "report.png": "4e870c9edab895b9604e5c65f826a988e42bb27276bd36b071e45eca5f98d149",
+    "voice-listening.png": "dfa3b011a2f8abc837e3bc443f96feb39e0f3e187e7b6a9939ad483be6e4c08a",
+    "voice-review.png": "eb4d32a6ff9611888352f1d40fd52d2fc4484bd725eac079a407eed7b3de39bd",
+    "voice-settings.png": "3d103094e4dc7d179fa1951f0e947dcb84bf487fc82148e18ee8a1a95553554d",
+    "voice-start.png": "3c39c82cd4028c6624ccf076afe37946a9cca76fe4a83b1b4e6a0d8f55d12bb0"
+  },
+  "sourceSha256": {
+    "app/src/features/mine/mine.ts": "c526d82fb4a58f3b65b09cce324c8105ea9e31e199aa7118785d210c66bab365",
+    "app/src/features/settings/settings.ts": "8338d4e74b43583a63c859e57af23262d3853f28553c8328e26b3920f478bae2",
+    "app/e2e/capture_manual.py": "9ae6609b45e303980d58d8fddf87b57e560afd9c6454422635498be6c6b64af8"
   }
 }

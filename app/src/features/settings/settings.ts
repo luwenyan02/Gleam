@@ -1,6 +1,6 @@
 /**
  * 拾光 · 设置与安全子页（features/settings，PRD 4.19，覆盖 sp-settings）
- * 分区顺序：记账偏好 → 数据与备份 → 智能能力与通知 → 外观与安全 → 关于。
+ * 分区顺序：记账偏好 → 数据与备份 → 智能能力与通知 → 外观与安全。
  * 入口：我的页右上角齿轮（data-sub="sp-settings"，M1 已接）。
  */
 import './settings.css';
@@ -15,7 +15,6 @@ import { ensurePermission } from '../../core/notify';
 import { registerSubpage, openSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { showToast } from '../shell/toast';
-import { appVersionText, getAppVersion, interfaceVersionText } from '../../core/appVersion';
 import {
   setPin, verifyPin, clearPin, biometricAvailable, enrollBiometric,
 } from './lock';
@@ -28,9 +27,6 @@ import { formatAccountingRange } from '../../core/period';
 import { bailianVoiceSettingsHtml, handleVoiceSettingsChange, handleVoiceSettingsInput, handleVoiceSettingsClick, isVoiceKeyWritePending } from './bailianVoiceSettings';
 
 import { getVoiceSettingsEpoch, invalidateVoiceConnectionTest, mountVoiceConnectionTest, syncVoiceConnectionTest } from './bailianVoiceTestSettings';
-import { openSettingsManual } from './settingsManual';
-import { openAbout } from './about';
-import { supportsAppUpdate } from './appUpdate';
 import { aiKeyInputHtml, getAiKeySettingsEpoch, handleAiKeyChange, handleAiKeyInput, preserveAiKeyDraft } from './aiKeySettings';
 
 let body: HTMLElement | undefined;
@@ -63,13 +59,12 @@ async function refresh(): Promise<void> {
   const voiceEpoch = getVoiceSettingsEpoch();
   const aiKeyEpoch = getAiKeySettingsEpoch();
   const isNative = Capacitor.isNativePlatform();
-  const [pin, webauthn, bioOk, countAsIncome, autoRenew, retention, themeMode, monthStartDay, appVersion] = await Promise.all([
+  const [pin, webauthn, bioOk, countAsIncome, autoRenew, retention, themeMode, monthStartDay] = await Promise.all([
     getSetting('security.pin'), getSetting('security.webauthn'), biometricAvailable(),
     getSetting('reimburse.countAsIncome'),
     getSetting('budget.autoRenew'), getSetting('trash.retentionDays'),
     getSetting('theme.mode'),
     getSetting('accounting.monthStartDay'),
-    getAppVersion(),
   ]);
   if (!el.isConnected) return;
   const voiceSettings = await bailianVoiceSettingsHtml();
@@ -98,7 +93,6 @@ async function refresh(): Promise<void> {
     : '自定义';
   const modelLabel = aiModel || '选择模型';
   const selectedModel = modelPreset(aiBase, aiModel);
-  const interfaceVersion = interfaceVersionText(appVersion);
 
   if (token !== settingsRefreshToken || !el.isConnected) return;
   // A slow settings read must never restore stale readiness, consent, or test success.
@@ -174,17 +168,10 @@ async function refresh(): Promise<void> {
       </div>
     </section>
 
-    ${voiceSettings}
-    <section class="card" aria-label="关于">
-      <h3 class="card-title">关于拾光</h3>
-      <div class="field"><span>版本</span><span class="sub" data-app-version>${esc(appVersionText(appVersion))}</span></div>
-      ${interfaceVersion ? `<div class="field"><span>界面版本</span><span class="sub" data-interface-version>${esc(interfaceVersion)}</span></div>` : ''}
-      ${supportsAppUpdate() ? '<div class="field"><span>应用更新</span><button class="chip" data-act="app-update">检查新版</button></div>' : ''}
-      <div class="field"><span>使用手册</span><button class="chip" data-act="settings-manual">查看</button></div>
-    </section>`;
+    ${voiceSettings}`;
 
-  // 固定信息架构：记账偏好 → 数据与备份 → 智能能力与通知 → 外观与安全 → 关于。
-  const order = ['记账偏好', '备份', '数据', 'AI 记账', '百炼短语音', '通知', '外观', '安全', '关于'];
+  // 固定信息架构：记账偏好 → 数据与备份 → 智能能力与通知 → 外观与安全。
+  const order = ['记账偏好', '备份', '数据', 'AI 记账', '百炼短语音', '通知', '外观', '安全'];
   for (const label of order) {
     const section = el.querySelector<HTMLElement>(`section[aria-label="${label}"]`);
     if (section) el.appendChild(section);
@@ -290,10 +277,7 @@ export function initSettings(): void {
         if (themeMode) {
           // 主题切换：setSetting 后 core/theme.ts 监听 settings-changed 自动应用
           void setSetting('theme.mode', themeMode).then(() => refresh());
-        } else if (act === 'app-update') {
-          void getAppVersion().then(info => { if (el.isConnected) openAbout(info); });
-        } else if (act === 'settings-manual') {
-          openSettingsManual();
+
         } else if (act === 'change-pin') {
           openPinSheet('change');
         } else if (act === 'ai-test') {

@@ -2,51 +2,44 @@ import { iconHtml } from '../../assets/icons';
 import { MODEL_CATALOG_CHECKED_ON } from './providers';
 import { openSheet, closeSheet } from '../shell/sheet';
 
-type ManualFigure = { file: string; title: string; caption: string; marks: Array<[number, number, number]> };
-const figures: ManualFigure[] = [
-  { file: 'voice-start', title: '开始说话', caption: '① 点「开始说话」。也可直接输入文字。', marks: [[1, 9, 79.2]] },
-  { file: 'voice-listening', title: '结束录音', caption: '② 出现「正在听」后说话，点「说完了」结束。', marks: [[2, 9, 94.8]] },
-  { file: 'voice-review', title: '核对并发送', caption: '③ 核对或修改文字。④ 点「发送并生成草稿」，再核对草稿。', marks: [[3, 64, 79.2], [4, 37, 94.8]] },
-  { file: 'voice-settings', title: '设置与连接测试', caption: '⑤ 选择 Key 来源并填好配置，点「测试语音连接」。通过后才保存；测试中可点同一按钮取消，录音仍需实际测试。', marks: [[5, 60, 56.6]] },
-  { file: 'manual-entry', title: '找到使用手册', caption: '⑥ 我的 → 应用设置 → 关于拾光 → 使用手册。', marks: [[6, 66, 87.7]] },
-];
-function illustratedStepsHtml(): string {
-  return `<section><h4>操作图解</h4><p>示例截图使用虚构数据。点图放大，再点缩小；放大后可上下、左右滚动。</p><div class="manual-gallery">${figures.map(figure => `<figure class="manual-figure"><div class="manual-image-viewport"><button type="button" class="manual-image-button" data-manual-zoom="${figure.title}" aria-label="放大图解：${figure.title}" aria-expanded="false"><span class="manual-image-frame"><img src="/manual/${figure.file}.png" width="390" height="844" alt="${figure.title}的拾光界面，操作说明见下方" loading="lazy">${figure.marks.map(([number, left, top]) => `<span class="manual-callout" aria-hidden="true" style="left:${left}%;top:${top}%">${number}</span>`).join('')}</span></button></div><figcaption>${figure.caption}</figcaption></figure>`).join('')}</div></section>`;
+const topics = [
+  ['start', '开始使用'], ['entry', '记一笔'], ['accounts', '账户与对账'],
+  ['details', '明细、退款与报销'], ['reports', '报表与预算'], ['organize', '分类、标签与周期账'],
+  ['life', '拾光与对话'], ['backup', '备份与恢复'], ['ai', 'AI 与短语音'],
+  ['settings', '外观、安全与提醒'], ['update', '版本与更新'],
+] as const;
+
+type ManualFigure = { file: string; title: string; caption: string };
+function pictures(figures: ManualFigure[]): string {
+  return `<details class="manual-pictures"><summary>查看操作截图（${figures.length} 张）</summary><div class="manual-gallery">${figures.map(figure => `<figure class="manual-figure"><div class="manual-image-viewport"><button type="button" class="manual-image-button" data-manual-zoom="${figure.title}" aria-label="放大图解：${figure.title}" aria-expanded="false"><span class="manual-image-frame"><img src="/manual/${figure.file}.png" width="390" height="844" alt="${figure.title}的拾光示例界面，操作说明见下方" loading="lazy"></span></button></div><figcaption>${figure.caption}</figcaption></figure>`).join('')}</div></details>`;
+}
+function section(id: typeof topics[number][0], content: string): string {
+  const title = topics.find(topic => topic[0] === id)![1];
+  return `<section id="manual-${id}" tabindex="-1" aria-labelledby="manual-heading-${id}"><h4 id="manual-heading-${id}">${title}</h4>${content}<button class="manual-top" type="button" data-manual-section="contents">返回目录 ↑</button></section>`;
 }
 
-/** Read-only local reference. Opening it never reads credentials or calls a service. */
+/** Local, read-only help. No credentials, ledger access or service requests. */
 export function settingsManualHtml(): string {
   return `<div class="sheet-head"><h3 class="sheet-title">拾光使用手册</h3><button class="icon-btn" data-manual-close aria-label="关闭使用手册">${iconHtml('ic-close')}</button></div>
     <div class="sheet-scroll settings-manual">
-      ${illustratedStepsHtml()}
-      <section><h4>短语音记账</h4>
-        <p>Android 安装版中，点「开始说话」录入一笔支出或收入，最长30秒；点「说完了」结束。转写文字可修改，也可直接手填。转账、借贷、还款、退款与报销使用手动记账。</p>
-        <p>开始后，麦克风声音发送给阿里云百炼，地域、业务空间与模型以设置为准，可能产生服务商费用。拾光不保存录音。</p>
-        <p>转写或编辑仅自动准备本机预览。点「发送并生成草稿」才将文字、候选分类和账户名称及识别规则发送至设置中的文字 AI 接口，可能产生模型费用；不附带声音、旧账单、余额、照片或生活记录。</p>
-        <p>语音结果始终先形成草稿，不受自动入账阈值影响。点「填入当前草稿」会替换当前草稿的类型、金额、分类、账户、时间和备注；标签和凭证保持原选择，确认保存才入账。点「加入收件箱待确认」只保存到本机待确认队列，可修改后再确认入账。取消或返回不会开始下一次录音。</p>
-      </section>
-      <section><h4>语音设置与连接测试</h4>
-        <p>语音Key可勾选「与 API Key 相同」，也可单独填写，必须与所选地域和业务空间匹配。已有独立Key保持原来源，不会自动切换。填写、切换来源和修改配置不会调用服务；明确测试通过后，才一并保存 Key、来源和配置。测试失败或取消保留原有生效配置。</p>
-        <p>点「测试语音连接」后，使用所选 Key 向配置的百炼地址发送鉴权与会话配置请求，可能产生费用；不申请麦克风、不录音、不发送音频、文字或账本数据。连接通过不代表录音和实际转写已测试。共享来源的 API Key 变化后需重新测试，未通过前不会继续使用旧的共享Key。</p>
-        <p>语音Key只在 Android Keystore 加密保存，不写入安装包、普通备份或账本；网页版不接收或保存。已存Key显示前后各5个字符，中间打码，较短Key全部打码；打码内容不是可提交的Key。</p>
-        <p>测试结果使用轻提示显示；失败提示保留安全错误码与阶段，可截图反馈。诊断不包含原始服务响应、Key、录音或账本内容。</p>
-      </section>
-      <section><h4>文字 AI 与模型</h4>
-        <p>识别请求直连设置中的 API 地址。Android 的文字 Key 由系统 Keystore 加密保存；网页版仅保留在当前标签页会话，关闭后需重新输入。</p>
-        <p>普通 AI 记账在置信度达到阈值且分类、账户齐全时可自动入账，否则进入收件箱待确认。短语音草稿始终人工确认。</p>
-        <p>模型预设目录核对于 ${MODEL_CATALOG_CHECKED_ON}，近期候选按最近三个月筛选，最多10个；离线目录不会自动联网更新。「获取模型列表」会调用所配置接口，返回模型的日期和能力未经目录核验。自定义模型的图片能力以接口实际支持为准。</p>
-      </section>
-      <section><h4>记账周期与报销</h4>
-        <p>每月起始日决定首页总览、月报表和月预算的范围，设置页显示当前周期；周和年仍采用自然周期。开启「报销到账记为收入」会记录一笔报销收入，关闭则冲抵原支出，与报销页开关同步。</p>
-      </section>
-      <section><h4>备份、回收站与提醒</h4>
-        <p>账本默认保存在本机。云备份或 AI 功能启用后，必要数据会发送给所配置的外部服务。备份生成与恢复位于「我的 → 备份与恢复」。</p>
-        <p>删除的账单先进入回收站，可在保留期限内恢复；到期自动清理。</p>
-        <p>Android 系统通知需授权：周期账当日09:00、信用卡还款日10:00提醒。网页版只在首页显示应用内提醒，关闭页面后不会在系统通知栏准时推送。</p>
-      </section>
-      <section><h4>外观与应用锁</h4>
-        <p>「跟随系统」随设备深浅色变化。启用应用锁后每次打开需要解锁，PIN 以加盐哈希保存在本机，不上传；忘记 PIN 将无法解锁。</p>
-      </section>
+      <div id="manual-contents" tabindex="-1"><p>从「我的 → 关于和帮助 → 使用手册」打开。按下面的目录查操作；截图使用虚构数据，点图可放大。</p>
+      <nav class="manual-contents" aria-label="手册目录">${topics.map(([id, title]) => `<button type="button" data-manual-section="${id}">${title}</button>`).join('')}</nav></div>
+      ${section('start', `<p>底部依次是「账户、报表、记一笔／首页、拾光、我的」。在首页点中央「＋」记账；在其他页点中央入口回首页。</p><p>首次使用先添加资金账户、填写初始余额，再记收支。已有拾光备份，先到「我的 → 备份与恢复」恢复。</p>${pictures([{ file: 'manual-entry', title: '找到使用手册', caption: '「我的」底部的「关于和帮助」提供使用手册和关于拾光。设置中心用于修改配置。' }])}`)}
+      ${section('entry', `<ol><li>点首页「＋」，选择支出、收入、转账或借贷。</li><li>选择分类，输入金额，核对日期和账户；点「保存」完成，点「再记」保存后继续下一笔。</li><li>标签、商家和凭证在下方「更多」中。需要报销的支出，点亮「报销」再保存。</li></ol><p>常用分类最多四行五列，最后一格「更多」打开全部分类。账户选择上方显示近一年同记账类型常用的最多 12 个账户；其余按类型排列。点右上角搜索图标查找，也可直接添加账户。</p><p>当天时间显示「今天 HH:mm」，其他日期显示「YYYY/MM/DD HH:mm」。计算器按输入顺序连续计算，不采用先乘除后加减。</p><p>转账选择转出、转入账户；借贷选择借入／借出／还款／收款，以及资金账户和应收应付账户。这两类不是普通收支。</p>${pictures([{ file: 'entry', title: '手动记账', caption: '先核对类型、金额、分类、账户和时间。下方「更多」用于补充信息。' }, { file: 'account-picker', title: '选择账户', caption: '常用账户在上，其他账户按类型排列。搜索图标与「添加账户」在标题右侧。' }])}`)}
+      ${section('accounts', `<p>「账户」查看净资产、分组余额和账户明细；点账户可编辑、查看余额趋势或对账。信用卡欠款用负余额表示。</p><p>余额与实际不符时，先核对漏记、重复和转账，再用「对账」录入实际余额。对账会留下调整记录，请核对差额后确认。</p><p>隐藏账户与是否计入净资产是两个独立选项。信用卡账户还可设置账单日、还款日，并管理手工账单与还款分配。</p>`)}
+      ${section('details', `<p>首页快捷入口可打开明细、日历；右上角搜索支持查找、筛选和批量操作。点账单打开详情，可编辑、再记、删除或退款。</p><ul><li><b>退款：</b>从原支出详情点「退款」，填写金额、到账账户与时间，保留与原支出的关联；不要另记一笔普通收入。</li><li><b>报销：</b>「我的 → 报销管理」勾选待报销支出，点「报销到账」。每笔确认后一次结清，实收不足的差额继续计入支出。</li><li><b>统计口径：</b>「报销款计入收入统计」开启时计收入，关闭时冲抵支出；与设置中心的开关同步。</li><li><b>删除：</b>先移入回收站，保留期内可恢复。永久删除和批量修改前，先核对已选范围。</li></ul>`)}
+      ${section('reports', `<p>「报表」选择周、月、年或自定义日期，再切换趋势、分类、账户、标签、收入或商家。点击排行项目可查看对应明细；「展开全部」显示完整排行。</p><p>退款会减少净支出；多标签账单可能进入多个标签排行。环形图只显示正净支出分类，占比可能与含退款的净支出排行不同。</p><p>「我的 → 预算中心」设置总预算和分类预算，可切换历史月份、复制上期或设置年度预算。每月起始日影响首页、月报和月预算；周、年仍按自然周期。</p>${pictures([{ file: 'report', title: '报表与明细', caption: '上方选日期范围，中间切换统计维度，点排行进入对应明细。' }])}`)}
+      ${section('organize', `<ul><li><b>分类管理：</b>支出支持大类与小类，收入为单级；点击编辑，拖动排序。名称相近的历史分类先核对账单，再决定是否整理。</li><li><b>标签与商家：</b>为账单补充筛选维度，可查看排行和关联明细。</li><li><b>速记模板：</b>保存常用分类、金额等内容，使用时仍核对本次账户和日期。</li><li><b>周期账：</b>创建固定收支或转账规则，核对金额、账户、频率与下次日期；暂停不再需要的规则，避免重复记账。</li><li><b>应收应付：</b>按账户查看待收、待还与往来明细；还款或收款使用借贷操作。</li></ul>`)}
+      ${section('life', `<p>「拾光」记录日记、照片与习惯打卡，按月份回看。账单详情中的「这一笔，也有故事？」可关联一段生活记录。</p><p>「拾光周刊」整理某周生活记录；AI 对话和生成需先配置接口，核对发送范围后再确认。AI 文字不是记账凭证，账单仍以已保存流水为准。</p>`)}
+      ${section('backup', `<ol><li>进入「我的 → 备份与恢复」，点「立即备份」，可选口令加密，再生成并保存 .skbak 文件。</li><li>恢复时点「选择备份文件」，核对时点与数量后确认。恢复会全量替换当前数据；操作前自动创建的快照保留 7 天，可在本页撤销。</li><li>换手机或卸载前，把备份存到应用之外。加密口令无法找回；云端与 AI 凭证不随普通备份迁移，需要重新配置。</li></ol><p>本机保留最近 10 份备份副本，合计最多 100 MB；更早的备份需选择文件。Excel 用于按月查看与交换账单，不能完整恢复退款关联，完整迁移请用 .skbak。</p><p>挖财、微信和支付宝账单按导入页选择来源，先检查预览与账户映射，再确认导入。云备份支持 WebDAV、S3 兼容服务；Android 还支持邮件备份，测试连接和上传由你主动发起。</p>${pictures([{ file: 'backup', title: '备份与恢复', caption: '先把 .skbak 文件保存到应用之外。恢复前查看备份时间和记录数量。' }])}`)}
+      ${section('ai', `<p><b>文字或截图：</b>在设置中心配置 AI 接口与模型，再从首页「AI 记账」输入或导入。普通 AI 结果达到自动入账阈值且分类、账户齐全时可直接入账；其他结果到「我的 → AI 记账收件箱」核对。</p><p><b>Android 短语音：</b>记账页点麦克风 →「开始说话」→「说完了」→ 核对文字 →「发送并生成草稿」。每次最长 30 秒，语音结果始终需要人工确认。转账、借贷、还款、退款与报销使用手动记账。</p><p>点「填入当前草稿」替换类型、金额、分类、账户、时间和备注，保留标签与凭证，保存后才入账。「加入收件箱待确认」只保存到本机待确认队列，可修改后再确认入账。</p>${pictures([
+        { file: 'voice-start', title: '开始说话', caption: '主动点「开始说话」才录音，也可以直接输入文字。' },
+        { file: 'voice-listening', title: '结束录音', caption: '看到「正在听」后说话，点「说完了」结束。' },
+        { file: 'voice-review', title: '核对并发送', caption: '修改转写文字，再点「发送并生成草稿」。核对草稿后决定如何入账。' },
+        { file: 'voice-settings', title: '语音连接设置', caption: '选择地域、业务空间和 Key 来源，点「测试语音连接」；通过后才保存。' },
+      ])}<details class="manual-notes"><summary>连接、费用与隐私说明</summary><p>录音发送至所配置地域和业务空间的阿里云百炼，可能产生服务商费用；拾光不保存录音。点「发送并生成草稿」才把文字、候选分类与账户名称、识别规则发送给设置中的文字 AI 接口，不附带录音、旧账单、余额、照片或生活记录。</p><p>语音 Key 可与 API Key 相同，也可独立配置。填写配置不调用服务；连接测试只发送鉴权和会话配置，不申请麦克风、不录音、不发送音频、文字或账本数据，可能产生费用。测试中可点同一按钮取消，录音仍需实际测试。连接通过不代表录音和实际转写已测试；失败或取消保留原配置。共享 Key 更换后需重新测试。</p><p>Android Key 由 Keystore 加密保存；网页版文字 Key 只保留在当前标签页会话，网页版不保存语音 Key。打码内容不是可提交的 Key；测试报错可保留安全错误码反馈。</p><p>模型预设核对于 ${MODEL_CATALOG_CHECKED_ON}。「获取模型列表」会连接所填接口；返回的模型能力以服务实际支持为准。</p></details>`)}
+      ${section('settings', `<p>「我的 → 设置中心」修改记账偏好、AI、通知、外观和应用锁，查看回收站保留期限。主题可选浅色、深色或跟随系统。</p><p>启用 PIN 后每次打开需解锁；PIN 以加盐哈希保存在本机，忘记 PIN 将无法解锁，请提前保留可用备份。回收站条目到期自动清除。</p><p>Android 授权系统通知后，周期账当日 09:00、信用卡还款日 10:00 提醒；网页版只显示首页提醒，关闭页面后不会在系统通知栏准时推送。</p>`)}
+      ${section('update', `<p>「我的 → 关于和帮助 → 关于拾光」查看版本。Android 安装版可「检查新版 → 下载更新 → 安装新版」，首次安装可能需要系统允许安装应用。</p><p>私有仓库更新需在「GitHub 访问设置」点「粘贴」填入只读 Token，再点「保存并验证」。仅检查正式 Release；测试／预发布包不会出现在正式更新中。检查失败时核对网络、Token 有效期及仓库读取权限。</p><p>网页版不安装 APK，版本跟随当前网页部署。若预览仍显示旧界面，先确认预览服务已拉取对应分支，再刷新网页；不要为刷新版本清除账本数据。</p>`)}
     </div>`;
 }
 
@@ -54,17 +47,22 @@ export function openSettingsManual(): void {
   openSheet({ ariaLabel: '拾光使用手册', render(el) {
     el.innerHTML = settingsManualHtml();
     el.querySelector('[data-manual-close]')?.addEventListener('click', closeSheet);
+    el.querySelectorAll<HTMLButtonElement>('[data-manual-section]').forEach(button => {
+      button.addEventListener('click', () => {
+        const target = el.querySelector<HTMLElement>(`#manual-${button.dataset.manualSection}`);
+        target?.focus({ preventScroll: true });
+        target?.scrollIntoView({ block: 'start', behavior: 'instant' });
+      });
+    });
     el.querySelectorAll<HTMLButtonElement>('[data-manual-zoom]').forEach(button => {
       button.addEventListener('click', () => {
         const expanded = button.getAttribute('aria-expanded') !== 'true';
         button.setAttribute('aria-expanded', String(expanded));
         button.setAttribute('aria-label', `${expanded ? '缩小' : '放大'}图解：${button.dataset.manualZoom}`);
         button.closest('.manual-figure')?.classList.toggle('is-zoomed', expanded);
-        const viewport = button.parentElement;
-        const marker = button.querySelector<HTMLElement>('.manual-callout');
-        if (viewport) {
-          viewport.scrollTop = expanded && marker ? Math.max(0, marker.offsetTop - viewport.clientHeight / 2) : 0;
-          viewport.scrollLeft = expanded && marker ? Math.max(0, marker.offsetLeft - viewport.clientWidth / 2) : 0;
+        if (button.parentElement) {
+          button.parentElement.scrollTop = 0;
+          button.parentElement.scrollLeft = 0;
         }
       });
     });
