@@ -28,11 +28,11 @@
 }
 .cat-sec:first-child{padding-top:0}
 
-/* 快速记账首屏为 7 个常用分类 + 1 个更多，两行四列。 */
+/* 快速记账首屏为 19 个常用分类 + 1 个更多，最多四行五列。 */
 .entry-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:1px 2px 6px}
 .entry-section-head span{font-size:14px;font-weight:650}
 .entry-section-head small{font-size:11px;color:var(--faint);white-space:nowrap}
-#sheet #cat-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px 6px}
+#sheet #cat-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px 6px}
 #sheet #cat-grid .cat{min-width:0;min-height:59px;gap:3px;padding:5px 1px;font-size:12px}
 #sheet #cat-grid .cat-ic{width:34px;height:34px}
 #sheet #cat-grid .cat>span:last-child{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -53,7 +53,7 @@
 .meta-row{flex:none;gap:7px;padding:8px 0 3px}
 .meta-row .chip{flex:none;min-height:44px;padding:9px 13px;font-size:13px;gap:6px;line-height:1.25}
 .meta-row .toggle-chip input{width:16px;height:16px}
-.primary-meta{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) auto auto;overflow:visible}
+.primary-meta{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;overflow:visible}
 .primary-meta .chip{min-width:0;justify-content:center;padding-left:10px;padding-right:10px}
 .primary-meta .chip span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .primary-meta .advanced-toggle{color:var(--primary)}
@@ -78,10 +78,15 @@
 }
 
 @media (max-width:380px){
-  .primary-meta{grid-template-columns:1fr 1fr}
-  .primary-meta .chip{width:100%}
+  .primary-meta{gap:4px}
+  .primary-meta .chip{padding-left:5px;padding-right:5px;font-size:12px}
 }
 
 @media (min-width:700px){
   #sheet.entry-workspace{padding-left:20px;padding-right:20px}
 }
+
+#sheet #date-chip{white-space:nowrap;padding-left:7px;padding-right:7px;font-size:12px}
+#sheet .primary-meta #acct-btn{justify-content:flex-start}
+#sheet .primary-meta #mark-bx{padding-left:6px;padding-right:6px}
+#sheet .primary-meta #mark-bx{min-width:44px}

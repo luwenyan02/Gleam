@@ -33,7 +33,7 @@ export function rankFrequentCategories(
 ): Category[] {
   const now = options.now ?? Date.now();
   const targetSegment = entryTimeSegment(options.targetAt ?? now);
-  const limit = options.limit ?? 7;
+  const limit = options.limit ?? 19;
   const from = now - NINETY_DAYS_MS;
   const categoryIds = new Set(categories.map((item) => item.id));
   const usage = new Map<number, { count: number; sameSegmentCount: number; latest: number }>();
@@ -213,4 +213,36 @@ export function createRepeatDraft(input: RepeatDraftInput): RepeatDraft {
     reimbursePending: false,
     linkLife: false,
   };
+}
+
+/** 同类型近一年使用次数优先；仅列实际用过的可见账户，不混入其它类型习惯。 */
+export function rankFrequentAccounts(
+  accounts: readonly Account[], entries: readonly import('../../core/types').Entry[],
+  type: EntryType, now = Date.now(),
+): Account[] {
+  const from = new Date(now); from.setFullYear(from.getFullYear() - 1);
+  const usage = new Map<number, { count: number; latest: number }>();
+  for (const entry of entries) {
+    if (entry.type !== type || entry.deletedAt || entry.refundFlag || entry.amount <= 0
+      || entry.occurredAt < from.getTime() || entry.occurredAt > now) continue;
+    const ids = type === 'transfer' || type === 'loan'
+      ? [entry.fromAccountId, entry.toAccountId] : [entry.accountId];
+    for (const id of new Set(ids)) {
+      if (id == null) continue;
+      const previous = usage.get(id) ?? { count: 0, latest: 0 };
+      usage.set(id, { count: previous.count + 1, latest: Math.max(previous.latest, entry.occurredAt) });
+    }
+  }
+  return accounts.filter(a => !a.hidden && usage.has(a.id)).sort((a, b) => {
+    const left = usage.get(a.id)!, right = usage.get(b.id)!;
+    return right.count - left.count || right.latest - left.latest || (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.id - b.id;
+  }).slice(0, 12);
+}
+
+export function entryDateLabel(timestamp: number, now = Date.now()): string {
+  const d = new Date(timestamp), today = new Date(now);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const date = d.toDateString() === today.toDateString() ? '今天'
+    : `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`;
+  return `${date} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }

@@ -6,6 +6,7 @@
  *
  * 对外契约：openEntrySheet(options)（日历补账 / 速记 / 明细编辑复用）。
  */
+import { openEntryAccountPicker } from './entryAccountPicker';
 import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
 import { parseYuanToFen, formatFen } from '../../core/money';
@@ -23,7 +24,7 @@ import { getAccount, listAccounts } from '../../core/repo/accountRepo';
 import { listTemplates, rememberTemplate } from '../../core/repo/templateRepo';
 import { listTags, ensureTag } from '../../core/repo/tagRepo';
 import { listMerchants, ensureMerchant } from '../../core/repo/merchantRepo';
-import { listLoanAccounts, getLoanAccount, ensureLoanAccount } from '../../core/repo/loanRepo';
+import { listLoanAccounts, getLoanAccount } from '../../core/repo/loanRepo';
 import type { NewLifeNote } from '../../core/repo/lifeRepo';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
 import { openSheet, closeSheet } from '../shell/sheet';
@@ -34,6 +35,7 @@ import { openPickList, type PickListItem } from '../../shared/pickList';
 import { manageOverlay } from '../../shared/overlay';
 import {
   createRepeatDraft,
+  entryDateLabel,
   rankFrequentCategories,
   recommendAccountId,
   resolveInitialEntryType,
@@ -407,8 +409,8 @@ function renderSheet(el: HTMLElement, note: string): void {
       ${renderTypeForms()}
       <input class="note" id="note" type="text" placeholder="写点备注（可选）" aria-label="备注">
       <div class="meta-row primary-meta">
-        <button class="chip" id="date-chip">${iconHtml('ic-cal', 16)}<span id="date-txt"></span></button>
-        <button class="chip" id="acct-btn">${iconHtml('ic-wallet', 16)}<span id="acct-name"></span></button>
+        <button class="chip" id="date-chip"><span id="date-txt"></span></button>
+        <button class="chip" id="acct-btn"><span id="acct-name"></span></button>
         <button class="chip" type="button" id="mark-bx" aria-pressed="false">报销</button>
         <button class="chip advanced-toggle" type="button" data-act="toggle-advanced" aria-expanded="false" aria-controls="advanced-fields">
           ${iconHtml('ic-set', 16)}<span id="advanced-label">更多</span>
@@ -620,17 +622,7 @@ function refreshMeta(): void {
   q<HTMLElement>('#keypad .again').style.visibility = c.editingId ? 'hidden' : '';
 }
 
-/** 记一笔 chip 文案：日期基础上携带具体时分（如「今天 8月24日 14:30」） */
-function dateLabel(ts: number): string {
-  const d = new Date(ts);
-  const today = new Date();
-  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  const md = `${d.getMonth() + 1}月${d.getDate()}日`;
-  const base = dayKey(ts) === dayKey(today.getTime())
-    ? `今天 ${md}`
-    : d.getFullYear() === today.getFullYear() ? md : `${d.getFullYear()}年${md}`;
-  return `${base} ${hm}`;
-}
+const dateLabel = entryDateLabel;
 
 /* ── 计算器（从左到右、无优先级，与原型一致） ── */
 
@@ -1010,11 +1002,18 @@ function showCreateInput(
 async function pickAccount(field: 'accountId' | 'fromId' | 'toId', title: string): Promise<void> {
   const c = ctx;
   if (!c) return;
-  if (!c.accounts.length) { showToast('请先到「账户」页添加账户'); return; }
   const choices = c.type === 'loan' ? c.accounts.filter(account => account.group !== 'receivable') : c.accounts;
-  const id = await pickList(title, choices.map((a) => ({
-    id: a.id, label: a.name, icon: 'ic-wallet', note: `${a.hidden ? '已隐藏 · ' : ''}${formatFen(a.balance)}`,
-  })), { activeId: c[field] });
+  const now = Date.now(), from = new Date(now);
+  from.setFullYear(from.getFullYear() - 1);
+  const history = await listEntries({ from: from.getTime(), to: now + 1 });
+  if (ctx !== c) return;
+  const id = await openEntryAccountPicker({
+    container: sheetEl!, title, accounts: choices, entries: history,
+    type: c.type, selected: c[field],
+  });
+  if (ctx !== c) return;
+  c.accounts = (await listAccounts(true)).filter(a => !a.hidden || [c.accountId, c.fromId, c.toId, c.loanAccountId].includes(a.id));
+  c.loanAccounts = c.accounts.filter(a => a.group === 'receivable');
   if (id == null) return;
   if (field === 'fromId' && id === c.toId) { showToast('转出与转入账户不能相同'); return; }
   if (field === 'toId' && id === c.fromId) { showToast('转出与转入账户不能相同'); return; }
@@ -1027,19 +1026,17 @@ async function pickAccount(field: 'accountId' | 'fromId' | 'toId', title: string
 async function pickLoanAccount(): Promise<void> {
   const c = ctx;
   if (!c) return;
-  const id = await pickList('选择应收应付账户', c.loanAccounts.map((p) => ({
-    id: p.id, label: p.name, icon: 'ic-user',
-    note: `${p.hidden ? '已隐藏 · ' : ''}${p.balance > 0 ? `TA 欠你 ${formatFen(p.balance)}` : p.balance < 0 ? `你欠 TA ${formatFen(-p.balance)}` : '已结清'}`,
-  })), {
-    activeId: c.loanAccountId,
-    createPlaceholder: '新应收应付账户名称，如「室友小林」',
-    onCreate: async (name) => {
-      const nid = await ensureLoanAccount(name);
-      c.accounts = (await listAccounts(true)).filter(account => !account.hidden || [c.accountId, c.loanAccountId, c.fromId, c.toId].includes(account.id));
-      c.loanAccounts = c.accounts.filter(account => account.group === 'receivable');
-      return nid;
-    },
+  const now = Date.now(), from = new Date(now);
+  from.setFullYear(from.getFullYear() - 1);
+  const history = await listEntries({ from: from.getTime(), to: now + 1 });
+  if (ctx !== c) return;
+  const id = await openEntryAccountPicker({
+    container: sheetEl!, title: '选择应收应付账户', accounts: c.loanAccounts,
+    entries: history, type: c.type, selected: c.loanAccountId, groups: ['receivable'],
   });
+  if (ctx !== c) return;
+  c.accounts = (await listAccounts(true)).filter(a => !a.hidden || [c.accountId, c.fromId, c.toId, c.loanAccountId].includes(a.id));
+  c.loanAccounts = c.accounts.filter(a => a.group === 'receivable');
   if (id == null) return;
   c.loanAccountId = id;
   renderCats();

@@ -5,7 +5,7 @@ import type { Category } from '../../core/types';
 export function selectQuickCategories(
   categories: readonly Category[],
   selected?: Category,
-  limit = 7,
+  limit = 19,
 ): Category[] {
   if (!selected || categories.some((item) => item.id === selected.id)) return categories.slice(0, limit);
   return [selected, ...categories.filter((item) => item.id !== selected.id)].slice(0, limit);
