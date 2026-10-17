@@ -8,16 +8,19 @@
 .entry-account-picker .picker-list{flex:1;padding:6px 12px calc(12px + var(--safe-bottom))}
 .entry-account-picker .picker-group-title{padding:12px 4px 8px}
 .frequent-account-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.entry-account-picker .picker-item{min-height:64px;padding:10px 8px;gap:4px}
+.entry-account-picker .picker-item{min-height:48px;padding:10px 8px;gap:4px}
 .entry-account-picker .frequent-account{background:var(--bg);border:1px solid transparent;border-radius:var(--r-s)}
 .entry-account-picker .frequent-account.selected{border-color:var(--primary);background:var(--accent-soft)}
-.entry-account-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}
-.entry-account-picker .picker-item-label{font-size:14px;white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.4}
-.entry-account-picker .picker-item-note{font-size:12px;overflow-wrap:anywhere}
-.entry-account-check{width:14px;flex:none;color:var(--primary)}
+.entry-account-copy{display:flex;flex:1;min-width:0;align-items:center;gap:6px}
+.entry-account-picker .picker-item-label{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;line-height:1.4}
+.entry-account-picker .picker-item-note{font-size:12px;white-space:nowrap;text-align:right;flex:none}
+.entry-account-check{display:none}
 .entry-account-empty{padding:32px 8px;text-align:center;color:var(--muted)}
 .entry-account-create{display:grid;gap:14px;padding:8px}
 .entry-account-create label{display:grid;gap:6px;font-size:14px}
 .entry-account-create input,.entry-account-create select{min-width:0;width:100%;min-height:44px;border:1px solid var(--border);border-radius:var(--r-s);padding:8px;background:var(--bg);color:var(--fg);font:inherit}
 .entry-account-create>div{display:flex;gap:12px}.entry-account-create button{min-height:44px;flex:1}
-.frequent-account .picker-item-label{min-height:2.8em}
+.frequent-account .picker-item-label{font-size:13px}
+
+.entry-account-search-button{display:flex;align-items:center;justify-content:center;border:0;border-radius:0;background:transparent;box-shadow:none;padding:0}
+.entry-account-divider{width:1px;height:18px;background:var(--border);flex:none}

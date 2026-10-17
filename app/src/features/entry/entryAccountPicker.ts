@@ -21,7 +21,7 @@ export function openEntryAccountPicker(options: {
     // Freeze the initial panel height; filtering and the software keyboard must not resize it.
     panel.style.height = `${Math.round(options.container.getBoundingClientRect().height * .78)}px`;
     panel.innerHTML = `<div class="entry-account-header">
-      <div class="entry-account-heading"><h4>${esc(options.title)}</h4><button type="button" class="icon-btn" data-search aria-label="搜索账户">${iconHtml('ic-search')}</button><button type="button" data-add>添加账户</button></div>
+      <div class="entry-account-heading"><h4>${esc(options.title)}</h4><button type="button" class="entry-account-search-button" data-search aria-label="搜索账户">${iconHtml('ic-search')}</button><span class="entry-account-divider" aria-hidden="true"></span><button type="button" data-add>添加账户</button></div>
       <div class="entry-account-search" hidden><input type="search" aria-label="搜索账户" placeholder="搜索账户"><button type="button" data-cancel-search>取消</button></div>
     </div><div class="picker-list" role="listbox" aria-label="${esc(options.title)}"></div>`;
     mask.append(panel); options.container.append(mask);
@@ -41,7 +41,7 @@ export function openEntryAccountPicker(options: {
     const frequentIds = new Set(frequent.map(a => a.id));
     function row(a: Account, compact = false): string {
       const selected = a.id === options.selected;
-      return `<button type="button" role="option" aria-selected="${selected}" class="picker-item${compact ? ' frequent-account' : ''}${selected ? ' selected' : ''}" data-account="${a.id}" data-value="${a.id}"><span class="entry-account-copy"><span class="picker-item-label">${esc(a.name)}</span><span class="picker-item-note">${a.hidden ? '已隐藏 · ' : ''}${formatFen(a.balance)}</span></span><span class="entry-account-check">${selected ? '✓' : ''}</span></button>`;
+      return `<button type="button" role="option" aria-selected="${selected}" class="picker-item${compact ? ' frequent-account' : ''}${selected ? ' selected' : ''}" data-account="${a.id}" data-value="${a.id}"><span class="entry-account-copy"><span class="picker-item-label" title="${esc(a.name)}">${esc(a.name)}</span><span class="picker-item-note">${a.hidden ? '已隐藏 · ' : ''}${formatFen(a.balance)}</span></span><span class="entry-account-check">${selected ? '✓' : ''}</span></button>`;
     }
     function render(): void {
       const keyword = input.value.trim().toLocaleLowerCase();
