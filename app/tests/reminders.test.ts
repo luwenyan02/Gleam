@@ -1,21 +1,41 @@
 import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import { db } from '../src/core/db';
-import { listInAppReminders } from '../src/core/notify';
+import { listInAppReminders, refreshSchedules } from '../src/core/notify';
 import { addAccount } from '../src/core/repo/accountRepo';
 import { addCreditStatement, createAndLinkCreditPayment } from '../src/core/repo/creditRepo';
 import { addRule } from '../src/core/repo/recurringRepo';
 import { setSetting } from '../src/core/repo/settingsRepo';
 
 const DAY = 86400000;
+vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: vi.fn(() => false) } }));
+vi.mock('@capacitor/local-notifications', () => ({ LocalNotifications: {
+  getPending: vi.fn(), cancel: vi.fn(), schedule: vi.fn(), checkPermissions: vi.fn(),
+} }));
 
 beforeEach(async () => {
+  vi.clearAllMocks();
+  vi.mocked(Capacitor.isNativePlatform).mockReturnValue(false);
   await db.delete();
   await db.open();
 });
 
 describe('网页版应用内提醒', () => {
-  it('只列出已开启且需要处理的周期账、信用卡账单和备份', async () => {
+  it('Android 升级后取消遗留备份通知，即使旧开关仍开启也不再排期', async () => {
+    vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+    vi.mocked(LocalNotifications.getPending).mockResolvedValue({ notifications: [{ id: 3001 }, { id: 9999 }] });
+    vi.mocked(LocalNotifications.cancel).mockResolvedValue(undefined);
+    await setSetting('notification.recurring', false);
+    await setSetting('notification.creditCard', false);
+    await setSetting('notification.backup', true);
+    await setSetting('backup.auto', 'daily');
+    await refreshSchedules();
+    expect(LocalNotifications.cancel).toHaveBeenCalledWith({ notifications: [{ id: 3001 }] });
+    expect(LocalNotifications.schedule).not.toHaveBeenCalled();
+  });
+  it('旧备份提醒设置不再生效，周期账和信用卡提醒保留', async () => {
     const now = new Date(2026, 8, 10, 12).getTime();
     const cashId = await addAccount({ name: '虚构现金', group: 'cash', balance: 10_000 });
     const cardId = await addAccount({ name: '虚构信用卡', group: 'credit', balance: -3_000 });
@@ -42,13 +62,13 @@ describe('网页版应用内提醒', () => {
     ]);
 
     expect((await listInAppReminders(now)).map((item) => item.kind))
-      .toEqual(['backup', 'recurring', 'creditCard']);
+      .toEqual(['recurring', 'creditCard']);
 
     await createAndLinkCreditPayment({
       statementId, fromAccountId: cashId, amount: 3_000, occurredAt: now,
     });
     await setSetting('notification.recurring', false);
-    expect((await listInAppReminders(now)).map((item) => item.kind)).toEqual(['backup']);
+    expect((await listInAppReminders(now)).map((item) => item.kind)).toEqual([]);
   });
 
   it('信用卡仅在到期前三天内提示，周期账显示未来七天', async () => {

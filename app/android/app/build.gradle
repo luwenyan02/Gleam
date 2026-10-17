@@ -34,6 +34,12 @@ def unsignedTestApk = project.findProperty('gleamUnsignedTestApk') == 'true'
 android {
     namespace = "com.gleam.shiguang"
     compileSdk = rootProject.ext.compileSdkVersion
+    packaging {
+        resources {
+            // JavaMail and Activation ship the same paths; retain both notices.
+            merges += ['META-INF/LICENSE.md', 'META-INF/NOTICE.md']
+        }
+    }
     defaultConfig {
         applicationId "com.gleam.shiguang"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -95,6 +101,8 @@ dependencies {
     // Debug-only offline fixture fences use document-start WebView APIs directly.
     debugImplementation "androidx.webkit:webkit:$androidxWebkitVersion"
     implementation "com.squareup.okhttp3:okhttp:5.3.0"
+    implementation "com.sun.mail:android-mail:1.6.8"
+    implementation "com.sun.mail:android-activation:1.6.8"
     testImplementation "junit:junit:$junitVersion"
     // Exercise the same Android-compatible JSON protocol parser in local JVM tests.
     testImplementation "org.json:json:20240303"

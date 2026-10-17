@@ -66,7 +66,7 @@
 `getSetting(key)`（未写入回落 `SETTING_DEFAULTS`） · `setSetting(key, value)` · `getAllSettings()`。键名见 `types.ts` SETTING_DEFAULTS。
 
 ### seed / scheduler
-`seedIfNeeded()`（幂等，`app.seeded` 标记）；`startScheduler()` / `catchUp()`（周期账补跑 + 回收站清理 + 自动备份提醒预留）、`onPendingConfirm(cb)`（周期账待确认通知，M2 注册）。
+`seedIfNeeded()`（幂等，`app.seeded` 标记）；`startScheduler()` / `catchUp()`（周期账补跑 + 回收站清理）、`onPendingConfirm(cb)`（周期账待确认通知，M2 注册）。
 
 ## 外壳接口（src/features/shell/）
 
@@ -80,4 +80,4 @@
 1. 无单侧 accountId 的转账和借贷分别经 `findTransferDuplicates`、`findLoanDuplicates` 按双账户查询；借贷另包含 loanKind；
 2. Dexie 不能索引布尔值，`recurringRules` 的 `[enabled+nextRunAt]` 索引实际失效，`runDueRules` 已用全表 filter 兜底（规则量小，无性能问题）；
 3. 周期账 amountConfirm「待确认」仅有数据接口（`onPendingConfirm`），通知 UI 由 M2-C 实现；
-4. 自动备份到期检测在 `scheduler.catchUp` 中留有 TODO(M3)。
+4. 备份由用户主动生成，不调度备份提醒。

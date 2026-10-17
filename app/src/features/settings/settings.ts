@@ -61,10 +61,10 @@ async function refresh(): Promise<void> {
   const voiceEpoch = getVoiceSettingsEpoch();
   const aiKeyEpoch = getAiKeySettingsEpoch();
   const isNative = Capacitor.isNativePlatform();
-  const [pin, webauthn, bioOk, countAsIncome, autoRenew, backupAuto, retention, themeMode, monthStartDay, appVersion] = await Promise.all([
+  const [pin, webauthn, bioOk, countAsIncome, autoRenew, retention, themeMode, monthStartDay, appVersion] = await Promise.all([
     getSetting('security.pin'), getSetting('security.webauthn'), biometricAvailable(),
     getSetting('reimburse.countAsIncome'),
-    getSetting('budget.autoRenew'), getSetting('backup.auto'), getSetting('trash.retentionDays'),
+    getSetting('budget.autoRenew'), getSetting('trash.retentionDays'),
     getSetting('theme.mode'),
     getSetting('accounting.monthStartDay'),
     getAppVersion(),
@@ -76,8 +76,8 @@ async function refresh(): Promise<void> {
   const currentAccountingRange = await accountingMonthRange(currentAccountingMonth);
   if (!el.isConnected) return;
   // [R07] Android 使用系统通知；Web 使用首页应用内提醒。
-  const [ntfRecurring, ntfCredit, ntfBackup] = await Promise.all([
-    getSetting('notification.recurring'), getSetting('notification.creditCard'), getSetting('notification.backup'),
+  const [ntfRecurring, ntfCredit] = await Promise.all([
+    getSetting('notification.recurring'), getSetting('notification.creditCard'),
   ]);
   if (!el.isConnected) return;
   // [AI] AI 记账配置（OpenAI 兼容接口 + 静默入账阈值）
@@ -85,9 +85,6 @@ async function refresh(): Promise<void> {
     getSetting('ai.baseUrl'), getSetting('ai.model'), secretStore.get('ai.apiKey'), getSetting('ai.autoConfirmThreshold'),
   ]);
   if (!el.isConnected) return;
-
-  const freqChip = (val: 'off' | 'daily' | 'weekly', label: string) =>
-    `<button class="chip${backupAuto === val ? ' active' : ''}" data-freq="${val}">${label}</button>`;
 
   const themeChip = (val: 'light' | 'dark' | 'system', label: string) =>
     `<button class="chip${themeMode === val ? ' active' : ''}" data-theme-mode="${val}">${label}</button>`;
@@ -132,7 +129,6 @@ async function refresh(): Promise<void> {
       <h3 class="card-title">通知</h3>
       <div class="field"><span>周期账入账提醒</span>${switchHtml('ntf-recurring', ntfRecurring as boolean, '周期账入账提醒')}</div>
       <div class="field"><span>信用卡还款日提醒</span>${switchHtml('ntf-credit', ntfCredit as boolean, '信用卡还款日提醒')}</div>
-      <div class="field"><span>备份到期提醒</span>${switchHtml('ntf-backup', ntfBackup as boolean, '备份到期提醒')}</div>
       <div class="field"><span>提醒方式</span><span class="sub">${isNative ? '系统通知' : '首页提醒'}</span></div>
     </section>
 
@@ -144,13 +140,6 @@ async function refresh(): Promise<void> {
       </div>
       <div class="field"><span>本期范围</span><span class="sub">${formatAccountingRange(currentAccountingRange)}</span></div>
       <div class="field"><span>预算自动延续到下月</span>${switchHtml('budget', autoRenew as boolean, '预算自动延续')}</div>
-    </section>
-
-    <section class="card" aria-label="备份">
-      <h3 class="card-title">备份</h3>
-      <div class="field"><span>备份提醒</span>
-        <div class="chip-group">${freqChip('off', '关')}${freqChip('daily', '每日')}${freqChip('weekly', '每周')}</div>
-      </div>
     </section>
 
     <section class="card" aria-label="数据">
@@ -293,12 +282,9 @@ export function initSettings(): void {
         const t = e.target as HTMLElement;
         if (handleVoiceSettingsClick(t, el)) return;
         const sw = t.closest<HTMLElement>('[data-sw]')?.dataset.sw;
-        const freq = t.closest<HTMLElement>('[data-freq]')?.dataset.freq as 'off' | 'daily' | 'weekly' | undefined;
         const themeMode = t.closest<HTMLElement>('[data-theme-mode]')?.dataset.themeMode as 'light' | 'dark' | 'system' | undefined;
         const act = t.closest<HTMLElement>('[data-act]')?.dataset.act;
-        if (freq) {
-          void setSetting('backup.auto', freq).then(() => refresh());
-        } else if (themeMode) {
+        if (themeMode) {
           // 主题切换：setSetting 后 core/theme.ts 监听 settings-changed 自动应用
           void setSetting('theme.mode', themeMode).then(() => refresh());
         } else if (act === 'settings-manual') {
@@ -409,9 +395,9 @@ export function initSettings(): void {
             }
             void refresh();
           })();
-        } else if (sw === 'ntf-recurring' || sw === 'ntf-credit' || sw === 'ntf-backup') {
+        } else if (sw === 'ntf-recurring' || sw === 'ntf-credit') {
           // [R07] 通知开关：原生端首次开启先确保系统授权，拒绝则回退并引导
-          const key = ({ 'ntf-recurring': 'notification.recurring', 'ntf-credit': 'notification.creditCard', 'ntf-backup': 'notification.backup' } as const)[sw];
+          const key = ({ 'ntf-recurring': 'notification.recurring', 'ntf-credit': 'notification.creditCard' } as const)[sw];
           void (async () => {
             const cur = await getSetting(key);
             if (!cur && Capacitor.isNativePlatform() && !(await ensurePermission())) {

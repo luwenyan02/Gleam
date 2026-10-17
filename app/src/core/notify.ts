@@ -5,9 +5,8 @@
  * 每次重排按固定 id 区间分组先撤销后重排未来 7 天：
  * - 周期账入账提醒（id 1000+）：enabled 规则 nextRunAt 落在 7 天内，当日 09:00；
  * - 信用卡还款日提醒（id 2000+）：credit 组含 repayDay 账户，还款日当天 10:00；
- * - 备份到期提醒（id 3000）：backup.auto 非 off 且按 lastBackupAt+频率已到期/将到期，次日 09:00 一条。
  * 全部通知非精确（isExactNotification: false）+ allowWhileIdle，接受分钟级偏差；
- * Web 不调系统通知 API；三开关控制首页应用内提醒。
+ * Web 不调系统通知 API；两开关控制首页应用内提醒。
  */
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications, type LocalNotificationSchema } from '@capacitor/local-notifications';
@@ -25,7 +24,7 @@ const ID_GROUPS = {
   recurring: { base: 1000, max: 1999 },
   /** 信用卡还款：2000-2999 */
   creditCard: { base: 2000, max: 2999 },
-  /** 备份到期：3000（单条） */
+  /** 仅用于取消旧版备份通知；不再创建此组。 */
   backup: { base: 3000, max: 3999 },
 } as const;
 
@@ -35,11 +34,11 @@ const CREDIT_WINDOW_MS = 3 * 86400000;
 
 export interface InAppReminder {
   id: string;
-  kind: 'recurring' | 'creditCard' | 'backup';
+  kind: 'recurring' | 'creditCard';
   title: string;
   body: string;
   dueAt: number;
-  route: 'sp-recurring' | 'sp-credit' | 'sp-backup';
+  route: 'sp-recurring' | 'sp-credit';
   icon: 'ic-repeat' | 'ic-card' | 'ic-cloud';
 }
 
@@ -58,12 +57,9 @@ function reminderDateText(dueAt: number, now: number): string {
 /** 网页版首页提醒；只在打开拾光时计算，不承诺页面关闭后的系统推送。 */
 export async function listInAppReminders(now = Date.now()): Promise<InAppReminder[]> {
   if (Capacitor.isNativePlatform()) return [];
-  const [swRecurring, swCredit, swBackup, backupAuto, lastBackupAt] = await Promise.all([
+  const [swRecurring, swCredit] = await Promise.all([
     getSetting('notification.recurring'),
     getSetting('notification.creditCard'),
-    getSetting('notification.backup'),
-    getSetting('backup.auto'),
-    getSetting('backup.lastBackupAt'),
   ]);
   const reminders: InAppReminder[] = [];
   if (swRecurring) {
@@ -95,21 +91,6 @@ export async function listInAppReminders(now = Date.now()): Promise<InAppReminde
           icon: 'ic-card',
         });
       }
-    }
-  }
-  if (swBackup && backupAuto !== 'off') {
-    const span = backupAuto === 'daily' ? 86400000 : WINDOW_MS;
-    const dueAt = lastBackupAt ? lastBackupAt + span : 0;
-    if (dueAt <= now) {
-      reminders.push({
-        id: 'backup',
-        kind: 'backup',
-        title: '备份到期',
-        body: '该备份了，生成新的本地备份包',
-        dueAt,
-        route: 'sp-backup',
-        icon: 'ic-cloud',
-      });
     }
   }
   return reminders.sort((a, b) => a.dueAt - b.dueAt).slice(0, 5);
@@ -192,29 +173,6 @@ async function collectCreditCard(now: number): Promise<LocalNotificationSchema[]
   return out;
 }
 
-/**
- * 收集备份到期提醒：backup.auto 非 off 且按 lastBackupAt+频率
- * 已到期（含从未备份）或未来 7 天内将到期，到期日次日 09:00 一条。
- */
-async function collectBackup(now: number): Promise<LocalNotificationSchema[]> {
-  const auto = await getSetting('backup.auto');
-  if (auto === 'off') return [];
-  const last = await getSetting('backup.lastBackupAt');
-  const span = auto === 'daily' ? 86400000 : 7 * 86400000;
-  const dueAt = last + span; // 从未备份（last=0）视为已到期
-  if (dueAt > now + WINDOW_MS) return [];
-  const fireAt = atHour(Math.max(dueAt, now) + 86400000, 9); // 到期次日 09:00
-  if (fireAt <= now) return [];
-  return [{
-    id: ID_GROUPS.backup.base,
-    title: '备份提醒',
-    body: '该备份了：到「我的 → 备份与恢复」一键生成备份包',
-    schedule: { at: new Date(fireAt), allowWhileIdle: true },
-    extra: { route: 'sp-backup' },
-    isExactNotification: false,
-  }];
-}
-
 /** 撤销 id 落在本模块三个区间内的全部已排通知 */
 async function cancelOurs(): Promise<void> {
   const { notifications } = await LocalNotifications.getPending();
@@ -226,25 +184,24 @@ async function cancelOurs(): Promise<void> {
 let refreshing = false;
 
 /**
- * 重排全部通知：先撤销本模块已排项，再按三个场景开关重排未来 7 天。
- * 三开关全关（或未授权）时只撤销、不再排。幂等防重入。
+ * 重排全部通知：先撤销本模块已排项，再按两个场景开关重排未来 7 天。
+ * 两开关全关（或未授权）时只撤销、不再排。幂等防重入。
  */
 export async function refreshSchedules(): Promise<void> {
   if (!Capacitor.isNativePlatform() || refreshing) return;
   refreshing = true;
   try {
-    const [swRecurring, swCredit, swBackup] = await Promise.all([
-      getSetting('notification.recurring'), getSetting('notification.creditCard'), getSetting('notification.backup'),
+    const [swRecurring, swCredit] = await Promise.all([
+      getSetting('notification.recurring'), getSetting('notification.creditCard'),
     ]);
     await cancelOurs();
-    if (!swRecurring && !swCredit && !swBackup) return;
+    if (!swRecurring && !swCredit) return;
     const { display } = await LocalNotifications.checkPermissions();
     if (display !== 'granted') return; // 未授权：开关引导授权后再重排
     const now = Date.now();
     const notifications: LocalNotificationSchema[] = [
       ...(swRecurring ? await collectRecurring(now) : []),
       ...(swCredit ? await collectCreditCard(now) : []),
-      ...(swBackup ? await collectBackup(now) : []),
     ];
     if (notifications.length) await LocalNotifications.schedule({ notifications });
   } catch (err) {
@@ -254,10 +211,9 @@ export async function refreshSchedules(): Promise<void> {
   }
 }
 
-/** settings-changed 中会影响排期的键（开关、备份频率与最近备份时间） */
+/** settings-changed 中会影响排期的键（开关） */
 const WATCH_KEYS = new Set([
-  'notification.recurring', 'notification.creditCard', 'notification.backup',
-  'backup.auto', 'backup.lastBackupAt',
+  'notification.recurring', 'notification.creditCard',
 ]);
 
 /**
@@ -284,7 +240,7 @@ export function initNotifications(): void {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') void refreshSchedules();
   });
-  // 开关 / 备份频率变化时重排
+  // 开关变化时重排
   on('settings-changed', (payload) => {
     const key = (payload as { key?: string } | undefined)?.key;
     if (key && WATCH_KEYS.has(key)) void refreshSchedules();

@@ -405,6 +405,8 @@ export interface BackupRecord extends Timestamps {
   provider: 'aliyun' | 'baidu' | 'local' | 'webdav' | 's3' | 'email';
   entryCount: number;
   encrypted: boolean;
+  /** 仅本机副本索引；导出时去掉，文件存在独立数据库。 */
+  localFileId?: string;
 }
 
 /** 导入批次（支撑导入撤销）。'ai' 为 AI 记账收件箱入账批次 */
@@ -462,7 +464,7 @@ export const SETTING_DEFAULTS = {
     type: null as EntryType | null,
   },
   'entry.recentTemplates': [] as number[],
-  /** 自动备份：off / daily / weekly */
+  /** 旧版兼容键；不再调度自动备份或提醒。 */
   'backup.auto': 'off' as 'off' | 'daily' | 'weekly',
   /** 自动备份仅 Wi-Fi */
   'backup.wifiOnly': true,
@@ -471,7 +473,7 @@ export const SETTING_DEFAULTS = {
   /** 首次启动种子数据已写入的标记 */
   'app.seeded': false as boolean,
   /* ── [M3] 新增设置键 ── */
-  /** 上次成功备份时间（毫秒时间戳，0 = 从未备份），自动备份到期检测用 */
+  /** 上次成功备份时间（毫秒时间戳，0 = 从未备份），用于状态展示 */
   'backup.lastBackupAt': 0,
   /** 应用锁 PIN（SHA-256(盐+PIN) 十六进制 + 盐），null = 未开启 */
   'security.pin': null as { hash: string; salt: string } | null,
@@ -505,10 +507,10 @@ export const SETTING_DEFAULTS = {
   /** 生活 AI 必须由用户在本机显式开启；备份恢复不会继承开启状态。 */
   'life.aiEnabled': false as boolean,
   /* ── [R06] 云备份设置键 ── */
-  /** 邮箱发送服务配置；访问令牌仅存 SecretStore，QQ 授权码仅存发送服务。 */
-  'cloud.email': { endpoint: '', recipient: '' } as { endpoint: string; recipient: string },
-  /** 云备份通道：无 / WebDAV / S3 兼容对象存储 */
-  'cloud.provider': 'none' as 'none' | 'webdav' | 's3',
+  /** Android QQ 邮箱配置；SMTP 授权码仅存 SecretStore。 */
+  'cloud.email': { username: '', recipient: '' } as { username: string; recipient: string },
+  /** 云备份通道：无 / WebDAV / S3 兼容对象存储 / Android QQ 邮箱 */
+  'cloud.provider': 'none' as 'none' | 'webdav' | 's3' | 'email',
   /** WebDAV 非敏感配置；password 字段仅作旧版迁移占位。 */
   'cloud.webdav': { server: '', username: '', password: '', path: '拾光备份' } as {
     server: string; username: string; password: string; path: string;
@@ -526,7 +528,7 @@ export const SETTING_DEFAULTS = {
   'notification.recurring': false as boolean,
   /** 信用卡还款日提醒（还款日当天 10:00） */
   'notification.creditCard': false as boolean,
-  /** 备份到期提醒（到期次日 09:00） */
+  /** 旧版兼容键；备份提醒已移除，不再读取或调度。 */
   'notification.backup': false as boolean,
 };
 

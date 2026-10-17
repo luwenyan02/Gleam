@@ -4,7 +4,6 @@
  * 1. 周期账到期入账（recurringRepo.runDueRules；amountConfirm 规则收集为待确认，不入账）；
  * 2. 回收站超保留期物理清除（trashRepo.purgeExpired）；
  * 3. [M3] 快照超 7 天清理（backupRepo.purgeSnapshots）；
- * 4. [M3] 自动备份到期检测（backup.auto + backup.lastBackupAt，UI 轻提醒）。
  */
 import { emit } from './store';
 import { runDueRules, type PendingConfirm } from './repo/recurringRepo';
@@ -20,8 +19,6 @@ export interface CatchUpResult {
   pending: PendingConfirm[];
   /** 回收站物理清除条数 */
   purged: number;
-  /** [M3] 自动备份已到期（backup.auto 非 off 且距上次备份超过周期） */
-  backupDue: boolean;
 }
 
 /** 待确认项的订阅回调（M2 由周期账 UI 注册，呈现「待确认」通知） */
@@ -67,7 +64,7 @@ let running = false;
  * 执行一次补跑（幂等防重入；入账会经 entryRepo 联动余额并 emit 事件）。
  */
 export async function catchUp(): Promise<CatchUpResult> {
-  if (running) return { booked: 0, pending: [], purged: 0, backupDue: false };
+  if (running) return { booked: 0, pending: [], purged: 0 };
   running = true;
   try {
     const { booked } = await runDueRules();
@@ -88,15 +85,7 @@ export async function catchUp(): Promise<CatchUpResult> {
       else bufferedPending.push(...dispatch); // 见上方 M2-C 最小修复说明
     }
 
-    // [M3] 自动备份到期检测：从未备份（lastBackupAt=0）也视为到期
-    let backupDue = false;
-    const auto = await getSetting('backup.auto');
-    if (auto !== 'off') {
-      const last = await getSetting('backup.lastBackupAt');
-      const span = auto === 'daily' ? 86400000 : 7 * 86400000;
-      backupDue = Date.now() - last >= span;
-    }
-    return { booked, pending: dispatch, purged, backupDue };
+    return { booked, pending: dispatch, purged };
   } finally {
     running = false;
   }

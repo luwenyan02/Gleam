@@ -22,7 +22,6 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: python3 scripts/test-preview-sync.py
-      - run: python3 -m unittest discover -s services/mail-backup -p 'test_*.py' -v
       - run: npm ci --ignore-scripts
         working-directory: app
       - run: npm run check:secrets
@@ -31,3 +30,26 @@ jobs:
         working-directory: app
       - run: npm run build
         working-directory: app
+
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npx cap sync android
+      - run: ./gradlew testDebugUnitTest assembleRelease -PgleamUnsignedTestApk=true
+        working-directory: app/android

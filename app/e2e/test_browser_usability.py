@@ -101,33 +101,22 @@ def main() -> None:
                     page.wait_for_selector('#sheet.open', state='detached')
                 if subpage == 'sp-settings':
                     switches = page.locator('#sp-settings [data-sw^="ntf-"]')
-                    assert switches.count() == 3
+                    assert switches.count() == 2
                     assert switches.evaluate_all('els => els.every(el => !el.disabled)')
                     page.click('#sp-settings [data-sw="ntf-credit"]')
                     page.wait_for_selector('#sp-settings [data-sw="ntf-credit"][aria-checked="true"]')
-                    page.click('#sp-settings [data-freq="daily"]')
-                    page.wait_for_selector('#sp-settings [data-freq="daily"].active')
-                    page.click('#sp-settings [data-sw="ntf-backup"]')
-                    page.wait_for_selector('#sp-settings [data-sw="ntf-backup"][aria-checked="true"]')
+                    assert page.locator('#sp-settings [data-freq]').count() == 0
+                    assert page.locator('#sp-settings [data-sw="ntf-backup"]').count() == 0
                     assert '首页提醒' in page.inner_text('#sp-settings section[aria-label="通知"]')
                     page.screenshot(path=str(OUT / f'settings-{width}.png'))
                 page.click(f'#{subpage} .sub-head [data-act="back"]')
                 page.wait_for_selector(f'#{subpage}', state='detached')
 
             page.click('#tab-home')
-            page.wait_for_selector('#page-home.is-active #hm-reminders:not([hidden])')
-            page.wait_for_timeout(260)
-            assert page.locator('#page-home').evaluate('el => el.scrollTop') < 1
-            header_bottom = page.locator('#page-home > .page-head').evaluate('el => el.getBoundingClientRect().bottom')
-            reminder_top = page.locator('#hm-reminders').evaluate('el => el.getBoundingClientRect().top')
-            assert reminder_top >= header_bottom - 1
-            assert '备份到期' in page.inner_text('#hm-reminders')
+            page.wait_for_selector('#page-home.is-active')
+            assert '备份到期' not in page.inner_text('#hm-reminders')
             assert_usable(page, '#page-home')
             page.screenshot(path=str(OUT / f'home-reminder-{width}.png'))
-            page.click('#hm-reminders [data-reminder-route="sp-backup"]')
-            page.wait_for_selector('#sp-backup.open')
-            page.click('#sp-backup .sub-head [data-act="back"]')
-            page.wait_for_selector('#sp-backup', state='detached')
             assert not errors, errors
             print(f'PASS browser usability {width}', flush=True)
             context.close()

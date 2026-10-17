@@ -4,7 +4,7 @@ import { getSetting, setSetting } from './repo/settingsRepo';
 export type SecretKey =
   | 'ai.apiKey'
   | 'cloud.webdav.password'
-  | 'cloud.email.token'
+  | 'cloud.email.authCode'
   | 'cloud.s3.accessKey'
   | 'cloud.s3.secretKey';
 

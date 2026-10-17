@@ -53,7 +53,7 @@ async function bootstrap(): Promise<void> {
   initTheme();
   // [M3] 应用锁：开启 PIN 时先解锁再补跑/挂载
   await enforceAppLock();
-  const { booked, backupDue } = await startScheduler();
+  const { booked } = await startScheduler();
   // [R07] 本地通知：消费调度结果重排未来 7 天提醒（Web 端 no-op）
   initNotifications();
   mountShell(document.getElementById('app')!);
@@ -86,8 +86,6 @@ async function bootstrap(): Promise<void> {
   initNativeWidget();
   if (secretMigration.failed.length) showToast('部分旧凭据未能迁移，请在设置中重新输入', 3600);
   if (booked > 0) showToast(`周期账已自动入账 ${booked} 笔`);
-  // [M3] 自动备份到期轻提醒（频率在设置/备份页配置）
-  if (backupDue) showToast('该备份了：到「我的 → 备份与恢复」一键生成备份包');
 }
 
 bootstrap().catch((err) => {

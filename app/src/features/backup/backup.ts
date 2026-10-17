@@ -10,7 +10,7 @@ import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
 import { on } from '../../core/store';
 import {
-  addBackupRecord, countLocalStats, createSnapshot, exportAll, listBackupRecords,
+  countLocalStats, createSnapshot, exportAll,
   listSnapshots, restoreAll, sanitizeDumpForBackup, undoSnapshot,
 } from '../../core/repo/backupRepo';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
@@ -22,7 +22,7 @@ import { backupFileName, buildSkbak, parseSkbak, sniffEncrypted, type SkbakManif
 import { saveBlobFile } from './download';
 import { exportMonthExcel } from './excel';
 import { mountCloudBackup } from './cloudBackup';
-import { mountEmailBackup } from './emailBackup';
+import { listBackupHistory, readBackupFile, recordBackupFile } from './backupHistory';
 import { openImportWizardFor } from '../import/import';
 import type { ImportSource } from '../import/wacai';
 import { openMonthWheel } from '../../shared/dateTimeWheel';
@@ -63,14 +63,11 @@ async function refresh(): Promise<void> {
   if (!el?.isConnected) return;
   const token = ++refreshToken;
   // [R09] 计数改走 countLocalStats（db 直接 count），避免每次刷新都全量导出附件 Blob
-  const [counts, lastAt, auto, records, snapshots] = await Promise.all([
-    countLocalStats(), getSetting('backup.lastBackupAt'), getSetting('backup.auto'),
-    listBackupRecords(), listSnapshots(),
+  const [counts, lastAt, records, snapshots] = await Promise.all([
+    countLocalStats(), getSetting('backup.lastBackupAt'),
+    listBackupHistory(), listSnapshots(),
   ]);
   if (token !== refreshToken || !el.isConnected) return;
-
-  const freqChip = (val: 'off' | 'daily' | 'weekly', label: string) =>
-    `<button class="chip${auto === val ? ' active' : ''}" data-freq="${val}">${label}</button>`;
 
   const curMonth = (() => {
     const d = new Date();
@@ -95,20 +92,18 @@ async function refresh(): Promise<void> {
 
     <h3 class="bk-group-title">云端配置</h3>
     <section class="card list" id="cloud-backup" aria-label="云端备份"></section>
-    <section class="card" id="email-backup" aria-label="邮箱备份"></section>
-
-    <section class="card" aria-label="备份提醒设置">
-      <h3 class="card-title">备份提醒</h3>
-      <div class="field"><span>频率</span>
-        <div class="chip-group">${freqChip('off', '关')}${freqChip('daily', '每日')}${freqChip('weekly', '每周')}</div>
-      </div>
-      <p class="tiny">按所选频率提醒；备份文件需点击「立即备份」生成。</p>
-    </section>
 
     <h3 class="bk-group-title">恢复与历史</h3>
-    <section class="card" aria-label="从备份恢复">
-      <button class="btn ghost" data-act="restore">从备份文件恢复…</button>
-      <p class="tiny" style="margin-top:8px">恢复前会先校验文件并创建当前数据快照；确认后才会全量替换</p>
+    <section class="card list" aria-label="备份历史">
+      <div class="bk-history-head"><h3 class="card-title">备份与恢复</h3><button class="btn ghost" data-act="restore">选择备份文件</button></div>
+      ${records.length ? records.map(r => `
+        <div class="row bk-history-row">
+          <span class="e-ic neutral">${iconHtml(r.encrypted ? 'ic-lock' : 'ic-file', 18)}</span>
+          <div class="e-main"><p class="e-title" title="${esc(r.fileName)}">${esc(r.fileName)}</p><p class="e-meta"><span>${fmtTime(r.createdAt)}</span> · <span>${fmtSize(r.size)}</span> · <span>${r.entryCount} 条账单</span>${r.encrypted ? ' · <span>已加密</span>' : ''}</p><p class="e-meta">${r.provider === 'email' ? '邮件服务器已接收' : r.provider === 'webdav' ? '已上传 WebDAV' : r.provider === 's3' ? '已上传 S3' : '已导出到本机'} · ${r.fileId ? '本机副本可用' : '需选择备份文件'}</p></div>
+          <button class="restore-link" ${r.fileId ? `data-history-file="${esc(r.fileId)}"` : 'data-act="restore" aria-label="选文件恢复"'}>${r.fileId ? '恢复' : '选文件'}</button>
+        </div>`).join('') : '<p class="sub cb-list-state">还没有备份记录，也可选择已有备份文件恢复。</p>'}
+      <p class="tiny bk-history-note">本机保留最近 10 份副本（合计最多 100 MB）；更早的备份请选择文件。卸载或清除应用数据会丢失本机副本。</p>
+      <p class="tiny bk-history-note">恢复前校验并创建快照，确认后全量替换；7 天内可撤销。</p>
     </section>
 
     ${snapshots.length ? `
@@ -121,15 +116,6 @@ async function refresh(): Promise<void> {
         </div>`).join('')}
       <p class="tiny" style="padding:6px 2px 10px">恢复/导入前自动创建；撤销即把全部数据回滚到该时点</p>
     </section>` : ''}
-
-    <section class="card list" aria-label="备份历史">
-      <h3 class="card-title" style="padding:10px 2px 0">备份历史</h3>
-      ${records.length ? records.map((r) => `
-        <div class="row"><span class="e-ic neutral">${iconHtml(r.encrypted ? 'ic-lock' : 'ic-file', 18)}</span>
-          <div class="e-main"><p class="e-title">${esc(r.fileName)}</p><p class="e-meta">${fmtSize(r.size)} · ${r.provider === 'email' ? '邮件服务器已接收' : r.provider === 'webdav' ? '已上传 WebDAV' : r.provider === 's3' ? '已上传 S3' : '已下载到本机'} · ${r.entryCount} 条账单${r.encrypted ? ' · 已加密' : ''}</p></div>
-        </div>`).join('') : '<p class="sub" style="padding:8px 2px">还没有备份记录，点上方「立即备份」生成第一份</p>'}
-      <p class="tiny" style="padding:6px 2px 10px">恢复为全量替换：会先自动创建当前数据的本地快照，7 天内可撤销</p>
-    </section>
 
     <h3 class="bk-group-title">Excel 导入导出</h3>
     <section class="card" aria-label="Excel 导出">
@@ -158,8 +144,6 @@ async function refresh(): Promise<void> {
 
   // [R06] 云端备份区挂载（内部自行异步加载配置与云端列表）
   const cloudHost = el.querySelector<HTMLElement>('#cloud-backup');
-  const emailHost = el.querySelector<HTMLElement>('#email-backup');
-  if (emailHost) mountEmailBackup(emailHost, () => void refresh());
   if (cloudHost) {
     mountCloudBackup(cloudHost, {
       onChanged: () => void refresh(),
@@ -217,13 +201,13 @@ function openBackupSheet(): void {
               const blob = await buildSkbak(dump, password);
               const name = backupFileName();
               const savedTip = await saveBlobFile(blob, name);
-              await addBackupRecord({
+              const cached = await recordBackupFile({
                 fileName: name, size: blob.size, provider: 'local',
                 entryCount: (dump.entries ?? []).length, encrypted: !!password,
-              });
+              }, blob);
               await setSetting('backup.lastBackupAt', Date.now());
               closeSheet();
-              showToast(savedTip || `备份已生成：${name}`);
+              showToast((savedTip || `备份已生成：${name}`) + (cached ? '' : '；本机副本未保留，恢复时请选择文件'), 3600);
               void refresh();
             } catch (err) {
               showToast(err instanceof Error ? err.message : String(err));
@@ -385,10 +369,20 @@ export function initBackup(): void {
       el.addEventListener('click', (e) => {
         const t = e.target as HTMLElement;
         const act = t.closest<HTMLElement>('[data-act]')?.dataset.act;
-        const freq = t.closest<HTMLElement>('[data-freq]')?.dataset.freq as 'off' | 'daily' | 'weekly' | undefined;
+        const historyFile = t.closest<HTMLElement>('[data-history-file]')?.dataset.historyFile;
         const undoId = t.closest<HTMLElement>('[data-undo]')?.dataset.undo;
-        if (freq) {
-          void setSetting('backup.auto', freq).then(() => refresh());
+        if (historyFile) {
+          const button = t.closest<HTMLButtonElement>('[data-history-file]')!;
+          if (button.disabled) return;
+          button.disabled = true;
+          void (async () => {
+            try {
+              const file = await readBackupFile(historyFile);
+              if (file) await runRestore(file);
+              else { showToast('本机副本已不可用，请选择备份文件'); void refresh(); }
+            } catch { showToast('本机副本读取失败，请选择备份文件'); }
+            finally { button.disabled = false; }
+          })();
         } else if (undoId) {
           void (async () => {
             const ok = await confirmDialog({

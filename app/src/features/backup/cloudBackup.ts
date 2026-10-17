@@ -1,15 +1,15 @@
 /**
  * 拾光 · 云端备份区（features/backup/cloudBackup）[R06+R09]
- * 挂载进备份页「云盘连接」原占位区：通道选择（无 / WebDAV / S3）、配置表单与测试连接、
+ * 挂载进备份页：通道选择（无 / WebDAV / S3 / Android QQ 邮箱）、配置表单与测试连接、
  * 「上传到云端」（复用与本地备份完全相同的 .skbak 生成逻辑，含可选口令加密）、
  * 云端文件列表（下载恢复 / 删除）。
- * 红线：仅整包 .skbak 上传 / 下载 + 显式恢复，无任何增量同步；凭证只写 settings KV，
+ * 红线：仅整包 .skbak 上传 / 下载 + 显式恢复，无任何增量同步；凭证仅存 SecretStore，
  * 不出现在日志与错误消息中。
  */
 import { Capacitor } from '@capacitor/core';
 import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
-import { addBackupRecord, exportAll, sanitizeDumpForBackup } from '../../core/repo/backupRepo';
+import { exportAll, sanitizeDumpForBackup } from '../../core/repo/backupRepo';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
 import { secretStore } from '../../core/secretStore';
 import { openSheet, closeSheet } from '../shell/sheet';
@@ -17,6 +17,8 @@ import { confirmDialog } from '../shell/dialog';
 import { showToast } from '../shell/toast';
 import { backupFileName, buildSkbak } from './skbak';
 import { buildCurrentProvider, CloudError, type BackupProvider, type CloudFile } from './provider';
+import { mountEmailBackup } from './emailBackup';
+import { recordBackupFile } from './backupHistory';
 import { createWebdavProvider } from './providers/webdav';
 
 /** 上传前警告阈值：50MB（原生桥 base64 转发的内存风险） */
@@ -111,9 +113,11 @@ export function mountCloudBackup(host: HTMLElement, hooks: CloudBackupHooks): vo
     ]);
     if (token !== mountToken || !host.isConnected) return;
 
-    const chip = (val: 'none' | 'webdav' | 's3', label: string) =>
-      `<button class="chip${provKind === val ? ' active' : ''}" data-cb-prov="${val}">${label}</button>`;
-    const webHint = !Capacitor.isNativePlatform()
+    const emailEnabled = Capacitor.getPlatform() === 'android';
+    const kind = provKind === 'email' && !emailEnabled ? 'none' : provKind;
+    const chip = (val: 'none' | 'webdav' | 's3' | 'email', label: string) =>
+      `<button class="chip${kind === val ? ' active' : ''}" data-cb-prov="${val}">${label}</button>`;
+    const webHint = !Capacitor.isNativePlatform() && kind === 'webdav'
       ? `<p class="tiny cb-hint">${isJianguoyunWebdav(webdavCfg.server)
         ? '坚果云不允许浏览器跨域直连，请在 Android 端使用'
         : '浏览器版直连需要 WebDAV 服务器允许 CORS；如服务不支持，请在 Android 端使用'}</p>`
@@ -128,9 +132,9 @@ export function mountCloudBackup(host: HTMLElement, hooks: CloudBackupHooks): vo
       <h3 class="card-title" style="padding:10px 2px 0">云端备份</h3>
       ${webHint}
       <div class="chip-group cb-provs" role="tablist" aria-label="云备份通道">
-        ${chip('none', '不启用')}${chip('webdav', 'WebDAV')}${chip('s3', 'S3 兼容')}
+        ${chip('none', '不启用')}${chip('webdav', 'WebDAV')}${chip('s3', 'S3 兼容')}${emailEnabled ? chip('email', 'QQ 邮箱') : ''}
       </div>
-      ${provKind === 'none' ? `
+      ${kind === 'email' ? '<div id="email-backup"></div>' : kind === 'none' ? `
         <p class="tiny" style="padding:4px 2px 10px">支持 WebDAV（坚果云 / 群晖 / Nextcloud）与 S3 兼容对象存储（R2 / MinIO / OSS）；上传的是完整备份包（.skbak），恢复需手动确认；${secretStore.kind === 'android-keystore' ? '凭证由 Android 系统 Keystore 加密保存' : '浏览器版凭证只在当前标签页会话中保留'}</p>
       ` : `
         <div class="cb-form">${form}</div>
@@ -143,7 +147,8 @@ export function mountCloudBackup(host: HTMLElement, hooks: CloudBackupHooks): vo
       `}`;
 
     bindEvents(host, hooks);
-    if (provKind !== 'none') void loadList(host, token);
+    if (kind === 'email') mountEmailBackup(host.querySelector<HTMLElement>('#email-backup')!, hooks.onChanged);
+    else if (kind !== 'none') void loadList(host, token);
   })();
 }
 
@@ -225,7 +230,7 @@ function renderList(box: HTMLElement, files: CloudFile[]): void {
 function bindEvents(host: HTMLElement, hooks: CloudBackupHooks): void {
   host.addEventListener('click', (e) => {
     const t = e.target as HTMLElement;
-    const prov = t.closest<HTMLElement>('[data-cb-prov]')?.dataset.cbProv as 'none' | 'webdav' | 's3' | undefined;
+    const prov = t.closest<HTMLElement>('[data-cb-prov]')?.dataset.cbProv as 'none' | 'webdav' | 's3' | 'email' | undefined;
     const act = t.closest<HTMLElement>('[data-cb-act]')?.dataset.cbAct;
     const fileRow = t.closest<HTMLElement>('[data-cb-name]');
     const name = fileRow?.dataset.cbName;
@@ -334,13 +339,13 @@ function openUploadSheet(provider: BackupProvider, hooks: CloudBackupHooks): voi
               btn.textContent = '正在上传…';
               const name = backupFileName();
               await provider.upload(name, blob);
-              await addBackupRecord({
+              const cached = await recordBackupFile({
                 fileName: name, size: blob.size, provider: provider.kind,
                 entryCount: (dump.entries ?? []).length, encrypted: !!password,
-              });
+              }, blob);
               await setSetting('backup.lastBackupAt', Date.now());
               closeSheet();
-              showToast(`已上传到云端：${name}`);
+              showToast(`已上传到云端：${name}${cached ? '' : '；本机副本未保留，恢复时请选择文件'}`, 3600);
               hooks.onChanged();
             } catch (err) {
               showToast(errText(err), 3200);

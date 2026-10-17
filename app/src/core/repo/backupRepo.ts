@@ -10,7 +10,7 @@
  * 注意：restoreAll / undoSnapshot 完成后广播全部数据事件，UI 各模块自行刷新。
  */
 import Dexie, { type EntityTable } from 'dexie';
-import { db, now, stamp } from '../db';
+import { db, now } from '../db';
 import { emit, type AppEvent } from '../store';
 import type { BackupRecord } from '../types';
 
@@ -59,15 +59,10 @@ export function countDump(dump: TableDump): Record<string, number> {
 export function sanitizeDumpForBackup(dump: TableDump): TableDump {
   const settings = (dump.settings ?? []).map((row) => {
     const r = row as { key: string; value: unknown };
-    if (r.key === 'cloud.email.token') return { ...r, value: '' };
+    if (r.key === 'cloud.email.token' || r.key === 'cloud.email.authCode') return { ...r, value: '' };
     if (r.key === 'cloud.email') {
       const cfg = r.value as Record<string, unknown> | null;
-      let endpoint = '';
-      try {
-        const url = new URL(String(cfg?.endpoint ?? ''));
-        if (url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash) endpoint = url.href.replace(/\/$/, '');
-      } catch { /* 不转存备份中夹带的无效地址或凭据。 */ }
-      return { ...r, value: { endpoint, recipient: typeof cfg?.recipient === 'string' ? cfg.recipient : '' } };
+      return { ...r, value: { username: typeof cfg?.username === 'string' ? cfg.username : '', recipient: typeof cfg?.recipient === 'string' ? cfg.recipient : '' } };
     }
     if (r.key === 'ai.apiKey' || r.key === 'voice.bailian.apiKey') return { ...r, value: '' };
     if (r.key === 'life.aiEnabled') return { ...r, value: false };
@@ -75,7 +70,11 @@ export function sanitizeDumpForBackup(dump: TableDump): TableDump {
     if (r.key === 'cloud.s3') return { ...r, value: { ...(r.value as Record<string, unknown>), accessKey: '', secretKey: '' } };
     return row;
   });
-  return { ...dump, settings };
+  const backupRecords = (dump.backupRecords ?? []).map(row => {
+    const { localFileId: _local, ...record } = row as Record<string, unknown>;
+    return record;
+  });
+  return { ...dump, settings, backupRecords };
 }
 
 /**
@@ -170,8 +169,9 @@ export async function purgeSnapshots(retentionDays = SNAPSHOT_RETENTION_DAYS): P
 /** 记录一次备份（生成 .skbak 成功后调用） */
 export async function addBackupRecord(
   input: Omit<BackupRecord, 'id' | 'createdAt' | 'updatedAt'>,
+  recordedAt = now(),
 ): Promise<number> {
-  return db.backupRecords.add(stamp({ ...input }) as BackupRecord);
+  return db.backupRecords.add({ ...input, createdAt: recordedAt, updatedAt: recordedAt } as BackupRecord);
 }
 
 /** 备份历史，createdAt 倒序 */
