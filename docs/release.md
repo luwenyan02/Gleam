@@ -1,5 +1,17 @@
 # 构建与 GitHub 发布指南
 
+## Android 应用内检查新版
+
+入口为「我的 → 关于拾光」，或「设置 → 关于拾光 → 检查新版」。仅 Android 提供，点击检查才访问 GitHub，不在启动时自动检查。
+
+仓库保持私有。用户在 GitHub 创建 Fine-grained personal access token，Repository access 只选择 `luwenyan02/Gleam`，Repository permissions 的 Contents 设为 Read-only（Metadata 按 GitHub 默认只读），并选择合适有效期。在 App 的「GitHub 访问设置」填入，点击「保存并验证」；过期后在此替换。不要把 Token 发到聊天、写入 APK 或加入 Git。Token 由 Android Keystore 加密，仅供原生更新通道读取，不包含在 `.skbak` 备份中。
+
+更新源为该仓库 `/releases/latest`，只使用正式 Release。每次发布递增 `package.json` 的三段版本（minor/patch 均小于 100，与现有 Android versionCode 规则一致），标签为 `vX.Y.Z`，并同时附上原 F979 证书签名的 `Gleam-vX.Y.Z.apk` 和 `Gleam-vX.Y.Z.apk.sha256`。校验文件使用 `sha256sum` 格式，文件名必须与 APK 一致；不能使用 CI 无签名包。先在草稿中上传完整附件，再将 Release 正式发布并设为 latest，避免用户检查时看到不完整附件。此说明不自动授权创建或改动 Release。
+
+App 比较手机实际安装的 versionCode，只接受更高版本。下载经原生 HTTPS 通道；Token 仅发送给固定 GitHub API，不转发给附件 CDN。下载至应用缓存，最多 150 MB，核验文件大小、SHA-256、包名、版本、当前签名和原 F979 签名；取消或失败清理半成品。点击「安装新版」后交给 Android 系统确认；若系统要求允许此来源安装，授权后返回再点安装。拒绝或取消安装不会自动重试，也不表示更新成功。关闭/重启后可重新检查和下载，缓存不能当作持久备份。
+
+真实私有 Token 下载、安装来源授权及覆盖安装仍需 Android 手机验收；浏览器模拟桥和 JVM 校验测试不能替代这一步。
+
 通过 GitHub 维护源码与文档。仅在获得发布授权后交付最终合并提交对应的 Android 安装包；安装包与校验文件通过 GitHub Releases 分发，不进入源码历史。环境维护不会补发历史版本或调整历史 Release。
 
 当前正式版本为 **v1.11.1**（Android `versionCode` 为 `11101`），已合并 [PR #15](https://github.com/luwenyan02/Gleam/pull/15) 并完成用户手机覆盖安装验收。[正式 Release](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.1) 与标签均对应 `e96e31b7de2a90adfcb5a8fd2b58e428956a8d39`，[最终普通 CI 38195964629](https://github.com/luwenyan02/Gleam/actions/runs/38195964629) 通过。发布文件沿用已验收原安装包，仅使用正式文件名，未重新构建。

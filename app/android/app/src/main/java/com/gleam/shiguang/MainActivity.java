@@ -13,6 +13,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(GleamSpeechPlugin.class);
         registerPlugin(GleamWebDavPlugin.class);
         registerPlugin(GleamMailPlugin.class);
+        registerPlugin(GleamUpdatePlugin.class);
         registerPlugin(GleamEntryPlugin.class);
         super.onCreate(savedInstanceState);
         // BridgeActivity registers launchers/plugins and restores native results synchronously.

@@ -46,7 +46,23 @@ public class GleamSecretsPlugin extends Plugin {
     }
 
     private boolean validKey(String key) {
-        return key != null && !key.startsWith("voice.bailian.") && key.matches("[A-Za-z0-9._-]{1,80}");
+        return key != null && !key.startsWith("voice.bailian.") && !key.startsWith("update.github.") && key.matches("[A-Za-z0-9._-]{1,80}");
+    }
+
+    /** Update credentials never support plaintext bridge readback or backup export. */
+    static String readUpdateToken(Context context) throws Exception {
+        synchronized (GleamCredentialLock.LOCK) {
+            String payload=preferences(context).getString("update.github.token", null);
+            return payload==null ? null : decrypt(payload);
+        }
+    }
+    static void saveUpdateToken(Context context, String value) throws Exception {
+        synchronized (GleamCredentialLock.LOCK) {
+            SharedPreferences.Editor editor=preferences(context).edit();
+            if (value==null) editor.remove("update.github.token");
+            else editor.putString("update.github.token", encrypt(value));
+            if (!editor.commit()) throw new IllegalStateException("storage");
+        }
     }
 
     private static SecretKey encryptionKey() throws Exception {

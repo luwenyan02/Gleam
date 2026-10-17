@@ -29,6 +29,8 @@ import { bailianVoiceSettingsHtml, handleVoiceSettingsChange, handleVoiceSetting
 
 import { getVoiceSettingsEpoch, invalidateVoiceConnectionTest, mountVoiceConnectionTest, syncVoiceConnectionTest } from './bailianVoiceTestSettings';
 import { openSettingsManual } from './settingsManual';
+import { openAbout } from './about';
+import { supportsAppUpdate } from './appUpdate';
 import { aiKeyInputHtml, getAiKeySettingsEpoch, handleAiKeyChange, handleAiKeyInput, preserveAiKeyDraft } from './aiKeySettings';
 
 let body: HTMLElement | undefined;
@@ -177,6 +179,7 @@ async function refresh(): Promise<void> {
       <h3 class="card-title">关于拾光</h3>
       <div class="field"><span>版本</span><span class="sub" data-app-version>${esc(appVersionText(appVersion))}</span></div>
       ${interfaceVersion ? `<div class="field"><span>界面版本</span><span class="sub" data-interface-version>${esc(interfaceVersion)}</span></div>` : ''}
+      ${supportsAppUpdate() ? '<div class="field"><span>应用更新</span><button class="chip" data-act="app-update">检查新版</button></div>' : ''}
       <div class="field"><span>使用手册</span><button class="chip" data-act="settings-manual">查看</button></div>
     </section>`;
 
@@ -287,6 +290,8 @@ export function initSettings(): void {
         if (themeMode) {
           // 主题切换：setSetting 后 core/theme.ts 监听 settings-changed 自动应用
           void setSetting('theme.mode', themeMode).then(() => refresh());
+        } else if (act === 'app-update') {
+          void getAppVersion().then(info => { if (el.isConnected) openAbout(info); });
         } else if (act === 'settings-manual') {
           openSettingsManual();
         } else if (act === 'change-pin') {

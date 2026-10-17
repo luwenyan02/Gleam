@@ -42,7 +42,7 @@ def run(page, width, case):
     assert_usable(page, '#page-mine [data-about]')
     page.screenshot(path=str(OUT / f'mine-{case}-{width}.png'), animations='disabled')
     about.click()
-    toast = page.locator('#toast')
+    toast = page.locator('#sheet .about-version') if native else page.locator('#toast')
     expect(toast).to_contain_text('应用版本未读取' if unavailable else f'拾光 v{version}')
     expect(toast).to_contain_text(platform)
     mismatch = case in ('native-mismatch', 'native-unavailable')
@@ -51,6 +51,8 @@ def run(page, width, case):
     else:
         expect(toast).not_to_contain_text('界面')
     expect(toast).not_to_contain_text('synthetic package info unavailable')
+    if native:
+        page.get_by_role('button', name='关闭关于拾光', exact=True).click()
 
     page.get_by_role('button', name='应用设置', exact=True).click()
     settings = page.locator('#sp-settings')

@@ -18,6 +18,8 @@ import { budgetUsage } from '../../core/repo/statsRepo';
 import { listLoanAccounts } from '../../core/repo/loanRepo';
 import { registerPage, openSubpage } from '../shell/router';
 import { showToast } from '../shell/toast';
+import { openAbout } from '../settings/about';
+import { supportsAppUpdate } from '../settings/appUpdate';
 
 /* ── 模块状态 ── */
 let body: HTMLElement | undefined;
@@ -113,7 +115,7 @@ async function refresh(): Promise<void> {
       </button>
       </div>
     </section>
-    <p class="tiny" style="text-align:center;padding:4px 0 10px">账本数据本地保存 · 仅在你主动启用云备份或 AI 识别时连接外部服务</p>`;
+    <p class="tiny" style="text-align:center;padding:4px 0 10px">账本数据本地保存 · 云备份、AI 识别和检查更新由你主动发起</p>`;
 }
 
 /* ── 装配 ── */
@@ -131,7 +133,10 @@ export function initMine(): void {
           try { openSubpage(sub.dataset.sub!); } catch { showToast('该功能即将上线'); }
           return;
         }
-        if (target.closest('[data-about]') && displayedVersion) showToast(`${aboutVersionText(displayedVersion)} · 记录，是为了被时间照亮`);
+        if (target.closest('[data-about]') && displayedVersion) {
+          if (supportsAppUpdate()) openAbout(displayedVersion);
+          else showToast(`${aboutVersionText(displayedVersion)} · 记录，是为了被时间照亮`);
+        }
       });
       void refresh();
     },
