@@ -9,6 +9,8 @@
 .sr-input-wrap .sr-ic svg.ic{width:16px;height:16px}
 .sr-input-wrap input{flex:1;min-width:0;height:44px;border:0;background:transparent;font-size:14px;color:var(--fg);outline:none}
 .sr-input-wrap input::placeholder{color:var(--faint)}
+/* 统一使用页面清空按钮，避免浏览器原生搜索取消按钮重复显示。 */
+.sr-input-wrap input::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none;display:none}
 .sr-input-wrap .sr-clear{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;color:var(--faint)}
 .sr-input-wrap .sr-clear svg.ic{width:14px;height:14px}
 .sr-cancel{min-width:44px;min-height:44px;font-size:14px;color:var(--primary);font-weight:500;flex:none;padding:4px}
@@ -41,18 +43,16 @@
 .sr-history-chips{display:flex;flex-wrap:wrap;gap:8px}
 .sr-history-chips .chip{font-size:12px;padding:6px 12px}
 
-/* ── D. 结果汇总卡（长金额切换纵向，不截断数值） ── */
-.sr-summary-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:4px 0 12px}
-.sr-summary-row::-webkit-scrollbar{display:none}
+/* ── D. 结果汇总卡（始终并排，长金额仅在此行横向滚动） ── */
+.sr-summary-row{display:grid;grid-template-columns:repeat(3,minmax(max-content,1fr));gap:8px;padding:4px 2px 12px;overflow-x:auto;scrollbar-width:thin}
 .sr-summary-card{min-width:0;padding:12px 8px;text-align:left;border-radius:var(--r-s);background:var(--surface);border:1px solid var(--border);cursor:pointer;transition:border-color .18s}
 .sr-summary-card.active{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
-.sr-summary-row.is-wide{grid-template-columns:1fr}
 .sr-net{font-size:12px;line-height:1.6;color:var(--muted);white-space:normal;margin-top:4px}
 .sr-list-end{text-align:center;padding:12px}
 .sr-input-wrap:focus-within{border-color:var(--input-focus);box-shadow:none}
 .sr-input-wrap #sr-input:focus{box-shadow:none;outline:none;border:0}
-.sr-summary-card .sc-label{font-size:var(--text-small);color:var(--faint);margin-bottom:4px}
-.sr-summary-card .sc-amount{white-space:nowrap;font-size:15px;font-weight:700;font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.sr-summary-card .sc-label{font-size:var(--text-small);color:var(--faint);margin-bottom:4px;white-space:nowrap}
+.sr-summary-card .sc-amount{white-space:nowrap;font-size:var(--text-body);font-weight:700;font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 .sr-summary-card .sc-count{font-size:10.5px;color:var(--muted);margin-top:2px}
 .sr-summary-card:nth-child(1) .sc-amount{color:var(--fg)}
 .sr-summary-card:nth-child(2) .sc-amount{color:var(--expense)}

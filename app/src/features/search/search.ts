@@ -364,7 +364,7 @@ async function doSearch(kw: string): Promise<void> {
 
   resultsEl.innerHTML = `
     ${batchMode ? `<div class="sr-batch-scope"><b>批量处理当前全部结果</b><span>已载入 ${batchResultIds.length} 笔，不受分页限制</span></div>` : ''}
-    <div class="sr-summary-row${[summary.balance,summary.expense,summary.income].some(v=>formatFen(v).length>10) ? ' is-wide' : ''}">
+    <div class="sr-summary-row" role="group" aria-label="搜索结果汇总，可横向滑动">
       <button class="sr-summary-card${summaryFilter === 'all' ? ' active' : ''}" data-sf="all" aria-pressed="${summaryFilter === 'all'}">
         <div class="sc-label">结余</div>
         <div class="sc-amount">${summary.balance >= 0 ? '' : '-'}${formatFen(Math.abs(summary.balance))}</div>
@@ -529,7 +529,7 @@ export function initSearch(): void {
           <div class="sr-input-wrap">
             <span class="sr-ic">${iconHtml('ic-search', 16)}</span>
             <input type="search" id="sr-input" placeholder="搜索分类、账户、标签、商家、备注或金额" aria-label="搜索关键词" value="${esc(initialKeyword)}">
-            <button class="sr-clear" id="sr-clear-input"${initialKeyword ? '' : ' hidden'}>${iconHtml('ic-close', 14)}</button>
+            <button class="sr-clear" id="sr-clear-input" type="button" aria-label="清空搜索"${initialKeyword ? '' : ' hidden'}>${iconHtml('ic-close', 14)}</button>
           </div>
           <button class="sr-cancel" id="sr-cancel-btn">取消</button>
         </div>
@@ -598,8 +598,10 @@ export function initSearch(): void {
 
       // 清空输入
       clearBtn.addEventListener('click', () => {
+        window.clearTimeout(timer);
         input.value = '';
         clearBtn.hidden = true;
+        input.focus();
         void doSearch('');
       });
 

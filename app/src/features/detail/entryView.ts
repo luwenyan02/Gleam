@@ -100,7 +100,7 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
         ${entry.refundFlag ? `<div class="detail-field"><span>关联原账单</span><b>${original ? `${esc(typeName(original))} · ${formatFenCny(original.amount)}` : '原账单已删除'}</b></div>` : ''}
       </section>
       <section class="entry-view-note${visibleNote ? '' : ' empty'}">${visibleNote ? esc(visibleNote) : '无备注'}</section>
-      <section class="card entry-life-story"><button class="chip" data-entry-life>${entry.lifeNoteId ? '看看这笔钱留下的故事 ›' : '这一笔，也有故事？'}</button><p class="sub">随手留一句，也可以只记账。</p></section>
+      <section class="card entry-life-story"><button class="chip" data-entry-life>${entry.lifeNoteId ? '查看这一笔的故事 ›' : '给这一笔留句话'}</button></section>
       ${receipts.length ? `<section aria-label="账单凭证"><p class="card-title">凭证 · ${receipts.length}</p><div class="receipt-strip">${receipts.map((receipt, index) => `<button class="receipt-thumb" type="button" data-view-receipt="${index}" aria-label="预览凭证 ${index + 1}">${receiptThumbnail(receipt)}</button>`).join('')}</div></section>` : ''}
       ${refunds.length ? `<section class="refund-links"><p class="card-title">关联退款 · ${refunds.length} 笔</p>${refunds.map((refund) => `<div><span>${fullDateTime(refund.occurredAt)}</span><b class="num">+${formatFen(refund.amount)}</b></div>`).join('')}<p>尚可退款 <b class="num">${formatFenCny(remaining)}</b></p></section>` : ''}
       <p class="entry-audit">账单 ID：${entry.id}<br>创建时间：${fullDateTime(entry.createdAt)}<br>修改时间：${fullDateTime(entry.updatedAt)}</p>`;
