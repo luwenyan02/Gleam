@@ -50,7 +50,7 @@ def assert_basic_workspace(page, width: int, height: int) -> None:
     assert box['y'] <= 1, f'{width}x{height}: 工作台顶部未贴齐视口，y={box["y"]}'
 
     visible_categories = page.locator('#cat-grid .cat[data-id]:visible')
-    assert visible_categories.count() == 7, f'{width}x{height}: 首屏常用分类应为 7 个'
+    assert visible_categories.count() == 19, f'{width}x{height}: 首屏常用分类应为 19 个'
     assert page.locator('#cat-grid [data-cat-more]:visible').count() == 1
     assert page.locator('#mark-bx:visible').count() == 1, '报销应保留在支出首屏常用区'
     assert page.locator('#advanced-fields').get_attribute('hidden') is not None

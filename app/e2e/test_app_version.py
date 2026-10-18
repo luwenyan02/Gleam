@@ -53,13 +53,17 @@ def run(page, width, case):
     expect(toast).not_to_contain_text('synthetic package info unavailable')
     page.get_by_role('button', name='关闭关于拾光', exact=True).click()
 
+    reads_before_settings = page.evaluate('window.__appInfoCalls') if native else 0
+    if native and not unavailable:
+        assert reads_before_settings == 1, (case, reads_before_settings)
     page.get_by_role('button', name='应用设置', exact=True).click()
     settings = page.locator('#sp-settings')
     expect(settings).to_have_count(1)
     expect(settings.locator('[data-app-version],[data-interface-version],section[aria-label="关于"]')).to_have_count(0)
     if native:
         reads = page.evaluate('window.__appInfoCalls')
-        assert reads == 1, reads  # Settings no longer reads or duplicates version info.
+        # Unavailable metadata may retry on the mine page; settings adds no reads.
+        assert reads == reads_before_settings, (case, reads_before_settings, reads)
         assert page.evaluate('window.__micCalls') == 0
     assert not external, external
     assert not errors, errors

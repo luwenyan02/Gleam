@@ -63,7 +63,7 @@ def run_case(page, width):
     page.locator('[data-acct="2"]').click()
     page.locator('#sp-account-detail.open').wait_for()
 
-    page.locator('[data-account-action="edit"]').click()
+    page.locator('#sp-account-detail.open [data-account-action="edit"]').click()
     page.locator('#af-limit').fill('10000')
     page.locator('#sheet [data-act="save"]').click()
     page.locator('#sheet.open').wait_for(state='detached')
@@ -72,11 +72,12 @@ def run_case(page, width):
     page.screenshot(path=str(OUT / f'credit-detail-{width}.png'), animations='disabled')
 
     page.locator('#sp-account-detail .sub-head [data-act="back"]').click()
+    page.locator('#sp-account-detail').wait_for(state='detached')
     page.locator('[data-acct="2"]').wait_for()
     assert '剩余额度 ¥7,000.00' in page.locator('[data-acct="2"]').inner_text()
 
     page.locator('[data-acct="2"]').click()
-    page.locator('[data-account-action="reconcile"]').click()
+    page.locator('#sp-account-detail.open [data-account-action="reconcile"]').click()
     page.locator('#rc-target').fill('2500')
     page.locator('#sheet [data-act="save"]').click()
     page.locator('#sheet.open').wait_for(state='detached')
@@ -89,6 +90,7 @@ def run_case(page, width):
     assert saved['entry']['note'] == '余额对账调整'
 
     page.locator('#sp-account-detail .sub-head [data-act="back"]').click()
+    page.locator('#sp-account-detail').wait_for(state='detached')
     page.wait_for_function("document.querySelector('[data-acct=\"2\"]')?.textContent.includes('¥7,500.00')")
     page.screenshot(path=str(OUT / f'credit-account-{width}.png'), animations='disabled')
     page.locator('.tab[data-page="page-report"]').click()

@@ -470,7 +470,7 @@ def test_5_loan(page):
     contact_name = f'测试借贷人_{int(time.time()) % 10000}'
 
     # Get first account name for balance check
-    first_acct = page.evaluate('''async () => {
+    first_account = page.evaluate('''async () => {
       const db = await new Promise((res, rej) => {
         const r = indexedDB.open('GleamDB');
         r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
@@ -480,9 +480,11 @@ def test_5_loan(page):
         req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error);
       });
       db.close();
-      const visible = rows.filter(a => !a.hidden);
-      return visible.length ? visible[0].name : null;
+      const visible = rows.filter(a => !a.hidden && a.group !== 'receivable');
+      return visible.length ? { id: visible[0].id, name: visible[0].name } : null;
     }''')
+
+    first_acct = first_account['name']
 
     # ── Step 1: Lend ¥500 ──
     open_entry_sheet(page)
@@ -493,18 +495,15 @@ def test_5_loan(page):
     page.click('#cat-grid button[data-kind="lend"]')
     page.wait_for_timeout(200)
 
-    # Create new contact via pickList → click "新建…" item → showCreateInput dialog
+    # Create an actual receivable account through the shared account picker.
     page.click('#loan-who')
-    page.wait_for_selector('.picker-mask', timeout=10000)
-    page.wait_for_timeout(300)
-    # Click the "new" item (data-value="__new__") in pickList
-    page.click('.picker-item[data-value="__new__"]')
-    page.wait_for_timeout(400)
-    # Now showCreateInput dialog opens with .picker-new input
-    page.wait_for_selector('.picker-new input', timeout=10000)
-    page.fill('.picker-new input', contact_name)
-    page.click('.picker-new .chip')
-    page.wait_for_timeout(600)
+    page.locator('.entry-account-picker [data-add]').click()
+    page.locator('.entry-account-create input[name="name"]').fill(contact_name)
+    page.locator('.entry-account-create button[type="submit"]').click()
+    page.locator('.picker-mask').wait_for(state='detached')
+    page.click('#loan-acct')
+    page.locator(f'.picker-item[data-value="{first_account["id"]}"]').click()
+    page.locator('.picker-mask').wait_for(state='detached')
 
     # Type amount
     type_amount(page, '500')
@@ -550,8 +549,9 @@ def test_5_loan(page):
     contacts_after_collect = get_loan_contacts(page)
     balance_after = contacts_after_collect.get(contact_name, 999)
     balance_zero = balance_after == 0
+    fund_restored = get_account_balances(page).get(first_acct) == balances_before.get(first_acct)
 
-    ok = lend_ok and acct_lend_ok and stats_unchanged and balance_zero
+    ok = lend_ok and acct_lend_ok and stats_unchanged and balance_zero and fund_restored
     report('5 借贷',
            ok,
            f'借出后对象余额={contact_balance/100}(期望500); '

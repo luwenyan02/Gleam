@@ -57,9 +57,16 @@ def run(page,width,theme):
     voice.scroll_into_view_if_needed()
     status=voice.locator('.settings-status')
     button=voice.locator('[data-voice-test]')
+    expect(status).to_have_text('仅 Android 可用')
+    expect(status).to_be_visible()
+    config=voice.locator('details.voice-web-details')
+    expect(config).not_to_have_attribute('open','')
+    expect(button).to_be_hidden()
+    config.locator('summary').click()
+    expect(button).to_be_visible()
     expect(button).to_be_disabled()
-    a,b=status.bounding_box(),button.bounding_box()
-    assert abs(a['y']+a['height']/2-b['y']-b['height']/2)<2,'语音提示与操作必须在同一行'
+    for control in ('#voice-bailian-region','#voice-bailian-workspace','#voice-bailian-key'):
+        expect(voice.locator(control)).to_be_disabled()
     radius=button.evaluate('e=>parseFloat(getComputedStyle(e).borderRadius)')
     reference=page.locator('[data-theme-mode="light"]').evaluate('e=>parseFloat(getComputedStyle(e).borderRadius)')
     assert abs(radius-reference)<.5,(radius,reference)
