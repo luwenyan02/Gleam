@@ -945,7 +945,7 @@ function bindEvents(el: HTMLElement): void {
         renderCats();
         refreshMeta();
         if (dayKey(ctx.date) !== dayKey(Date.now())) {
-          showToast(`记账时间已设为 ${dateLabel(ctx.date)}，保存后计入当日流水`);
+          showToast(`时间已改为：${dateLabel(ctx.date)}`);
         }
       },
     });
