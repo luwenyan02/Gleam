@@ -20,7 +20,7 @@ import { listTemplates } from '../../core/repo/templateRepo';
 import { getSetting } from '../../core/repo/settingsRepo';
 import { monthSummary, budgetUsage, ledgerEntriesInRange } from '../../core/repo/statsRepo';
 import { getBudget } from '../../core/repo/budgetRepo';
-import { registerPage, openSubpage } from '../shell/router';
+import { registerPage, openSubpage, currentPage } from '../shell/router';
 import { showToast } from '../shell/toast';
 import { openEntrySheet } from '../entry/entrySheet';
 import {
@@ -53,6 +53,12 @@ let refreshPending = false;
 let paginationPending = false;
 let paginationRequiresBottom = true;
 let dayTimer = 0;
+let needsRefresh = true;
+let refreshedDay = '';
+
+function showHome(): void {
+  if (needsRefresh || refreshedDay !== dayKey(Date.now())) scheduleRefresh();
+}
 
 /** 注册首页（main.ts 调用一次） */
 export function initHome(): void {
@@ -64,7 +70,8 @@ export function initHome(): void {
       visibleSummaryKey = '';
       renderSkeleton(el);
     },
-    onShow() { scheduleRefresh(); },
+    onShow: showHome,
+    onReveal: showHome,
   });
 
   // 数据变化时去抖刷新（仅首页已挂载时）
@@ -77,7 +84,8 @@ export function initHome(): void {
 }
 
 function scheduleRefresh(): void {
-  if (!root?.isConnected) return;
+  needsRefresh = true;
+  if (!root?.isConnected || root.inert || currentPage() !== 'page-home') return;
   window.clearTimeout(refreshTimer);
   refreshTimer = window.setTimeout(() => void refresh(), 50);
 }
@@ -171,8 +179,6 @@ function renderSkeleton(el: HTMLElement): void {
   });
   el.querySelector('#hm-more')!.addEventListener('click', () => loadMore(el, false));
   bindTimelineScroll(el);
-
-  void refresh();
 }
 
 async function openService(key: HomeService): Promise<void> {
@@ -194,7 +200,13 @@ async function openService(key: HomeService): Promise<void> {
 /* ── 数据刷新 ─────────────────────── */
 
 function atTimelineBottom(el: HTMLElement): boolean {
-  return el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 8) return true;
+  // 屏外行补齐高度时，已可见的加载提示仍算到达底部，避免继续上拉被吞掉。
+  const more = el.querySelector<HTMLElement>('#hm-more');
+  if (!more) return false;
+  const bottom = more.getBoundingClientRect().bottom;
+  const viewport = el.getBoundingClientRect();
+  return bottom >= viewport.top && bottom <= viewport.bottom + 8;
 }
 
 function loadMore(el: HTMLElement, requireBottom = true): void {
@@ -275,11 +287,13 @@ function refreshVisibleMonth(el: HTMLElement): void {
 
 async function refresh(): Promise<void> {
   const el = root;
-  if (!el?.isConnected) return;
+  if (!el?.isConnected || el.inert || currentPage() !== 'page-home') return;
   if (loading) { refreshPending = true; return; }
+  needsRefresh = true;
   loading = true;
   try {
     const [mods, layout] = await Promise.all([getSetting('home.modules'), getHomeLayout()]);
+    if (el.inert || currentPage() !== 'page-home') return;
     el.querySelector<HTMLElement>('#hm-month')!.hidden = !mods.month;
     const nav = el.querySelector<HTMLElement>('#hm-quick')!;
     const nextKeys = [...layout.quick, 'all'];
@@ -302,11 +316,14 @@ async function refresh(): Promise<void> {
       refreshReminders(el),
       refreshTimeline(el, mods.today, mods.past),
     ]);
+    if (el.inert || currentPage() !== 'page-home') return;
     for (const [index, key] of layout.order.entries()) {
       const selectors = { month: '#hm-month', quick: '#hm-quick', rhythm: '#hm-rhythm', today: '#hm-today', past: '.hm-past' };
       for (const node of el.querySelectorAll<HTMLElement>(selectors[key])) node.style.order = String(index);
     }
     refreshVisibleMonth(el);
+    needsRefresh = false;
+    refreshedDay = dayKey(Date.now());
   } finally {
     loading = false;
     window.clearTimeout(dayTimer);
@@ -347,9 +364,11 @@ async function refreshReminders(el: HTMLElement): Promise<void> {
 /** 月度总览卡：与预算中心严格同源（statsRepo.budgetUsage / budgetRepo.getBudget） */
 async function refreshMonthCard(el: HTMLElement): Promise<void> {
   const month = await getAccountingMonth();
+  if (el.inert || currentPage() !== 'page-home') return;
   const [sum, budget, usage, range] = await Promise.all([
     monthSummary(month), getBudget(month), budgetUsage(month), accountingMonthRange(month),
   ]);
+  if (el.inert || currentPage() !== 'page-home') return;
   const from = new Date(range.from);
   const to = new Date(range.to);
   to.setDate(to.getDate() - 1);
@@ -375,6 +394,7 @@ type TimelineItem =
 
 async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: boolean): Promise<void> {
   const startDay = await getAccountingMonthStartDay();
+  if (el.inert || currentPage() !== 'page-home') return;
   const anchor = accountingMonthForTimestamp(Date.now(), startDay);
   if (anchor !== timelineMonth || startDay !== timelineStartDay) {
     monthsShown = 3;
@@ -387,6 +407,7 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
     showPast ? listEntries({ to: window.from, limit: 1 }) : Promise.resolve([]),
     showPast ? listLifeNotes({ to: window.from - 1, limit: 1 }) : Promise.resolve([]),
   ]);
+  if (el.inert || currentPage() !== 'page-home') return;
   exhausted = !showPast || (!olderEntries.length && !olderNotes.length);
   const catMap = new Map<number, Category>();
   for (const cat of cats) catMap.set(cat.id, cat);
@@ -399,6 +420,7 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
     listLifeNotes({ from: window.from, to: window.to - 1 }),
     ledgerEntriesInRange(window.from, window.to, countAsIncome),
   ]);
+  if (el.inert || currentPage() !== 'page-home') return;
   monthSummaries = new Map(homeMonthSummaries(ledgerEntries, window.periods, startDay, {
     reimburseMode: countAsIncome ? 'income' : 'offset',
   }).map(summary => [summary.month, summary]));
@@ -424,10 +446,12 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
 
   const days = [...groups.keys()].sort((a, b) => (a < b ? 1 : -1));
   const chunks = new Map<string, string[]>();
+  let renderedRows = 0;
   days.forEach((key) => {
     const isToday = key === todayKey;
     if (isToday ? !showToday : !showPast) return;
     const list = groups.get(key)!;
+    renderedRows += list.length;
     const summary = summarizeLedgerEntries(
       list.filter((it): it is Extract<TimelineItem, { kind: 'entry' }> => it.kind === 'entry')
         .map((it) => it.entry),
@@ -456,6 +480,8 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
       </section>`);
     chunks.set(month, listHtml);
   });
+  // 短列表保留完整布局，只有长时间线延后绘制屏外行。
+  el.classList.toggle('hm-defer-rows', renderedRows > 200);
   const html = window.periods.map(period => chunks.get(period.month)?.join('') ?? '').join('');
   const scroll = el.scrollTop;
   el.querySelector('#hm-days')!.innerHTML =

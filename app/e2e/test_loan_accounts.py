@@ -82,7 +82,10 @@ def scenario(page,width):
     page.locator('#sheet-close').click()
     page.locator('[data-view-action="copy"]').click();page.locator('#sheet.open').wait_for()
     assert page.locator('#loan-who b').inner_text()=='演示小林'
-    assert page.locator('#amt').inner_text() in ('0','0.00','')
+    assert page.locator('#amt').inner_text() in ('100','100.00'), '复制借贷也应带入原金额'
+    copied=balances(page)
+    assert len(copied['entries'])==4, '打开复制草稿不能写入新账单'
+    assert {a['id']:a['balance'] for a in copied['accounts']}=={1:100000,2:0,3:0}
 
 def ambiguous_import(page,width):
     account_id=page.evaluate('''async()=>{

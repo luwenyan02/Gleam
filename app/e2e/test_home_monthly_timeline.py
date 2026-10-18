@@ -68,7 +68,10 @@ def run(browser, width, scale, theme, start_day, date):
     home.evaluate('(e,y)=>e.scrollTop=y',threshold+2)
     expect(summary).to_be_visible()
     page.wait_for_timeout(200)
+    # The short timeline keeps its full layout; the overlay must not move the flow.
     assert home.evaluate('e=>e.scrollHeight')==height
+    flow_bottom=latest.evaluate('(e)=>{const h=document.querySelector("#page-home");return e.getBoundingClientRect().bottom-h.getBoundingClientRect().top-h.clientTop+h.scrollTop}')
+    assert abs(flow_bottom-threshold)<1
     assert abs(home.evaluate('e=>e.scrollTop')-(threshold+2))<2
     home.evaluate('(e,y)=>e.scrollTop=y',threshold-2)
     expect(summary).to_be_hidden()
@@ -90,6 +93,12 @@ def run(browser, width, scale, theme, start_day, date):
         session.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]});session.detach();count(page,120)
     target=page.locator(f'#hm-days [data-home-month="{months[1]}"]').first
     target.evaluate('e=>e.scrollIntoView({block:"start"})')
+    home.evaluate('''el=>new Promise(resolve=>{
+      let previous=-1,stable=0;
+      const frame=()=>{const current=el.scrollTop;stable=Math.abs(current-previous)<.5?stable+1:0;previous=current;
+        if(stable>=3)resolve();else requestAnimationFrame(frame);};
+      requestAnimationFrame(frame);
+    })''')
     summary=page.locator('#hm-visible-month')
     expect(summary).to_have_attribute('data-month',months[1])
     expected_top=home.bounding_box()['y']+home.evaluate('e=>parseFloat(getComputedStyle(e).paddingTop)')

@@ -47,6 +47,8 @@
 .home-empty>.chip{flex:none;padding:7px 11px;color:var(--primary);border-color:color-mix(in oklab,var(--seed-primary) 24%,var(--border))}
 
 /* 时间线加载提示 */
+/* 保留完整流水及左滑操作，屏外行由浏览器延后布局绘制；再次进入沿用实测高度。 */
+#page-home.hm-defer-rows #hm-days .entry-swipe{content-visibility:auto;contain-intrinsic-block-size:auto calc(44px * var(--seed-type) + 24px * var(--seed-density))}
 .hm-more{text-align:center;padding:6px 0 12px}
 .hm-more{min-height:48px;font-size:var(--text-meta);color:var(--primary)}
 .hm-more:disabled{color:var(--muted)}

@@ -17,6 +17,7 @@ import { filterLedgerEntries, summarizeLedgerEntries } from '../ledgerQuery';
 import { ledgerItems, type LedgerItem } from '../ledgerEvents';
 import { accountEffects } from '../entryEffects';
 import { accountingMonthRange } from './periodRepo';
+import { listEntryTagLinks } from './tagRepo';
 
 /** 收支汇总结果（分） */
 export interface Summary {
@@ -88,10 +89,7 @@ function expenseAmount(entry: Entry): number {
 export async function rangeSummary(from: number, to: number): Promise<Summary> {
   const countAsIncome = await getSetting('reimburse.countAsIncome');
   const items = await ledgerEntriesInRange(from, to, countAsIncome);
-  const summary = summarizeLedgerEntries(items, {
-    reimburseMode: countAsIncome ? 'income' : 'offset',
-  });
-  return { expense: summary.expense, income: summary.income, balance: summary.balance };
+  return itemSummary(items, countAsIncome);
 }
 
 /** 月收支汇总。month 形如 '2026-08' */
@@ -115,76 +113,89 @@ async function topLevelMap(): Promise<Map<number, number>> {
 export async function categoryBreakdown(from: number, to: number): Promise<{ categoryId: number; amount: number }[]> {
   const countAsIncome = await getSetting('reimburse.countAsIncome');
   const [rows, topMap] = await Promise.all([entriesIn(from, to), topLevelMap()]);
-  const acc = new Map<number, number>();
-  for (const e of rows) {
-    if (e.type !== 'expense' || e.categoryId == null) continue;
-    let amt = expenseAmount(e);
-    if (!countAsIncome && e.reimburseStatus === 'done' && e.reimbursedAmount) amt -= e.reimbursedAmount;
-    const top = topMap.get(e.categoryId) ?? e.categoryId;
-    acc.set(top, (acc.get(top) ?? 0) + amt);
-  }
-  return [...acc.entries()].map(([categoryId, amount]) => ({ categoryId, amount })).sort((a, b) => b.amount - a.amount);
+  return expenseRanking(rows, countAsIncome, 'categoryId', topMap).map(([categoryId, amount]) => ({ categoryId, amount }));
 }
 
-/**
- * 账户支出排行（仅统计支出账单的 accountId），金额降序。
- */
-/** 收入分类构成（收入单级分类），金额降序。 */
+/** 收入分类排行不把报销到账重复归入原支出分类。 */
 export async function incomeCategoryBreakdown(from: number, to: number): Promise<{ categoryId: number; amount: number }[]> {
-  const rows = await entriesIn(from, to);
-  const acc = new Map<number, number>();
-  for (const e of rows) {
-    if (e.type !== 'income' || e.categoryId == null) continue;
-    acc.set(e.categoryId, (acc.get(e.categoryId) ?? 0) + e.amount);
-  }
-  return [...acc.entries()].map(([categoryId, amount]) => ({ categoryId, amount })).sort((a, b) => b.amount - a.amount);
+  return incomeRanking(await entriesIn(from, to));
 }
 
-/** 商家支出排行（按 merchantId 聚合，冲抵口径同分类构成），金额降序。 */
 export async function merchantRanking(from: number, to: number): Promise<{ merchantId: number; amount: number }[]> {
-  const [rows, countAsIncome] = await Promise.all([entriesIn(from, to), getSetting('reimburse.countAsIncome')]);
-  const acc = new Map<number, number>();
-  for (const e of rows) {
-    if (e.type !== 'expense' || e.merchantId == null) continue;
-    const amount = expenseAmount(e) - (!countAsIncome && e.reimburseStatus === 'done' ? e.reimbursedAmount ?? 0 : 0);
-    acc.set(e.merchantId, (acc.get(e.merchantId) ?? 0) + amount);
-  }
-  return [...acc.entries()].map(([merchantId, amount]) => ({ merchantId, amount })).sort((a, b) => b.amount - a.amount);
+  const [rows, asIncome] = await Promise.all([entriesIn(from, to), getSetting('reimburse.countAsIncome')]);
+  return expenseRanking(rows, asIncome, 'merchantId').map(([merchantId, amount]) => ({ merchantId, amount }));
 }
 
-/**
- * 账户支出排行（仅统计支出账单的 accountId），金额降序。
- */
 export async function accountRanking(from: number, to: number): Promise<{ accountId: number; amount: number }[]> {
-  const [rows, countAsIncome] = await Promise.all([entriesIn(from, to), getSetting('reimburse.countAsIncome')]);
-  const acc = new Map<number, number>();
-  for (const e of rows) {
-    if (e.type !== 'expense' || e.accountId == null) continue;
-    const amount = expenseAmount(e) - (!countAsIncome && e.reimburseStatus === 'done' ? e.reimbursedAmount ?? 0 : 0);
-    acc.set(e.accountId, (acc.get(e.accountId) ?? 0) + amount);
-  }
-  return [...acc.entries()].map(([accountId, amount]) => ({ accountId, amount })).sort((a, b) => b.amount - a.amount);
+  const [rows, asIncome] = await Promise.all([entriesIn(from, to), getSetting('reimburse.countAsIncome')]);
+  return expenseRanking(rows, asIncome, 'accountId').map(([accountId, amount]) => ({ accountId, amount }));
 }
 
-/**
- * 标签支出排行。仅统计打了标签的支出（口径须在 UI 注明），金额降序。
- */
 export async function tagRanking(from: number, to: number): Promise<{ tagId: number; amount: number }[]> {
-  const [rows, countAsIncome] = await Promise.all([entriesIn(from, to), getSetting('reimburse.countAsIncome')]);
-  const expenseById = new Map<number, number>();
-  for (const e of rows) {
-    if (e.type !== 'expense' || e.id == null) continue;
-    const amount = expenseAmount(e) - (!countAsIncome && e.reimburseStatus === 'done' ? e.reimbursedAmount ?? 0 : 0);
-    expenseById.set(e.id, amount);
+  const [rows, asIncome] = await Promise.all([entriesIn(from, to), getSetting('reimburse.countAsIncome')]);
+  return tagRankingFrom(rows, asIncome);
+}
+
+function itemSummary(items: readonly LedgerItem[], asIncome: boolean): Summary {
+  const { expense, income, balance } = summarizeLedgerEntries(items, { reimburseMode: asIncome ? 'income' : 'offset' });
+  return { expense, income, balance };
+}
+
+function sortedAmounts(amounts: Map<number, number>): [number, number][] {
+  return [...amounts].sort((a, b) => b[1] - a[1]);
+}
+
+/** 各支出维度复用退款及报销冲抵规则。 */
+function expenseRanking(rows: readonly Entry[], asIncome: boolean,
+  field: 'categoryId' | 'accountId' | 'merchantId' | 'id', topMap?: Map<number, number>): [number, number][] {
+  const amounts = new Map<number, number>();
+  for (const row of rows) {
+    const id = row[field];
+    if (row.type !== 'expense' || id == null) continue;
+    const key = topMap?.get(id) ?? id;
+    const amount = expenseAmount(row) - (!asIncome && row.reimburseStatus === 'done' ? row.reimbursedAmount ?? 0 : 0);
+    amounts.set(key, (amounts.get(key) ?? 0) + amount);
   }
-  if (expenseById.size === 0) return [];
-  const links = await db.entryTags.where('entryId').anyOf([...expenseById.keys()]).toArray();
-  const acc = new Map<number, number>();
-  for (const l of links) {
-    const amt = expenseById.get(l.entryId);
-    if (amt != null) acc.set(l.tagId, (acc.get(l.tagId) ?? 0) + amt);
+  return sortedAmounts(amounts);
+}
+
+function incomeRanking(rows: readonly Entry[]): { categoryId: number; amount: number }[] {
+  const amounts = new Map<number, number>();
+  for (const row of rows) if (row.type === 'income' && row.categoryId != null) {
+    amounts.set(row.categoryId, (amounts.get(row.categoryId) ?? 0) + row.amount);
   }
-  return [...acc.entries()].map(([tagId, amount]) => ({ tagId, amount })).sort((a, b) => b.amount - a.amount);
+  return sortedAmounts(amounts).map(([categoryId, amount]) => ({ categoryId, amount }));
+}
+
+async function tagRankingFrom(rows: readonly Entry[], asIncome: boolean): Promise<{ tagId: number; amount: number }[]> {
+  const expenses = new Map(expenseRanking(rows, asIncome, 'id'));
+  if (!expenses.size) return [];
+  const links = await listEntryTagLinks([...expenses.keys()]);
+  const amounts = new Map<number, number>();
+  for (const link of links) {
+    const amount = expenses.get(link.entryId);
+    if (amount != null) amounts.set(link.tagId, (amounts.get(link.tagId) ?? 0) + amount);
+  }
+  return sortedAmounts(amounts).map(([tagId, amount]) => ({ tagId, amount }));
+}
+
+/** 报表所有维度及趋势共用一次只读快照，不为每个卡片重复读取流水。 */
+export async function loadReportStats(from: number, to: number, buckets: readonly { from: number; to: number }[]) {
+  return db.transaction('r', [db.entries, db.entryTags, db.categories, db.settings], async () => {
+    const asIncome = await getSetting('reimburse.countAsIncome');
+    const [items, topMap] = await Promise.all([ledgerEntriesInRange(from, to, asIncome), topLevelMap()]);
+    // 保持原范围索引的升序，金额相同的排行仍沿用原先的稳定顺序。
+    const rows = items.filter(item => item.kind === 'entry').sort((a, b) => a.occurredAt - b.occurredAt || a.id - b.id);
+    return {
+      summary: itemSummary(items, asIncome),
+      trend: buckets.map(bucket => itemSummary(filterLedgerEntries(items, bucket), asIncome)),
+      categories: expenseRanking(rows, asIncome, 'categoryId', topMap).map(([categoryId, amount]) => ({ categoryId, amount })),
+      accounts: expenseRanking(rows, asIncome, 'accountId').map(([accountId, amount]) => ({ accountId, amount })),
+      merchants: expenseRanking(rows, asIncome, 'merchantId').map(([merchantId, amount]) => ({ merchantId, amount })),
+      incomes: incomeRanking(rows),
+      tags: await tagRankingFrom(rows, asIncome),
+    };
+  });
 }
 
 /**

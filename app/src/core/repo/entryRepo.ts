@@ -348,7 +348,7 @@ export async function listEntries(filter: EntryFilter = {}): Promise<Entry[]> {
     .reverse();
   const catSet = categoryIds && new Set(categoryIds);
   const acctSet = accountIds && new Set(accountIds);
-  coll = coll.filter((e) => {
+  const matches = (e: Entry) => {
     if (type && e.type !== type) return false;
     if (catSet && (e.categoryId == null || !catSet.has(e.categoryId))) return false;
     if (acctSet) {
@@ -357,8 +357,24 @@ export async function listEntries(filter: EntryFilter = {}): Promise<Entry[]> {
     }
     if (reimburseStatus && e.reimburseStatus !== reimburseStatus) return false;
     return true;
-  });
+  };
+  // 报销状态候选通常很少，先走状态索引，避免为了几十笔记录扫描整本账单。
+  if (reimburseStatus && reimburseStatus !== 'none') {
+    const rows = await db.entries.where('reimburseStatus').equals(reimburseStatus)
+      .filter(e => e.deletedAt === 0 && e.occurredAt >= from && e.occurredAt < to && matches(e)).toArray();
+    rows.sort((a, b) => b.occurredAt - a.occurredAt || b.id - a.id);
+    return limit ? rows.slice(0, limit) : rows;
+  }
+  // 没有额外条件时保留原生范围读取；空谓词会迫使 Dexie 逐条遍历游标。
+  if (type || catSet || acctSet || reimburseStatus) coll = coll.filter(matches);
   return limit ? coll.limit(limit).toArray() : coll.toArray();
+}
+
+/** 搜索日期选择器的下界，只读取日期索引中的首笔有效账单。 */
+export async function getEarliestEntryDate(): Promise<number | undefined> {
+  const entry = await db.entries.where('[deletedAt+occurredAt]')
+    .between([0, 0], [0, Infinity], true, false).first();
+  return entry?.occurredAt;
 }
 
 /** 本地自然日 key，形如 '2026-08-07' */

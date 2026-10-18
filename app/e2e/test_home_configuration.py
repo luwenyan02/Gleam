@@ -6,8 +6,7 @@ URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4601/')
 OUT = Path(__file__).parents[2] / '.tmp/tests/e2e/home-configuration'
 
 
-# 首次 render 和 onShow 都会刷新首页；在浏览器内保留第一组完整按钮，
-# 避免测试命令往返期间已经错过第二次刷新和焦点丢失。
+# 在浏览器内保留第一组完整按钮，主动触发一次前台刷新后检查节点和焦点。
 STARTUP_SHORTCUT_PROBE = '''() => {
   const probe = window.__homeShortcutProbe = {
     buttons: null, focused: null, monthRenders: 0, timelineRenders: 0, reminderRenders: 0,
@@ -34,13 +33,23 @@ STARTUP_SHORTCUT_PROBE = '''() => {
 
 def assert_startup_shortcuts(page, width):
     page.wait_for_selector('#hm-quick:not([hidden]) [data-qa="all"]')
-    # 三个异步分支都完成两轮后，在下一帧读取；不用固定等待碰运气，
-    # 也不等待错误实现才会发生的按钮替换。
+    # 首次加载不再依赖 render/onShow 重复取数。先等首轮完成，
+    # 再模拟回到前台，验证真实刷新仍保留同一组快捷按钮与焦点。
     page.wait_for_function('''() => {
       const probe = window.__homeShortcutProbe;
-      return probe?.buttons && probe.monthRenders >= 2
-        && probe.timelineRenders >= 2 && probe.reminderRenders >= 2;
+      return probe?.buttons && probe.monthRenders >= 1
+        && probe.timelineRenders >= 1 && probe.reminderRenders >= 1;
     }''')
+    target=page.evaluate('''() => {
+      const probe=window.__homeShortcutProbe;
+      const target=[probe.monthRenders+1,probe.timelineRenders+1,probe.reminderRenders+1];
+      document.dispatchEvent(new Event('visibilitychange'));
+      return target;
+    }''')
+    page.wait_for_function('''target => {
+      const probe=window.__homeShortcutProbe;
+      return probe.monthRenders>=target[0] && probe.timelineRenders>=target[1] && probe.reminderRenders>=target[2];
+    }''',arg=target)
     snapshot = page.evaluate('''() => {
       const probe = window.__homeShortcutProbe;
       probe.stop();

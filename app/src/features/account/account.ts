@@ -16,11 +16,11 @@ import {
   reconcileAccount, reorderAccountWithinGroup, setAccountCountInNetWorth, setAccountHidden, updateAccount,
 } from '../../core/repo/accountRepo';
 import { netWorthTrend } from '../../core/repo/statsRepo';
-import { getEntry } from '../../core/repo/entryRepo';
+import { getEntry, dayKey } from '../../core/repo/entryRepo';
 import { getAccountViewData } from '../../core/repo/accountViewRepo';
 import { accountFlows, accountMonthRows, accountStatement, accountActiveMonthRows, type LedgerItem } from '../../core/ledgerEvents';
 import { accountEffects } from '../../core/entryEffects';
-import { registerPage, registerSubpage, openSubpage, SUBPAGE_CLOSE_EVENT } from '../shell/router';
+import { registerPage, registerSubpage, openSubpage, currentPage, SUBPAGE_CLOSE_EVENT } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { openEntrySheet } from '../entry/entrySheet';
 import { openEntryDetail } from '../detail/detail';
@@ -42,6 +42,17 @@ let root: HTMLElement | undefined;
 const folded = new Set<AccountGroup>();
 /** 并发刷新令牌 */
 let refreshToken = 0;
+let needsRefresh = true;
+let refreshedDay = '';
+
+function showAccounts(): void {
+  if (needsRefresh || refreshedDay !== dayKey(Date.now())) void refresh();
+}
+
+function invalidateAccounts(): void {
+  needsRefresh = true;
+  void refresh();
+}
 const netTrendState: TrendViewState = { open: false };
 const accountTrendStates = new Map<number, TrendViewState>();
 /** 抽屉监听器控制：#sheet 为复用容器，重开前必须废止上一次绑定，否则监听器叠加导致重复提交 */
@@ -107,14 +118,14 @@ function rowNote(a: Account): string {
 
 /** 重新取数并整页刷新 */
 async function refresh(): Promise<void> {
-  if (!root) return;
+  if (!root || root.inert || currentPage() !== 'page-acct') return;
+  needsRefresh = true;
   const token = ++refreshToken;
-  const [worth, trend, groups] = await Promise.all([
+  const [worth, groups] = await Promise.all([
     getNetWorth(),
-    netWorthTrend(6, netTrendState.endingMonth),
     listAccountsByGroup(),
   ]);
-  if (token !== refreshToken || !root) return;
+  if (token !== refreshToken || !root || root.inert || currentPage() !== 'page-acct') return;
 
   const all = ACCOUNT_GROUPS.flatMap((g) => groups[g]);
   const hidden = all.filter((a) => a.hidden);
@@ -152,7 +163,10 @@ async function refresh(): Promise<void> {
           <p>总负债<span class="num">${formatFenCny(worth.debts)}</span></p>
         </div>
       </div>
-      ${balanceTrendHtml(trend, '净资产', netTrendState)}
+      <div data-net-trend><details class="balance-trend" ${netTrendState.open ? 'open' : ''} aria-label="净资产走势">
+        <summary class="balance-trend-heading"><strong>净资产走势</strong><span class="trend-expand">展开</span><span class="trend-collapse">收起</span></summary>
+        <p class="sub" role="status">正在读取走势…</p>
+      </details></div>
     </section>
 
     ${groupCards || `
@@ -160,6 +174,21 @@ async function refresh(): Promise<void> {
         <p class="sub" style="text-align:center;padding:18px 0">还没有可展示的账户<br>点右上角 <b>＋</b> 添加现金、储蓄卡、网络账户或信用卡</p>
       </section>`}
     <p class="tiny" style="text-align:center;padding:4px 0 10px">点账户看流水，更多设置见「管理」</p>`;
+
+  // 账户列表可立即操作，不等待尚未展开的历史走势。
+  const el = root;
+  const trend = await netWorthTrend(6, netTrendState.endingMonth);
+  if (token !== refreshToken || root !== el || !el.isConnected || el.inert || currentPage() !== 'page-acct') return;
+  const host = el.querySelector<HTMLElement>('[data-net-trend]');
+  if (!host) return;
+  // toggle 事件可能尚未派发，直接保留用户刚刚展开／收起的实时状态。
+  const details = host.querySelector<HTMLDetailsElement>('details');
+  if (details) netTrendState.open = details.open;
+  const focused = host.contains(document.activeElement);
+  host.innerHTML = balanceTrendHtml(trend, '净资产', netTrendState);
+  if (focused) host.querySelector<HTMLElement>('summary')?.focus();
+  needsRefresh = false;
+  refreshedDay = dayKey(Date.now());
 }
 
 /* ── 账户详情抽屉（流水 / 编辑 / 对账 / 隐藏） ── */
@@ -709,16 +738,14 @@ function render(el: HTMLElement): void {
     }
   });
 
-  on('accounts-changed', () => void refresh());
-  on('entries-changed', () => void refresh());
-  on('settings-changed', () => void refresh());
+  on('accounts-changed', invalidateAccounts);
+  on('entries-changed', invalidateAccounts);
 
-  void refresh();
 }
 
 /** 注册账户一级页（覆盖占位页），main.ts 在 mountShell 后调用 */
 export function registerAccountPage(): void {
-  registerPage('page-acct', { render, onShow: () => void refresh() });
+  registerPage('page-acct', { render, onShow: showAccounts, onReveal: showAccounts });
   registerSubpage('sp-account-detail', {
     title: '账户详情',
     render(body) { void renderAccountDetail(body); },

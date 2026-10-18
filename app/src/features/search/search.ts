@@ -1,3 +1,4 @@
+import { ledgerEntriesInRange } from '../../core/repo/statsRepo';
 import { entryDisplayAmount } from '../../core/entryAmount';
 import { nextLocalDayStart } from '../../core/queryValidation';
 /**
@@ -13,11 +14,11 @@ import { iconHtml } from '../../assets/icons';
 import { categoryDisplayMap } from '../../core/categoryIcons';
 import { esc } from '../../core/esc';
 import { formatFen } from '../../core/money';
-import { listEntries, getEntry, dayKey } from '../../core/repo/entryRepo';
+import { listEntries, getEarliestEntryDate, getEntry, dayKey } from '../../core/repo/entryRepo';
 import { listCategories } from '../../core/repo/categoryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
 import { listMerchants } from '../../core/repo/merchantRepo';
-import { listTags, listEntryIdsByTag } from '../../core/repo/tagRepo';
+import { listTags, listEntryTagLinks } from '../../core/repo/tagRepo';
 import { listLifeNotes } from '../../core/repo/lifeRepo';
 import {
   applyBatchEntries, previewBatchEntries,
@@ -149,10 +150,9 @@ function getDefaultFrom(): DateWheelResult {
 }
 
 async function loadEarliestDate(): Promise<void> {
-  const entries = await listEntries({});
-  if (entries.length) {
-    const earliest = entries[entries.length - 1];
-    const d = new Date(earliest.occurredAt);
+  const earliest = await getEarliestEntryDate();
+  if (earliest != null) {
+    const d = new Date(earliest);
     cachedEarliestDate = { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() };
   } else {
     cachedEarliestDate = null;
@@ -257,9 +257,15 @@ async function doSearch(kw: string): Promise<void> {
   }
 
 
+  const win = rangeWindow();
+  const countReimburseAsIncome = await getSetting('reimburse.countAsIncome');
+  if (token !== searchToken || !resultsEl.isConnected) return;
   const [expenseCats, incomeCats, merchants, tags, entries, notes, accounts] = await Promise.all([
     listCategories('expense'), listCategories('income'), listMerchants(), listTags(),
-    listEntries({}), listLifeNotes(), listAccounts(),
+    win ? ledgerEntriesInRange(win.from, win.to, countReimburseAsIncome)
+      : listEntries({}).then(rows => ledgerItems(rows, countReimburseAsIncome)),
+    !ledgerOnly && !!kw && (fieldMode === 'all' || fieldMode === 'note') ? listLifeNotes(win ?? {}) : Promise.resolve([]),
+    listAccounts(),
   ]);
   if (token !== searchToken || !resultsEl.isConnected) return;
 
@@ -276,16 +282,13 @@ async function doSearch(kw: string): Promise<void> {
   batchAccounts = accounts;
   batchTags = tags;
 
-  const win = rangeWindow();
   updateDateDisplay(win);
   const tagIdsByEntry = new Map<number, number[]>();
   const tagNamesByEntry = new Map<number, string[]>();
-  const tagLinks = await Promise.all(tags.map(async (tag) => ({ tag, entryIds: await listEntryIdsByTag(tag.id) })));
-  for (const { tag, entryIds } of tagLinks) {
-    for (const entryId of entryIds) {
-      tagIdsByEntry.set(entryId, [...(tagIdsByEntry.get(entryId) ?? []), tag.id]);
-      tagNamesByEntry.set(entryId, [...(tagNamesByEntry.get(entryId) ?? []), tag.name]);
-    }
+  const tagLinks = await listEntryTagLinks(win ? entries.map(entry => entry.id) : undefined);
+  for (const { tagId, entryId } of tagLinks) {
+    tagIdsByEntry.set(entryId, [...(tagIdsByEntry.get(entryId) ?? []), tagId]);
+    tagNamesByEntry.set(entryId, [...(tagNamesByEntry.get(entryId) ?? []), tagNames.get(tagId) ?? '']);
   }
   if (token !== searchToken || !resultsEl.isConnected) return;
 
@@ -303,9 +306,7 @@ async function doSearch(kw: string): Promise<void> {
   };
   const queryKey = JSON.stringify([query, summaryFilter]);
   if (queryKey !== lastQueryKey) { shown = PAGE_SIZE; lastQueryKey = queryKey; }
-  const countReimburseAsIncome = await getSetting('reimburse.countAsIncome');
-  if (token !== searchToken || !resultsEl.isConnected) return;
-  const matchedEntries = filterLedgerEntries(ledgerItems(entries, countReimburseAsIncome), query, {
+  const matchedEntries = filterLedgerEntries(entries, query, {
     categoryNames: catNames,
     accountNames,
     tagIdsByEntry,
