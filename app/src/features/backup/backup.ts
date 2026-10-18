@@ -114,7 +114,7 @@ async function refresh(): Promise<void> {
           <div class="e-main"><p class="e-title">${esc(s.label)}</p><p class="e-meta">${fmtTime(s.createdAt)} · ${s.counts.entries ?? 0} 条账单</p></div>
           <button class="restore-link" data-undo="${s.id}">撤销到此</button>
         </div>`).join('')}
-      <p class="bk-history-note">恢复、导入或分类合并前自动创建；撤销会将全部数据回滚到该时点。</p>
+      <p class="bk-history-note">撤销会将全部数据恢复至所选时点。</p>
     </section>` : ''}
 
     <h3 class="bk-group-title">Excel 导入导出</h3>

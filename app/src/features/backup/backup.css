@@ -23,7 +23,7 @@
 .bk-history-row .e-meta{white-space:normal;overflow-wrap:anywhere}
 .bk-history-row .e-meta span{display:inline-block;white-space:nowrap}
 .bk-history-row .restore-link{flex:none;min-height:44px;margin-left:0}
-.bk-history-note{padding:6px 2px;font-size:14px;line-height:1.6;color:var(--muted)}
+.bk-history-note{padding:6px 2px;font-size:var(--text-small);line-height:1.6;color:var(--muted)}
 .backup-details{padding:0 2px;color:var(--muted);font-size:14px;line-height:1.6}
 .backup-details summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:var(--primary);list-style:none}
 .backup-details summary::after{content:"⌄";margin-left:auto}
