@@ -110,6 +110,8 @@ interface SheetCtx {
   type: EntryType;
   /** 当前操作数（元，字符串） */
   amt: string;
+  /** 复制／编辑带入的金额，首次直接输入数字时整体替换。 */
+  replaceAmountOnInput: boolean;
   prev: number | null;
   /** 连续运算的精确左操作数，仅存在于当前抽屉内存。 */
   prevAmount: string | null;
@@ -245,7 +247,7 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
       : preferredAccountId;
   const c: SheetCtx = {
     type: initialType,
-    amt: '', prev: null, prevAmount: null, op: null,
+    amt: '', replaceAmountOnInput: false, prev: null, prevAmount: null, op: null,
     categoryId: initialCategoryId,
     loanKind: 'borrow',
     accountId: initialAccountId,
@@ -302,6 +304,7 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     const editEntry = sourceEntry;
     c.editingId = editEntry.id;
     c.amt = String(editEntry.amount / 100);
+    c.replaceAmountOnInput = true;
     c.bx = editEntry.reimburseStatus === 'pending';
     c.tk = !!editEntry.refundFlag;
     c.refundOfEntryId = editEntry.refundOfEntryId;
@@ -317,6 +320,7 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     initialNote = editEntry.note ?? '';
   } else if (options.repeatFromEntryId != null && sourceEntry) {
     c.amt = String(sourceEntry.amount / 100);
+    c.replaceAmountOnInput = true;
     initialNote = sourceEntry.note ?? '';
   } else if (options.draft) {
     const draft = options.draft;
@@ -762,6 +766,7 @@ function startVoiceInput(): void {
       if (ctx !== c || sheetEl !== el || saving) throw new Error('草稿已关闭');
       switchEntryType(bill.type);
       c.amt = formatFen(bill.amount).replace(/,/g, ''); c.prev = null; c.prevAmount = null; c.op = null;
+      c.replaceAmountOnInput = false;
       const expenseCats = c.expenseTree.flatMap(group => [group.parent, ...group.children]);
       c.categoryId = mapCategoryNameToId(bill.type, bill.categoryName ?? '', expenseCats, c.incomeCats);
       c.categorySelectionLocked = true; c.noteCategoryId = undefined;
@@ -965,6 +970,10 @@ function bindEvents(el: HTMLElement): void {
     if (e.detail === 0) void entryKeyFeedback();
     const k = btn.dataset.k!;
     const c = ctx;
+    if (k !== 'save' && k !== 'again') {
+      if (c.replaceAmountOnInput && /^[\d.]$/.test(k)) c.amt = '';
+      c.replaceAmountOnInput = false;
+    }
     if (k === 'clear') {
       if (saving) return;
       c.amt = ''; c.prev = null; c.prevAmount = null; c.op = null;
@@ -1409,6 +1418,7 @@ async function doSave(stay: boolean): Promise<void> {
     linkLife: lifeToggle.getAttribute('aria-checked') === 'true',
   });
   c.amt = repeat.amount;
+  c.replaceAmountOnInput = false;
   c.prev = null;
   c.prevAmount = null;
   c.op = null;
