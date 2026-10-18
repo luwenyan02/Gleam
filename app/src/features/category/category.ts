@@ -12,7 +12,7 @@ import { categoryIcon } from '../../core/categoryIcons';
 import { openCategoryMerge } from './categoryMerge';
 import { on } from '../../core/store';
 import {
-  addCategory, deleteCategory, listCategories, listExpenseTree, moveCategory, updateCategory, reorderCategories,
+  addCategory, countCategoryEntries, deleteCategory, listCategories, listExpenseTree, moveCategory, updateCategory, reorderCategories,
 } from '../../core/repo/categoryRepo';
 import { registerSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
@@ -40,6 +40,7 @@ export function initCategoryManager(): void {
     title: '分类管理',
     render(el) {
       let kind: CategoryKind = 'expense';
+      let refreshToken = 0;
       /** 最近一次加载的分类，按 id 索引（拖动排序与编辑用） */
       const byId = new Map<number, Category>();
 
@@ -57,11 +58,18 @@ export function initCategoryManager(): void {
 
       async function refresh(): Promise<void> {
         if (!el.isConnected) return;
+        const token = ++refreshToken;
+        const selectedKind = kind;
+        const [counts, tree, cats] = await Promise.all([
+          countCategoryEntries(),
+          selectedKind === 'expense' ? listExpenseTree() : Promise.resolve([]),
+          selectedKind === 'income' ? listCategories('income') : Promise.resolve([]),
+        ]);
+        if (!el.isConnected || token !== refreshToken) return;
         byId.clear();
+        const label = (category: Category) => `<span class="cm-category-label"><span class="cm-category-name" title="${esc(category.name)}">${esc(category.name)}</span><span class="cm-entry-count num" data-category-count="${category.id}" title="未删除账单，含退款${category.kind === 'expense' && category.parentId == null ? '及小类' : ''}">${(counts.get(category.id) ?? 0).toLocaleString('zh-CN')} 笔</span></span>`;
         const list = el.querySelector('#cm-list')!;
-        if (kind === 'expense') {
-          const tree = await listExpenseTree();
-          if (!el.isConnected) return;
+        if (selectedKind === 'expense') {
           for (const g of tree) {
             byId.set(g.parent.id, g.parent);
             for (const c of g.children) byId.set(c.id, c);
@@ -69,24 +77,22 @@ export function initCategoryManager(): void {
           list.innerHTML = tree.map((g) => `
             <section class="card list" style="margin-bottom:12px" aria-label="${esc(g.parent.name)}大类">
               <div class="row cm-item" data-id="${g.parent.id}" data-drag-group="parents" draggable="true" role="button" tabindex="0">
-                <span class="e-ic sm">${iconHtml(categoryIcon(g.parent), 17)}</span><b>${esc(g.parent.name)}</b>
-                <span class="row-note">${g.children.length} 个小类</span>
+                <span class="e-ic sm">${iconHtml(categoryIcon(g.parent), 17)}</span>
+                <span class="cm-parent-copy">${label(g.parent)}<span class="cm-subcount">${g.children.length} 个小类</span></span>
                 <button class="restore-link" data-addsub="${g.parent.id}">添加小类</button>
               </div>
               ${g.children.map((c) => `
                 <button class="row cm-item" data-id="${c.id}" data-drag-group="p${g.parent.id}" draggable="true">
-                  <span class="e-ic sm">${iconHtml(categoryIcon(c, byId.get(c.parentId ?? -1)?.name), 17)}</span>${esc(c.name)}
+                  <span class="e-ic sm">${iconHtml(categoryIcon(c, byId.get(c.parentId ?? -1)?.name), 17)}</span>${label(c)}
                   <span class="chev" style="margin-left:auto">${iconHtml('ic-right', 15)}</span>
                 </button>`).join('')}
             </section>`).join('') || '<p class="sub" style="padding:12px 2px">还没有支出大类 · 点下方「新建大类」创建</p>';
         } else {
-          const cats = await listCategories('income');
-          if (!el.isConnected) return;
           for (const c of cats) byId.set(c.id, c);
           list.innerHTML = `<section class="card list" aria-label="收入分类">
             ${cats.map((c) => `
               <button class="row cm-item" data-id="${c.id}" data-drag-group="income" draggable="true">
-                <span class="e-ic sm">${iconHtml(categoryIcon(c, byId.get(c.parentId ?? -1)?.name), 17)}</span>${esc(c.name)}
+                <span class="e-ic sm">${iconHtml(categoryIcon(c, byId.get(c.parentId ?? -1)?.name), 17)}</span>${label(c)}
                 <span class="chev" style="margin-left:auto">${iconHtml('ic-right', 15)}</span>
               </button>`).join('') || '<p class="sub" style="padding:12px 2px">还没有收入分类</p>'}
           </section>`;
@@ -173,10 +179,10 @@ export function initCategoryManager(): void {
         showToast('排序已保存');
       }
 
-      const off = on('categories-changed', () => {
-        if (!el.isConnected) { off(); return; }
+      const unsubscribe = ['categories-changed', 'entries-changed'].map(event => on(event as 'categories-changed' | 'entries-changed', () => {
+        if (!el.isConnected) { unsubscribe.forEach(off => off()); return; }
         void refresh();
-      });
+      }));
       void refresh();
     },
   });

@@ -99,3 +99,24 @@ export async function listExpenseTree(): Promise<{ parent: Category; children: C
     children: rows.filter((c) => c.parentId === parent.id),
   }));
 }
+
+/** 全部未删除收支的实体笔数（含退款）；支出大类包含自身及小类，不生成报销展示事件。 */
+export async function countCategoryEntries(): Promise<Map<number, number>> {
+  return db.transaction('r', [db.categories, db.entries], async () => {
+    const [categories, entries] = await Promise.all([
+      db.categories.toArray(), db.entries.where('deletedAt').equals(0).toArray(),
+    ]);
+    const byId = new Map(categories.map(category => [category.id, category]));
+    const counts = new Map(categories.map(category => [category.id, 0]));
+    for (const entry of entries) {
+      const category = entry.categoryId != null ? byId.get(entry.categoryId) : undefined;
+      if (!category || entry.type !== category.kind) continue;
+      counts.set(category.id, counts.get(category.id)! + 1);
+      const parent = category.parentId != null ? byId.get(category.parentId) : undefined;
+      if (parent?.kind === category.kind && parent.id !== category.id) {
+        counts.set(parent.id, counts.get(parent.id)! + 1);
+      }
+    }
+    return counts;
+  });
+}
