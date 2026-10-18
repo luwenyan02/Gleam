@@ -20,7 +20,7 @@ import { getEntry, listEntries } from '../../core/repo/entryRepo';
 import { listCategories } from '../../core/repo/categoryRepo';
 import { accountFlows, accountMonthRows, accountStatement, accountActiveMonthRows, type LedgerItem } from '../../core/ledgerEvents';
 import { accountEffects } from '../../core/entryEffects';
-import { registerPage, registerSubpage, openSubpage } from '../shell/router';
+import { registerPage, registerSubpage, openSubpage, SUBPAGE_CLOSE_EVENT } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { openEntrySheet } from '../entry/entrySheet';
 import { openEntryDetail } from '../detail/detail';
@@ -212,6 +212,7 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
   let monthsShown = 8;
   let detailToken = 0;
   const expandedMonths = new Set<string>();
+  const monthEntryContent = new Map<string, () => string>();
   let initializedMonths = false;
   body.classList.add('account-detail-body');
   const subpage = body.closest<HTMLElement>('.subpage')!;
@@ -256,6 +257,12 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     const trendAt = trendState.endingMonth ? new Date(`${trendState.endingMonth}-01T12:00:00`).getTime() : Date.now();
     const trend = accountMonthRows(flows, acct.balance, trendAt, 6).reverse().map((row) => ({ month: row.key, net: row.closing }));
 
+    // 收起的历史月份不生成账单 DOM，避免进入单条详情时处理大量不可见节点。
+    monthEntryContent.clear();
+    for (const row of monthRows) {
+      monthEntryContent.set(row.key, () => row.entries
+        .map(entry => flowEntryHtml(entry, targetAccountId, catMap, acctNames, balances.get(entry)!)).join(''));
+    }
     body.innerHTML = `
       <section class="account-detail-hero">
         <div class="account-detail-overview overview-art">
@@ -288,7 +295,7 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
               <span class="chev">${iconHtml('ic-right', 15)}</span>
             </button>
             <div class="account-month-entries">
-              ${row.entries.map((entry) => flowEntryHtml(entry, targetAccountId, catMap, acctNames, balances.get(entry)!)).join('')}
+              ${expandedMonths.has(row.key) ? monthEntryContent.get(row.key)!() : ''}
             </div>
           </section>`;
         }).join('') || '<p class="acct-flow-empty">暂无流水</p>'}
@@ -319,10 +326,17 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     if (entryRow) { openEntryDetail(Number(entryRow.dataset.eid)); return; }
     const month = target.closest<HTMLElement>('[data-account-month]');
     if (month && target.closest('.account-month-head')) {
-      month.classList.toggle('expanded');
+      const expanded = month.classList.toggle('expanded');
       const key = month.dataset.accountMonth!;
-      if (month.classList.contains('expanded')) expandedMonths.add(key); else expandedMonths.delete(key);
-      month.querySelector('.account-month-head')!.setAttribute('aria-expanded', String(month.classList.contains('expanded')));
+      const rows = month.querySelector<HTMLElement>('.account-month-entries')!;
+      if (expanded) {
+        expandedMonths.add(key);
+        rows.innerHTML = monthEntryContent.get(key)?.() ?? '';
+      } else {
+        expandedMonths.delete(key);
+        rows.replaceChildren();
+      }
+      month.querySelector('.account-month-head')!.setAttribute('aria-expanded', String(expanded));
       return;
     }
     const action = target.closest<HTMLElement>('[data-account-action]')?.dataset.accountAction;
@@ -347,6 +361,9 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     if (!body.isConnected) { offEntries(); return; }
     void refreshDetail();
   });
+  subpage.addEventListener(SUBPAGE_CLOSE_EVENT, () => {
+    detailToken++; monthEntryContent.clear(); offAccounts(); offEntries();
+  }, { once: true });
   await refreshDetail();
 }
 

@@ -271,9 +271,8 @@ export async function getEntryTagIds(entryId: number): Promise<number[]> {
 
 /** 原支出关联的有效退款记录，按退款时间倒序。 */
 export async function listRefunds(originalEntryId: number): Promise<Entry[]> {
-  const rows = await db.entries
-    .filter((entry) => entry.deletedAt === 0 && entry.refundFlag === true && entry.refundOfEntryId === originalEntryId)
-    .toArray();
+  const rows = await db.entries.where('refundOfEntryId').equals(originalEntryId)
+    .and((entry) => entry.deletedAt === 0 && entry.refundFlag === true).toArray();
   return rows.sort((a, b) => b.occurredAt - a.occurredAt);
 }
 

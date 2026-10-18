@@ -1,5 +1,5 @@
 /**
- * 拾光 · Dexie 数据库定义（schema v4）
+ * 拾光 · Dexie 数据库定义（schema v5）
  * 单库 GleamDB。UI 模块不得直接操作 db，一律经 repo/ 仓库层。
  *
  * 索引约定：
@@ -91,6 +91,14 @@ db.version(3).stores({
 db.version(4).stores({
   lifeDrafts: '&key',
   lifeEditions: '++id, &weekKey, createdAt, updatedAt',
+});
+
+/** v5：关联退款按原账单索引读取；仅增加索引，账单字段和余额保持原样。 */
+db.version(5).stores({
+  entries:
+    '++id, occurredAt, categoryId, accountId, importBatchId, deletedAt, ' +
+    '[deletedAt+occurredAt], [deletedAt+type], [occurredAt+type+amount+accountId], ' +
+    'loanContactId, reimburseStatus, lifeNoteId, refundOfEntryId',
 });
 
 /** 当前时间戳（毫秒），统一出口便于测试替换 */

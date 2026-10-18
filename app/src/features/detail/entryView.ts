@@ -1,6 +1,6 @@
 import { entryDisplayAmount } from '../../core/entryAmount';
 import { displayEntryNote } from './entryRowText';
-import { categoryDisplayMap } from '../../core/categoryIcons';
+import { categoryIcon } from '../../core/categoryIcons';
 /**
  * 拾光 · 单条账单只读详情子页（sp-entry-view）
  * 头部金额卡、字段列表、关联退款展示与底部操作栏（编辑 / 复制 / 删除 / 退款）。
@@ -10,22 +10,14 @@ import { esc } from '../../core/esc';
 import { formatFen, formatFenCny } from '../../core/money';
 import { on } from '../../core/store';
 import { LOAN_KIND_META, type Entry } from '../../core/types';
-import {
-  getEntry, getEntryTagIds, listRefunds, refundableAmount,
-} from '../../core/repo/entryRepo';
-import { listCategories, listExpenseTree } from '../../core/repo/categoryRepo';
-import { listAccounts } from '../../core/repo/accountRepo';
-import { listMerchants } from '../../core/repo/merchantRepo';
-import { listTags } from '../../core/repo/tagRepo';
-import { getImportBatch } from '../../core/repo/aiRepo';
-import { closeSubpage } from '../shell/router';
+import { getEntryViewData } from '../../core/repo/entryViewRepo';
+import { closeSubpage, SUBPAGE_CLOSE_EVENT } from '../shell/router';
 import { showToast } from '../shell/toast';
 import {
   canRefund, getViewEntryId, runEntryQuickAction, type EntryQuickAction,
 } from './entrySwipe';
 import { fullDateTime, typeName } from './detailShared';
 import { reimbursementDetailText } from '../reimburse/reimburse';
-import { listEntryAttachments } from '../../core/repo/entryAttachmentRepo';
 import { previewReceipt, receiptThumbnail } from '../entry/receiptEditor';
 import { openEntityInsight } from '../tagmerchant/tagmerchant';
 import { openEntryLifeStory } from '../life/lifeExtras';
@@ -41,27 +33,24 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
   actionBar.className = 'entry-view-actions';
   subpage.appendChild(actionBar);
   let current: Entry | undefined;
+  let refreshToken = 0;
 
   async function refreshView(): Promise<void> {
-    const [entry, tree, incomeCats, accounts, merchants, tags, tagIds] = await Promise.all([
-      getEntry(targetEntryId), listExpenseTree(), listCategories('income'), listAccounts(true),
-      listMerchants(), listTags(), getEntryTagIds(targetEntryId),
-    ]);
-    if (!entry || entry.deletedAt !== 0) {
+    const token = ++refreshToken;
+    const data = await getEntryViewData(targetEntryId);
+    if (!body.isConnected || token !== refreshToken) return;
+    if (!data) {
       body.innerHTML = '<div class="placeholder"><p class="sub">账单不存在或已进入回收站</p></div>';
       actionBar.remove();
       return;
     }
+    const { entry, category, categoryParent, accounts, merchant, tags: selectedTags, refunds, original, batch, receipts } = data;
     current = entry;
-    const categories = [...tree.flatMap((group) => [group.parent, ...group.children]), ...incomeCats];
-    const cat = categoryDisplayMap(categories).get(entry.categoryId ?? -1);
+    const cat = category ? { ...category, icon: categoryIcon(category, categoryParent?.name) } : undefined;
     const accountMap = new Map(accounts.map((account) => [account.id, account]));
     const account = accountMap.get(entry.accountId ?? -1);
-    const merchant = merchants.find((item) => item.id === entry.merchantId);
-    const selectedTags = tags.filter((tag) => tagIds.includes(tag.id));
-    const refunds = entry.refundFlag ? [] : await listRefunds(entry.id);
-    const original = entry.refundOfEntryId != null ? await getEntry(entry.refundOfEntryId) : undefined;
-    const remaining = canRefund(entry) ? await refundableAmount(entry.id) : 0;
+    // 复用同一快照的退款列表，避免再次查询原单和关联退款。
+    const remaining = canRefund(entry) ? Math.max(0, entry.amount - refunds.reduce((sum, refund) => sum + refund.amount, 0)) : 0;
     const reconciliation = entry.reconcileBeforeBalance != null && entry.reconcileTargetBalance != null;
     const icon = reconciliation || entry.type === 'transfer' ? 'ic-swap'
       : entry.type === 'loan' ? LOAN_KIND_META[entry.loanKind ?? 'borrow'].icon
@@ -74,9 +63,7 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
       ? LOAN_KIND_META[entry.loanKind ?? 'borrow'].name
       : entry.type === 'transfer' ? '账户转账' : cat?.name ?? '未分类';
     const reimbursement = reimbursementDetailText(entry);
-    const batch = entry.importBatchId != null ? await getImportBatch(entry.importBatchId) : undefined;
     const sourceText = entry.importBatchId == null ? '手工录入' : batch?.source === 'ai' ? 'AI 记账' : '账单导入';
-    const receipts = await listEntryAttachments(entry.id);
     const visibleNote = displayEntryNote(entry.note);
 
     subpage.querySelector<HTMLElement>('.sub-head h2')!.textContent = typeName(entry);
@@ -134,5 +121,6 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
     if (!body.isConnected) { off(); return; }
     void refreshView();
   });
+  subpage.addEventListener(SUBPAGE_CLOSE_EVENT, () => { refreshToken++; off(); }, { once: true });
   await refreshView();
 }
