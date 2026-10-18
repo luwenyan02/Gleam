@@ -76,42 +76,42 @@
 #note-clear{position:absolute;right:1px;top:8px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;color:var(--muted);border-radius:var(--r-s)}
 #note-clear:active{background:var(--bg)}
 /* 连贯的暖灰键盘：细分隔、等宽数字、双行保存，安全区沿用面板底色。 */
-#sheet.entry-workspace .entry-keyboard{
+:is(#sheet.entry-workspace,#sp-entry-refund) .entry-keyboard{
   --key-bg:color-mix(in oklab,var(--seed-accent) 7%,var(--bg));
   --key-pressed:color-mix(in oklab,var(--seed-primary) 20%,var(--key-bg));
   --key-line:color-mix(in srgb,color-mix(in oklab,var(--seed-fg) 10%,var(--key-bg)) 50%,transparent);
   flex:none;margin:0 -16px calc(-12px - var(--safe-bottom));background:var(--key-bg);
 }
-#sheet.entry-workspace .keypad{
+:is(#sheet.entry-workspace,#sp-entry-refund) .keypad{
   flex:none;gap:1px;grid-template-columns:repeat(5,minmax(0,1fr));
   margin:0;padding-bottom:var(--safe-bottom);
   background:linear-gradient(var(--key-line),var(--key-line)) padding-box,var(--key-bg);
   border-top:1px solid var(--key-line);
 }
-#sheet.entry-workspace .keypad button{
+:is(#sheet.entry-workspace,#sp-entry-refund) .keypad button{
   height:clamp(48px,7dvh,64px);min-width:44px;border-radius:0;
   background:var(--key-bg);color:var(--fg);font-size:calc(24px * var(--seed-type));font-weight:500;
   font-variant-numeric:tabular-nums;touch-action:manipulation;user-select:none;-webkit-user-select:none;
   transition:background-color .1s,box-shadow .1s,transform .1s;
 }
-#sheet.entry-workspace .keypad .op{font-size:calc(22px * var(--seed-type));color:var(--muted)}
-#sheet.entry-workspace .keypad .again{font-size:calc(15px * var(--seed-type));color:var(--primary)}
-#sheet.entry-workspace .keypad .zero{grid-column:auto}
-#sheet.entry-workspace .keypad .clear{font-size:calc(15px * var(--seed-type));color:var(--muted)}
-#sheet.entry-workspace .keypad .clear:disabled{opacity:.45;cursor:default}
-#sheet.entry-workspace .keypad .save{
+:is(#sheet.entry-workspace,#sp-entry-refund) .keypad .op{font-size:calc(22px * var(--seed-type));color:var(--muted)}
+:is(#sheet.entry-workspace,#sp-entry-refund) .keypad .again{font-size:calc(15px * var(--seed-type));color:var(--primary)}
+:is(#sheet.entry-workspace,#sp-entry-refund) .keypad .zero{grid-column:auto}
+:is(#sheet.entry-workspace,#sp-entry-refund) .keypad .clear{font-size:calc(15px * var(--seed-type));color:var(--muted)}
+:is(#sheet.entry-workspace,#sp-entry-refund) .keypad .clear:disabled{opacity:.45;cursor:default}
+:is(#sheet.entry-workspace,#sp-entry-refund) .keypad .save{
   height:auto;border-radius:10px 0 0 0;background:var(--primary);color:var(--on-accent);
   font-size:calc(18px * var(--seed-type));letter-spacing:0;box-shadow:none;
 }
-#sheet.entry-workspace .keypad button:active:not(:disabled){
+:is(#sheet.entry-workspace,#sp-entry-refund) .keypad button:active:not(:disabled){
   background:var(--key-pressed);transform:translateY(1px);
   box-shadow:inset 0 2px 4px color-mix(in oklab,var(--seed-fg) 12%,transparent);
   transition-duration:0s;
 }
-#sheet.entry-workspace .keypad .save:active:not(:disabled){background:color-mix(in oklab,var(--primary) 85%,var(--fg))}
+:is(#sheet.entry-workspace,#sp-entry-refund) .keypad .save:active:not(:disabled){background:color-mix(in oklab,var(--primary) 85%,var(--fg))}
 @media(prefers-reduced-motion:reduce){
-  #sheet.entry-workspace .keypad button{transition:none}
-  #sheet.entry-workspace .keypad button:active:not(:disabled){transform:none}
+  :is(#sheet.entry-workspace,#sp-entry-refund) .keypad button{transition:none}
+  :is(#sheet.entry-workspace,#sp-entry-refund) .keypad button:active:not(:disabled){transform:none}
 }
 
 @media (max-height:720px){
@@ -119,7 +119,7 @@
   #sheet:not(.entry-workspace)::before{margin-bottom:4px}
   #sheet .pick-card{padding-top:9px;padding-bottom:9px}
   #sheet .sheet-scroll{margin-top:8px}
-  #sheet.entry-workspace .keypad button{height:44px}
+  :is(#sheet.entry-workspace,#sp-entry-refund) .keypad button{height:44px}
   #sheet.entry-workspace #cat-grid .cat{min-height:54px}
   #sheet.entry-workspace #cat-grid .cat-ic{width:30px;height:30px}
 }

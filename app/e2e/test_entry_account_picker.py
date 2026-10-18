@@ -33,6 +33,11 @@ def run(page,width):
  assert len(panel.locator('[data-account]').all())==16
  page.screenshot(path=str(OUT/f'accounts-{width}.png'),animations='disabled')
  height=panel.bounding_box()['height']
+ panel.locator('[data-add]').click();panel.locator('[name="name"]').fill('虚构取消新增')
+ panel.locator('[data-back]').click();expect(panel.locator('[data-add]')).to_be_focused()
+ page.keyboard.press('Escape');page.locator('.entry-account-mask').wait_for(state='detached')
+ expect(page.locator('#note')).to_have_value('虚构未保存草稿');expect(page.locator('#amt')).to_have_text('8')
+ page.locator('#acct-btn').click();panel.wait_for()
  panel.locator('[data-search]').click();panel.locator('input[type="search"]').fill('虚构账户16')
  expect(panel.locator('[data-account]')).to_have_count(1)
  assert abs(panel.bounding_box()['height']-height)<1

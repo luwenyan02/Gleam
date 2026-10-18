@@ -1,0 +1,51 @@
+/* 退款沿用记账卡片与键盘；只让中间内容滚动，底部操作不参与滚动。 */
+/* 避免自动聚焦或选中分类时滚动外壳，带走整张退款页和贴底键盘。 */
+.app:has(> #sp-entry-refund){overflow:clip}
+#sp-entry-refund{background:var(--surface)}
+#sp-entry-refund .sub-head{padding:6px 16px}
+#sp-entry-refund .refund-page{
+  display:flex;flex-direction:column;min-height:0;overflow:hidden;
+  padding:0 16px calc(12px + var(--safe-bottom));
+}
+.refund-amount-card{flex:none;min-height:58px;margin:2px 0 8px;padding:8px 12px}
+.refund-amount-card>div{flex:none}
+.refund-amount-card p{font-size:14px;font-weight:600}
+.refund-amount-card small{display:block;color:var(--muted);font-size:11px}
+.refund-amount-value{display:flex;align-items:baseline;justify-content:flex-end;gap:3px;min-width:0;flex:1}
+.refund-amount-value i{font-size:14px;font-style:normal;color:var(--muted)}
+.refund-amount-value input{
+  min-width:0;max-width:calc(100% - 18px);padding:0;border:0;background:transparent;color:var(--fg);
+  font-family:var(--font-numeric);font-variant-numeric:tabular-nums;text-align:right;
+  font-size:clamp(22px,6vw,28px);font-weight:700;
+}
+.refund-amount-value input::placeholder{color:var(--faint)}
+.refund-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}
+.refund-scroll::-webkit-scrollbar{display:none}
+.refund-origin{display:flex;align-items:center;gap:8px;padding:0 1px 4px}
+.refund-origin .e-ic{width:30px;height:30px;border-radius:10px;flex:none}
+.refund-origin>div{flex:1;min-width:0}
+.refund-origin p{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.refund-origin small{display:block;font-size:11px;color:var(--muted)}
+.refund-origin strong{font-size:13px;color:var(--expense);flex:none}
+#rf-cats{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px 6px;padding-bottom:6px}
+#rf-cats .cat{min-width:0;min-height:59px;gap:3px;padding:5px 1px;font-size:var(--text-meta);scroll-margin-block:2px}
+#rf-cats .cat-ic{width:34px;height:34px}
+#rf-cats .cat>span:last-child{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#rf-cats .cat-more .cat-ic{background:transparent;border:1px dashed color-mix(in oklab,var(--seed-primary) 42%,var(--border));color:var(--primary)}
+.refund-note-field{position:relative;flex:none;margin-top:4px}
+.refund-note-field .note{margin:0;min-height:44px;padding:10px 48px 10px 12px;background:var(--surface)}
+#rf-note-clear{position:absolute;right:1px;top:0;width:44px;height:44px;display:flex;align-items:center;justify-content:center;color:var(--muted);border-radius:var(--r-s)}
+#rf-note-clear:active{background:var(--bg)}
+.refund-meta{display:grid;grid-template-columns:auto minmax(0,1fr);flex:none;padding:4px 0;overflow:visible}
+.refund-meta .chip{min-width:0;min-height:44px;padding:8px 10px;justify-content:flex-start}
+.refund-meta .chip svg{flex:none}
+.refund-meta .chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#sp-entry-refund #rf-keypad{grid-template-columns:repeat(4,minmax(0,1fr))}
+#sp-entry-refund .keypad .save{font-size:calc(18px * var(--seed-type));white-space:nowrap}
+.refund-note-editing .entry-keyboard{display:none}
+@media(max-height:720px){
+  #sp-entry-refund .sub-head{padding-top:4px;padding-bottom:4px}
+  .refund-amount-card{margin-bottom:4px}
+  #rf-cats .cat{min-height:54px;padding-top:3px;padding-bottom:3px;gap:2px}
+  #rf-cats .cat-ic{width:30px;height:30px}
+}
