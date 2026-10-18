@@ -105,7 +105,8 @@ def run(browser, width, height, theme, scale, safe):
     date=page.locator('#rf-date').inner_text();page.locator('#rf-date').click()
     page.locator('.dw-panel').wait_for();page.locator('.dw-mask').click(position={'x':5,'y':5})
     page.locator('.dw-panel').wait_for(state='detached');expect(page.locator('#rf-date')).to_have_text(date)
-    page.locator('#rf-account').click();page.locator('.entry-account-picker').wait_for()
+    page.locator('#rf-account').click()
+    expect(page.locator('.entry-account-picker [data-search]')).to_be_focused()
     page.keyboard.press('Escape');page.locator('.entry-account-mask').wait_for(state='detached')
     expect(page.locator('#rf-account')).to_contain_text('虚构退款账户')
     assert save.bounding_box()['y']+save.bounding_box()['height']<=height-safe+1
