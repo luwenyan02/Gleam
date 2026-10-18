@@ -3,31 +3,43 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { db } from '../src/core/db';
 import { setSetting } from '../src/core/repo/settingsRepo';
 import { saveMonthlyBudget } from '../src/core/repo/budgetRepo';
+import { emit } from '../src/core/store';
+import * as mineRepo from '../src/core/repo/mineRepo';
 
-const router = vi.hoisted(() => ({ registerPage: vi.fn() }));
-vi.mock('../src/features/shell/router', () => ({ registerPage: router.registerPage, openSubpage: vi.fn() }));
+const router = vi.hoisted(() => ({ registerPage: vi.fn(), currentPage: vi.fn(() => 'page-mine') }));
+const version = vi.hoisted(() => ({ read: vi.fn() }));
+vi.mock('../src/features/shell/router', () => ({ registerPage: router.registerPage, currentPage: router.currentPage, openSubpage: vi.fn() }));
 vi.mock('../src/features/shell/toast', () => ({ showToast: vi.fn() }));
 vi.mock('../src/features/settings/about', () => ({ openAbout: vi.fn() }));
 vi.mock('../src/features/settings/settingsManual', () => ({ openSettingsManual: vi.fn() }));
 vi.mock('../src/core/appVersion', () => ({
-  getAppVersion: async () => ({ version: '1.0.0', platform: 'web' }),
+  getAppVersion: version.read,
   appVersionText: () => '1.0.0',
 }));
 import { initMine } from '../src/features/mine/mine';
 
 let element: HTMLElement;
+let nodes: Map<string, { textContent: string }>;
 async function openMine(): Promise<void> {
   initMine();
   const hooks = router.registerPage.mock.calls.at(-1)![1];
-  element = { isConnected: true, innerHTML: '', addEventListener: vi.fn() } as unknown as HTMLElement;
+  nodes = new Map();
+  element = { isConnected: true, innerHTML: '', addEventListener: vi.fn(), querySelector: (selector: string) => {
+    if (!nodes.has(selector)) nodes.set(selector, { textContent: '' });
+    return nodes.get(selector);
+  } } as unknown as HTMLElement;
   hooks.render(element);
-  await vi.waitFor(() => expect(element.innerHTML).toContain('预算中心'));
+  expect(element.innerHTML).toContain('预算中心');
+  hooks.onShow();
+  await vi.waitFor(() => expect(budgetNote()).toContain('本期剩余'));
 }
 function budgetNote(): string {
-  return element.innerHTML.match(/data-sub="sp-budget"[\s\S]*?class="row-note num">([^<]*)</)?.[1] ?? '';
+  return nodes.get('[data-sub="sp-budget"] .row-note')?.textContent ?? '';
 }
 
 beforeEach(async () => {
+  version.read.mockResolvedValue({ appVersion: '1.0.0', platform: 'PWA' });
+  router.currentPage.mockReturnValue('page-mine');
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date(2026, 9, 18, 12));
   await db.delete(); await db.open();
@@ -58,4 +70,33 @@ it('未进入预算中心时，也能显示自动延续后的本期余额', asyn
   await openMine();
   expect(budgetNote()).toBe('本期剩余 ¥1,500.00');
   expect((await db.budgets.where('month').equals('2026-09').first())?.totalLimit).toBe(200000);
+});
+
+
+it('版本读取未返回时，入口立即可见且预算摘要独立完成', async () => {
+  let release!: (info: unknown) => void;
+  version.read.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+  await openMine();
+  expect(element.innerHTML).toContain('应用设置');
+  expect(budgetNote()).toBe('本期剩余 ¥500.00');
+  release({ appVersion: '1.0.0', platform: 'PWA' });
+  await vi.waitFor(() => expect(nodes.get('[data-app-version]')?.textContent).toContain('1.0.0'));
+});
+
+it('首次 render 加 onShow 只读取一次头部摘要，隐藏页不因账单变化重读', async () => {
+  const read = vi.spyOn(mineRepo, 'getMineEntrySummary');
+  try {
+    await openMine();
+    await vi.waitFor(() => expect(nodes.get('[data-app-version]')?.textContent).toContain('1.0.0'));
+    expect(read).toHaveBeenCalledTimes(1);
+    read.mockClear();
+    router.currentPage.mockReturnValue('page-home');
+    emit('entries-changed');
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(read).not.toHaveBeenCalled();
+    router.currentPage.mockReturnValue('page-mine');
+    router.registerPage.mock.calls.at(-1)![1].onShow();
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(nodes.get('[data-mine-stats]')?.textContent).toContain('3 条流水'));
+  } finally { read.mockRestore(); }
 });
