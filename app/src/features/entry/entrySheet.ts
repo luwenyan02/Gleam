@@ -530,7 +530,7 @@ function renderCats(): void {
 
   const grid = q('#cat-grid');
   const jump = q('#cat-jump');
-  jump.hidden = !c.showAllCategories || isTransfer || isLoan;
+  jump.hidden = !c.showAllCategories || c.type !== 'expense';
   if (!jump.hidden) {
     jump.innerHTML = `<button class="chip" type="button" data-cat-collapse aria-label="返回常用分类" title="收起，返回常用分类">${iconHtml('ic-left', 18)}</button><div class="category-group-nav">${c.type === 'expense' ? c.expenseTree.map((group, index) => `<button class="chip${index === 0 ? ' active' : ''}" type="button" data-cat-jump="${group.parent.id}" aria-label="定位到分类大类：${esc(group.parent.name)}" aria-pressed="${index === 0}">${esc(group.parent.name)}</button>`).join('') : ''}</div>`;
   }
