@@ -7,6 +7,7 @@
  * 对外契约：openEntrySheet(options)（日历补账 / 速记 / 明细编辑复用）。
  */
 import { openEntryAccountPicker } from './entryAccountPicker';
+import { entryKeyFeedback } from './entryKeyFeedback';
 import { iconHtml } from '../../assets/icons';
 import { categoryIcon } from '../../core/categoryIcons';
 import { esc } from '../../core/esc';
@@ -919,9 +920,16 @@ function bindEvents(el: HTMLElement): void {
   });
 
   // 计算器键盘
-  el.querySelector('#keypad')!.addEventListener('click', (e) => {
-    const btn = (e.target as HTMLElement).closest<HTMLElement>('button');
-    if (!btn || !ctx) return;
+  const keypad = el.querySelector<HTMLElement>('#keypad')!;
+  keypad.addEventListener('pointerdown', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
+    if (btn && !btn.disabled && e.isPrimary && e.button === 0 && ctx) void entryKeyFeedback();
+  });
+  keypad.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
+    if (!btn || btn.disabled || !ctx) return;
+    // 键盘和辅助技术没有 pointerdown，只在激活时反馈一次。
+    if (e.detail === 0) void entryKeyFeedback();
     const k = btn.dataset.k!;
     const c = ctx;
     if (k === 'del') {

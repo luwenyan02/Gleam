@@ -6,6 +6,7 @@ import android.content.pm.ShortcutManager;
 import android.graphics.drawable.Icon;
 import android.net.Uri;
 import android.os.Build;
+import android.view.HapticFeedbackConstants;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -15,9 +16,18 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 原生仅维护桌面快捷入口；所有账务操作仍由 Web 数据仓库提交。 */
+/** 原生维护桌面快捷入口及按键触感；所有账务操作仍由 Web 数据仓库提交。 */
 @CapacitorPlugin(name = "GleamEntry")
 public final class GleamEntryPlugin extends Plugin {
+    @PluginMethod
+    public void keyFeedback(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            // 不使用 IGNORE_GLOBAL_SETTING，尊重系统触感开关，无需振动权限。
+            getBridge().getWebView().performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            call.resolve();
+        });
+    }
+
     @PluginMethod
     public void updateWidget(PluginCall call) {
         String expense = call.getString("expense", "—");

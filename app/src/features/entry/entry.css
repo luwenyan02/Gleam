@@ -63,16 +63,44 @@
 .advanced-meta .chip span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .advanced-meta .chip svg{flex:none}
 #sheet.entry-workspace .note{min-height:44px;margin:8px 0 0;padding:10px 12px;background:var(--surface)}
-#sheet.entry-workspace .keypad{flex:none;gap:6px}
-#sheet.entry-workspace .keypad button{height:46px;min-width:44px}
-#sheet.entry-workspace .keypad .save{height:auto}
+/* 连贯的暖灰键盘：细分隔、等宽数字、双行保存，安全区沿用面板底色。 */
+#sheet.entry-workspace .keypad{
+  --key-bg:color-mix(in oklab,var(--seed-accent) 7%,var(--bg));
+  --key-pressed:color-mix(in oklab,var(--seed-primary) 20%,var(--key-bg));
+  flex:none;gap:1px;grid-template-columns:repeat(5,minmax(0,1fr));
+  margin:0 -16px calc(-12px - var(--safe-bottom));padding-bottom:var(--safe-bottom);
+  background:color-mix(in oklab,var(--seed-fg) 10%,var(--key-bg));
+  border-top:1px solid color-mix(in oklab,var(--seed-fg) 10%,var(--key-bg));
+}
+#sheet.entry-workspace .keypad button{
+  height:clamp(48px,7dvh,64px);min-width:44px;border-radius:0;
+  background:var(--key-bg);color:var(--fg);font-size:calc(24px * var(--seed-type));font-weight:500;
+  font-variant-numeric:tabular-nums;touch-action:manipulation;user-select:none;-webkit-user-select:none;
+  transition:background-color .1s,box-shadow .1s,transform .1s;
+}
+#sheet.entry-workspace .keypad .op{font-size:calc(22px * var(--seed-type));color:var(--muted)}
+#sheet.entry-workspace .keypad .again{font-size:calc(15px * var(--seed-type));color:var(--primary)}
+#sheet.entry-workspace .keypad .save{
+  height:auto;border-radius:10px 0 0 0;background:var(--primary);color:var(--on-accent);
+  font-size:calc(18px * var(--seed-type));letter-spacing:0;box-shadow:none;
+}
+#sheet.entry-workspace .keypad button:active:not(:disabled){
+  background:var(--key-pressed);transform:translateY(1px);
+  box-shadow:inset 0 2px 4px color-mix(in oklab,var(--seed-fg) 12%,transparent);
+  transition-duration:0s;
+}
+#sheet.entry-workspace .keypad .save:active:not(:disabled){background:color-mix(in oklab,var(--primary) 85%,var(--fg))}
+@media(prefers-reduced-motion:reduce){
+  #sheet.entry-workspace .keypad button{transition:none}
+  #sheet.entry-workspace .keypad button:active:not(:disabled){transform:none}
+}
 
 @media (max-height:720px){
   #sheet:not(.entry-workspace){max-height:96%;padding-top:10px}
   #sheet:not(.entry-workspace)::before{margin-bottom:4px}
   #sheet .pick-card{padding-top:9px;padding-bottom:9px}
   #sheet .sheet-scroll{margin-top:8px}
-  #sheet.entry-workspace .keypad button{height:42px}
+  #sheet.entry-workspace .keypad button{height:44px}
   #sheet.entry-workspace #cat-grid .cat{min-height:54px}
   #sheet.entry-workspace #cat-grid .cat-ic{width:30px;height:30px}
 }
@@ -84,6 +112,7 @@
 
 @media (min-width:700px){
   #sheet.entry-workspace{padding-left:20px;padding-right:20px}
+  #sheet.entry-workspace .keypad{margin-left:-20px;margin-right:-20px}
 }
 
 #sheet #date-chip{white-space:nowrap;padding-left:7px;padding-right:7px;font-size:12px}
