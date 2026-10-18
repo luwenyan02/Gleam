@@ -418,7 +418,7 @@ function renderSheet(el: HTMLElement, note: string): void {
         <button type="button" id="note-clear" aria-label="清空备注"${note ? '' : ' hidden'}>${iconHtml('ic-close', 16)}</button>
       </div>
       <div class="meta-row primary-meta">
-        <div class="entry-date-actions" role="group" aria-label="记账时间"><button class="chip" id="date-chip"><span id="date-txt"></span></button><button class="chip" type="button" id="date-today" aria-label="日期改为今天" hidden>改为今天</button></div>
+        <div class="entry-date-actions" role="group" aria-label="记账时间"><button class="chip" id="date-chip"><span id="date-txt"></span></button><span id="date-divider" aria-hidden="true" hidden>|</span><button class="chip" type="button" id="date-today" aria-label="日期改为今天" hidden><span>改为<br>今天</span></button></div>
         <button class="chip" id="acct-btn"><span id="acct-name"></span></button>
         <button class="chip" type="button" id="mark-bx" aria-pressed="false">报销</button>
         <button class="chip advanced-toggle" type="button" data-act="toggle-advanced" aria-expanded="false" aria-controls="advanced-fields">
@@ -602,6 +602,7 @@ function refreshMeta(): void {
   q<HTMLButtonElement>('#note-clear').hidden = !q<HTMLInputElement>('#note').value;
   const historicalDate = dayKey(c.date) !== dayKey(Date.now());
   q<HTMLButtonElement>('#date-today').hidden = !historicalDate;
+  q('#date-divider').hidden = !historicalDate;
   q('.primary-meta').classList.toggle('has-history-date', historicalDate);
   const fullDate = dateLabel(c.date);
   q('#date-txt').textContent = historicalDate ? fullDate.replace(' ', '\n') : fullDate;

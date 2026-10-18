@@ -456,8 +456,7 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
       </section>`);
     chunks.set(month, listHtml);
   });
-  const html = window.periods.map(period => chunks.get(period.month)?.join('') ?? (showPast
-    ? `<section class="hm-past hm-empty-month" data-home-month="${period.month}"><p>${monthTitle(period.month)}暂无记录</p></section>` : '')).join('');
+  const html = window.periods.map(period => chunks.get(period.month)?.join('') ?? '').join('');
   const scroll = el.scrollTop;
   el.querySelector('#hm-days')!.innerHTML =
     (showToday || showPast) ? html : '<p class="tiny" style="text-align:center;padding:20px 0">流水模块已隐藏 · 可在右上角自定义首页</p>';

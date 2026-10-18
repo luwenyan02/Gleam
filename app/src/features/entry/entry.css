@@ -59,7 +59,8 @@
 .entry-date-actions:focus-within{outline:2px solid var(--primary);outline-offset:2px}
 .primary-meta.has-history-date #date-chip{padding-top:8px;padding-bottom:8px}
 .primary-meta.has-history-date #date-txt{white-space:pre-line;line-height:1.1}
-#sheet #date-today{min-width:60px;padding:9px 5px;font-size:12px;color:var(--primary)}
+#date-divider{flex:none;align-self:center;padding:0 2px;font-size:16px;line-height:1;color:var(--muted)}
+#sheet #date-today{min-width:44px;padding:8px 5px;font-size:12px;line-height:1.1;color:var(--primary)}
 #sheet #date-today:active{background:color-mix(in oklab,var(--seed-primary) 8%,var(--bg))}
 .primary-meta .chip{min-width:0;justify-content:center;padding-left:10px;padding-right:10px}
 .primary-meta .chip span{min-width:0;overflow:hidden;text-overflow:ellipsis}

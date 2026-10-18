@@ -40,6 +40,9 @@ def open_copy(page, source):
     expect(page.locator('#note')).to_have_value('虚构复制备注 <>&')
     expect(page.locator('#date-today')).to_be_visible()
     expect(page.locator('#date-today')).to_have_text('改为今天')
+    expect(page.locator('#date-today br')).to_have_count(1)
+    expect(page.locator('#date-divider')).to_have_text('|')
+    expect(page.locator('#date-divider')).to_be_visible()
     assert page.locator('.entry-date-actions').evaluate('''el=>{
       const style=getComputedStyle(el), date=getComputedStyle(el.querySelector('#date-chip')),
         today=getComputedStyle(el.querySelector('#date-today'));
@@ -105,6 +108,7 @@ def run(browser, width, theme, scale):
     page.locator('#date-today').click();expect(page.locator('#date-txt')).to_contain_text('今天')
     expect(page.locator('.dw-panel')).to_have_count(0)
     expect(page.locator('#date-today')).to_be_hidden()
+    expect(page.locator('#date-divider')).to_be_hidden()
     expect(page.locator('#note')).to_have_value('虚构新备注');expect(page.locator('#amt')).to_have_text('6')
     page.locator('#toast.show').wait_for(state='hidden')
     page.screenshot(path=str(OUT/f'today-{width}-{theme}-{scale}.png'),animations='disabled')
