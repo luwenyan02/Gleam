@@ -68,10 +68,10 @@
   --key-bg:color-mix(in oklab,var(--seed-accent) 7%,var(--bg));
   --key-pressed:color-mix(in oklab,var(--seed-primary) 20%,var(--key-bg));
   --key-line:color-mix(in srgb,color-mix(in oklab,var(--seed-fg) 10%,var(--key-bg)) 50%,transparent);
-  flex:none;gap:.5px;grid-template-columns:repeat(5,minmax(0,1fr));
+  flex:none;gap:1px;grid-template-columns:repeat(5,minmax(0,1fr));
   margin:0 -16px calc(-12px - var(--safe-bottom));padding-bottom:var(--safe-bottom);
   background:linear-gradient(var(--key-line),var(--key-line)) padding-box,var(--key-bg);
-  border-top:.5px solid var(--key-line);
+  border-top:1px solid var(--key-line);
 }
 #sheet.entry-workspace .keypad button{
   height:clamp(48px,7dvh,64px);min-width:44px;border-radius:0;
