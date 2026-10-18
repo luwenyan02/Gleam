@@ -35,6 +35,32 @@ describe('平滑趋势线保持真实走势', () => {
 });
 
 describe('账户趋势展示', () => {
+  it.each([1, -1])('围绕百万级同号金额缩放，让小幅变化可见（符号 %s）', sign => {
+    const html = balanceTrendHtml([0, 1, 2, 3, 4, 5].map(i => ({ month: `2026-0${i + 1}`, net: sign * (456601894 + i * 710278) })));
+    const axis = html.match(/class="balance-trend-axis"[^>]*>(.*?)<\/div>/s)![1];
+    expect(axis).not.toContain('<span>0</span>');
+    const path = html.match(/class="balance-trend-line" d="([^"]+)"/)![1];
+    const commands = path.match(/[MC][^MC]+/g)!;
+    const ys = commands.map(command => Number(command.trim().split(/[\s,]+/).at(-1)));
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(40);
+    expect(Math.min(...ys)).toBeGreaterThan(8);
+    expect(Math.max(...ys)).toBeLessThan(104);
+  });
+  it('百万资产只变化一分钱时，刻度仍彼此可区分', () => {
+    const html = balanceTrendHtml([{ month: '2026-01', net: 456601894 }, { month: '2026-02', net: 456601895 }]);
+    const axis = html.match(/class="balance-trend-axis"[^>]*>(.*?)<\/div>/s)![1];
+    const labels = [...axis.matchAll(/<span>(.*?)<\/span>/g)].map(match => match[1]);
+    expect(new Set(labels).size).toBe(3);
+    expect(labels).not.toContain('0');
+  });
+  it('恒定的正资产保持水平线，纵轴也不强制拉到零', () => {
+    const html = balanceTrendHtml([{ month: '2026-01', net: 456601894 }, { month: '2026-02', net: 456601894 }]);
+    const axis = html.match(/class="balance-trend-axis"[^>]*>(.*?)<\/div>/s)![1];
+    expect(axis).not.toContain('<span>0</span>');
+    const path = html.match(/class="balance-trend-line" d="([^"]+)"/)![1];
+    const ys = path.match(/[MC][^MC]+/g)!.map(command => Number(command.trim().split(/[\s,]+/).at(-1)));
+    expect(ys[0]).toBe(ys[1]);
+  });
   for (const amounts of [[0, 0, 0], [-300, -200, -100], [100, 200, 300], [-100, 0, 100], [1, 1, 1], [9000000000000, 0, -9000000000000]]) {
     it(`支持零值、正负值与大金额 ${amounts}`, () => {
       const trend = amounts.map((net, i) => ({ month: `2026-0${i + 1}`, net }));
