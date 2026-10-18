@@ -214,6 +214,17 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
   const expandedMonths = new Set<string>();
   let initializedMonths = false;
   body.classList.add('account-detail-body');
+  const subpage = body.closest<HTMLElement>('.subpage')!;
+  subpage.querySelector('.account-detail-footer')?.remove();
+  const footer = document.createElement('div');
+  footer.className = 'account-detail-footer';
+  footer.hidden = true;
+  subpage.appendChild(footer);
+  footer.addEventListener('click', event => {
+    if ((event.target as HTMLElement).closest('[data-account-action="entry"]') && currentAccount) {
+      void openEntrySheet({ presetAccountId: currentAccount.id });
+    }
+  });
 
   async function refreshDetail(): Promise<void> {
     const token = ++detailToken;
@@ -223,7 +234,7 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
       listAccountsByGroup(), listEntries({}),
     ]);
     if (token !== detailToken || !body.isConnected) return;
-    if (!acct) { body.innerHTML = '<div class="placeholder"><p class="sub">账户不存在</p></div>'; return; }
+    if (!acct) { footer.hidden = true; currentAccount = undefined; body.innerHTML = '<div class="placeholder"><p class="sub">账户不存在</p></div>'; return; }
     currentAccount = acct;
     const flows = accountStatement(accountFlows(allEntries, targetAccountId), acct.balance);
     const balances = new Map(flows.map(flow => [flow.entry, flow.balanceAfter]));
@@ -285,10 +296,11 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
       ${monthsShown < availableMonths ? `<div class="account-history-actions">
         <button class="btn ghost" data-account-action="all-months">加载全部</button>
         <button class="btn ghost" data-account-action="more-months">查看更早的流水</button>
-      </div>` : ''}
-      <button class="account-detail-entry" id="account-detail-entry" data-account-action="entry">
+      </div>` : ''}`;
+    footer.innerHTML = `<button class="account-detail-entry" id="account-detail-entry" data-account-action="entry">
         ${iconHtml('ic-plus', 18)}<span>从「${esc(acct.name)}」记一笔</span>
       </button>`;
+    footer.hidden = false;
     body.scrollTop = scroll;
   }
 
@@ -318,7 +330,6 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     if (!action || !acct) return;
     if (action === 'more-months') { monthsShown += 8; void refreshDetail(); }
     else if (action === 'all-months') { monthsShown = Infinity; void refreshDetail(); }
-    else if (action === 'entry') void openEntrySheet({ presetAccountId: acct.id });
     else if (action === 'edit') void openAccountForm(acct);
     else if (action === 'reconcile') openReconcileSheet(acct);
   });
