@@ -98,4 +98,4 @@
 .category-jump button{flex:none;white-space:nowrap;min-height:44px;font-size:13px;padding:6px 10px}
 #sheet .pick-name{min-width:0;overflow-wrap:anywhere}#sheet .pick-card .amt{flex:none}
 
-.category-jump [data-cat-collapse]{min-width:44px}
+.category-jump [data-cat-collapse]{min-width:44px;color:var(--primary)}
