@@ -418,7 +418,7 @@ function renderSheet(el: HTMLElement, note: string): void {
         <button type="button" id="note-clear" aria-label="清空备注"${note ? '' : ' hidden'}>${iconHtml('ic-close', 16)}</button>
       </div>
       <div class="meta-row primary-meta">
-        <div class="entry-date-actions"><button class="chip" id="date-chip"><span id="date-txt"></span></button><button class="chip" type="button" id="date-today" aria-label="日期改为今天" hidden>今天</button></div>
+        <div class="entry-date-actions" role="group" aria-label="记账时间"><button class="chip" id="date-chip"><span id="date-txt"></span></button><button class="chip" type="button" id="date-today" aria-label="日期改为今天" hidden>改为今天</button></div>
         <button class="chip" id="acct-btn"><span id="acct-name"></span></button>
         <button class="chip" type="button" id="mark-bx" aria-pressed="false">报销</button>
         <button class="chip advanced-toggle" type="button" data-act="toggle-advanced" aria-expanded="false" aria-controls="advanced-fields">
@@ -428,12 +428,11 @@ function renderSheet(el: HTMLElement, note: string): void {
       ${renderAdvancedFields()}
     </div>
     <div class="entry-keyboard" id="entry-keyboard">
-    <div class="keypad-tools"><button type="button" id="amount-clear" data-k="clear" aria-label="清空金额和算式">清空</button></div>
     <div class="keypad" id="keypad" aria-label="计算器键盘">
       <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button><button data-k="+" class="op" aria-label="加">+</button><button data-k="del" class="op" aria-label="删除一位">${iconHtml('ic-del')}</button>
       <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button><button data-k="-" class="op" aria-label="减">−</button><button data-k="again" class="again">再记</button>
       <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button><button data-k="md" class="op" aria-label="乘除">×÷</button><button data-k="save" class="save">保存</button>
-      <button data-k="0" class="zero">0</button><button data-k=".">.</button><button data-k="=" class="op" aria-label="等于">=</button>
+      <button type="button" id="amount-clear" data-k="clear" class="clear" aria-label="清空金额和算式">清空</button><button data-k="0" class="zero">0</button><button data-k=".">.</button><button data-k="=" class="op" aria-label="等于">=</button>
     </div></div>`;
 
   (el.querySelector<HTMLInputElement>('#note')!).value = note;

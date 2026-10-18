@@ -40,10 +40,15 @@ def run(page, name, theme, scale, touch):
     metrics = keypad.evaluate('''el => {
       const box = key => el.querySelector(`[data-k="${key}"]`).getBoundingClientRect().toJSON();
       return {gap: parseFloat(getComputedStyle(el).gap), bounds: el.getBoundingClientRect().toJSON(),
-        one: box('1'), two: box('2'), four: box('4'), save: box('save'), zero: box('0'),
+        one: box('1'), two: box('2'), four: box('4'), save: box('save'), zero: box('0'), clear: box('clear'),
+        keyboard: el.closest('.entry-keyboard').getBoundingClientRect().toJSON(),
         buttons: [...el.querySelectorAll('button')].map(b => b.getBoundingClientRect().toJSON())};
     }''')
     assert metrics['gap'] <= 1, metrics
+    assert abs(metrics['clear']['top'] - metrics['zero']['top']) < 1, metrics
+    assert abs(metrics['clear']['right'] + metrics['gap'] - metrics['zero']['left']) < 1, metrics
+    assert abs(metrics['zero']['width'] - metrics['one']['width']) < 1, metrics
+    assert abs(metrics['keyboard']['height'] - metrics['bounds']['height']) < 1, metrics
     assert metrics['save']['height'] >= metrics['one']['height'] * 2
     assert abs(metrics['save']['bottom'] - metrics['zero']['bottom']) < 1
     assert metrics['bounds']['bottom'] <= page.viewport_size['height'] + 1

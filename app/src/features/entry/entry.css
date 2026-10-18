@@ -54,10 +54,13 @@
 .meta-row .chip{flex:none;min-height:44px;padding:9px 13px;font-size:13px;gap:6px;line-height:1.25}
 .meta-row .toggle-chip input{width:16px;height:16px}
 .primary-meta{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;overflow:visible}
-.entry-date-actions{display:flex;gap:4px;min-width:0}
+.entry-date-actions{display:flex;min-width:0;min-height:44px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-s);overflow:hidden}
+#sheet .entry-date-actions .chip{background:transparent;border:0;border-radius:0;box-shadow:none}
+.entry-date-actions:focus-within{outline:2px solid var(--primary);outline-offset:2px}
 .primary-meta.has-history-date #date-chip{padding-top:8px;padding-bottom:8px}
 .primary-meta.has-history-date #date-txt{white-space:pre-line;line-height:1.1}
-#sheet #date-today{min-width:44px;padding:9px 6px;font-size:12px;color:var(--primary)}
+#sheet #date-today{min-width:60px;padding:9px 5px;font-size:12px;color:var(--primary)}
+#sheet #date-today:active{background:color-mix(in oklab,var(--seed-primary) 8%,var(--bg))}
 .primary-meta .chip{min-width:0;justify-content:center;padding-left:10px;padding-right:10px}
 .primary-meta .chip span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .primary-meta .advanced-toggle{color:var(--primary)}
@@ -78,10 +81,6 @@
   --key-line:color-mix(in srgb,color-mix(in oklab,var(--seed-fg) 10%,var(--key-bg)) 50%,transparent);
   flex:none;margin:0 -16px calc(-12px - var(--safe-bottom));background:var(--key-bg);
 }
-.keypad-tools{display:flex;justify-content:flex-end;min-height:44px;border-top:1px solid var(--key-line)}
-.keypad-tools button{min-width:64px;min-height:44px;padding:0 16px;font-size:14px;color:var(--muted)}
-.keypad-tools button:active:not(:disabled){background:var(--key-pressed)}
-.keypad-tools button:disabled{opacity:.45;cursor:default}
 #sheet.entry-workspace .keypad{
   flex:none;gap:1px;grid-template-columns:repeat(5,minmax(0,1fr));
   margin:0;padding-bottom:var(--safe-bottom);
@@ -96,6 +95,9 @@
 }
 #sheet.entry-workspace .keypad .op{font-size:calc(22px * var(--seed-type));color:var(--muted)}
 #sheet.entry-workspace .keypad .again{font-size:calc(15px * var(--seed-type));color:var(--primary)}
+#sheet.entry-workspace .keypad .zero{grid-column:auto}
+#sheet.entry-workspace .keypad .clear{font-size:calc(15px * var(--seed-type));color:var(--muted)}
+#sheet.entry-workspace .keypad .clear:disabled{opacity:.45;cursor:default}
 #sheet.entry-workspace .keypad .save{
   height:auto;border-radius:10px 0 0 0;background:var(--primary);color:var(--on-accent);
   font-size:calc(18px * var(--seed-type));letter-spacing:0;box-shadow:none;

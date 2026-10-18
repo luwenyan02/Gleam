@@ -39,6 +39,12 @@ def open_copy(page, source):
     expect(page.locator('#amt')).to_have_text('36.8')
     expect(page.locator('#note')).to_have_value('虚构复制备注 <>&')
     expect(page.locator('#date-today')).to_be_visible()
+    expect(page.locator('#date-today')).to_have_text('改为今天')
+    assert page.locator('.entry-date-actions').evaluate('''el=>{
+      const style=getComputedStyle(el), date=getComputedStyle(el.querySelector('#date-chip')),
+        today=getComputedStyle(el.querySelector('#date-today'));
+      return parseFloat(style.borderTopWidth)>0 && parseFloat(date.borderTopWidth)===0 && parseFloat(today.borderTopWidth)===0;
+    }''')
 
 def close_detail(page):
     page.locator('#sp-entry-view .sub-head [data-act="back"]').click()
@@ -54,6 +60,12 @@ def run(browser, width, theme, scale):
     sources=[8101,8102,8103,8104] if width==390 and scale==1 else [8101]
     for source in sources:
         open_copy(page,source)
+        # The date side opens the picker; cancel keeps the copied timestamp.
+        page.locator('#date-chip').click()
+        page.locator('.dw-panel').wait_for()
+        page.locator('.dw-mask').click(position={'x':5,'y':5})
+        page.locator('.dw-panel').wait_for(state='detached')
+        expect(page.locator('#date-today')).to_be_visible()
         page.locator('#note').scroll_into_view_if_needed();page.locator('#note').click()
         expect(page.locator('#note')).to_be_focused()
         expect(page.locator('#note')).to_have_value('虚构复制备注 <>&')
@@ -64,8 +76,8 @@ def run(browser, width, theme, scale):
             # Large-font layouts use the existing form scroll area to reach the metadata row.
             page.locator('#acct-btn').scroll_into_view_if_needed()
             geometry=page.evaluate('''()=>{const box=s=>document.querySelector(s).getBoundingClientRect().toJSON();
-              return {date:box('#date-chip'),today:box('#date-today'),account:box('#acct-btn'),keyboard:box('#entry-keyboard')};}''')
-            assert abs(geometry['date']['top']-geometry['account']['top'])<1,geometry
+              return {date:box('#date-chip'),field:box('.entry-date-actions'),today:box('#date-today'),account:box('#acct-btn'),keyboard:box('#entry-keyboard')};}''')
+            assert abs(geometry['field']['top']-geometry['account']['top'])<1,geometry
             assert geometry['today']['width']>=44 and geometry['today']['height']>=44,geometry
             assert geometry['account']['bottom']<=geometry['keyboard']['top'],geometry
         page.wait_for_timeout(300)
@@ -91,6 +103,7 @@ def run(browser, width, theme, scale):
     for key in ('2','md','3','='): page.locator(f'#keypad [data-k="{key}"]').click()
     expect(page.locator('#amt')).to_have_text('6')
     page.locator('#date-today').click();expect(page.locator('#date-txt')).to_contain_text('今天')
+    expect(page.locator('.dw-panel')).to_have_count(0)
     expect(page.locator('#date-today')).to_be_hidden()
     expect(page.locator('#note')).to_have_value('虚构新备注');expect(page.locator('#amt')).to_have_text('6')
     page.locator('#toast.show').wait_for(state='hidden')
