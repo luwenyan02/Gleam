@@ -88,7 +88,7 @@ export interface EntrySheetOptions {
   templateId?: number;
   /** 预设记账类型；编辑模式始终以原账单类型为准。 */
   presetType?: EntryType;
-  /** 从已有账单创建一笔新草稿；继承业务选择，但不继承金额与备注。 */
+  /** 从已有账单创建新草稿，带入金额、备注、日期与业务选择，不修改原账单。 */
   repeatFromEntryId?: number;
   /** 草稿预填：类型/金额/分类/账户/日期/备注/商家名；保存成功后回调账单 id。 */
   draft?: {
@@ -315,6 +315,9 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     c.origMerchantId = editEntry.merchantId;
     c.advancedOpen = c.bx || c.tagIds.length > 0 || c.merchantId != null || editEntry.lifeNoteId != null;
     initialNote = editEntry.note ?? '';
+  } else if (options.repeatFromEntryId != null && sourceEntry) {
+    c.amt = String(sourceEntry.amount / 100);
+    initialNote = sourceEntry.note ?? '';
   } else if (options.draft) {
     const draft = options.draft;
     if (draft.occurredAt != null) c.date = draft.occurredAt;
@@ -410,9 +413,12 @@ function renderSheet(el: HTMLElement, note: string): void {
       <div id="cat-jump" class="category-jump" aria-label="分类大类定位" hidden></div>
       <div id="cat-grid" class="cat-grid" role="listbox" aria-label="选择分类"></div>
       ${renderTypeForms()}
-      <input class="note" id="note" type="text" placeholder="写点备注（可选）" aria-label="备注">
+      <div class="entry-note-field">
+        <input class="note" id="note" type="text" placeholder="写点备注（可选）" aria-label="备注">
+        <button type="button" id="note-clear" aria-label="清空备注"${note ? '' : ' hidden'}>${iconHtml('ic-close', 16)}</button>
+      </div>
       <div class="meta-row primary-meta">
-        <button class="chip" id="date-chip"><span id="date-txt"></span></button>
+        <div class="entry-date-actions"><button class="chip" id="date-chip"><span id="date-txt"></span></button><button class="chip" type="button" id="date-today" aria-label="日期改为今天" hidden>今天</button></div>
         <button class="chip" id="acct-btn"><span id="acct-name"></span></button>
         <button class="chip" type="button" id="mark-bx" aria-pressed="false">报销</button>
         <button class="chip advanced-toggle" type="button" data-act="toggle-advanced" aria-expanded="false" aria-controls="advanced-fields">
@@ -421,12 +427,14 @@ function renderSheet(el: HTMLElement, note: string): void {
       </div>
       ${renderAdvancedFields()}
     </div>
+    <div class="entry-keyboard" id="entry-keyboard">
+    <div class="keypad-tools"><button type="button" id="amount-clear" data-k="clear" aria-label="清空金额和算式">清空</button></div>
     <div class="keypad" id="keypad" aria-label="计算器键盘">
       <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button><button data-k="+" class="op" aria-label="加">+</button><button data-k="del" class="op" aria-label="删除一位">${iconHtml('ic-del')}</button>
       <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button><button data-k="-" class="op" aria-label="减">−</button><button data-k="again" class="again">再记</button>
       <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button><button data-k="md" class="op" aria-label="乘除">×÷</button><button data-k="save" class="save">保存</button>
       <button data-k="0" class="zero">0</button><button data-k=".">.</button><button data-k="=" class="op" aria-label="等于">=</button>
-    </div>`;
+    </div></div>`;
 
   (el.querySelector<HTMLInputElement>('#note')!).value = note;
   bindEvents(el);
@@ -592,7 +600,13 @@ async function updateLoanHint(): Promise<void> {
 /** 日期/账户/标记/标签/商家 chip 文案同步 */
 function refreshMeta(): void {
   const c = ctx!;
-  q('#date-txt').textContent = dateLabel(c.date);
+  q<HTMLButtonElement>('#note-clear').hidden = !q<HTMLInputElement>('#note').value;
+  const historicalDate = dayKey(c.date) !== dayKey(Date.now());
+  q<HTMLButtonElement>('#date-today').hidden = !historicalDate;
+  q('.primary-meta').classList.toggle('has-history-date', historicalDate);
+  const fullDate = dateLabel(c.date);
+  q('#date-txt').textContent = historicalDate ? fullDate.replace(' ', '\n') : fullDate;
+  q('#date-chip').setAttribute('aria-label', `记账日期 ${fullDate}`);
   q('#acct-name').textContent = accountName(c.accountId);
   const bxBtn = q<HTMLButtonElement>('#mark-bx');
   if (c.reimbursedDone) {
@@ -649,6 +663,7 @@ function refreshAmt(): void {
     el.classList.toggle('empty', !c.amt);
   }
   el.classList.toggle('long', (el.textContent ?? '').length > 8);
+  q<HTMLButtonElement>('#amount-clear').disabled = saving || (!c.amt && c.prev == null && c.op == null);
 }
 
 function calculatorState(): CalculatorState {
@@ -767,6 +782,16 @@ function bindEvents(el: HTMLElement): void {
   el.querySelector('#btn-voice')!.addEventListener('click', startVoiceInput);
 
   const noteInput = el.querySelector<HTMLInputElement>('#note')!;
+  const noteClear = el.querySelector<HTMLButtonElement>('#note-clear')!;
+  noteInput.addEventListener('input', () => { noteClear.hidden = !noteInput.value; });
+  noteClear.addEventListener('pointerdown', event => event.preventDefault());
+  noteClear.addEventListener('click', () => {
+    if (saving) return;
+    noteInput.value = '';
+    noteInput.dispatchEvent(new Event('input', { bubbles: true }));
+    if (ctx) ctx.noteCategoryId = undefined;
+    noteInput.focus();
+  });
   const boundContext = ctx!;
   let noteSessionType = boundContext.type;
   let categoryPointerDown = false;
@@ -893,6 +918,14 @@ function bindEvents(el: HTMLElement): void {
     refreshMeta();
   });
 
+  el.querySelector('#date-today')!.addEventListener('click', () => {
+    if (!ctx || saving) return;
+    ctx.date = Date.now();
+    refreshEntryRecommendations(ctx);
+    renderCats();
+    refreshMeta();
+  });
+
   // 记账日期（滚轮选择日期+时间，默认当前时刻，可选历史日期补账，不可记未来日期）
   el.querySelector('#date-chip')!.addEventListener('click', () => {
     if (!ctx) return;
@@ -920,7 +953,7 @@ function bindEvents(el: HTMLElement): void {
   });
 
   // 计算器键盘
-  const keypad = el.querySelector<HTMLElement>('#keypad')!;
+  const keypad = el.querySelector<HTMLElement>('#entry-keyboard')!;
   keypad.addEventListener('pointerdown', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
     if (btn && !btn.disabled && e.isPrimary && e.button === 0 && ctx) void entryKeyFeedback();
@@ -932,7 +965,10 @@ function bindEvents(el: HTMLElement): void {
     if (e.detail === 0) void entryKeyFeedback();
     const k = btn.dataset.k!;
     const c = ctx;
-    if (k === 'del') {
+    if (k === 'clear') {
+      if (saving) return;
+      c.amt = ''; c.prev = null; c.prevAmount = null; c.op = null;
+    } else if (k === 'del') {
       const state = calculatorState();
       deleteDigit(state);
       syncCalculator(state);
@@ -1217,14 +1253,17 @@ async function save(stay: boolean): Promise<void> {
   saving = true;
   const saveBtn = sheetEl?.querySelector<HTMLButtonElement>('#keypad .save');
   const againBtn = sheetEl?.querySelector<HTMLButtonElement>('#keypad .again');
+  const clearBtn = sheetEl?.querySelector<HTMLButtonElement>('#amount-clear');
   if (saveBtn) saveBtn.disabled = true;
   if (againBtn) againBtn.disabled = true;
+  if (clearBtn) clearBtn.disabled = true;
   try {
     await doSave(stay);
   } finally {
     saving = false;
     if (saveBtn?.isConnected) saveBtn.disabled = false;
     if (againBtn?.isConnected) againBtn.disabled = false;
+    if (clearBtn && ctx && sheetEl?.contains(clearBtn)) refreshAmt();
   }
 }
 
