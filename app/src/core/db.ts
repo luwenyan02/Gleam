@@ -101,6 +101,14 @@ db.version(5).stores({
     'loanContactId, reimburseStatus, lifeNoteId, refundOfEntryId',
 });
 
+/** v6：账户详情按资金两侧及报销收款账户查询；仅补索引，不改记录与余额。 */
+db.version(6).stores({
+  entries:
+    '++id, occurredAt, categoryId, accountId, importBatchId, deletedAt, ' +
+    '[deletedAt+occurredAt], [deletedAt+type], [occurredAt+type+amount+accountId], ' +
+    'loanContactId, reimburseStatus, lifeNoteId, refundOfEntryId, fromAccountId, toAccountId, reimburseAccountId',
+});
+
 /** 当前时间戳（毫秒），统一出口便于测试替换 */
 export function now(): number {
   return Date.now();

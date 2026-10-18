@@ -64,14 +64,14 @@ it('缺失关联资料保留账单，删除或不存在的账单不再加载关�
 });
 
 it('从 v4 升级只补退款关联索引，原账单、余额及历史记录逐条保持不变', async () => {
-  const schema = Object.fromEntries(db.tables.map(table => [table.name, [table.schema.primKey.src, ...table.schema.indexes.filter(index => index.name !== 'refundOfEntryId').map(index => index.src)].join(',')]));
+  const schema = Object.fromEntries(db.tables.map(table => [table.name, [table.schema.primKey.src, ...table.schema.indexes.filter(index => !['refundOfEntryId', 'fromAccountId', 'toAccountId', 'reimburseAccountId'].includes(index.name)).map(index => index.src)].join(',')]));
   await db.delete();
   const legacy = new Dexie('GleamDB'); legacy.version(4).stores(schema); await legacy.open();
   const entries = [entry(), entry({ id: 2, refundFlag: true, refundOfEntryId: 1, amount: 500 }), entry({ id: 3, deletedAt: 99 })];
   const account = { ...stamp, id: 1, name: '虚构账户', group: 'cash', hidden: false, balance: 12345, sortOrder: 1 };
   await legacy.table('entries').bulkPut(entries); await legacy.table('accounts').put(account); legacy.close();
   await db.open();
-  expect(db.verno).toBe(5); expect(db.entries.schema.idxByName.refundOfEntryId).toBeDefined();
+  expect(db.verno).toBe(6); expect(db.entries.schema.idxByName.refundOfEntryId).toBeDefined();
   expect(await db.entries.toArray()).toEqual(entries); expect(await db.accounts.get(1)).toEqual(account);
   expect((await listRefunds(1)).map(row => row.id)).toEqual([2]);
 });

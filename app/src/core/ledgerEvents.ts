@@ -39,13 +39,20 @@ export function accountStatement(flows: readonly AccountFlow[], currentBalance: 
 
 /** 现金流始终包含到账事件，与报表计收入口径无关。 */
 export function accountFlows(entries: readonly Entry[], accountId: number): AccountFlow[] {
-  return ledgerItems(entries,true).flatMap(entry=>{
+  const flows: AccountFlow[] = [];
+  for (const source of entries) {
+    if (source.deletedAt !== 0) continue;
     // 报销已展开为独立事件，原记录只计算本金，避免重复到账。
-    const base = entry.kind === 'entry' ? { ...entry, reimbursedAmount: undefined } : entry;
-    const effects = accountEffects(base).filter(effect => effect.accountId === accountId);
-    const delta = effects.reduce((sum, effect) => sum + effect.delta, 0);
-    return effects.length ? [{entry,at:entry.occurredAt,delta}] : [];
-  });
+    const base = source.reimbursedAmount ? { ...source, reimbursedAmount: undefined } : source;
+    let matched = false, delta = 0;
+    for (const effect of accountEffects(base)) if (effect.accountId === accountId) {
+      matched = true; delta += effect.delta;
+    }
+    if (matched) flows.push({ entry: { ...source, kind: 'entry' }, at: source.occurredAt, delta });
+    const received = reimbursement(source);
+    if (received?.accountId === accountId) flows.push({ entry: received, at: received.occurredAt, delta: received.amount });
+  }
+  return flows.sort((a, b) => b.at - a.at || b.entry.id - a.entry.id);
 }
 
 /** 明细按实际流水月份分组；与连续月份的余额趋势分开，零金额流水仍保留。 */
