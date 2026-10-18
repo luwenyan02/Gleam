@@ -121,7 +121,9 @@ function renderSkeleton(el: HTMLElement): void {
 
     ${spendingRhythmHtml()}
 
-    <button class="hm-month-summary" id="hm-visible-month" type="button" hidden></button>
+    <div class="hm-month-overlay" id="hm-month-overlay" hidden>
+      <button class="hm-month-summary" id="hm-visible-month" type="button"></button>
+    </div>
     <div id="hm-days"></div>
     <button class="hm-more" id="hm-more" type="button" disabled>正在加载…</button>`;
 
@@ -257,11 +259,16 @@ function renderVisibleMonth(el: HTMLElement, month: string): void {
 
 function refreshVisibleMonth(el: HTMLElement): void {
   if (el.inert || !el.classList.contains('is-active')) return;
-  const rows = [...el.querySelectorAll<HTMLElement>('[data-home-month]')].map(node => {
+  const overlay = el.querySelector<HTMLElement>('#hm-month-overlay')!;
+  const sections = [...el.querySelectorAll<HTMLElement>('[data-home-month]')];
+  const latest = sections.length ? el.querySelector<HTMLElement>('#hm-days [data-entry-row]') : null;
+  // 以滚动容器的裁剪边界判断，浮层不占高度，出现／消失不会推动流水或反复触发。
+  overlay.hidden = !latest || el.scrollTop <= 0 || latest.getBoundingClientRect().bottom > el.getBoundingClientRect().top + el.clientTop;
+  if (overlay.hidden) return;
+  const rows = sections.map(node => {
     const rect = node.getBoundingClientRect();
     return { month: node.dataset.homeMonth!, top: rect.top, bottom: rect.bottom };
   });
-  if (!rows.length) return;
   const edge = el.querySelector<HTMLElement>('#hm-visible-month')!.getBoundingClientRect().bottom;
   renderVisibleMonth(el, visibleHomeMonth(rows, edge, timelineMonth));
 }
@@ -288,7 +295,7 @@ async function refresh(): Promise<void> {
     nav.hidden = !mods.quick;
     const showRhythm = mods.rhythm !== false;
     el.querySelector<HTMLElement>('#hm-rhythm')!.hidden = !showRhythm;
-    el.querySelector<HTMLElement>('#hm-visible-month')!.style.order = String(Math.min(layout.order.length, ...layout.order.map((key, i) => (key === 'today' && mods.today) || (key === 'past' && mods.past) ? i : layout.order.length)));
+    el.querySelector<HTMLElement>('#hm-month-overlay')!.style.order = String(Math.min(layout.order.length, ...layout.order.map((key, i) => (key === 'today' && mods.today) || (key === 'past' && mods.past) ? i : layout.order.length)));
     await Promise.all([
       mods.month ? refreshMonthCard(el) : Promise.resolve(),
       showRhythm ? refreshSpendingRhythm(el) : Promise.resolve(),
@@ -396,7 +403,6 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
     reimburseMode: countAsIncome ? 'income' : 'offset',
   }).map(summary => [summary.month, summary]));
   const monthButton = el.querySelector<HTMLElement>('#hm-visible-month')!;
-  monthButton.hidden = !showToday && !showPast;
   renderVisibleMonth(el, monthButton.dataset.month && monthSummaries.has(monthButton.dataset.month) ? monthButton.dataset.month : anchor);
 
   let items: TimelineItem[] = [

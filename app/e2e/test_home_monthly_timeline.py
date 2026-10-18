@@ -56,6 +56,23 @@ def run(browser, width, scale, theme, start_day, date):
     months=page.evaluate(SEED,start_day);page.reload();page.locator('#fab').wait_for()
     page.evaluate('([s,t])=>{document.documentElement.style.setProperty("--seed-type",s);document.documentElement.dataset.theme=t}',[str(scale),theme])
     home=page.locator('#page-home');count(page,60)
+    page.evaluate('document.fonts.ready');page.wait_for_timeout(300)
+    summary=page.locator('#hm-visible-month')
+    expect(summary).to_be_hidden()
+    page.screenshot(path=str(OUT/f'initial-{width}-text{scale}-{theme}-day{start_day}.png'),animations='disabled')
+    latest=page.locator('#hm-days [data-entry-row]').first
+    threshold=latest.evaluate('(e)=>{const h=document.querySelector("#page-home");return e.getBoundingClientRect().bottom-h.getBoundingClientRect().top-h.clientTop+h.scrollTop}')
+    height=home.evaluate('e=>e.scrollHeight')
+    home.evaluate('(e,y)=>e.scrollTop=y',threshold-2)
+    page.wait_for_timeout(100);expect(summary).to_be_hidden()
+    home.evaluate('(e,y)=>e.scrollTop=y',threshold+2)
+    expect(summary).to_be_visible()
+    page.wait_for_timeout(200)
+    assert home.evaluate('e=>e.scrollHeight')==height
+    assert abs(home.evaluate('e=>e.scrollTop')-(threshold+2))<2
+    home.evaluate('(e,y)=>e.scrollTop=y',threshold-2)
+    expect(summary).to_be_hidden()
+    home.evaluate('e=>e.scrollTop=0');expect(summary).to_be_hidden()
     shown=page.locator('#hm-days [data-home-month]').evaluate_all('els=>[...new Set(els.map(e=>e.dataset.homeMonth))]')
     assert shown==months[:3],shown
     home.evaluate('e=>e.scrollTop=e.scrollHeight');page.wait_for_timeout(400);count(page,60)
@@ -98,6 +115,28 @@ def run(browser, width, scale, theme, start_day, date):
     context.close();print('PASS home monthly loading and search cards',label,flush=True)
 
 
+def empty_today_visibility(browser):
+    context=browser.new_context(viewport={'width':390,'height':844},locale='zh-CN',timezone_id='Asia/Shanghai',service_workers='block')
+    page=context.new_page();page.clock.set_fixed_time(datetime.fromisoformat('2026-10-18T12:00:00+08:00'))
+    page.goto(URL);page.locator('#fab').wait_for();page.evaluate(SEED,1)
+    page.evaluate("""async () => {
+      const db=await new Promise(resolve=>{const r=indexedDB.open('GleamDB');r.onsuccess=()=>resolve(r.result)});
+      const tx=db.transaction('entries','readwrite');const store=tx.objectStore('entries');
+      for(let id=1;id<=20;id++){const r=store.get(id);r.onsuccess=()=>store.put({...r.result,occurredAt:new Date(2026,9,17,12).getTime()})}
+      await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});db.close();
+    }""")
+    page.reload();page.locator('#fab').wait_for();count(page,60);page.wait_for_timeout(300)
+    summary=page.locator('#hm-visible-month');expect(page.locator('#hm-today')).to_contain_text('今天还没有记录');expect(summary).to_be_hidden()
+    page.locator('#hm-today').evaluate('e=>{const h=document.querySelector("#page-home");h.scrollTop+=e.getBoundingClientRect().bottom-h.getBoundingClientRect().top+2}')
+    page.wait_for_timeout(100);expect(summary).to_be_hidden()
+    latest=page.locator('#hm-days [data-entry-row]').first
+    latest.evaluate('e=>{const h=document.querySelector("#page-home");h.scrollTop+=e.getBoundingClientRect().bottom-h.getBoundingClientRect().top+2}')
+    expect(summary).to_be_visible()
+    page.screenshot(path=str(OUT/'empty-today-scrolled-390.png'),animations='disabled')
+    page.locator('#page-home').evaluate('e=>e.scrollTop=0');expect(summary).to_be_hidden()
+    context.close();print('PASS empty today does not reveal month summary before latest bill leaves screen',flush=True)
+
+
 def life_only_months(browser):
     context=browser.new_context(viewport={'width':390,'height':844},locale='zh-CN',timezone_id='Asia/Shanghai',service_workers='block')
     page=context.new_page();page.clock.set_fixed_time(datetime.fromisoformat('2026-10-18T12:00:00+08:00'))
@@ -124,11 +163,7 @@ def life_only_months(browser):
     expect(page.locator('#hm-more')).to_be_disabled()
     count(page,0)
     page.locator('[data-home-month="2026-06"]').evaluate('e=>e.scrollIntoView({block:"start"})')
-    expect(page.locator('#hm-visible-month')).to_have_attribute('data-month','2026-06')
-    expect(page.locator('[data-home-summary="expense"]')).to_have_text('¥0.00')
-    page.locator('#hm-visible-month').click()
-    expect(page.locator('#sr-results [data-eid]')).to_have_count(0)
-    expect(page.locator('.sr-summary-card')).to_have_count(3)
+    expect(page.locator('#hm-visible-month')).to_be_hidden()
     context.close();print('PASS empty months, life-only history and exhaustion',flush=True)
 
 
@@ -139,5 +174,6 @@ if __name__=='__main__':
         for width,scale,theme,start_day,date in [(400,1,'light',1,'2026-10-18T12:00:00+08:00'),(400,1.3,'dark',5,'2026-10-18T12:00:00+08:00'),
             (360,1,'light',28,'2026-01-15T12:00:00+08:00'),(390,1,'dark',1,'2026-10-18T12:00:00+08:00'),(430,1,'light',5,'2026-10-18T12:00:00+08:00'),(1280,1,'dark',1,'2026-10-18T12:00:00+08:00')]:
             run(b,width,scale,theme,start_day,date)
+        empty_today_visibility(b)
         life_only_months(b)
         b.close()
