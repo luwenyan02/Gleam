@@ -52,6 +52,12 @@ final class GleamUpdateRelease {
         if (parts.length!=2 || !parts[0].matches("[a-fA-F0-9]{64}") || !(parts[1].equals(name) || parts[1].equals("*"+name))) throw new IllegalArgumentException("CHECKSUM");
         return parts[0].toLowerCase(Locale.ROOT);
     }
+    JSONObject toJson() throws Exception {
+        return new JSONObject().put("id",id).put("tag_name","v"+version).put("draft",false).put("prerelease",false).put("body",notes)
+            .put("assets",new JSONArray()
+                .put(new JSONObject().put("id",apkId).put("name",name).put("size",size).put("state","uploaded"))
+                .put(new JSONObject().put("id",checksumId).put("name",name+".sha256").put("size",100).put("state","uploaded")));
+    }
     static boolean allowedDownload(String url) {
         try {
             URI u=URI.create(url);

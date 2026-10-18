@@ -1,4 +1,4 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 
 export interface AppUpdate {
   available: boolean;
@@ -6,10 +6,14 @@ export interface AppUpdate {
   version?: string;
   size?: number;
   notes?: string;
+  downloaded?: boolean;
 }
+export interface UpdateProgress { requestId: string; releaseId: string; received: number; total: number }
 interface UpdateBridge {
   readClipboard(): Promise<{ text: string }>;
   configuration(): Promise<{ hasToken: boolean }>;
+  restore(options: { requestId: string }): Promise<AppUpdate>;
+  addListener(event: 'downloadProgress', listener: (progress: UpdateProgress) => void): Promise<PluginListenerHandle>;
   saveToken(options: { requestId: string; token: string }): Promise<void>;
   clearToken(options: { requestId: string }): Promise<void>;
   check(options: { requestId: string }): Promise<AppUpdate>;
@@ -19,6 +23,14 @@ interface UpdateBridge {
 }
 export const appUpdate = registerPlugin<UpdateBridge>('GleamUpdate');
 export const supportsAppUpdate = () => Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+
+/** Ignore stale/invalid events; only the verified download result can complete the bar. */
+export function updateProgress(current: number, event: UpdateProgress | null | undefined, requestId: string, releaseId: string): number {
+  if (!event || event.requestId !== requestId || event.releaseId !== releaseId
+    || !Number.isFinite(event.received) || !Number.isFinite(event.total)
+    || event.total <= 0 || event.received < 0 || event.received > event.total) return current;
+  return Math.max(current, Math.min(99, Math.floor(event.received / event.total * 100)));
+}
 
 /** Never display native exceptions, GitHub responses, download URLs or credentials. */
 export function updateError(error: unknown): string {
