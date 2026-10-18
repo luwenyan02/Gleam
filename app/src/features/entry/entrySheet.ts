@@ -406,6 +406,7 @@ function renderSheet(el: HTMLElement, note: string): void {
       <div class="entry-section-head" id="category-head">
         <span>常用分类</span><small></small>
       </div>
+      <div id="cat-jump" class="category-jump" aria-label="分类大类定位" hidden></div>
       <div id="cat-grid" class="cat-grid" role="listbox" aria-label="选择分类"></div>
       ${renderTypeForms()}
       <input class="note" id="note" type="text" placeholder="写点备注（可选）" aria-label="备注">
@@ -528,6 +529,11 @@ function renderCats(): void {
   sheetEl?.classList.toggle('categories-expanded', c.showAllCategories && !isTransfer && !isLoan);
 
   const grid = q('#cat-grid');
+  const jump = q('#cat-jump');
+  jump.hidden = !c.showAllCategories || c.type !== 'expense';
+  if (!jump.hidden) {
+    jump.innerHTML = `<button class="chip" type="button" data-cat-collapse aria-label="返回常用分类" title="收起，返回常用分类">${iconHtml('ic-left', 18)}</button><div class="category-group-nav">${c.type === 'expense' ? c.expenseTree.map((group, index) => `<button class="chip${index === 0 ? ' active' : ''}" type="button" data-cat-jump="${group.parent.id}" aria-label="定位到分类大类：${esc(group.parent.name)}" aria-pressed="${index === 0}">${esc(group.parent.name)}</button>`).join('') : ''}</div>`;
+  }
   if (isLoan) {
     if (c.accounts.find(account => account.id === c.accountId)?.group === 'receivable') c.accountId = c.accounts.find(account => account.group !== 'receivable')?.id;
     grid.innerHTML = LOAN_KINDS.map((k) => {
@@ -545,7 +551,7 @@ function renderCats(): void {
     if (c.showAllCategories) {
       grid.innerHTML = c.expenseTree.map((group) => {
         const choices = group.children.length ? group.children : [group.parent];
-        return `<div class="cat-sec">${esc(group.parent.name)}</div>` +
+        return `<div class="cat-sec" data-cat-section="${group.parent.id}" tabindex="-1">${esc(group.parent.name)}</div>` +
           choices.map((cat) => renderCategoryButton(cat, cat.id === c.categoryId, categoryParentName(cat))).join('');
       }).join('') + renderCategoryToggle(true);
     } else {
@@ -808,12 +814,32 @@ function bindEvents(el: HTMLElement): void {
     switchEntryType(btn.dataset.type as EntryType);
   });
 
+  el.querySelector('#cat-jump')!.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('[data-cat-collapse]') && ctx) {
+      ctx.showAllCategories = false;
+      renderCats();
+      q('.sheet-scroll').scrollTop = 0;
+      q<HTMLButtonElement>('[data-cat-more]')?.focus({ preventScroll: true });
+      return;
+    }
+    const button = target.closest<HTMLElement>('[data-cat-jump]');
+    if (!button) return;
+    const section = el.querySelector<HTMLElement>(`[data-cat-section="${button.dataset.catJump}"]`);
+    section?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    el.querySelectorAll<HTMLElement>('[data-cat-jump]').forEach(item => {
+      item.classList.toggle('active', item === button);
+      item.setAttribute('aria-pressed', String(item === button));
+    });
+  });
+
   // 分类宫格 / 借贷四宫格
   el.querySelector('#cat-grid')!.addEventListener('click', (e) => {
     const more = (e.target as HTMLElement).closest<HTMLElement>('[data-cat-more]');
     if (more && ctx) {
       ctx.showAllCategories = !ctx.showAllCategories;
       renderCats();
+      q('.sheet-scroll').scrollTop = 0;
       return;
     }
     const btn = (e.target as HTMLElement).closest<HTMLElement>('.cat');
@@ -827,6 +853,7 @@ function bindEvents(el: HTMLElement): void {
     }
     renderCats();
     refreshMeta();
+    q('.sheet-scroll').scrollTop = 0;
   });
 
   // 账户 / 转出转入 / 借贷对象与账户：选择浮层

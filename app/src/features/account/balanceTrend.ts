@@ -6,6 +6,22 @@ import { iconHtml } from '../../assets/icons';
 /** 仅负责展示；历史月为月末值，最后一月为当前值，金额仍来自同一仓库。 */
 export interface TrendViewState { open: boolean; endingMonth?: string }
 
+/** 单调三次插值：经过月度数据点，平坦区与拐点不产生额外峰谷。 */
+export function smoothTrendPath(points: readonly { x: number; y: number }[]): string {
+  if (!points.length) return '';
+  const slopes = points.slice(1).map((point, i) => (point.y - points[i].y) / (point.x - points[i].x));
+  const tangents = points.map((_, i) => {
+    if (i === 0) return slopes[0] ?? 0;
+    if (i === points.length - 1) return slopes[i - 1];
+    const left = slopes[i - 1], right = slopes[i];
+    return left * right <= 0 ? 0 : 2 / (1 / left + 1 / right);
+  });
+  return `M ${points[0].x},${points[0].y}` + points.slice(1).map((point, i) => {
+    const start = points[i], third = (point.x - start.x) / 3;
+    return ` C ${start.x + third},${start.y + tangents[i] * third} ${point.x - third},${point.y - tangents[i + 1] * third} ${point.x},${point.y}`;
+  }).join('');
+}
+
 export function currentTrendMonth(): string {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -74,13 +90,12 @@ export function balanceTrendHtml(trend: { month: string; net: number }[], metric
       <button type="button" class="trend-month-button" data-trend-month aria-label="选择趋势结束月份" aria-haspopup="dialog" value="${esc(endMonth)}">${iconHtml('ic-cal', 16)}<span>${esc(endMonth.split('-')[0])}年${Number(endMonth.split('-')[1])}月</span></button>
       <button type="button" data-trend-shift="6" aria-label="后六个月" ${current ? 'disabled' : ''}>›</button>
     </div>
-    <p class="balance-trend-range">${esc(trend[0].month)} — ${esc(endMonth)} · 元</p>
     <div class="balance-trend-chart">
       <div class="balance-trend-axis" aria-hidden="true">${ticks.map(tick => `<span>${axisLabel(tick)}</span>`).join('')}</div>
       <div class="balance-trend-plot">
-        <svg viewBox="0 0 300 112" preserveAspectRatio="none" role="img" aria-label="${esc(metric)}月度走势，具体金额见下方每月金额">
+        <svg viewBox="0 0 300 112" preserveAspectRatio="none" role="img" aria-label="${esc(metric)}月度走势，${esc(trend[0].month)}至${esc(endMonth)}，单位元，具体金额见下方每月金额">
           ${ticks.map(tick => `<line class="balance-trend-grid${tick === 0 ? ' zero' : ''}" x1="8" x2="292" y1="${y(tick)}" y2="${y(tick)}"/>`).join('')}
-          <polyline class="balance-trend-line" points="${points.map(point => `${point.x},${point.y}`).join(' ')}"/>
+          <path class="balance-trend-line" d="${smoothTrendPath(points)}"/>
         </svg>
         <span class="balance-trend-dot" style="left:${last.x / 3}%;top:${last.y / 112 * 100}%" aria-hidden="true"></span>
       </div>

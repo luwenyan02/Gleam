@@ -112,7 +112,9 @@ def run(page, width):
     page.screenshot(path=str(OUT/f'configuration-large-{width}.png'), animations='disabled')
     sheet.locator('[data-update-close]').click()
     page.get_by_role('button', name='应用设置', exact=True).click()
-    page.locator('[data-act="app-update"]').click()
+    expect(page.locator('[data-act="app-update"]')).to_have_count(0)
+    page.locator('#sp-settings .sub-head [data-act="back"]').click()
+    page.locator('#page-mine [data-about]').click()
     expect(sheet).to_have_attribute('aria-label', '关于拾光')
     assert not errors, errors
     assert not external, external

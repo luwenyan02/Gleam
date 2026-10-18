@@ -32,19 +32,26 @@ import { getHomeLayout, HOME_SERVICES, type HomeService } from '../../core/repo/
 import { openPickList } from '../../shared/pickList';
 import { entryRowText } from '../detail/entryRowText';
 import { listInAppReminders } from '../../core/notify';
-import { accountingMonthRange, getAccountingMonth } from '../../core/repo/periodRepo';
+import { accountingMonthRange, getAccountingMonth, getAccountingMonthStartDay } from '../../core/repo/periodRepo';
+import { accountingMonthForTimestamp, shiftMonthKey } from '../../core/period';
+import { homeMonthSummaries, homeTimelineWindow, visibleHomeMonth, type HomeMonthSummary } from './homeTimeline';
+import { openLedgerSearch } from '../search/search';
 
 import { bindSpendingRhythm, refreshSpendingRhythm, spendingRhythmHtml } from './spendingRhythm';
 
-const PAGE = 40;
-
 let root: HTMLElement | null = null;
-let limit = PAGE;
+let monthsShown = 3;
+let timelineMonth = '';
+let timelineStartDay = 1;
+let monthSummaries = new Map<string, HomeMonthSummary>();
+let visibleSummaryKey = '';
+let scrollFrame = 0;
 let exhausted = false;
 let loading = false;
 let refreshTimer = 0;
 let refreshPending = false;
 let paginationPending = false;
+let paginationRequiresBottom = true;
 let dayTimer = 0;
 
 /** 注册首页（main.ts 调用一次） */
@@ -52,7 +59,9 @@ export function initHome(): void {
   registerPage('page-home', {
     render(el) {
       root = el;
-      limit = PAGE;
+      monthsShown = 3;
+      timelineMonth = '';
+      visibleSummaryKey = '';
       renderSkeleton(el);
     },
     onShow() { scheduleRefresh(); },
@@ -112,8 +121,11 @@ function renderSkeleton(el: HTMLElement): void {
 
     ${spendingRhythmHtml()}
 
+    <div class="hm-month-overlay" id="hm-month-overlay" hidden>
+      <button class="hm-month-summary" id="hm-visible-month" type="button"></button>
+    </div>
     <div id="hm-days"></div>
-    <p class="tiny hm-more" id="hm-more"></p>`;
+    <button class="hm-more" id="hm-more" type="button" disabled>正在加载…</button>`;
 
   bindSpendingRhythm(el);
   el.querySelector('#btn-home-edit')!.addEventListener('click', () => openSubpage('sp-home-custom'));
@@ -152,8 +164,13 @@ function renderSkeleton(el: HTMLElement): void {
   });
   bindEntrySwipeActions(el.querySelector<HTMLElement>('#hm-days')!);
 
-  // 滚动到底加载更早（.page 即滚动容器）
-  el.addEventListener('scroll', () => loadMore(el));
+  el.querySelector('#hm-visible-month')!.addEventListener('click', () => {
+    const month = el.querySelector<HTMLElement>('#hm-visible-month')!.dataset.month;
+    const summary = month ? monthSummaries.get(month) : undefined;
+    if (summary) openLedgerSearch({ from: summary.from, to: summary.to }, `${monthTitle(summary.month)}明细`);
+  });
+  el.querySelector('#hm-more')!.addEventListener('click', () => loadMore(el, false));
+  bindTimelineScroll(el);
 
   void refresh();
 }
@@ -176,17 +193,84 @@ async function openService(key: HomeService): Promise<void> {
 
 /* ── 数据刷新 ─────────────────────── */
 
-function loadMore(el: HTMLElement): void {
-  if (root !== el || !el.isConnected || el.inert || !el.classList.contains('is-active')
-    || !el.clientHeight || el.scrollTop + el.clientHeight < el.scrollHeight - 240) {
-    paginationPending = false;
+function atTimelineBottom(el: HTMLElement): boolean {
+  return el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
+}
+
+function loadMore(el: HTMLElement, requireBottom = true): void {
+  if (root !== el || !el.isConnected || el.inert || !el.classList.contains('is-active') || !el.clientHeight
+    || exhausted || (requireBottom && !atTimelineBottom(el))) return;
+  // 同一次手势只排队一个月；离开底部或切页后取消过期手势。
+  if (loading) {
+    paginationPending = true;
+    paginationRequiresBottom = paginationRequiresBottom && requireBottom;
     return;
   }
-  // 时间线可能先于总览和提醒完成；保留单次触底意图，不在查询中途改变 limit。
-  if (loading) { paginationPending = true; return; }
-  if (exhausted) return;
-  limit += PAGE;
+  monthsShown += 1;
+  const more = el.querySelector<HTMLButtonElement>('#hm-more')!;
+  more.disabled = true;
+  more.textContent = '正在加载…';
   void refresh();
+}
+
+function bindTimelineScroll(el: HTMLElement): void {
+  el.addEventListener('scroll', () => {
+    if (!atTimelineBottom(el) && paginationRequiresBottom) paginationPending = false;
+    if (!scrollFrame) scrollFrame = window.requestAnimationFrame(() => { scrollFrame = 0; refreshVisibleMonth(el); });
+  }, { passive: true });
+  let wheelActive = false, wheelTimer = 0;
+  el.addEventListener('wheel', event => {
+    const first = !wheelActive;
+    wheelActive = true;
+    window.clearTimeout(wheelTimer);
+    wheelTimer = window.setTimeout(() => { wheelActive = false; }, 180);
+    if (first && event.deltaY > 0 && event.deltaY > Math.abs(event.deltaX)) loadMore(el);
+  }, { passive: true });
+  let touch: { x: number; y: number; bottom: boolean; used: boolean } | undefined;
+  el.addEventListener('touchstart', event => {
+    const point = event.touches.length === 1 ? event.touches[0] : undefined;
+    touch = point ? { x: point.clientX, y: point.clientY, bottom: atTimelineBottom(el), used: false } : undefined;
+  }, { passive: true });
+  el.addEventListener('touchmove', event => {
+    if (!touch || touch.used || !touch.bottom || event.touches.length !== 1) return;
+    const point = event.touches[0], distance = touch.y - point.clientY;
+    if (distance >= 48 && distance > Math.abs(touch.x - point.clientX)) { touch.used = true; loadMore(el); }
+  }, { passive: true });
+  el.addEventListener('touchend', () => { touch = undefined; }, { passive: true });
+  el.addEventListener('touchcancel', () => { touch = undefined; }, { passive: true });
+  el.addEventListener('keydown', event => {
+    if (['PageDown', 'End', ' '].includes(event.key) && !(event.target as HTMLElement).closest('button,input,textarea,select')) loadMore(el);
+  });
+}
+
+function renderVisibleMonth(el: HTMLElement, month: string): void {
+  const summary = monthSummaries.get(month);
+  if (!summary) return;
+  const button = el.querySelector<HTMLElement>('#hm-visible-month')!;
+  const key = `${month}:${summary.expense}:${summary.income}:${summary.balance}`;
+  if (visibleSummaryKey === key) return;
+  visibleSummaryKey = key;
+  button.dataset.month = month;
+  const [year, number] = month.split('-');
+  button.innerHTML = `<span class="sr-only">查看月份明细：</span><span class="hm-summary-date"><b>${Number(number)}月</b><small>${year}</small></span>
+    <span class="hm-summary-flows"><span>收 <b class="num" data-home-summary="income">${formatFenCny(summary.income)}</b></span><span>支 <b class="num" data-home-summary="expense">${formatFenCny(summary.expense)}</b></span></span>
+    <span class="hm-summary-balance"><b class="num">${formatFenCny(summary.balance)}</b><small>结余</small></span>${iconHtml('ic-right', 14)}`;
+}
+
+function refreshVisibleMonth(el: HTMLElement): void {
+  if (el.inert || !el.classList.contains('is-active')) return;
+  const overlay = el.querySelector<HTMLElement>('#hm-month-overlay')!;
+  const sections = [...el.querySelectorAll<HTMLElement>('[data-home-month]')];
+  const latest = sections.length ? el.querySelector<HTMLElement>('#hm-days [data-entry-row]') : null;
+  // 以滚动容器的裁剪边界判断，浮层不占高度，出现／消失不会推动流水或反复触发。
+  overlay.hidden = !latest || el.scrollTop <= 0 || latest.getBoundingClientRect().bottom > el.getBoundingClientRect().top + el.clientTop;
+  if (overlay.hidden) return;
+  const rows = sections.map(node => {
+    const rect = node.getBoundingClientRect();
+    return { month: node.dataset.homeMonth!, top: rect.top, bottom: rect.bottom };
+  });
+  const edge = el.querySelector<HTMLElement>('#hm-visible-month')!.getBoundingClientRect().bottom;
+  renderVisibleMonth(el, visibleHomeMonth(rows, edge, timelineMonth));
 }
 
 async function refresh(): Promise<void> {
@@ -211,6 +295,7 @@ async function refresh(): Promise<void> {
     nav.hidden = !mods.quick;
     const showRhythm = mods.rhythm !== false;
     el.querySelector<HTMLElement>('#hm-rhythm')!.hidden = !showRhythm;
+    el.querySelector<HTMLElement>('#hm-month-overlay')!.style.order = String(Math.min(layout.order.length, ...layout.order.map((key, i) => (key === 'today' && mods.today) || (key === 'past' && mods.past) ? i : layout.order.length)));
     await Promise.all([
       mods.month ? refreshMonthCard(el) : Promise.resolve(),
       showRhythm ? refreshSpendingRhythm(el) : Promise.resolve(),
@@ -221,6 +306,7 @@ async function refresh(): Promise<void> {
       const selectors = { month: '#hm-month', quick: '#hm-quick', rhythm: '#hm-rhythm', today: '#hm-today', past: '.hm-past' };
       for (const node of el.querySelectorAll<HTMLElement>(selectors[key])) node.style.order = String(index);
     }
+    refreshVisibleMonth(el);
   } finally {
     loading = false;
     window.clearTimeout(dayTimer);
@@ -232,8 +318,9 @@ async function refresh(): Promise<void> {
       void refresh();
     } else if (paginationPending) {
       paginationPending = false;
-      // 刷新后再检查位置与 exhausted；用户已滚离底部或切页时不继续分页。
-      loadMore(el);
+      const requireBottom = paginationRequiresBottom;
+      paginationRequiresBottom = true;
+      loadMore(el, requireBottom);
     }
   }
 }
@@ -287,36 +374,36 @@ type TimelineItem =
   | { kind: 'life'; ts: number; note: LifeNote };
 
 async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: boolean): Promise<void> {
-  const pageLimit = limit;
-  const [entries, cats, tree, accounts, countAsIncome] = await Promise.all([
-    listEntries({ limit: pageLimit }),
-    listCategories('income'), listExpenseTree(), listAccounts(true),
-    getSetting('reimburse.countAsIncome'),
+  const startDay = await getAccountingMonthStartDay();
+  const anchor = accountingMonthForTimestamp(Date.now(), startDay);
+  if (anchor !== timelineMonth || startDay !== timelineStartDay) {
+    monthsShown = 3;
+    timelineMonth = anchor;
+    timelineStartDay = startDay;
+  }
+  const window = homeTimelineWindow(anchor, startDay, monthsShown);
+  const [cats, tree, accounts, countAsIncome, olderEntries, olderNotes] = await Promise.all([
+    listCategories('income'), listExpenseTree(), listAccounts(true), getSetting('reimburse.countAsIncome'),
+    showPast ? listEntries({ to: window.from, limit: 1 }) : Promise.resolve([]),
+    showPast ? listLifeNotes({ to: window.from - 1, limit: 1 }) : Promise.resolve([]),
   ]);
-  const oldestTs = entries.length ? entries[entries.length - 1].occurredAt : 0;
-  const boundaryFrom = oldestTs ? startOfDay(oldestTs) : 0;
-  // 事件查询会补齐边界日的全部实体；只有边界日前仍有账单时才需要继续分页。
-  const hasEarlierEntries = entries.length >= pageLimit && boundaryFrom > 0
-    ? (await listEntries({ to: boundaryFrom, limit: 1 })).length > 0
-    : false;
-  exhausted = !hasEarlierEntries;
-
+  exhausted = !showPast || (!olderEntries.length && !olderNotes.length);
   const catMap = new Map<number, Category>();
   for (const cat of cats) catMap.set(cat.id, cat);
   for (const g of tree) {
     catMap.set(g.parent.id, g.parent);
     for (const ch of g.children) catMap.set(ch.id, ch);
   }
-  const acctNames = new Map(accounts.map((a) => [a.id, a.name]));
-
-  // 生活记录与统计事件混排：边界日完整载入，存在更早实体时再向前分页。
-  const from = hasEarlierEntries ? boundaryFrom : 0;
+  const acctNames = new Map(accounts.map((account) => [account.id, account.name]));
   const [notes, ledgerEntries] = await Promise.all([
-    listLifeNotes({ from }),
-    ledgerEntriesInRange(from, Infinity, countAsIncome),
+    listLifeNotes({ from: window.from, to: window.to - 1 }),
+    ledgerEntriesInRange(window.from, window.to, countAsIncome),
   ]);
-  // 边界日补齐后，下次分页从已展示的原始账单数继续；不计报销事件或生活记录。
-  limit = Math.max(pageLimit, ledgerEntries.filter(entry => entry.kind === 'entry').length);
+  monthSummaries = new Map(homeMonthSummaries(ledgerEntries, window.periods, startDay, {
+    reimburseMode: countAsIncome ? 'income' : 'offset',
+  }).map(summary => [summary.month, summary]));
+  const monthButton = el.querySelector<HTMLElement>('#hm-visible-month')!;
+  renderVisibleMonth(el, monthButton.dataset.month && monthSummaries.has(monthButton.dataset.month) ? monthButton.dataset.month : anchor);
 
   let items: TimelineItem[] = [
     ...ledgerEntries.map((entry): TimelineItem => ({ kind: 'entry', ts: entry.occurredAt, entry })),
@@ -336,9 +423,10 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
   if (showToday && !groups.has(todayKey)) groups.set(todayKey, []);
 
   const days = [...groups.keys()].sort((a, b) => (a < b ? 1 : -1));
-  const html = days.map((key) => {
+  const chunks = new Map<string, string[]>();
+  days.forEach((key) => {
     const isToday = key === todayKey;
-    if (isToday ? !showToday : !showPast) return '';
+    if (isToday ? !showToday : !showPast) return;
     const list = groups.get(key)!;
     const summary = summarizeLedgerEntries(
       list.filter((it): it is Extract<TimelineItem, { kind: 'entry' }> => it.kind === 'entry')
@@ -359,24 +447,30 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
           <div><p class="e-title">今天还没有记录</p><p class="e-meta">花了什么、赚了什么，随手记下就好</p></div>
           <button class="chip" data-empty-entry>记一笔</button>
         </div>`;
-    return `
-      <section aria-label="${dayTitle(key)}的记录"${isToday ? ' id="hm-today"' : ' class="hm-past"'}>
+    const month = accountingMonthForTimestamp(new Date(`${key}T12:00:00`).getTime(), startDay);
+    const listHtml = chunks.get(month) ?? [];
+    listHtml.push(`
+      <section data-home-month="${month}" aria-label="${dayTitle(key)}的记录"${isToday ? ' id="hm-today"' : ' class="hm-past"'}>
         <header class="day"><h3>${isToday ? '今天 · ' : ''}${dayTitle(key)}</h3><p class="day-sum num">${sums.join(' · ')}</p></header>
         ${body}
-      </section>`;
-  }).join('');
-
+      </section>`);
+    chunks.set(month, listHtml);
+  });
+  const html = window.periods.map(period => chunks.get(period.month)?.join('') ?? (showPast
+    ? `<section class="hm-past hm-empty-month" data-home-month="${period.month}"><p>${monthTitle(period.month)}暂无记录</p></section>` : '')).join('');
+  const scroll = el.scrollTop;
   el.querySelector('#hm-days')!.innerHTML =
     (showToday || showPast) ? html : '<p class="tiny" style="text-align:center;padding:20px 0">流水模块已隐藏 · 可在右上角自定义首页</p>';
-  el.querySelector('#hm-more')!.textContent = exhausted
-    ? (items.length ? '已展示全部流水' : '')
-    : '下拉加载更早的流水…';
+  el.scrollTop = scroll;
+  const more = el.querySelector<HTMLButtonElement>('#hm-more')!;
+  more.hidden = !showPast || (exhausted && !items.length);
+  more.disabled = exhausted;
+  more.textContent = exhausted ? '已展示全部流水' : `再上拉加载${monthTitle(shiftMonthKey(window.periods.at(-1)!.month, -1))}`;
 }
 
-function startOfDay(ts: number): number {
-  const d = new Date(ts);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+function monthTitle(month: string): string {
+  const [year, number] = month.split('-');
+  return `${year}年${Number(number)}月`;
 }
 
 const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];

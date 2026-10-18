@@ -430,12 +430,12 @@ describe('生活故事草稿仓库', () => {
     expect(await getLifeNote(photoId)).toMatchObject({ kind: 'photo', body: undefined });
   });
 
-  it('账单已删除时要求先解除关联，事务不留下记录或附件且草稿保留', async () => {
+  it('账单已删除时阻止保存，事务不留下记录或附件且草稿保留', async () => {
     const accountId = await addAccount({ name: '虚构银行卡', group: 'debit', balance: 5_000 });
     const entryId = await addEntry({ type: 'expense', amount: 300, occurredAt, accountId });
     await softDeleteEntry(entryId);
     await putLifeDraft(draft({ entryId, photos: [{ name: '图.png', dataUrl: png() }] }));
-    await expect(saveLifeDraft('composer')).rejects.toThrow('解除');
+    await expect(saveLifeDraft('composer')).rejects.toThrow('已删除');
     expect(await db.lifeNotes.count()).toBe(0);
     expect(await db.attachments.count()).toBe(0);
     expect(await getLifeDraft('composer')).toBeDefined();
@@ -480,4 +480,17 @@ describe('账单与生活记录关系仓库', () => {
     expect((await db.accounts.get(accountId))?.balance).toBe(1_500);
     expect((await listLifeLinkedEntries(noteId)).map(entry => entry.id)).toEqual([entryId]);
   });
+});
+
+it('生活记录可只读探测更早数据，先筛类型再限量并保持日期边界', async () => {
+  const base = { title: '虚构片段', body: '', createdAt: 1, updatedAt: 1, deletedAt: 0 };
+  await db.lifeNotes.bulkPut([
+    { ...base, id: 1, kind: 'photo', occurredAt: 100 },
+    { ...base, id: 2, kind: 'diary', occurredAt: 200 },
+    { ...base, id: 3, kind: 'photo', occurredAt: 300 },
+    { ...base, id: 4, kind: 'photo', occurredAt: 150, deletedAt: 2 },
+  ]);
+  expect((await listLifeNotes({ to: 299, limit: 1 })).map(row => row.id)).toEqual([2]);
+  expect((await listLifeNotes({ to: 299, kind: 'photo', limit: 1 })).map(row => row.id)).toEqual([1]);
+  expect((await listLifeNotes({ from: 200, to: 300 })).map(row => row.id)).toEqual([3, 2]);
 });

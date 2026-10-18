@@ -8,9 +8,11 @@
 import './category.css';
 import { ICON_IDS, iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
+import { categoryIcon } from '../../core/categoryIcons';
+import { openCategoryMerge } from './categoryMerge';
 import { on } from '../../core/store';
 import {
-  addCategory, deleteCategory, listCategories, listExpenseTree, moveCategory, updateCategory, reorderCategories,
+  addCategory, countCategoryEntries, deleteCategory, listCategories, listExpenseTree, moveCategory, updateCategory, reorderCategories,
 } from '../../core/repo/categoryRepo';
 import { registerSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
@@ -38,12 +40,14 @@ export function initCategoryManager(): void {
     title: '分类管理',
     render(el) {
       let kind: CategoryKind = 'expense';
+      let refreshToken = 0;
       /** 最近一次加载的分类，按 id 索引（拖动排序与编辑用） */
       const byId = new Map<number, Category>();
 
       el.innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:0 2px 10px">
+        <div class="cm-toolbar">
           <p class="sub" id="cm-tip" style="padding:0;flex:1">${TIP.expense}</p>
+          <button class="chip" id="cm-merge" type="button">合并分类</button>
           <div class="seg mini" id="cm-seg" role="tablist" aria-label="分类类型" style="flex:none;margin-left:10px">
             <button class="active" data-t="expense" role="tab" aria-selected="true">支出</button>
             <button data-t="income" role="tab" aria-selected="false">收入</button>
@@ -54,11 +58,18 @@ export function initCategoryManager(): void {
 
       async function refresh(): Promise<void> {
         if (!el.isConnected) return;
+        const token = ++refreshToken;
+        const selectedKind = kind;
+        const [counts, tree, cats] = await Promise.all([
+          countCategoryEntries(),
+          selectedKind === 'expense' ? listExpenseTree() : Promise.resolve([]),
+          selectedKind === 'income' ? listCategories('income') : Promise.resolve([]),
+        ]);
+        if (!el.isConnected || token !== refreshToken) return;
         byId.clear();
+        const label = (category: Category) => `<span class="cm-category-label"><span class="cm-category-name" title="${esc(category.name)}">${esc(category.name)}</span><span class="cm-entry-count num" data-category-count="${category.id}" title="未删除账单，含退款${category.kind === 'expense' && category.parentId == null ? '及小类' : ''}">${(counts.get(category.id) ?? 0).toLocaleString('zh-CN')} 笔</span></span>`;
         const list = el.querySelector('#cm-list')!;
-        if (kind === 'expense') {
-          const tree = await listExpenseTree();
-          if (!el.isConnected) return;
+        if (selectedKind === 'expense') {
           for (const g of tree) {
             byId.set(g.parent.id, g.parent);
             for (const c of g.children) byId.set(c.id, c);
@@ -66,29 +77,29 @@ export function initCategoryManager(): void {
           list.innerHTML = tree.map((g) => `
             <section class="card list" style="margin-bottom:12px" aria-label="${esc(g.parent.name)}大类">
               <div class="row cm-item" data-id="${g.parent.id}" data-drag-group="parents" draggable="true" role="button" tabindex="0">
-                <span class="e-ic sm">${iconHtml(g.parent.icon, 17)}</span><b>${esc(g.parent.name)}</b>
-                <span class="row-note">${g.children.length} 个小类</span>
+                <span class="e-ic sm">${iconHtml(categoryIcon(g.parent), 17)}</span>
+                <span class="cm-parent-copy">${label(g.parent)}<span class="cm-subcount"><span class="cm-count-separator" aria-hidden="true">·</span>${g.children.length} 个小类</span></span>
                 <button class="restore-link" data-addsub="${g.parent.id}">添加小类</button>
               </div>
               ${g.children.map((c) => `
                 <button class="row cm-item" data-id="${c.id}" data-drag-group="p${g.parent.id}" draggable="true">
-                  <span class="e-ic sm">${iconHtml(c.icon, 17)}</span>${esc(c.name)}
+                  <span class="e-ic sm">${iconHtml(categoryIcon(c, byId.get(c.parentId ?? -1)?.name), 17)}</span>${label(c)}
                   <span class="chev" style="margin-left:auto">${iconHtml('ic-right', 15)}</span>
                 </button>`).join('')}
             </section>`).join('') || '<p class="sub" style="padding:12px 2px">还没有支出大类 · 点下方「新建大类」创建</p>';
         } else {
-          const cats = await listCategories('income');
-          if (!el.isConnected) return;
           for (const c of cats) byId.set(c.id, c);
           list.innerHTML = `<section class="card list" aria-label="收入分类">
             ${cats.map((c) => `
               <button class="row cm-item" data-id="${c.id}" data-drag-group="income" draggable="true">
-                <span class="e-ic sm">${iconHtml(c.icon, 17)}</span>${esc(c.name)}
+                <span class="e-ic sm">${iconHtml(categoryIcon(c, byId.get(c.parentId ?? -1)?.name), 17)}</span>${label(c)}
                 <span class="chev" style="margin-left:auto">${iconHtml('ic-right', 15)}</span>
               </button>`).join('') || '<p class="sub" style="padding:12px 2px">还没有收入分类</p>'}
           </section>`;
         }
       }
+
+      el.querySelector('#cm-merge')!.addEventListener('click', () => void openCategoryMerge(kind, el));
 
       /* 分段切换 */
       el.querySelector('#cm-seg')!.addEventListener('click', (e) => {
@@ -168,10 +179,10 @@ export function initCategoryManager(): void {
         showToast('排序已保存');
       }
 
-      const off = on('categories-changed', () => {
-        if (!el.isConnected) { off(); return; }
+      const unsubscribe = ['categories-changed', 'entries-changed'].map(event => on(event as 'categories-changed' | 'entries-changed', () => {
+        if (!el.isConnected) { unsubscribe.forEach(off => off()); return; }
         void refresh();
-      });
+      }));
       void refresh();
     },
   });
@@ -189,6 +200,7 @@ function iconGrid(selected: string): string {
 /** 新建分类（大类 / 小类 / 收入分类） */
 function openCatForm(opts: { kind: CategoryKind; parentId?: number; parentName?: string }): void {
   let icon = opts.kind === 'income' ? 'ic-coin' : 'ic-bowl';
+  let iconChosen = false;
   const title = opts.parentId != null
     ? `新建小类 · ${opts.parentName}`
     : opts.kind === 'expense' ? '新建大类' : '新建收入分类';
@@ -213,6 +225,7 @@ function openCatForm(opts: { kind: CategoryKind; parentId?: number; parentName?:
         const cell = target.closest<HTMLElement>('[data-icon]');
         if (cell) {
           icon = cell.dataset.icon!;
+          iconChosen = true;
           for (const c of el.querySelectorAll<HTMLElement>('[data-icon]')) c.classList.toggle('active', c === cell);
           return;
         }
@@ -225,7 +238,7 @@ function openCatForm(opts: { kind: CategoryKind; parentId?: number; parentName?:
         const name = el.querySelector<HTMLInputElement>('#cf-name')!.value.trim();
         if (!name) { showToast('请填写分类名称'); return; }
         try {
-          await addCategory({ name, icon, kind: opts.kind, parentId: opts.parentId });
+          await addCategory({ name, icon, iconOverride: iconChosen || undefined, kind: opts.kind, parentId: opts.parentId });
           closeSheet();
           showToast(`已新建「${name}」`);
         } catch (err) {
@@ -244,7 +257,8 @@ async function openCatEdit(cat: Category): Promise<void> {
     : [];
   /** 移动目标：数字为大类 id；null 表示升为大类 */
   let moveTo: number | null = cat.parentId ?? null;
-  let icon = cat.icon;
+  let icon = categoryIcon(cat, parents.find(parent => parent.id === cat.parentId)?.name);
+  let iconChosen = false;
 
   openSheet({
     ariaLabel: `编辑分类：${cat.name}`,
@@ -275,6 +289,7 @@ async function openCatEdit(cat: Category): Promise<void> {
         const cell = target.closest<HTMLElement>('[data-icon]');
         if (cell) {
           icon = cell.dataset.icon!;
+          iconChosen = true;
           for (const c of el.querySelectorAll<HTMLElement>('[data-icon]')) c.classList.toggle('active', c === cell);
           return;
         }
@@ -294,7 +309,7 @@ async function openCatEdit(cat: Category): Promise<void> {
         const name = el.querySelector<HTMLInputElement>('#cf-name')!.value.trim();
         if (!name) { showToast('请填写分类名称'); return; }
         try {
-          await updateCategory(cat.id, { name, icon });
+          await updateCategory(cat.id, { name, ...(iconChosen ? { icon, iconOverride: true } : {}) });
           if (isChild && moveTo !== (cat.parentId ?? null)) {
             await moveCategory(cat.id, moveTo ?? undefined);
             showToast(moveTo == null ? `「${name}」已升为大类` : '已移动到新大类');
@@ -354,7 +369,7 @@ async function openTransferSheet(cat: Category): Promise<void> {
           <div class="card list">
             ${candidates.map((c) => `
               <button class="row" data-to="${c.id}">
-                <span class="e-ic sm">${iconHtml(c.icon, 17)}</span>${esc(c.name)}${c.parentId != null ? '<span class="row-note">小类</span>' : ''}
+                <span class="e-ic sm">${iconHtml(categoryIcon(c, candidates.find(row => row.id === c.parentId)?.name), 17)}</span>${esc(c.name)}${c.parentId != null ? '<span class="row-note">小类</span>' : ''}
                 <span class="chev" style="margin-left:auto">${iconHtml('ic-right', 15)}</span>
               </button>`).join('')}
           </div>

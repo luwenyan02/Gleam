@@ -1,14 +1,24 @@
 {
-  "version": "1.10.7",
-  "captureCommit": "649e6cea489db87580ea2cb46767895aafb675e2",
-  "ciRun": 38127094655,
+  "version": "1.11.11",
+  "captureBaseCommit": "bf13b77dc595dfd2ca1fc53105c1e0f833126e63",
+  "captureScript": "app/e2e/capture_manual.py",
+  "captureContext": "Audit-priorities preview working tree; synthetic ledger; voice uses simulated native bridge, no real microphone or service.",
   "synthetic": true,
   "imagesUnmodified": true,
   "sha256": {
-    "voice-start.png": "8ff7da759b057657eafd73dc4dfd7ec609262f259378852d270a4559f45ad120",
-    "voice-listening.png": "5e93d04a2e2bf7aec0d785234023224b18d80f7194481fb7e595a1ad5d88074b",
-    "voice-review.png": "670f5a8cd2b3bc03968f316cd05b171148af84fb5f3e0c05ced092713a18a79d",
-    "voice-settings.png": "4bd5ce15b44b46ae6737cd01a9cf2fac2bcd1e4bae1202b8d524f80be926c0a7",
-    "manual-entry.png": "5adc4a94d63b18df1e6afa483443ae2ca53e5f3909a23bf8733625cffc07f59f"
+    "account-picker.png": "45b86e651b1c5afee8fd527b5a712c107446c646a1ae5749913bebb224e28cb8",
+    "backup.png": "e7c2ed88db5f831ce20ed3d0830fa361af5c0f188de46d8a9651e6e7535473d8",
+    "entry.png": "fdf0fbb272ecd183c7a5f738d50e8ef17ab362f7202665332582dce2d810f281",
+    "manual-entry.png": "8efa492670175d660e328dbce5ba0a19ad789fa78db67f60009bc2bc7fa478c4",
+    "report.png": "8ad0f668f6c4e399aa5a0a8b0c8acdb5cd6277b870752a3dfb52fed62bac0063",
+    "voice-listening.png": "8bded45641a0882859f91a1c83561b807b786374c837f3030595be8fd86eb887",
+    "voice-review.png": "bb971d7c069430921cd72a752723ff6ba991f3bd1a4864bd0d86d26b15aa2e53",
+    "voice-settings.png": "3d103094e4dc7d179fa1951f0e947dcb84bf487fc82148e18ee8a1a95553554d",
+    "voice-start.png": "6a3110a852d4ca2894493970cac2b020c18c17c6d0921a5b6cc68673d6806590"
+  },
+  "sourceSha256": {
+    "app/src/features/mine/mine.ts": "d57d99a4074b2c0e9f4bf6d87e94926a4543550cd679c05402f0944d6f7f89dd",
+    "app/src/features/settings/settings.ts": "38419f7a9dccea6acaef0d421697d9c58ee37e7c485cba9184aebbe68ca3e07d",
+    "app/e2e/capture_manual.py": "9ae6609b45e303980d58d8fddf87b57e560afd9c6454422635498be6c6b64af8"
   }
 }

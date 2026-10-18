@@ -1,5 +1,9 @@
 # 构建与 GitHub 发布指南
 
+## v1.11.12 当前发布授权（2026-10-18）
+
+用户已验收 `preview/orbstack` 的 `618211d` 全部改动，授权合并 main 并正式发包。版本为 1.11.12 / 11112，复用原 F979 证书，上传 APK 与 SHA-256 到正式 Release 并设为 latest；此明确授权及 2026-10-17 的持续发布授权覆盖下文历史“仅候选／不发布”等限制。构建、签名、网页资源及下载附件必须实际核验，GitHub CI 的付款／额度阻塞与手机覆盖安装结果分别如实记录。
+
 ## v1.11.7 粘贴测试包
 
 本次保留私有更新源，新增 Token 输入框旁的“粘贴”按钮。复制 Token 后点击“粘贴”，再点击“保存并验证”；不将凭据预置到安装包。公开仓库方案已取消。
@@ -12,7 +16,7 @@ GitHub Actions 账户付款／额度阻塞尚未解除，本地构建和检查�
 
 ## Android 应用内检查新版
 
-入口为「我的 → 关于拾光」，或「设置 → 关于拾光 → 检查新版」。仅 Android 提供，点击检查才访问 GitHub，不在启动时自动检查。
+入口为「我的 → 关于和帮助 → 关于拾光」。手册整理预览已移除设置中的重复入口；此前版本也可从「设置 → 关于拾光 → 检查新版」进入。仅 Android 提供，点击检查才访问 GitHub，不在启动时自动检查。
 
 仓库保持私有。用户在 GitHub 创建 Fine-grained personal access token，Repository access 只选择 `luwenyan02/Gleam`，Repository permissions 的 Contents 设为 Read-only（Metadata 按 GitHub 默认只读），并选择合适有效期。在 App 的「GitHub 访问设置」填入，点击「保存并验证」；过期后在此替换。不要把 Token 发到聊天、写入 APK 或加入 Git。Token 由 Android Keystore 加密，仅供原生更新通道读取，不包含在 `.skbak` 备份中。
 

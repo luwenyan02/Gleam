@@ -17,3 +17,10 @@
 .rb-amt-row:last-child{border-bottom:0}
 .rb-amt-row .e-main{flex:1;min-width:0}
 .rb-amt-row input.note{width:110px;flex:none;margin-bottom:0;padding:9px 12px;text-align:right}
+.rb-mode-summary,.rb-details{font-size:14px;line-height:1.6;color:var(--muted);margin:6px 0}
+.rb-details summary{min-height:44px;display:flex;align-items:center;list-style:none;cursor:pointer;color:var(--primary)}
+.rb-details summary::after{content:"⌄";margin-left:auto}
+.rb-details[open] summary::after{transform:rotate(180deg)}
+.rb-details summary::-webkit-details-marker{display:none}
+.rb-details summary:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.rb-details p{margin-bottom:8px}

@@ -6,9 +6,11 @@ import { nextLocalDayStart } from '../../core/queryValidation';
  * 高级筛选面板、关键词搜索（流水 + 生活记录）、左滑操作、entries-changed 自动刷新。
  */
 import './search.css';
+import { filterSearchSummary, searchExtraSummaries, SUMMARY_LABELS, type SearchSummaryFilter } from './searchSummary';
 import { openEntityInsight } from '../tagmerchant/tagmerchant';
 import { expandCategoryIds, parseAmountRange, validateDateRange } from '../../core/queryValidation';
 import { iconHtml } from '../../assets/icons';
+import { categoryDisplayMap } from '../../core/categoryIcons';
 import { esc } from '../../core/esc';
 import { formatFen } from '../../core/money';
 import { listEntries, getEntry, dayKey } from '../../core/repo/entryRepo';
@@ -55,7 +57,7 @@ let customFrom: DateWheelResult | null = null;
 let customTo: DateWheelResult | null = null;
 let fieldMode: FieldMode = 'all';
 let filterState: FilterState = emptyFilter();
-let summaryFilter: 'all' | 'expense' | 'income' = 'all';
+let summaryFilter: SearchSummaryFilter = 'all';
 let queryTypes: EntryType[] = [];
 let ledgerOnly = false;
 let batchMode = false;
@@ -262,7 +264,7 @@ async function doSearch(kw: string): Promise<void> {
   if (token !== searchToken || !resultsEl.isConnected) return;
 
   const catNames = new Map<number, string>();
-  const catMap = new Map([...expenseCats, ...incomeCats].map(category => [category.id, category]));
+  const catMap = categoryDisplayMap([...expenseCats, ...incomeCats]);
   for (const c of [...expenseCats, ...incomeCats]) catNames.set(c.id, c.name);
   const accountNames = new Map<number, string>();
   for (const a of accounts) accountNames.set(a.id, a.name);
@@ -270,11 +272,12 @@ async function doSearch(kw: string): Promise<void> {
   for (const t of tags) tagNames.set(t.id, t.name);
   const merchantNames = new Map<number, string>();
   for (const m of merchants) merchantNames.set(m.id, m.name);
-  batchCategories = [...expenseCats, ...incomeCats];
+  batchCategories = [...catMap.values()];
   batchAccounts = accounts;
   batchTags = tags;
 
   const win = rangeWindow();
+  updateDateDisplay(win);
   const tagIdsByEntry = new Map<number, number[]>();
   const tagNamesByEntry = new Map<number, string[]>();
   const tagLinks = await Promise.all(tags.map(async (tag) => ({ tag, entryIds: await listEntryIdsByTag(tag.id) })));
@@ -311,12 +314,12 @@ async function doSearch(kw: string): Promise<void> {
   });
   const summaryOptions = { reimburseMode: countReimburseAsIncome ? 'income' as const : 'offset' as const };
   const summary = summarizeLedgerEntries(matchedEntries, summaryOptions);
+  const extras = searchExtraSummaries(matchedEntries);
+  if (!['all', 'expense', 'income'].includes(summaryFilter) && !extras.some(card => card.filter === summaryFilter)) summaryFilter = 'all';
   renderActiveFilters({ catNames, accountNames, tagNames, merchantNames });
 
   // 按汇总卡筛选显示
-  let displayEntries = matchedEntries;
-  if (summaryFilter === 'expense') displayEntries = matchedEntries.filter(e => e.type === 'expense');
-  else if (summaryFilter === 'income') displayEntries = matchedEntries.filter(e => e.type === 'income');
+  const displayEntries = filterSearchSummary(matchedEntries, summaryFilter);
   batchResultIds = [...new Set(displayEntries.filter((entry) => entry.kind === 'entry').map((entry) => entry.id))];
   if (batchMode && batchSelectAll) {
     batchSelected.clear();
@@ -360,9 +363,11 @@ async function doSearch(kw: string): Promise<void> {
   const groupedEntries = groupLedgerEntries(hitEntries);
   const fullGroups = new Map(groupLedgerEntries(displayEntries).map(g => [g.day, summarizeLedgerEntries(g.entries, summaryOptions)]));
 
+  const summaryScroll = resultsEl.querySelector<HTMLElement>('.sr-summary-row')?.scrollLeft ?? 0;
+  const focusedSummary = resultsEl.contains(document.activeElement) ? (document.activeElement as HTMLElement)?.dataset.sf : undefined;
   resultsEl.innerHTML = `
     ${batchMode ? `<div class="sr-batch-scope"><b>批量处理当前全部结果</b><span>已载入 ${batchResultIds.length} 笔，不受分页限制</span></div>` : ''}
-    <div class="sr-summary-row${[summary.balance,summary.expense,summary.income].some(v=>formatFen(v).length>10) ? ' is-wide' : ''}">
+    <div class="sr-summary-row" role="group" aria-label="搜索结果汇总，可横向滑动">
       <button class="sr-summary-card${summaryFilter === 'all' ? ' active' : ''}" data-sf="all" aria-pressed="${summaryFilter === 'all'}">
         <div class="sc-label">结余</div>
         <div class="sc-amount">${summary.balance >= 0 ? '' : '-'}${formatFen(Math.abs(summary.balance))}</div>
@@ -375,8 +380,9 @@ async function doSearch(kw: string): Promise<void> {
         <div class="sc-label">收入(${summary.incomeCount})</div>
         <div class="sc-amount">${formatFen(summary.income)}</div>
       </button>
+      ${extras.map(card => `<button class="sr-summary-card${summaryFilter === card.filter ? ' active' : ''}" data-sf="${card.filter}" aria-pressed="${summaryFilter === card.filter}"><div class="sc-label">${card.label}(${card.count})</div><div class="sc-amount">${formatFen(card.amount)}</div></button>`).join('')}
     </div>
-    ${!hitEntries.length && !hitNotes.length ? `<p class="sr-empty">当前${summaryFilter === 'income' ? '收入' : summaryFilter === 'expense' ? '支出' : ''}筛选下没有记录，可切换上方类型或清除筛选条件</p>` : ''}
+    ${!hitEntries.length && !hitNotes.length ? `<p class="sr-empty">当前${SUMMARY_LABELS[summaryFilter]}筛选下没有记录，可切换上方类型或清除筛选条件</p>` : ''}
     ${groupedEntries.map((group) => {
       const daySummary = fullGroups.get(group.day)!;
       return `<div class="sr-day-head"><h3>${group.day}</h3><span>支出 ${formatFen(daySummary.expense)} · 收入 ${formatFen(daySummary.income)}</span></div>
@@ -389,6 +395,9 @@ async function doSearch(kw: string): Promise<void> {
       ${hitNotes.map(noteRow).join('')}
     </section>` : ''}`;
   resultsEl.setAttribute('aria-busy', 'false');
+  const summaryRow = resultsEl.querySelector<HTMLElement>('.sr-summary-row');
+  if (summaryRow) summaryRow.scrollLeft = summaryScroll;
+  if (focusedSummary) resultsEl.querySelector<HTMLButtonElement>(`[data-sf="${focusedSummary}"]`)?.focus({ preventScroll: true });
   updateBatchControls();
 }
 
@@ -452,12 +461,17 @@ function openFieldSheet(onSelect: (mode: FieldMode) => void): void {
 }
 
 /* ── 更新日期范围显示 ── */
-function updateDateDisplay(): void {
+function updateDateDisplay(win = rangeWindow()): void {
   if (!body) return;
   const fromBtn = body.querySelector<HTMLElement>('#sr-date-from');
   const toBtn = body.querySelector<HTMLElement>('#sr-date-to');
   if (!fromBtn || !toBtn) return;
 
+  // 预设日期从查询窗口派生：上界为下月 1 日（不包含），显示为月末。
+  if (win && dateRange !== 'custom') {
+    customFrom = tsToDateResult(win.from);
+    customTo = tsToDateResult(win.to - 1);
+  }
   const from = customFrom ?? getDefaultFrom();
   const to = customTo ?? getDefaultTo();
   fromBtn.textContent = `${dateStr(from)} ▾`;
@@ -522,7 +536,7 @@ export function initSearch(): void {
           <div class="sr-input-wrap">
             <span class="sr-ic">${iconHtml('ic-search', 16)}</span>
             <input type="search" id="sr-input" placeholder="搜索分类、账户、标签、商家、备注或金额" aria-label="搜索关键词" value="${esc(initialKeyword)}">
-            <button class="sr-clear" id="sr-clear-input"${initialKeyword ? '' : ' hidden'}>${iconHtml('ic-close', 14)}</button>
+            <button class="sr-clear" id="sr-clear-input" type="button" aria-label="清空搜索"${initialKeyword ? '' : ' hidden'}>${iconHtml('ic-close', 14)}</button>
           </div>
           <button class="sr-cancel" id="sr-cancel-btn">取消</button>
         </div>
@@ -591,8 +605,10 @@ export function initSearch(): void {
 
       // 清空输入
       clearBtn.addEventListener('click', () => {
+        window.clearTimeout(timer);
         input.value = '';
         clearBtn.hidden = true;
+        input.focus();
         void doSearch('');
       });
 
@@ -619,25 +635,8 @@ export function initSearch(): void {
         } else {
           dateRange = range;
           for (const c of el.querySelectorAll<HTMLElement>('#sr-dates .chip')) c.classList.toggle('active', c === chip);
-          // 根据选中的 chip 计算对应的起止日期并同步到顶部日期显示
-          const now = new Date();
-          const y = now.getFullYear();
-          const m = now.getMonth();
-          if (range === 'all') {
-            customFrom = null;
-            customTo = null;
-          } else if (range === 'month') {
-            customFrom = { year: y, month: m + 1, day: 1 };
-            customTo = { year: y, month: m + 1, day: now.getDate() };
-          } else if (range === 'lastMonth') {
-            const lmDate = new Date(y, m, 0); // last day of previous month
-            customFrom = { year: lmDate.getFullYear(), month: lmDate.getMonth() + 1, day: 1 };
-            customTo = { year: lmDate.getFullYear(), month: lmDate.getMonth() + 1, day: lmDate.getDate() };
-          } else if (range === '3m') {
-            const tmDate = new Date(y, m - 2, 1);
-            customFrom = { year: tmDate.getFullYear(), month: tmDate.getMonth() + 1, day: 1 };
-            customTo = { year: y, month: m + 1, day: now.getDate() };
-          }
+          customFrom = null;
+          customTo = null;
           updateDateDisplay();
           triggerSearch();
         }
@@ -856,7 +855,7 @@ export function initSearch(): void {
         // 汇总卡切换
         const sf = t.closest<HTMLElement>('[data-sf]');
         if (sf) {
-          summaryFilter = sf.dataset.sf as 'all' | 'expense' | 'income';
+          summaryFilter = sf.dataset.sf as SearchSummaryFilter;
           void doSearch(input.value.trim());
           return;
         }

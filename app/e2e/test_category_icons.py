@@ -34,7 +34,7 @@ def run(page, width):
     for kind, items in CASES.items():
         page.locator(f'#seg [data-type="{kind}"]').click()
         for name, icon in items:
-            button = page.locator('#cat-grid').get_by_role('option', name=name, exact=True)
+            button = page.locator('#cat-grid').get_by_role('option', name=f'投资／{name}' if name=='虚构投资项目' else name, exact=True)
             expect(button.locator('use')).to_have_attribute('href', '#'+icon)
             button.click()
             expect(page.locator('#pick-ic use')).to_have_attribute('href', '#'+icon)

@@ -1,4 +1,4 @@
-.entry-account-picker{max-height:none;flex:none}
+.entry-account-picker{max-height:calc(100% - var(--safe-top));flex:none}
 .entry-account-header{flex:none;padding:8px 14px;border-bottom:1px solid var(--border)}
 .entry-account-heading,.entry-account-search{display:flex;align-items:center;gap:8px;min-height:44px}
 .entry-account-heading[hidden],.entry-account-search[hidden]{display:none}

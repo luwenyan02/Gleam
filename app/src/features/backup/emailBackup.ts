@@ -26,15 +26,15 @@ export function mountEmailBackup(host: HTMLElement, onChanged: () => void): void
       const [cfg, token] = await Promise.all([getSetting('cloud.email'), secretStore.get('cloud.email.authCode')]);
       if (currentHost !== host || !host.isConnected) return;
       host.innerHTML = `
-        <p class="tiny eb-hint">使用 QQ 邮箱直接发送加密备份，无需配置发送服务。</p>
+        <p class="eb-hint">通过 QQ 邮箱发送加密备份。</p>
         <div class="cb-form">
           <label class="cb-field"><span>发件邮箱</span><input class="note" type="email" data-email="username" value="${esc(cfg.username ?? '')}" placeholder="你的 QQ 邮箱" autocomplete="email" autocapitalize="off" spellcheck="false"></label>
           <label class="cb-field"><span>SMTP 授权码</span><input class="note" type="password" data-email="authCode" value="${esc(token ?? '')}" placeholder="QQ 邮箱生成的 16 位授权码" autocomplete="new-password"></label>
           <label class="cb-field"><span>收件邮箱</span><input class="note" type="email" data-email="recipient" value="${esc(cfg.recipient)}" placeholder="可填写自己的 QQ 邮箱" autocomplete="email" autocapitalize="off" spellcheck="false"></label>
         </div>
         <div class="btn-row cb-actions"><button class="btn ghost" data-email-act="test">保存并测试</button><button class="btn primary" data-email-act="send">发送备份</button></div>
-        <p class="tiny eb-hint">测试连接不会发邮件。单份备份最大 10 MB；收到后下载附件，在「备份与恢复」中选择文件导入。</p>
-        <p class="tiny">在 QQ 邮箱设置中开启 SMTP 并生成授权码。授权码由 Android 系统加密保存，不进入备份。</p>`;
+        <p class="eb-hint">测试连接不会发邮件，单份备份最大 10 MB。</p>
+        <details class="backup-details"><summary>邮箱配置与恢复说明</summary><p>在 QQ 邮箱设置中开启 SMTP 并生成授权码。授权码由 Android 系统加密保存，不进入备份。</p><p>收到邮件后下载附件，在「备份与恢复」中选择文件导入。</p></details>`;
       setBusy(busy);
       host.addEventListener('click', event => {
         const action = (event.target as HTMLElement).closest<HTMLElement>('[data-email-act]')?.dataset.emailAct;

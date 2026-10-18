@@ -118,7 +118,8 @@ export function initReimburse(): void {
         </section>
         <section class="card" aria-label="报销统计口径">
           <div class="field"><span>报销款计入收入统计</span><button class="switch" id="rb-mode" role="switch" aria-checked="false" aria-label="报销款计入收入统计"></button></div>
-          <p class="tiny">开启：报销到账记为一笔「报销」收入 · 关闭：报销款只冲抵原支出、不进收入统计。每笔确认后一次结清；实收不足原金额时，差额继续计入支出。</p>
+          <p class="rb-mode-summary" id="rb-mode-summary"></p>
+          <details class="rb-details"><summary>到账与差额说明</summary><p>每笔确认后一次结清；实收不足原金额时，差额继续计入支出，不再列为待报销。</p></details>
         </section>
         <section class="card list" aria-label="已报销记录">
           <h3 class="card-title" style="padding:10px 2px 0">已报销</h3>
@@ -144,8 +145,8 @@ export function initReimburse(): void {
         const total = pend.reduce((s, e) => s + e.amount, 0);
         el.querySelector('#rb-sum')!.textContent = `¥${formatFen(total)}`;
         el.querySelector('#rb-sub')!.textContent = pend.length
-          ? `${pend.length} 笔待报销 · 记一笔时点亮「报销」会自动归到这里`
-          : '待报销已全部结清';
+          ? `${pend.length} 笔待报销`
+          : '暂无待报销';
 
         el.querySelector('#rb-list')!.innerHTML = pend.length ? pend.map((e) => `
           <div class="row" data-id="${e.id}" role="button" tabindex="0">
@@ -153,12 +154,13 @@ export function initReimburse(): void {
             <div class="e-main"><p class="e-title">${rowTitle(e, cats)}</p><p class="e-meta">${md(e.occurredAt)} · ${esc(cats.get(e.categoryId ?? -1) ?? '未分类')} · ${esc(acctMap.get(e.accountId ?? -1)?.name ?? '账户')}</p></div>
             <p class="e-amt num">¥${formatFen(e.amount)}</p>
           </div>`).join('')
-          : '<p class="sub" style="padding:12px 2px">暂无待报销账单 · 记一笔时点亮「报销」会自动归到这里</p>';
+          : '<p class="sub" style="padding:12px 2px">记账时勾选「报销」，账单会显示在这里。</p>';
         updateSelInfo();
 
         const sw = el.querySelector<HTMLElement>('#rb-mode')!;
         sw.classList.toggle('on', countIn);
         sw.setAttribute('aria-checked', String(countIn));
+        el.querySelector('#rb-mode-summary')!.textContent = countIn ? '到账计入「报销」收入。' : '到账冲抵原支出，不计入收入。';
 
         // 已报销按报销日期倒序；缺少到账资料的历史状态标记不能展示为到账。
         const doneSorted = [...done].sort((a, b) => (b.reimbursedAt ?? 0) - (a.reimbursedAt ?? 0));
@@ -244,7 +246,7 @@ async function openSettleSheet(picked: Entry[], onDone: () => void): Promise<voi
               ${visible.map((a) => `<button class="chip${a.id === acctId ? ' active' : ''}" data-acct="${a.id}">${esc(a.name)}</button>`).join('')}
             </div>
           </div>
-          <p class="tiny" style="padding:2px 0 6px">按实际到账填写；确认后一次结清，少于原金额的差额不再待报销并继续计入支出</p>
+          <p class="rb-mode-summary">按实收填写，确认后一次结清；差额计入支出，不再待报销。</p>
           ${picked.map((e) => `
             <div class="rb-amt-row">
               <div class="e-main"><p class="e-title">${rowTitle(e, cats)}</p><p class="e-meta">${md(e.occurredAt)} · 原金额 ¥${formatFen(e.amount)}</p></div>

@@ -11,6 +11,8 @@ import './report.css';
 import { openEntityInsight } from '../tagmerchant/tagmerchant';
 import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
+import { categoryDisplayMap } from '../../core/categoryIcons';
+import { positiveComposition, compositionPercent } from './reportComposition';
 import { on } from '../../core/store';
 import { formatFen, formatFenCny } from '../../core/money';
 import * as statsRepo from '../../core/repo/statsRepo';
@@ -19,7 +21,7 @@ import { listAccounts } from '../../core/repo/accountRepo';
 import { listTags } from '../../core/repo/tagRepo';
 import { listMerchants } from '../../core/repo/merchantRepo';
 import { registerPage } from '../shell/router';
-import type { Account, Category } from '../../core/types';
+import type { Account } from '../../core/types';
 import {
   collapseRankRows, reportSelectionToLedgerQuery,
   type ReportDimension, type ReportSelection,
@@ -200,7 +202,7 @@ async function loadData(): Promise<ReportData> {
     listTags(),
     listMerchants(),
   ]);
-  const catMap = new Map<number, Category>([...expenseCats, ...incomeCats].map((c) => [c.id, c]));
+  const catMap = categoryDisplayMap([...expenseCats, ...incomeCats]);
   const acctMap = new Map<number, Account>(accounts.map((a) => [a.id, a]));
   const tagMap = new Map(tags.map((t) => [t.id, t.name]));
   const merchantMap = new Map(merchants.map((m) => [m.id, m.name]));
@@ -259,7 +261,7 @@ function renderTrend(d: ReportData['trend']): void {
     cap.textContent = '';
     return;
   }
-  const W = 336, H = 168, plotTop = 34, plotBottom = 134, plotHeight = plotBottom - plotTop;
+  const W = 336, H = 176, plotTop = 34, plotBottom = 134, plotHeight = plotBottom - plotTop;
   const positiveMax = Math.max(0, ...values);
   const negativeMax = Math.max(0, ...values.map((value) => -value));
   const span = positiveMax + negativeMax;
@@ -284,44 +286,53 @@ function renderTrend(d: ReportData['trend']): void {
     s += `<rect data-series="expense" data-value="${d.expense[i]}" data-zero-y="${zeroY.toFixed(1)}" x="${(cx - dw - 1).toFixed(1)}" y="${expense.y.toFixed(1)}" width="${dw.toFixed(1)}" height="${expense.height.toFixed(1)}" rx="3" fill="var(--c1)"/>`;
     s += `<rect data-series="income" data-value="${d.incomes[i]}" data-zero-y="${zeroY.toFixed(1)}" x="${(cx + 1).toFixed(1)}" y="${income.y.toFixed(1)}" width="${dw.toFixed(1)}" height="${income.height.toFixed(1)}" rx="3" fill="var(--c4)"/>`;
     s += `<rect x="${Math.max(0, cx - slot / 2).toFixed(1)}" y="22" width="${slot.toFixed(1)}" height="${plotBottom - 20}" fill="transparent"/></g>`;
-    s += `<text x="${cx.toFixed(1)}" y="${plotBottom + 18}" text-anchor="middle" font-size="${n > 8 ? 8.5 : 10}" fill="var(--muted)">${lb}</text>`;
+    s += `<text x="${cx.toFixed(1)}" y="${plotBottom + 18}" text-anchor="middle" font-size="13" style="font-size:var(--text-meta)" fill="var(--muted)">${period === 'year' ? lb.replace('月', '') : lb}</text>`;
   });
   box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" aria-label="收支趋势柱状图，可选择柱形查看明细">${s}</svg>`;
   cap.textContent = '橙色支出 · 绿色收入 · 点柱形看明细';
 }
 
-/** 支出构成环形图：直接展示前五项，其余合并为“其他”，各区段可下钻。 */
+/** 支出构成环形图与分类排行共用正净额基数，其余合并为“其他”。 */
 function renderDonut(cats: RankRow[]): void {
   const svg = root!.querySelector<HTMLElement>('#donut-svg')!;
   const legend = root!.querySelector<HTMLElement>('#donut-legend')!;
+  const note = root!.querySelector<HTMLElement>('#donut-note')!;
+  const composition = positiveComposition(cats);
   const positiveCats = cats.filter((row) => row.amount > 0);
+  note.textContent = composition.refund > 0
+    ? compositionEquation(composition)
+    : `占比基数：正净支出 ${formatFenCny(composition.positive)}`;
   if (positiveCats.length === 0) {
     svg.innerHTML = `<circle cx="60" cy="60" r="48" fill="none" stroke="var(--border)" stroke-width="15"/>
-      <text x="60" y="64" text-anchor="middle" font-size="10" fill="var(--faint)">暂无支出</text>`;
-    legend.innerHTML = '<li class="donut-empty">记录支出后这里会展示分类占比</li>';
+      <text x="60" y="64" text-anchor="middle" font-size="12" fill="var(--muted)">暂无正净支出</text>`;
+    legend.innerHTML = `<li class="donut-empty">${composition.refund > 0 ? '本期仅有退款净额，见下方明细' : '记录支出后显示分类占比'}</li>`;
     return;
   }
   const collapsed = collapseRankRows(positiveCats);
   const rows = collapsed.map((row) => row.id === 'other'
     ? { ...row, icon: 'ic-coin', queryIds: positiveCats.slice(5).flatMap((item) => item.queryIds) }
     : row);
-  const total = rows.reduce((sum, r) => sum + r.amount, 0);
   const C = 2 * Math.PI * 48;
   let acc = 0, s = '';
   rows.forEach((r, i) => {
-    const len = (r.amount / total) * C;
-    s += `<circle class="donut-hit" role="button" tabindex="0" data-report-dim="category" data-report-ids="${r.queryIds.join(',')}" aria-label="${esc(r.name)} ${((r.amount / total) * 100).toFixed(1)}%，查看明细" cx="60" cy="60" r="48" fill="none" stroke="var(--c${i + 1})" stroke-width="15" stroke-dasharray="${Math.max(0, len - 2.4).toFixed(2)} ${(C - len + 2.4).toFixed(2)}" stroke-dashoffset="${(-acc).toFixed(2)}" transform="rotate(-90 60 60)"/>`;
+    const pct = compositionPercent(r.amount, composition.positive)!;
+    const len = (pct / 100) * C;
+    s += `<circle class="donut-hit" role="button" tabindex="0" data-report-dim="category" data-report-ids="${r.queryIds.join(',')}" aria-label="${esc(r.name)} ${pct.toFixed(1)}%，查看明细" cx="60" cy="60" r="48" fill="none" stroke="var(--c${i + 1})" stroke-width="15" stroke-dasharray="${Math.max(0, len - 2.4).toFixed(2)} ${(C - len + 2.4).toFixed(2)}" stroke-dashoffset="${(-acc).toFixed(2)}" transform="rotate(-90 60 60)"/>`;
     acc += len;
   });
-  s += '<text x="60" y="56" text-anchor="middle" font-size="9" fill="var(--muted)">净支出</text>';
-  s += `<text x="60" y="72" text-anchor="middle" font-size="13" font-weight="700" fill="var(--fg)" font-family="var(--font-mono)">¥${formatFen(cats.reduce((sum, row) => sum + row.amount, 0))}</text>`;
+  s += '<text x="60" y="55" text-anchor="middle" font-size="12" fill="var(--muted)">正净支出</text>';
+  s += '<text x="60" y="76" text-anchor="middle" font-size="18" font-weight="700" fill="var(--fg)" font-family="var(--font-mono)">100%</text>';
   svg.innerHTML = s;
   legend.innerHTML = rows
-    .map((r, i) => `<li><button data-report-dim="category" data-report-ids="${r.queryIds.join(',')}"><span class="dot" style="background:var(--c${i + 1})"></span>${esc(r.name)}<b class="num">${((r.amount / total) * 100).toFixed(1)}%</b></button></li>`)
-    .join('') + (cats.some(row => row.amount < 0) ? '<li class="tiny">环形占比仅展示正净支出分类，退款净额见下方明细</li>' : '');
+    .map((r, i) => `<li><button data-report-dim="category" data-report-ids="${r.queryIds.join(',')}"><span class="dot" style="background:var(--c${i + 1})"></span><span class="legend-name">${esc(r.name)}</span><b class="num">${compositionPercent(r.amount, composition.positive)!.toFixed(1)}%</b></button></li>`)
+    .join('');
 }
 
-/** 排行卡（原型 renderRank）：分类/账户/标签三维度，占比以周期总支出为基数 */
+function compositionEquation(composition: ReturnType<typeof positiveComposition>): string {
+  return `正净支出 ${formatFenCny(composition.positive)} − 退款净额 ${formatFenCny(composition.refund)} = 净支出 ${formatFenCny(composition.net)}`;
+}
+
+/** 正净额参与构成占比；负净额独立列出，避免超过 100% 或负占比。 */
 function renderRank(data: ReportData): void {
   const list = root!.querySelector<HTMLElement>('#rank')!;
   const note = root!.querySelector<HTMLElement>('#rank-note')!;
@@ -330,28 +341,37 @@ function renderRank(data: ReportData): void {
     : dimension === 'tag' ? data.tags
       : dimension === 'income' ? data.incomes
         : dimension === 'merchant' ? data.merchants : data.cats;
-  note.hidden = dimension !== 'tag';
+  const isIncome = dimension === 'income';
+  const composition = positiveComposition(rows);
+  const positiveRows = rows.filter(row => row.amount >= 0);
+  const refundRows = rows.filter(row => row.amount < 0);
+  note.hidden = isIncome || (dimension === 'category' && !composition.refund);
+  note.textContent = dimension === 'tag'
+    ? '按标签正净额合计计算占比；多标签账单重复计入，未打标签不计入。'
+    : dimension === 'category'
+      ? '各分类先扣退款，负净额单列、不参与占比。'
+      : composition.refund > 0 ? compositionEquation(composition) : '占比按本维度的正净支出合计计算。';
   if (rows.length === 0) {
-    list.innerHTML = dimension === 'tag' || dimension === 'merchant' ? '' : dimension === 'income' ? '<li class="rank-empty">该周期暂无收入记录</li>' : '<li class="rank-empty">该周期暂无支出记录</li>';
+    list.innerHTML = `<li class="rank-empty">${isIncome ? '该周期暂无收入记录' : dimension === 'tag' ? '该周期暂无已标记支出' : dimension === 'merchant' ? '该周期暂无关联商家的支出' : '该周期暂无支出记录'}</li>`;
     more.hidden = true;
     return;
   }
-  const base = (dimension === 'income' ? data.summary.income : data.summary.expense) || rows.reduce((sum, r) => sum + r.amount, 0);
-  const shown = rankExpanded ? rows : rows.slice(0, 3);
-  list.innerHTML = shown
-    .map((r, i) => {
-      const pct = base > 0 ? (r.amount / base) * 100 : 0;
-      return `<li><button class="rank-row rank-link" data-report-dim="${dimension}" data-report-ids="${r.queryIds.join(',')}">
-        <span class="e-ic sm">${iconHtml(r.icon, 17)}</span>
-        <div class="rank-main">
-          <div class="rank-top"><span>${dimension === 'tag' ? '#' + esc(r.name) : esc(r.name)}</span><span class="num">¥${formatFen(r.amount)}</span></div>
-          <div class="rank-bar"><i style="width:${Math.max(0, Math.min(100, pct)).toFixed(1)}%;background:var(--c${(i % 6) + 1})"></i></div>
-        </div>
-        <span class="rank-pct num">${pct.toFixed(1)}%</span></button>${(dimension === 'tag' || dimension === 'merchant') && r.queryIds.length === 1 ? `<button class="chip" data-entity-kind="${dimension}" data-entity-id="${r.queryIds[0]}" aria-label="${esc(r.name)}详情">详情 ›</button>` : ''}</li>`;
-    })
-    .join('');
-  more.hidden = rows.length <= 3;
-  more.textContent = rankExpanded ? '收起' : `展开全部 ${rows.length} 项`;
+  const base = isIncome ? data.summary.income : composition.positive;
+  const shown = rankExpanded ? positiveRows : positiveRows.slice(0, 3);
+  const rowHtml = (r: RankRow, i: number): string => {
+    const pct = compositionPercent(r.amount, base);
+    return `<li><button class="rank-row rank-link${r.amount < 0 ? ' is-refund' : ''}" data-report-dim="${dimension}" data-report-ids="${r.queryIds.join(',')}">
+      <span class="e-ic sm">${iconHtml(r.icon, 17)}</span>
+      <div class="rank-main">
+        <div class="rank-top"><span>${dimension === 'tag' ? '#' + esc(r.name) : esc(r.name)}</span><span class="num">${formatFenCny(r.amount)}</span></div>
+        ${pct == null ? '' : `<div class="rank-bar"><i style="width:${Math.min(100, pct).toFixed(1)}%;background:var(--c${(i % 6) + 1})"></i></div>`}
+      </div>
+      <span class="rank-pct num"${pct == null ? ` aria-label="${r.amount < 0 ? isIncome ? '负净收入，不计占比' : '退款净额，不计占比' : '零金额，不计占比'}"` : ''}>${pct == null ? '—' : `${pct.toFixed(1)}%`}</span></button>${(dimension === 'tag' || dimension === 'merchant') && r.queryIds.length === 1 ? `<button class="chip" data-entity-kind="${dimension}" data-entity-id="${r.queryIds[0]}" aria-label="${esc(r.name)}详情">详情 ›</button>` : ''}</li>`;
+  };
+  list.innerHTML = shown.map(rowHtml).join('')
+    + (refundRows.length ? `<li class="rank-section">${isIncome ? '负净收入' : '退款净额'}</li>${refundRows.map(rowHtml).join('')}` : '');
+  more.hidden = positiveRows.length <= 3;
+  more.textContent = rankExpanded ? '收起' : `展开全部 ${positiveRows.length} 项`;
 }
 
 function applyDimensionView(): void {
@@ -487,6 +507,7 @@ function render(el: HTMLElement): void {
         <svg viewBox="0 0 120 120" id="donut-svg" role="img" aria-label="支出分类占比环形图"></svg>
         <ul class="legend" id="donut-legend"></ul>
       </div>
+      <p class="report-note" id="donut-note"></p>
     </section>
 
     <section class="card" id="report-rank-card" hidden>
@@ -495,7 +516,7 @@ function render(el: HTMLElement): void {
         <button class="rank-more" id="rank-more" hidden>展开全部</button>
       </div>
       <ul class="rank" id="rank"></ul>
-      <p class="tiny" id="rank-note" hidden>一笔多标签分别计入各标签，占比可能合计超过 100%；未打标签的账单不在此列</p>
+      <p class="report-note" id="rank-note" hidden></p>
     </section>`;
 
   // 周期分段切换

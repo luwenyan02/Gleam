@@ -88,13 +88,14 @@ export async function linkEntryToLifeNote(entryId: number, noteId: number): Prom
  * 按时间范围倒序列出生活记录（不含回收站）。
  * @param kind 可选按类型过滤
  */
-export async function listLifeNotes(opts: { from?: number; to?: number; kind?: LifeNote['kind'] } = {}): Promise<LifeNote[]> {
-  const { from = 0, to = Infinity, kind } = opts;
-  let rows = await db.lifeNotes
+export async function listLifeNotes(opts: { from?: number; to?: number; kind?: LifeNote['kind']; limit?: number } = {}): Promise<LifeNote[]> {
+  const { from = 0, to = Infinity, kind, limit } = opts;
+  let collection = db.lifeNotes
     .where('[deletedAt+occurredAt]')
-    .between([0, from], [0, to], true, true)
-    .toArray();
-  if (kind) rows = rows.filter((n) => n.kind === kind);
+    .between([0, from], [0, to], true, true);
+  if (kind) collection = collection.filter(note => note.kind === kind);
+  if (limit != null) collection = collection.reverse().limit(limit);
+  const rows = await collection.toArray();
   return rows.sort((a, b) => b.occurredAt - a.occurredAt);
 }
 

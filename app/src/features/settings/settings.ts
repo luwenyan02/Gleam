@@ -1,6 +1,6 @@
 /**
  * 拾光 · 设置与安全子页（features/settings，PRD 4.19，覆盖 sp-settings）
- * 分区顺序：记账偏好 → 数据与备份 → 智能能力与通知 → 外观与安全 → 关于。
+ * 分区顺序：记账偏好 → 数据与备份 → 智能能力与通知 → 外观与安全。
  * 入口：我的页右上角齿轮（data-sub="sp-settings"，M1 已接）。
  */
 import './settings.css';
@@ -15,7 +15,6 @@ import { ensurePermission } from '../../core/notify';
 import { registerSubpage, openSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { showToast } from '../shell/toast';
-import { appVersionText, getAppVersion, interfaceVersionText } from '../../core/appVersion';
 import {
   setPin, verifyPin, clearPin, biometricAvailable, enrollBiometric,
 } from './lock';
@@ -28,9 +27,6 @@ import { formatAccountingRange } from '../../core/period';
 import { bailianVoiceSettingsHtml, handleVoiceSettingsChange, handleVoiceSettingsInput, handleVoiceSettingsClick, isVoiceKeyWritePending } from './bailianVoiceSettings';
 
 import { getVoiceSettingsEpoch, invalidateVoiceConnectionTest, mountVoiceConnectionTest, syncVoiceConnectionTest } from './bailianVoiceTestSettings';
-import { openSettingsManual } from './settingsManual';
-import { openAbout } from './about';
-import { supportsAppUpdate } from './appUpdate';
 import { aiKeyInputHtml, getAiKeySettingsEpoch, handleAiKeyChange, handleAiKeyInput, preserveAiKeyDraft } from './aiKeySettings';
 
 let body: HTMLElement | undefined;
@@ -63,13 +59,12 @@ async function refresh(): Promise<void> {
   const voiceEpoch = getVoiceSettingsEpoch();
   const aiKeyEpoch = getAiKeySettingsEpoch();
   const isNative = Capacitor.isNativePlatform();
-  const [pin, webauthn, bioOk, countAsIncome, autoRenew, retention, themeMode, monthStartDay, appVersion] = await Promise.all([
+  const [pin, webauthn, bioOk, countAsIncome, autoRenew, retention, themeMode, monthStartDay] = await Promise.all([
     getSetting('security.pin'), getSetting('security.webauthn'), biometricAvailable(),
     getSetting('reimburse.countAsIncome'),
     getSetting('budget.autoRenew'), getSetting('trash.retentionDays'),
     getSetting('theme.mode'),
     getSetting('accounting.monthStartDay'),
-    getAppVersion(),
   ]);
   if (!el.isConnected) return;
   const voiceSettings = await bailianVoiceSettingsHtml();
@@ -82,7 +77,7 @@ async function refresh(): Promise<void> {
     getSetting('notification.recurring'), getSetting('notification.creditCard'),
   ]);
   if (!el.isConnected) return;
-  // [AI] AI 记账配置（OpenAI 兼容接口 + 静默入账阈值）
+  // [AI] AI 记账配置（OpenAI 兼容接口 + 自动入账阈值）
   const [aiBase, aiModel, aiKey, aiThreshold] = await Promise.all([
     getSetting('ai.baseUrl'), getSetting('ai.model'), secretStore.get('ai.apiKey'), getSetting('ai.autoConfirmThreshold'),
   ]);
@@ -98,7 +93,6 @@ async function refresh(): Promise<void> {
     : '自定义';
   const modelLabel = aiModel || '选择模型';
   const selectedModel = modelPreset(aiBase, aiModel);
-  const interfaceVersion = interfaceVersionText(appVersion);
 
   if (token !== settingsRefreshToken || !el.isConnected) return;
   // A slow settings read must never restore stale readiness, consent, or test success.
@@ -112,6 +106,7 @@ async function refresh(): Promise<void> {
   const voiceRegionDraft = voiceRegionInput?.dataset.voiceDirty ? voiceRegionInput.dataset.region : undefined;
   const voiceSourceInput = el.querySelector<HTMLInputElement>('#voice-key-shared');
   const voiceSourceDraft = voiceSourceInput?.dataset.voiceDirty ? voiceSourceInput.checked : undefined;
+  const expandedDetails = new Set([...el.querySelectorAll<HTMLDetailsElement>('details[data-settings-detail][open]')].map(detail => detail.dataset.settingsDetail));
   el.innerHTML = `
     <section class="card" aria-label="安全">
       <h3 class="card-title">安全</h3>
@@ -162,11 +157,12 @@ async function refresh(): Promise<void> {
         <label>模型名（可修改）<input id="ai-model" type="text" value="${esc(aiModel)}" placeholder="如 qwen3.8-flash / kimi-k3" autocomplete="off"></label>
         <div class="field"><span>识别类型</span><span class="sub" id="ai-model-capability">${selectedModel ? selectedModel.vision ? '图片、文字' : '文字' : '以接口为准'}</span></div>
         <label>API Key${aiKeyInputHtml(aiKey)}</label>
-        <label>静默入账置信度阈值
+        <label>自动入账阈值
           <div class="ai-thres"><input id="ai-thres" type="range" min="50" max="100" step="5" value="${aiThreshold}"><span class="num" id="ai-thres-val">${aiThreshold}%</span></div>
         </label>
+        <p class="settings-status">文字、图片识别达到阈值且分类、账户完整时，自动入账。</p>
       </div>
-      <div class="field"><span>连通性</span>
+      <div class="field"><span>连接测试</span>
         <div class="ai-actions">
           <button class="chip" data-act="ai-models">获取模型列表</button>
           <button class="chip" data-act="ai-test">测试连接</button>
@@ -174,22 +170,16 @@ async function refresh(): Promise<void> {
       </div>
     </section>
 
-    ${voiceSettings}
-    <section class="card" aria-label="关于">
-      <h3 class="card-title">关于拾光</h3>
-      <div class="field"><span>版本</span><span class="sub" data-app-version>${esc(appVersionText(appVersion))}</span></div>
-      ${interfaceVersion ? `<div class="field"><span>界面版本</span><span class="sub" data-interface-version>${esc(interfaceVersion)}</span></div>` : ''}
-      ${supportsAppUpdate() ? '<div class="field"><span>应用更新</span><button class="chip" data-act="app-update">检查新版</button></div>' : ''}
-      <div class="field"><span>使用手册</span><button class="chip" data-act="settings-manual">查看</button></div>
-    </section>`;
+    ${voiceSettings}`;
 
-  // 固定信息架构：记账偏好 → 数据与备份 → 智能能力与通知 → 外观与安全 → 关于。
-  const order = ['记账偏好', '备份', '数据', 'AI 记账', '百炼短语音', '通知', '外观', '安全', '关于'];
+  // 固定信息架构：记账偏好 → 数据与备份 → 智能能力与通知 → 外观与安全。
+  const order = ['记账偏好', '备份', '数据', 'AI 记账', '百炼短语音', '通知', '外观', '安全'];
   for (const label of order) {
     const section = el.querySelector<HTMLElement>(`section[aria-label="${label}"]`);
     if (section) el.appendChild(section);
   }
   restoreAiKeyDraft();
+  for (const detail of el.querySelectorAll<HTMLDetailsElement>('details[data-settings-detail]')) detail.open = expandedDetails.has(detail.dataset.settingsDetail);
   const voiceInput = el.querySelector<HTMLInputElement>('#voice-bailian-key');
   if (voiceInput && !voiceInput.disabled) voiceInput.value = voiceKeyDraft;
   const regionInput = el.querySelector<HTMLElement>('#voice-bailian-region');
@@ -238,7 +228,7 @@ function openPinSheet(mode: 'set' | 'change' | 'off'): void {
           ${mode !== 'off' ? `
           <input type="password" inputmode="numeric" id="pin-1" placeholder="新 PIN 码（4-12 位数字）" autocomplete="off" maxlength="12">
           <input type="password" inputmode="numeric" id="pin-2" placeholder="再次输入新 PIN 码" autocomplete="off" maxlength="12">` : ''}
-          <p class="tiny" style="margin-bottom:8px">PIN 以加盐哈希保存在本机；忘记 PIN 将无法解锁，请牢记</p>
+          <p class="settings-status" style="margin-bottom:8px">忘记 PIN 将无法解锁，请牢记。</p>
           <button class="btn primary" data-act="ok">${mode === 'off' ? '确认关闭' : '保存'}</button>
         </div>`;
       el.addEventListener('click', (e) => {
@@ -290,10 +280,7 @@ export function initSettings(): void {
         if (themeMode) {
           // 主题切换：setSetting 后 core/theme.ts 监听 settings-changed 自动应用
           void setSetting('theme.mode', themeMode).then(() => refresh());
-        } else if (act === 'app-update') {
-          void getAppVersion().then(info => { if (el.isConnected) openAbout(info); });
-        } else if (act === 'settings-manual') {
-          openSettingsManual();
+
         } else if (act === 'change-pin') {
           openPinSheet('change');
         } else if (act === 'ai-test') {

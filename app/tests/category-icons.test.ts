@@ -1,9 +1,34 @@
 import { describe, expect, it } from 'vitest';
-import { categoryIcon } from '../src/core/categoryIcons';
+import { categoryDisplayMap, categoryIcon } from '../src/core/categoryIcons';
 import { renderCategoryButton } from '../src/features/entry/entryCategoryPicker';
 import type { Category } from '../src/core/types';
 
 describe('导入分类的图标', () => {
+  it.each([
+    ['expense', '饮料水果', 'ic-tag'],
+    ['income', '工资薪水', 'ic-coin'],
+  ] as const)('保留用户主动为 %s 选择的通用图标', (kind, name, icon) => {
+    expect(categoryIcon({ kind, name, icon, iconOverride: true })).toBe(icon);
+    const category = { id: 1, kind, name, icon, iconOverride: true } as Category;
+    expect(categoryDisplayMap([category]).get(1)?.icon).toBe(icon);
+    expect(renderCategoryButton(category, false)).toContain(`#${icon}`);
+  });
+  it('完整分类展示映射按父分类解析旧图标，保留元数据与专用图标，不回写数据', () => {
+    const input = [
+      { id: 1, kind: 'expense', name: '投资', icon: 'ic-tag' },
+      { id: 2, kind: 'expense', name: '演示新城', icon: 'ic-tag', parentId: 1 },
+      { id: 3, kind: 'expense', name: '演示项目', icon: 'ic-cup', parentId: 1 },
+      { id: 4, kind: 'income', name: '工资薪水', icon: 'ic-coin' },
+    ] as Category[];
+    const before = structuredClone(input);
+    const shown = categoryDisplayMap(input);
+    expect(shown.get(1)?.icon).toBe('ic-chart');
+    expect(shown.get(2)).toMatchObject({ icon: 'ic-building', parentId: 1, name: '演示新城' });
+    expect(shown.get(3)?.icon).toBe('ic-cup');
+    expect(shown.get(4)?.icon).toBe('ic-brief');
+    expect(input).toEqual(before);
+    expect(shown.get(2)).not.toBe(input[1]);
+  });
   it.each([
     ['expense', '饮料水果', 'ic-fruit'], ['expense', '停车费', 'ic-park'],
     ['expense', '羽毛球', 'ic-racket'], ['expense', '飞机', 'ic-plane'],

@@ -135,14 +135,16 @@ export function mountCloudBackup(host: HTMLElement, hooks: CloudBackupHooks): vo
         ${chip('none', '不启用')}${chip('webdav', 'WebDAV')}${chip('s3', 'S3 兼容')}${emailEnabled ? chip('email', 'QQ 邮箱') : ''}
       </div>
       ${kind === 'email' ? '<div id="email-backup"></div>' : kind === 'none' ? `
-        <p class="tiny" style="padding:4px 2px 10px">支持 WebDAV（坚果云 / 群晖 / Nextcloud）与 S3 兼容对象存储（R2 / MinIO / OSS）；上传的是完整备份包（.skbak），恢复需手动确认；${secretStore.kind === 'android-keystore' ? '凭证由 Android 系统 Keystore 加密保存' : '浏览器版凭证只在当前标签页会话中保留'}</p>
+        <p class="cb-hint">选择通道后可上传完整备份。</p>
+        <details class="backup-details"><summary>支持的服务与凭证保存</summary><p>WebDAV：坚果云、群晖、Nextcloud；S3 兼容：R2、MinIO、OSS。上传完整 .skbak 备份，恢复需确认。</p><p>${secretStore.kind === 'android-keystore' ? '凭证由 Android 系统加密保存。' : '浏览器版凭证只在当前标签页会话中保留。'}</p></details>
       ` : `
         <div class="cb-form">${form}</div>
         <div class="btn-row cb-actions">
           <button class="btn ghost" data-cb-act="test">测试连接</button>
           <button class="btn primary" data-cb-act="upload">上传到云端</button>
         </div>
-        <p class="tiny" style="padding:2px 2px 6px">整包上传当前全部数据（.skbak，可选口令加密）；${secretStore.kind === 'android-keystore' ? '凭证由 Android 系统 Keystore 加密保存' : '浏览器版凭证仅保留在当前标签页会话'}，修改后点「测试连接」即保存</p>
+        <p class="cb-hint">修改配置后点「测试连接」保存。</p>
+        <details class="backup-details"><summary>上传与凭证说明</summary><p>上传完整 .skbak 备份，可选口令加密。${secretStore.kind === 'android-keystore' ? '凭证由 Android 系统加密保存。' : '浏览器版凭证仅保留在当前标签页会话。'}</p></details>
         <div class="cb-list" id="cb-list"><p class="sub cb-list-state">正在加载云端列表…</p></div>
       `}`;
 

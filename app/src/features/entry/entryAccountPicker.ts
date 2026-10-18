@@ -19,7 +19,7 @@ export function openEntryAccountPicker(options: {
     mask.setAttribute('aria-label', options.title);
     const panel = document.createElement('div');
     panel.className = 'picker-panel entry-account-picker';
-    // Freeze the initial panel height; filtering and the software keyboard must not resize it.
+    // Freeze the desired height for filtering; CSS caps it to visible space when the keyboard opens.
     panel.style.height = `${Math.round(options.container.getBoundingClientRect().height * .624)}px`;
     panel.innerHTML = `<div class="entry-account-header">
       <div class="entry-account-heading"><h4>${esc(options.title)}</h4><button type="button" class="entry-account-search-button" data-search aria-label="搜索账户">${iconHtml('ic-search')}</button><span class="entry-account-divider" aria-hidden="true"></span><button type="button" data-add>添加账户</button></div>

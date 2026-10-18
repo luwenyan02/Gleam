@@ -182,8 +182,9 @@ def concise_copy_and_focus(page,width):
     page.locator('.tab[data-page="page-report"]').click()
     page.locator('#report-dim [data-dimension="tag"]').click()
     page.locator('#rank-note').wait_for()
-    assert page.locator('#rank').inner_text()==''
-    assert page.locator('#rank-note').inner_text()=='一笔多标签分别计入各标签，占比可能合计超过 100%；未打标签的账单不在此列'
+    page.locator('#rank .rank-empty').wait_for()
+    assert page.locator('#rank').inner_text()=='该周期暂无已标记支出'
+    assert page.locator('#rank-note').inner_text()=='按标签正净额合计计算占比；多标签账单重复计入，未打标签不计入。'
     page.locator('.tab[data-page="page-acct"]').click()
     page.get_by_role('button',name='添加账户',exact=True).click()
     field=page.locator('.acct-form input.note').first

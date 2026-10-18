@@ -42,7 +42,7 @@ def run(page, width, case):
     assert_usable(page, '#page-mine [data-about]')
     page.screenshot(path=str(OUT / f'mine-{case}-{width}.png'), animations='disabled')
     about.click()
-    toast = page.locator('#sheet .about-version') if native else page.locator('#toast')
+    toast = page.locator('#sheet .about-version')
     expect(toast).to_contain_text('应用版本未读取' if unavailable else f'拾光 v{version}')
     expect(toast).to_contain_text(platform)
     mismatch = case in ('native-mismatch', 'native-unavailable')
@@ -51,24 +51,15 @@ def run(page, width, case):
     else:
         expect(toast).not_to_contain_text('界面')
     expect(toast).not_to_contain_text('synthetic package info unavailable')
-    if native:
-        page.get_by_role('button', name='关闭关于拾光', exact=True).click()
+    page.get_by_role('button', name='关闭关于拾光', exact=True).click()
 
     page.get_by_role('button', name='应用设置', exact=True).click()
     settings = page.locator('#sp-settings')
     expect(settings).to_have_count(1)
-    expect(settings.locator('[data-app-version]')).to_have_text(label)
-    if mismatch:
-        expect(settings.locator('[data-interface-version]')).to_have_text(f'v{WEB_VERSION}')
-    else:
-        expect(settings.locator('[data-interface-version]')).to_have_count(0)
-    section = settings.locator('section[aria-label="关于"]')
-    section.scroll_into_view_if_needed()
-    assert_usable(page, '#sp-settings section[aria-label="关于"]')
-    page.screenshot(path=str(OUT / f'settings-{case}-{width}.png'), animations='disabled')
+    expect(settings.locator('[data-app-version],[data-interface-version],section[aria-label="关于"]')).to_have_count(0)
     if native:
         reads = page.evaluate('window.__appInfoCalls')
-        assert reads >= 2 if unavailable else reads == 1, reads
+        assert reads == 1, reads  # Settings no longer reads or duplicates version info.
         assert page.evaluate('window.__micCalls') == 0
     assert not external, external
     assert not errors, errors

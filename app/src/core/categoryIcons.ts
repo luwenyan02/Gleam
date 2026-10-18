@@ -48,10 +48,11 @@ const income: Record<string, IconId> = {
 
 /** 只影响显示或新分类默认值，不重写已有分类记录或覆盖专用图标。 */
 export function categoryIcon(
-  category: Pick<Category, 'name' | 'kind'> & { icon?: string },
+  category: Pick<Category, 'name' | 'kind'> & Partial<Pick<Category, 'icon' | 'iconOverride'>>,
   parentName?: string,
 ): string {
   const fallback = category.kind === 'expense' ? 'ic-tag' : 'ic-coin';
+  if (category.iconOverride === true && category.icon) return category.icon;
   if (category.icon && category.icon !== fallback) return category.icon;
   const icons = category.kind === 'expense' ? expense : income;
   const name = category.name.trim();
@@ -66,4 +67,13 @@ export function categoryIcon(
     if (parent && Object.hasOwn(expense, parent)) return expense[parent];
   }
   return category.icon || fallback;
+}
+
+/** 保留分类元数据的展示副本；父分类名称统一从同一快照查找，绝不回写存储。 */
+export function categoryDisplayMap(categories: readonly Category[]): Map<number, Category> {
+  const originals = new Map(categories.map(category => [category.id, category]));
+  return new Map(categories.map(category => [category.id, {
+    ...category,
+    icon: categoryIcon(category, originals.get(category.parentId ?? -1)?.name),
+  }]));
 }

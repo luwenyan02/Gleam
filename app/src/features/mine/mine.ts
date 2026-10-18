@@ -7,30 +7,26 @@
  * 视觉结构与原型 index.html #page-mine（L740-762）一致。
  */
 import './mine.css';
-import { aboutVersionText, appVersionText, getAppVersion, type AppVersionInfo } from '../../core/appVersion';
+import { appVersionText, getAppVersion, type AppVersionInfo } from '../../core/appVersion';
 import { esc } from '../../core/esc';
 import { iconHtml } from '../../assets/icons';
 import { on } from '../../core/store';
 import { formatFenCny } from '../../core/money';
 import { listEntries, dayKey } from '../../core/repo/entryRepo';
-import { getBudget } from '../../core/repo/budgetRepo';
+import { ensureMonthBudget } from '../../core/repo/budgetRepo';
+import { getAccountingMonth } from '../../core/repo/periodRepo';
 import { budgetUsage } from '../../core/repo/statsRepo';
 import { listLoanAccounts } from '../../core/repo/loanRepo';
 import { registerPage, openSubpage } from '../shell/router';
 import { showToast } from '../shell/toast';
 import { openAbout } from '../settings/about';
-import { supportsAppUpdate } from '../settings/appUpdate';
+import { openSettingsManual } from '../settings/settingsManual';
 
 /* ── 模块状态 ── */
 let body: HTMLElement | undefined;
 /** 并发刷新令牌 */
 let refreshToken = 0;
 let displayedVersion: AppVersionInfo | undefined;
-
-function curMonth(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
 
 /** 入口行 */
 function rowHtml(sub: string, icon: string, title: string, note: string): string {
@@ -54,9 +50,9 @@ async function refresh(): Promise<void> {
   const el = body;
   if (!el?.isConnected) return;
   const token = ++refreshToken;
-  const month = curMonth();
+  const month = await getAccountingMonth();
   const [entries, budget, usage, contacts, appVersion] = await Promise.all([
-    listEntries(), getBudget(month), budgetUsage(month), listLoanAccounts(), getAppVersion(),
+    listEntries(), ensureMonthBudget(month), budgetUsage(month), listLoanAccounts(), getAppVersion(),
   ]);
   if (token !== refreshToken || !el.isConnected) return;
   displayedVersion = appVersion;
@@ -66,7 +62,7 @@ async function refresh(): Promise<void> {
 
   /* 动态入口备注 */
   const budgetNote = budget && budget.totalLimit > 0
-    ? `本月剩余 ${formatFenCny(budget.totalLimit - usage.totalUsed)}` : '未设置';
+    ? `本期剩余 ${formatFenCny(budget.totalLimit - usage.totalUsed)}` : '未设置';
   const owedToMe = contacts.reduce((s, c) => s + Math.max(0, c.balance), 0);
   const iOwe = contacts.reduce((s, c) => s + Math.max(0, -c.balance), 0);
   const loanNote = contacts.length
@@ -108,6 +104,11 @@ async function refresh(): Promise<void> {
     `, '外观与安全')}
     <section class="mine-group" aria-label="关于和帮助">
       <h3>关于和帮助</h3><div class="card list">
+      <button class="row" data-help-manual>
+        <span class="e-ic">${iconHtml('ic-book', 18)}</span>使用手册
+        <span class="row-note">操作说明与图解</span>
+        <span class="chev">${iconHtml('ic-right', 15)}</span>
+      </button>
       <button class="row" data-about>
         <span class="e-ic">${iconHtml('ic-file', 18)}</span>关于拾光
         <span class="row-note" data-app-version>${esc(appVersionText(appVersion))} · ${appVersion.platform}</span>
@@ -133,10 +134,8 @@ export function initMine(): void {
           try { openSubpage(sub.dataset.sub!); } catch { showToast('该功能即将上线'); }
           return;
         }
-        if (target.closest('[data-about]') && displayedVersion) {
-          if (supportsAppUpdate()) openAbout(displayedVersion);
-          else showToast(`${aboutVersionText(displayedVersion)} · 记录，是为了被时间照亮`);
-        }
+        if (target.closest('[data-help-manual]')) openSettingsManual();
+        if (target.closest('[data-about]') && displayedVersion) openAbout(displayedVersion);
       });
       void refresh();
     },
@@ -146,4 +145,5 @@ export function initMine(): void {
   // 流水/预算变化时刷新头部统计与入口备注（页面常驻，body 始终连接）
   on('entries-changed', () => void refresh());
   on('budgets-changed', () => void refresh());
+  on('settings-changed', () => void refresh());
 }
