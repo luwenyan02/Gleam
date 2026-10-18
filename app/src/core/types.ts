@@ -347,6 +347,14 @@ export interface LifeDraft {
   existingPhotoRefs: number[];
   photos: LifeDraftPhoto[];
   messages: LifeChatMessage[];
+  /** 未完成回复的本地检查点；不是完整消息，不自动重发或加入 AI 上下文。 */
+  chatReply?: {
+    messageIndex: number;
+    regenerate: boolean;
+    status: 'waiting' | 'streaming' | 'failed' | 'stopped';
+    content: string;
+    ledgerAnalysis?: boolean;
+  };
   /** AI 生成但尚未确认为正式记录的独立摘要方案。 */
   summaryProposal?: LifeSummaryProposal;
   aiText?: string;

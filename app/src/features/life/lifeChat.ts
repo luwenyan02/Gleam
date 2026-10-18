@@ -1,13 +1,13 @@
 import { esc } from '../../core/esc';
 import type { LifeDraft, LifeNote } from '../../core/types';
 import { getAttachment, getLifeNote } from '../../core/repo/lifeRepo';
-import { claimLegacyLifeChatDraft, getLifeDraft, listLifeChatSessions, migrateLifeDraft, putLifeDraft, saveLifeDraft } from '../../core/repo/lifeDraftRepo';
-import { continueLifeChat, generateLifeSummary, getLifeAiDestination } from '../../core/repo/lifeAiRepo';
+import { claimLegacyLifeChatDraft, getLifeDraft, listLifeChatSessions, migrateLifeDraft, saveLifeDraft } from '../../core/repo/lifeDraftRepo';
+import { generateLifeSummary, getLifeAiDestination } from '../../core/repo/lifeAiRepo';
 import { on } from '../../core/store';
 import { getSetting } from '../../core/repo/settingsRepo';
 import { prepareReceipt } from '../entry/receiptEditor';
 import { confirmLifeAi } from './lifeAiConsent';
-import { registerSubpage, openSubpage, closeSubpage } from '../shell/router';
+import { registerSubpage, openSubpage, closeSubpage, SUBPAGE_CLOSE_EVENT } from '../shell/router';
 import { closeSheet, openSheet } from '../shell/sheet';
 import { showToast } from '../shell/toast';
 import { openLifeSummarySheet } from './lifeSummarySheet';
@@ -21,6 +21,7 @@ import { openAiSettings } from '../settings/settings';
 import { AiConfigError } from '../../core/repo/aiRepo';
 import { isLifeLedgerQuestion, type LifeLedgerReview, type LifeLedgerScope } from '../../core/repo/lifeLedgerContextRepo';
 import { confirmLifeLedgerAi } from './lifeLedgerConsent';
+import { getActiveChatReply, persistChatDraft, stageChatDraft, startChatReply, unsavedChatDrafts, type ChatReply } from './lifeChatSession';
 import { bindLifeLedgerResults, lifeLedgerResultHtml } from './lifeLedgerResult';
 
 const needsAiConfig = (error: unknown): boolean => error instanceof AiConfigError
@@ -29,22 +30,12 @@ const needsAiConfig = (error: unknown): boolean => error instanceof AiConfigErro
 type Destination = { baseUrl: string; model: string };
 interface Launch { draft: LifeDraft; existing?: LifeNote; sessionVersion: number; }
 let pendingLaunch: Launch | undefined;
-const unsavedChatDrafts = new Map<string, LifeDraft>();
-const draftWriteQueues = new Map<string, Promise<void>>();
 const chatSessionVersions = new Map<string, number>();
 
 function nextSessionVersion(key: string): number {
   const version = (chatSessionVersions.get(key) ?? 0) + 1;
   chatSessionVersions.set(key, version);
   return version;
-}
-
-function enqueueDraftWrite(key: string, task: () => Promise<void>): Promise<void> {
-  const previous = draftWriteQueues.get(key) ?? Promise.resolve();
-  const current = previous.catch(() => {}).then(task);
-  draftWriteQueues.set(key, current);
-  void current.finally(() => { if (draftWriteQueues.get(key) === current) draftWriteQueues.delete(key); }).catch(() => {});
-  return current;
 }
 
 function dataUrl(blob: Blob): Promise<string> {
@@ -87,7 +78,7 @@ export async function openLifeChat(options: { noteId?: number } = {}): Promise<v
     const latest = existing ? undefined : (await listLifeChatSessions()).find(session => !session.saved);
     const key = existing ? `chat:note:${existing.id}` : latest?.key ?? 'chat:new';
     const stored = unsavedChatDrafts.get(key) ?? await getLifeDraft(key) ?? await claimLegacyLifeChatDraft(key, existing ? [`note:${existing.id}`] : ['new']);
-    const draft = stored ? migrateLifeDraft(stored) : newDraft(key, existing);
+    const draft = getActiveChatReply(key)?.draft ?? (stored ? migrateLifeDraft(stored) : newDraft(key, existing));
     if (existing && !draft.messages.length) draft.messages = structuredClone(existing.conversation ?? []);
     pendingLaunch = { draft, existing, sessionVersion: nextSessionVersion(key) };
     openSubpage('sp-life-chat');
@@ -112,21 +103,13 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   const ledgerResults = new Map<number, LifeLedgerReview>();
   const ledgerScopes = new Map<number, LifeLedgerScope>();
   const isCurrentSession = () => chatSessionVersions.get(draft.key) === sessionVersion;
-  const stageDraft = (): LifeDraft => {
-    draft.chatUpdatedAt = Date.now();
-    const copy = structuredClone(draft);
-    unsavedChatDrafts.set(draft.key, copy);
-    return copy;
-  };
+  let replyTask: ChatReply | undefined;
+  let offReply: (() => void) | undefined;
+  const stageDraft = () => stageChatDraft(draft);
   const persist = async (): Promise<void> => {
     if (!isCurrentSession() || saved) return;
-    const copy = stageDraft();
-    await enqueueDraftWrite(draft.key, async () => {
-      if (!isCurrentSession() || saved) return;
-      await putLifeDraft(copy);
-      if (unsavedChatDrafts.get(draft.key) === copy) unsavedChatDrafts.delete(draft.key);
-      if (!disposed) host.querySelector<HTMLElement>('#life-chat-draft-status')!.textContent = '本地草稿已保存';
-    });
+    await persistChatDraft(draft);
+    if (!disposed) host.querySelector<HTMLElement>('#life-chat-draft-status')!.textContent = '本地草稿已保存';
   };
   const persistQuiet = () => {
     if (!isCurrentSession() || saved) return;
@@ -139,6 +122,8 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   };
   const observer = new MutationObserver(() => { if (!host.isConnected && !disposed) dispose(); });
   observer.observe(document.body, { childList: true, subtree: true });
+  const subpage = host.closest('.subpage');
+  subpage?.addEventListener(SUBPAGE_CLOSE_EVENT, dispose, { once: true });
   const off = on('settings-changed', () => { void getSetting('life.aiEnabled').then(enabled => { if (!enabled) { controller?.abort(); stopVoice?.(); } }); });
 
   host.classList.add('life-chat-page');
@@ -173,11 +158,14 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   };
 
   function dispose(): void {
+    if (disposed) return;
     disposed = true;
     clearTimeout(persistTimer);
     controller?.abort();
+    offReply?.();
     stopVoice?.();
     observer.disconnect();
+    subpage?.removeEventListener(SUBPAGE_CLOSE_EVENT, dispose);
     composerResize.disconnect();
     off();
     for (const url of messagePhotoUrls.values()) URL.revokeObjectURL(url);
@@ -185,6 +173,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     if (!saved) void persist().catch(() => {});
   }
   function render(forceBottom = true): void {
+    if (disposed) return;
     syncComposer();
     const scrollTop = messagesEl.scrollTop;
     const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100;
@@ -197,7 +186,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     }).join('');
     const proposalStale = !!draft.summaryProposal && (draft.summaryProposal.sourceMessageCount < draft.messages.length || draft.photos.length > 0);
     const card = !summaryCardHidden && (readyToSummarize || draft.summaryProposal) ? `<section class="life-summary-card"><strong>${proposalStale ? '已有建议稿，对话已有新内容' : draft.summaryProposal ? '已有一版建议稿' : '已经有一个值得留下的片段了'}</strong><p>${proposalStale ? '建议稿不会自动覆盖你的修改；需要时可手动重新整理。' : '想把这段话整理成一条记录吗？'}</p><div><button class="btn primary" data-life-chat-summary>${draft.summaryProposal ? '查看建议稿' : '生成记录'}</button><button class="btn ghost" data-life-chat-continue>再聊聊</button></div></section>` : '';
-    messagesEl.innerHTML = `${welcome}${messages}${streamedReply ? `<article class="life-chat-bubble assistant chat-streaming"><div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div><div class="chat-message-content"><div class="chat-message-text">${renderChatText(streamedReply)}</div></div></article>` : ''}${card}`;
+    messagesEl.innerHTML = `${welcome}${messages}${streamedReply ? `<article class="life-chat-bubble assistant ${sending ? 'chat-streaming' : 'chat-incomplete'}" aria-label="${sending ? '正在回复' : '未完成的回复'}"><div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div><div class="chat-message-content"><div class="chat-message-text">${renderChatText(streamedReply)}</div></div></article>` : ''}${card}`;
     // 尾行保留操作区宽度，按钮在气泡内右对齐，不再单独占据气泡外的一行。
     messagesEl.querySelectorAll<HTMLElement>('.chat-message-actions').forEach(actions => {
       const content = actions.parentElement!.querySelector<HTMLElement>('.chat-message-content')!;
@@ -245,6 +234,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     if (!disposed) render();
   }
   function renderPhotos(): void {
+    if (disposed) return;
     syncComposer();
     host.querySelector('#life-chat-photos')!.innerHTML = draft.photos.map((photo, index) => `<div><img src="${photo.dataUrl}" alt="待发送照片 ${index + 1}"><button class="chip" data-life-chat-remove-photo="${index}" aria-label="移除待发送照片 ${index + 1}">移除</button></div>`).join('');
     host.querySelectorAll<HTMLButtonElement>('[data-life-chat-remove-photo]').forEach(button => button.onclick = () => {
@@ -254,6 +244,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   }
   function setBusy(value: boolean): void {
     sending = value;
+    if (disposed) return;
     host.querySelector<HTMLButtonElement>('[data-chat-config-error]')!.disabled = value;
     host.classList.toggle('is-chat-busy', value);
     input.disabled = value;
@@ -338,27 +329,25 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       const expectedDestination = ledgerRequest ? (ledger ? ledger.expectedDestination : false) : await authorise(sourcePreview(photos), photos, signal);
       if (!expectedDestination || disposed || signal.aborted) { failedMessageIndex = messageIndex; status('未发送，消息和照片仍保存在本机。'); render(); return; }
       status('拾光正在想…');
-      const turn = await continueLifeChat({ body: '', messages: structuredClone(draft.messages.slice(0, messageIndex + 1)), photos: ledger ? [] : photos, ledgerGrant: ledger ? ledger.ledgerGrant : undefined, signal, noteId: draft.noteId, sourceUpdatedAt: draft.sourceUpdatedAt, expectedDestination,
-        onDelta: text => { if (!disposed && !signal.aborted) { streamedReply = text; status('正在回复…'); render(false); } },
+      const task = startChatReply(draft, messageIndex, regenerate, {
+        photos: ledger ? [] : photos, ledgerGrant: ledger ? ledger.ledgerGrant : undefined,
+        expectedDestination, ledgerAnalysis: !!ledger, ledgerReview: ledger ? ledger.review : undefined,
       });
-      if (disposed || signal.aborted) return;
-      streamedReply = '';
-      if (regenerate) {
-        draft.messages.splice(messageIndex + 1);
-        for (const key of ledgerResults.keys()) if (key > messageIndex) ledgerResults.delete(key);
-        for (const key of ledgerScopes.keys()) if (key > messageIndex) ledgerScopes.delete(key);
+      // 从这里起请求归会话持有；页面销毁只解除订阅，不中止已确认的发送。
+      controller = undefined;
+      watchReply(task);
+      await task.done;
+      if (disposed) return;
+      if (!draft.chatReply) {
+        if (regenerate) {
+          for (const key of ledgerResults.keys()) if (key > messageIndex) ledgerResults.delete(key);
+          for (const key of ledgerScopes.keys()) if (key > messageIndex) ledgerScopes.delete(key);
+        }
+        if (ledger) { ledgerResults.set(draft.messages.length - 1, ledger.review); authorisedDestination = undefined; }
+        readyToSummarize = false;
+        renderPhotos(); render();
       }
-      if (ledger) { draft.messages[messageIndex].ledgerAnalysis = true; authorisedDestination = undefined; }
-      draft.messages.push({ role: 'assistant', content: turn.reply, repliedAt: Date.now(), ...(ledger ? { ledgerAnalysis: true } : {}) });
-      if (ledger) ledgerResults.set(draft.messages.length - 1, ledger.review);
-      failedMessageIndex = undefined;
-      // 是否整理由用户决定，不因模型的旧版就绪标志弹出劝记卡片。
-      readyToSummarize = false;
-      try { await persist(); }
-      catch { status('回复已留在当前页面，请勿刷新；可重新打开后继续保存。'); render(); return; }
-      status(''); renderPhotos(); render();
     } catch (error) {
-      streamedReply = '';
       failedMessageIndex = messageIndex;
       status(signal.aborted ? '已停止，消息仍保留在本机。' : error instanceof Error ? error.message : '发送失败，可重试。', !signal.aborted && needsAiConfig(error));
       render();
@@ -366,6 +355,28 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       if (!disposed) { setBusy(false); render(false); }
       controller = undefined;
     }
+  }
+
+  function watchReply(task: ChatReply): void {
+    offReply?.();
+    replyTask = task;
+    const refresh = () => {
+      if (disposed) return;
+      const checkpoint = draft.chatReply;
+      streamedReply = checkpoint?.content ?? '';
+      failedMessageIndex = task.running ? undefined : checkpoint?.messageIndex;
+      failedRegenerate = checkpoint?.regenerate ?? false;
+      if (!task.running && !checkpoint && task.ledgerReview) ledgerResults.set(draft.messages.length - 1, task.ledgerReview);
+      const text = task.running ? (streamedReply ? '正在回复…' : '拾光正在想…')
+        : task.saveFailed ? '回复暂存在本次运行中，请勿关闭应用；可重新打开重试保存。'
+          : checkpoint?.status === 'stopped' ? '已停止，已收到的内容仍保留在本机。'
+            : checkpoint ? task.error instanceof Error ? task.error.message : '回复中断，可重试。' : '';
+      status(text, !task.running && needsAiConfig(task.error));
+      setBusy(task.running);
+      render(false);
+    };
+    offReply = task.subscribe(refresh);
+    refresh();
   }
 
   async function switchSession(key: string, noteId?: number): Promise<void> {
@@ -376,7 +387,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       if (noteId != null && (!note || note.deletedAt)) throw new Error('记录已删除');
       const stored = unsavedChatDrafts.get(key) ?? await getLifeDraft(key);
       dispose();
-      renderChat(host, { draft: stored ? migrateLifeDraft(stored) : newDraft(key, note), existing: note, sessionVersion: nextSessionVersion(key) });
+      renderChat(host, { draft: getActiveChatReply(key)?.draft ?? (stored ? migrateLifeDraft(stored) : newDraft(key, note)), existing: note, sessionVersion: nextSessionVersion(key) });
     } catch { showToast('会话切换失败，当前内容仍保留'); }
   }
 
@@ -463,9 +474,20 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   host.querySelector('[data-life-chat-photo]')!.addEventListener('click', () => host.querySelector<HTMLInputElement>('#lchat-file')!.click());
   host.querySelector<HTMLInputElement>('#lchat-file')!.onchange = event => { void addPhotos((event.target as HTMLInputElement).files); };
   host.querySelector('[data-life-chat-send]')!.addEventListener('click', () => { void send(); });
-  host.querySelector('[data-life-chat-stop]')!.addEventListener('click', () => controller?.abort());
+  host.querySelector('[data-life-chat-stop]')!.addEventListener('click', () => { if (replyTask?.running) replyTask.stop(); else controller?.abort(); });
   input.oninput = () => { draft.pendingReply = input.value; persistQuiet(); resizeInput(); };
   input.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) { event.preventDefault(); void send(); } });
+  const activeReply = getActiveChatReply(draft.key);
+  if (activeReply) watchReply(activeReply);
+  else if (draft.chatReply) {
+    streamedReply = draft.chatReply.content;
+    failedMessageIndex = draft.chatReply.messageIndex;
+    failedRegenerate = draft.chatReply.regenerate;
+    status(draft.chatReply.status === 'stopped' ? '已停止，已收到的内容仍保留在本机。' : '上次回复未完成，已保留收到的内容，可重试。');
+  } else if (draft.messages.at(-1)?.role === 'user') {
+    failedMessageIndex = draft.messages.length - 1;
+    status('上次消息尚未完成回复，可重试。');
+  }
   renderPhotos();
   render();
   void loadMessagePhotos();

@@ -125,6 +125,16 @@ export function validateLifeDraft(input: unknown): asserts input is LifeDraft {
       throw new Error('草稿摘要方案无效');
     }
   }
+  if (draft.chatReply != null) {
+    const reply = draft.chatReply;
+    if (typeof reply !== 'object' || !Number.isSafeInteger(reply.messageIndex)
+      || draft.messages[reply.messageIndex]?.role !== 'user'
+      || typeof reply.regenerate !== 'boolean' || typeof reply.content !== 'string'
+      || reply.content.length > 12_000 || !['waiting', 'streaming', 'failed', 'stopped'].includes(reply.status)
+      || (reply.ledgerAnalysis != null && typeof reply.ledgerAnalysis !== 'boolean')) {
+      throw new Error('未完成回复结构无效');
+    }
+  }
   if (draft.review != null && (typeof draft.review !== 'object'
     || (draft.review.verdict != null && !['again', 'neutral', 'not-for-me'].includes(draft.review.verdict))
     || (draft.review.text != null && typeof draft.review.text !== 'string')

@@ -49,9 +49,13 @@ public final class GleamUpdatePlugin extends Plugin {
     }
     private interface Task { JSObject run(Operation op) throws Exception; }
     private synchronized void submit(PluginCall call, Task task) {
+        submit(call, false, task);
+    }
+    private synchronized void submit(PluginCall call, boolean replace, Task task) {
         String id=call.getString("requestId");
         if (id==null || !id.matches("[A-Za-z0-9-]{8,80}")) { call.reject("更新请求无效", "INVALID"); return; }
-        if (active!=null || destroyed) { call.reject("更新操作正在进行", "BUSY"); return; }
+        if (destroyed || (active!=null && !replace)) { call.reject("更新操作正在进行", "BUSY"); return; }
+        if (active!=null) active.cancel();
         Operation op=new Operation(id); active=op;
         worker.execute(() -> {
             try { JSObject result=task.run(op); op.check(); call.resolve(result); }
@@ -81,6 +85,16 @@ public final class GleamUpdatePlugin extends Plugin {
             JSObject result=new JSObject(); result.put("hasToken", GleamSecretsPlugin.readUpdateToken(getContext())!=null);
             call.resolve(result);
         } catch (Exception error) { call.reject("请重新配置 GitHub Token", "STORAGE"); }
+    }
+    /** Opening About checks local state first; unfinished work is stopped before restoring. */
+    @PluginMethod public void restore(PluginCall call) {
+        submit(call, true, op -> {
+            candidate=null; downloadedHash=null;
+            GleamUpdateCache.Record saved=cache().restore(code(installed()), this::verifyPackage);
+            op.check();
+            if (saved!=null) { candidate=saved.release; downloadedHash=saved.hash; }
+            JSObject result=releaseResult(candidate); result.put("downloaded", saved!=null); return result;
+        });
     }
     @PluginMethod public void saveToken(PluginCall call) {
         submit(call, op -> {
@@ -120,13 +134,16 @@ public final class GleamUpdatePlugin extends Plugin {
             try { update=GleamUpdateRelease.parse(release, code(installed())); }
             catch (Exception error) { throw new Failure("RELEASE_INVALID"); }
             op.check(); candidate=update;
-            JSObject result=new JSObject(); result.put("available", update!=null);
-            if (update!=null) {
-                result.put("releaseId", String.valueOf(update.id)); result.put("version", update.version);
-                result.put("size", update.size); result.put("notes", update.notes);
-            }
-            return result;
+            return releaseResult(update);
         });
+    }
+    private JSObject releaseResult(GleamUpdateRelease update) {
+        JSObject result=new JSObject(); result.put("available",update!=null);
+        if (update!=null) {
+            result.put("releaseId",String.valueOf(update.id)); result.put("version",update.version);
+            result.put("size",update.size); result.put("notes",update.notes);
+        }
+        return result;
     }
     private JSONObject readJson(Operation op, String token) throws Exception {
         try (Response response=open(op, GleamUpdateRelease.API+"/latest", token, false)) {
@@ -153,8 +170,9 @@ public final class GleamUpdatePlugin extends Plugin {
             return out.toByteArray();
         }
     }
-    private File apkFile() { return new File(getContext().getCacheDir(), "gleam-update/update.apk"); }
-    private void clearDownload() { downloadedHash=null; apkFile().delete(); new File(apkFile().getPath()+".part").delete(); }
+    private GleamUpdateCache cache() { return new GleamUpdateCache(new File(getContext().getCacheDir(),"gleam-update")); }
+    private File apkFile() { return cache().apk(); }
+    private void clearDownload() { downloadedHash=null; cache().clear(); }
     private GleamUpdateRelease selected(PluginCall call) throws Failure {
         if (candidate==null || !String.valueOf(candidate.id).equals(call.getString("releaseId"))) throw new Failure("RECHECK");
         return candidate;
@@ -167,11 +185,12 @@ public final class GleamUpdatePlugin extends Plugin {
                 try { expected=GleamUpdateRelease.checksum(new String(readBounded(response, 1024), StandardCharsets.UTF_8), update.name); }
                 catch (IllegalArgumentException error) { throw new Failure("CHECKSUM"); }
             }
-            File target=apkFile(), part=new File(target.getPath()+".part");
+            File target=apkFile(), part=cache().part();
             if (!target.getParentFile().isDirectory() && !target.getParentFile().mkdirs()) throw new Failure("STORAGE");
             boolean complete=false;
             try {
-                MessageDigest digest=MessageDigest.getInstance("SHA-256"); long size=0;
+                MessageDigest digest=MessageDigest.getInstance("SHA-256"); long size=0, lastProgress=0;
+                progress(op, update, 0);
                 try (Response response=open(op, GleamUpdateRelease.API+"/assets/"+update.apkId, token, true);
                      InputStream in=response.body().byteStream(); FileOutputStream out=new FileOutputStream(part)) {
                     if (response.body().contentLength()>GleamUpdateRelease.MAX_APK) throw new Failure("CHECKSUM");
@@ -180,6 +199,8 @@ public final class GleamUpdatePlugin extends Plugin {
                         op.check(); size+=read;
                         if (size>update.size || size>GleamUpdateRelease.MAX_APK) throw new Failure("CHECKSUM");
                         digest.update(buffer, 0, read); out.write(buffer, 0, read);
+                        long at=android.os.SystemClock.elapsedRealtime();
+                        if (at-lastProgress>=100 || size==update.size) { progress(op,update,size); lastProgress=at; }
                     }
                     out.getFD().sync();
                 }
@@ -187,10 +208,17 @@ public final class GleamUpdatePlugin extends Plugin {
                 verifyPackage(part, update);
                 op.check();
                 if (!part.renameTo(target)) throw new Failure("STORAGE");
+                try { cache().commit(update,expected); }
+                catch (Exception error) { throw new Failure("STORAGE"); }
                 downloadedHash=expected; complete=true;
                 return new JSObject();
-            } finally { if (!complete) { part.delete(); target.delete(); downloadedHash=null; } }
+            } finally { if (!complete) clearDownload(); }
         });
+    }
+    private void progress(Operation op, GleamUpdateRelease update, long received) {
+        JSObject event=new JSObject(); event.put("requestId",op.id); event.put("releaseId",String.valueOf(update.id));
+        event.put("received",received); event.put("total",update.size);
+        notifyListeners("downloadProgress",event);
     }
     private static String hex(byte[] value) {
         StringBuilder out=new StringBuilder(); for (byte b:value) out.append(String.format(java.util.Locale.ROOT, "%02x", b & 255)); return out.toString();
