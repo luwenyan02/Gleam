@@ -181,6 +181,8 @@ export interface Category extends Timestamps {
   name: string;
   /** 图标 id，如 'ic-bowl' */
   icon: string;
+  /** 用户已主动选定图标；即使是通用图标也不按名称替换。历史分类不需要此字段。 */
+  iconOverride?: boolean;
   kind: CategoryKind;
   /** 支出小类指向大类 id；大类与收入分类为 undefined */
   parentId?: number;

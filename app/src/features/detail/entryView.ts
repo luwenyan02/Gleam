@@ -1,5 +1,6 @@
 import { entryDisplayAmount } from '../../core/entryAmount';
 import { displayEntryNote } from './entryRowText';
+import { categoryDisplayMap } from '../../core/categoryIcons';
 /**
  * 拾光 · 单条账单只读详情子页（sp-entry-view）
  * 头部金额卡、字段列表、关联退款展示与底部操作栏（编辑 / 复制 / 删除 / 退款）。
@@ -53,7 +54,7 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
     }
     current = entry;
     const categories = [...tree.flatMap((group) => [group.parent, ...group.children]), ...incomeCats];
-    const cat = categories.find((item) => item.id === entry.categoryId);
+    const cat = categoryDisplayMap(categories).get(entry.categoryId ?? -1);
     const accountMap = new Map(accounts.map((account) => [account.id, account]));
     const account = accountMap.get(entry.accountId ?? -1);
     const merchant = merchants.find((item) => item.id === entry.merchantId);

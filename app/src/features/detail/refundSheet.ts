@@ -15,6 +15,7 @@ import { closeSubpage } from '../shell/router';
 import { showToast } from '../shell/toast';
 import { canRefund, getRefundEntryId } from './entrySwipe';
 import { fullDateTime, dayLabel, sheetPick } from './detailShared';
+import { categoryDisplayMap } from '../../core/categoryIcons';
 
 export async function renderRefundPage(body: HTMLElement): Promise<void> {
   const originalId = getRefundEntryId();
@@ -31,7 +32,9 @@ export async function renderRefundPage(body: HTMLElement): Promise<void> {
     body.innerHTML = '<div class="placeholder"><p class="sub">这笔支出已经全部退款</p></div>';
     return;
   }
-  const categories = tree.flatMap((group) => group.children.length ? group.children : [group.parent]);
+  const categoryMap = categoryDisplayMap(tree.flatMap(group => [group.parent, ...group.children]));
+  const categories = tree.flatMap((group) => group.children.length ? group.children : [group.parent])
+    .map(category => categoryMap.get(category.id)!);
   const originalCategory = categories.find((cat) => cat.id === original.categoryId) ?? categories[0];
   let categoryId = originalCategory?.id;
   let accountId = accounts.some((account) => account.id === original.accountId) ? original.accountId : accounts[0]?.id;

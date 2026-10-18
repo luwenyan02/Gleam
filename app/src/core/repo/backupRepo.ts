@@ -107,8 +107,8 @@ export async function restoreAll(dump: Partial<TableDump>): Promise<void> {
 export interface SnapshotRow {
   id: number;
   createdAt: number;
-  /** 触发原因：restore = 恢复前 / import = 导入前 */
-  reason: 'restore' | 'import';
+  /** 触发原因：恢复、导入或分类合并前 */
+  reason: 'restore' | 'import' | 'category-merge';
   /** 展示用说明，如「恢复备份 xx.skbak 前」 */
   label: string;
   /** 各表条数 */
@@ -122,10 +122,10 @@ const snapDb = new Dexie('GleamSnapshotDB') as Dexie & {
 snapDb.version(1).stores({ snapshots: '++id, createdAt' });
 
 /**
- * 创建当前数据快照（恢复 / 导入前调用）。
+ * 创建当前数据快照（恢复 / 导入 / 分类合并前调用）。
  * @returns 快照 id
  */
-export async function createSnapshot(reason: 'restore' | 'import', label: string): Promise<number> {
+export async function createSnapshot(reason: SnapshotRow['reason'], label: string): Promise<number> {
   const dump = await exportAll();
   return snapDb.snapshots.add({
     createdAt: now(), reason, label, counts: countDump(dump), tables: dump,
@@ -183,10 +183,12 @@ export async function listBackupRecords(limit = 20): Promise<BackupRecord[]> {
 
 /** 备份状态卡计数结果 */
 export interface LocalCounts {
-  /** 全部业务表行数合计（不含 settings） */
-  total: number;
   /** 未删除账单数 */
   liveEntries: number;
+  /** 回收站账单数（仍在完整备份中） */
+  deletedEntries: number;
+  /** 全部账户，包含隐藏账户 */
+  accounts: number;
   /** 未删除生活记录数 */
   liveLifeNotes: number;
 }
@@ -196,15 +198,11 @@ export interface LocalCounts {
  * 避免为展示计数做 exportAll 全量导出（附件 Blob 会被一并读入内存）。
  */
 export async function countLocalStats(): Promise<LocalCounts> {
-  const tables = TABLE_NAMES.map((n) => db.table(n));
-  return db.transaction('r', tables, async () => {
-    let total = 0;
-    for (const name of TABLE_NAMES) {
-      if (name === 'settings') continue;
-      total += await db.table(name).count();
-    }
-    const liveEntries = await db.entries.where('deletedAt').equals(0).count();
-    const liveLifeNotes = await db.lifeNotes.where('deletedAt').equals(0).count();
-    return { total, liveEntries, liveLifeNotes };
+  return db.transaction('r', [db.entries, db.accounts, db.lifeNotes], async () => {
+    const [allEntries, liveEntries, accounts, liveLifeNotes] = await Promise.all([
+      db.entries.count(), db.entries.where('deletedAt').equals(0).count(),
+      db.accounts.count(), db.lifeNotes.where('deletedAt').equals(0).count(),
+    ]);
+    return { liveEntries, deletedEntries: allEntries - liveEntries, accounts, liveLifeNotes };
   });
 }

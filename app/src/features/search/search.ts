@@ -9,6 +9,7 @@ import './search.css';
 import { openEntityInsight } from '../tagmerchant/tagmerchant';
 import { expandCategoryIds, parseAmountRange, validateDateRange } from '../../core/queryValidation';
 import { iconHtml } from '../../assets/icons';
+import { categoryDisplayMap } from '../../core/categoryIcons';
 import { esc } from '../../core/esc';
 import { formatFen } from '../../core/money';
 import { listEntries, getEntry, dayKey } from '../../core/repo/entryRepo';
@@ -262,7 +263,7 @@ async function doSearch(kw: string): Promise<void> {
   if (token !== searchToken || !resultsEl.isConnected) return;
 
   const catNames = new Map<number, string>();
-  const catMap = new Map([...expenseCats, ...incomeCats].map(category => [category.id, category]));
+  const catMap = categoryDisplayMap([...expenseCats, ...incomeCats]);
   for (const c of [...expenseCats, ...incomeCats]) catNames.set(c.id, c.name);
   const accountNames = new Map<number, string>();
   for (const a of accounts) accountNames.set(a.id, a.name);
@@ -270,11 +271,12 @@ async function doSearch(kw: string): Promise<void> {
   for (const t of tags) tagNames.set(t.id, t.name);
   const merchantNames = new Map<number, string>();
   for (const m of merchants) merchantNames.set(m.id, m.name);
-  batchCategories = [...expenseCats, ...incomeCats];
+  batchCategories = [...catMap.values()];
   batchAccounts = accounts;
   batchTags = tags;
 
   const win = rangeWindow();
+  updateDateDisplay(win);
   const tagIdsByEntry = new Map<number, number[]>();
   const tagNamesByEntry = new Map<number, string[]>();
   const tagLinks = await Promise.all(tags.map(async (tag) => ({ tag, entryIds: await listEntryIdsByTag(tag.id) })));
@@ -452,12 +454,17 @@ function openFieldSheet(onSelect: (mode: FieldMode) => void): void {
 }
 
 /* ── 更新日期范围显示 ── */
-function updateDateDisplay(): void {
+function updateDateDisplay(win = rangeWindow()): void {
   if (!body) return;
   const fromBtn = body.querySelector<HTMLElement>('#sr-date-from');
   const toBtn = body.querySelector<HTMLElement>('#sr-date-to');
   if (!fromBtn || !toBtn) return;
 
+  // 预设日期从查询窗口派生：上界为下月 1 日（不包含），显示为月末。
+  if (win && dateRange !== 'custom') {
+    customFrom = tsToDateResult(win.from);
+    customTo = tsToDateResult(win.to - 1);
+  }
   const from = customFrom ?? getDefaultFrom();
   const to = customTo ?? getDefaultTo();
   fromBtn.textContent = `${dateStr(from)} ▾`;
@@ -619,25 +626,8 @@ export function initSearch(): void {
         } else {
           dateRange = range;
           for (const c of el.querySelectorAll<HTMLElement>('#sr-dates .chip')) c.classList.toggle('active', c === chip);
-          // 根据选中的 chip 计算对应的起止日期并同步到顶部日期显示
-          const now = new Date();
-          const y = now.getFullYear();
-          const m = now.getMonth();
-          if (range === 'all') {
-            customFrom = null;
-            customTo = null;
-          } else if (range === 'month') {
-            customFrom = { year: y, month: m + 1, day: 1 };
-            customTo = { year: y, month: m + 1, day: now.getDate() };
-          } else if (range === 'lastMonth') {
-            const lmDate = new Date(y, m, 0); // last day of previous month
-            customFrom = { year: lmDate.getFullYear(), month: lmDate.getMonth() + 1, day: 1 };
-            customTo = { year: lmDate.getFullYear(), month: lmDate.getMonth() + 1, day: lmDate.getDate() };
-          } else if (range === '3m') {
-            const tmDate = new Date(y, m - 2, 1);
-            customFrom = { year: tmDate.getFullYear(), month: tmDate.getMonth() + 1, day: 1 };
-            customTo = { year: y, month: m + 1, day: now.getDate() };
-          }
+          customFrom = null;
+          customTo = null;
           updateDateDisplay();
           triggerSearch();
         }

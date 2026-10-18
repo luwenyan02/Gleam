@@ -79,12 +79,12 @@ async function refresh(): Promise<void> {
     <h3 class="bk-group-title">立即备份</h3>
     <section class="card backup-status" aria-label="立即备份">
       <div class="bs-summary"><span class="bs-ic">${iconHtml('ic-cloud', 24)}</span><div>
-      <p class="big num">${counts.total.toLocaleString('zh-CN')} <small>条记录</small></p>
+      <p class="big num">${counts.liveEntries.toLocaleString('zh-CN')} <small>笔有效账单</small></p>
       <p class="sub">上次备份 <b>${lastAt ? fmtTime(lastAt) : '尚未备份'}</b></p></div></div>
       <div class="bs-stats" aria-label="本地数据概览">
-        <span>账单 <b class="num">${counts.liveEntries.toLocaleString('zh-CN')}</b></span>
+        <span>回收站账单 <b class="num">${counts.deletedEntries.toLocaleString('zh-CN')}</b></span>
+        <span>账户 <b class="num">${counts.accounts.toLocaleString('zh-CN')}</b></span>
         <span>生活记录 <b class="num">${counts.liveLifeNotes.toLocaleString('zh-CN')}</b></span>
-        <span>备份历史 <b class="num">${records.length}</b></span>
       </div>
       <button class="btn primary" data-act="backup">立即备份（下载 .skbak）</button>
       <p class="tiny" style="margin-top:8px">支持口令加密 · 可另存网盘</p>
@@ -102,8 +102,8 @@ async function refresh(): Promise<void> {
           <div class="e-main"><p class="e-title" title="${esc(r.fileName)}">${esc(r.fileName)}</p><p class="e-meta"><span>${fmtTime(r.createdAt)}</span> · <span>${fmtSize(r.size)}</span> · <span>${r.entryCount} 条账单</span>${r.encrypted ? ' · <span>已加密</span>' : ''}</p><p class="e-meta">${r.provider === 'email' ? '邮件服务器已接收' : r.provider === 'webdav' ? '已上传 WebDAV' : r.provider === 's3' ? '已上传 S3' : '已导出到本机'} · ${r.fileId ? '本机副本可用' : '需选择备份文件'}</p></div>
           <button class="restore-link" ${r.fileId ? `data-history-file="${esc(r.fileId)}"` : 'data-act="restore" aria-label="选文件恢复"'}>${r.fileId ? '恢复' : '选文件'}</button>
         </div>`).join('') : '<p class="sub cb-list-state">还没有备份记录，也可选择已有备份文件恢复。</p>'}
-      <p class="tiny bk-history-note">本机保留最近 10 份副本（合计最多 100 MB）；更早的备份请选择文件。卸载或清除应用数据会丢失本机副本。</p>
-      <p class="tiny bk-history-note">恢复前校验并创建快照，确认后全量替换；7 天内可撤销。</p>
+      <p class="bk-history-note">恢复将全量替换；恢复前自动创建快照，7 天内可撤销。</p>
+      <details class="backup-details"><summary>本机副本说明</summary><p>本机保留最近 10 份副本（合计最多 100 MB）；更早的备份请选择文件。卸载或清除应用数据会丢失本机副本。</p></details>
     </section>
 
     ${snapshots.length ? `
@@ -114,7 +114,7 @@ async function refresh(): Promise<void> {
           <div class="e-main"><p class="e-title">${esc(s.label)}</p><p class="e-meta">${fmtTime(s.createdAt)} · ${s.counts.entries ?? 0} 条账单</p></div>
           <button class="restore-link" data-undo="${s.id}">撤销到此</button>
         </div>`).join('')}
-      <p class="tiny" style="padding:6px 2px 10px">恢复/导入前自动创建；撤销即把全部数据回滚到该时点</p>
+      <p class="bk-history-note">恢复、导入或分类合并前自动创建；撤销会将全部数据回滚到该时点。</p>
     </section>` : ''}
 
     <h3 class="bk-group-title">Excel 导入导出</h3>

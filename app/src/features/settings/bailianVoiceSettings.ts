@@ -19,17 +19,18 @@ export async function bailianVoiceSettingsHtml(): Promise<string> {
   const masked = shared ? readiness.maskedMainKey : readiness.maskedKey;
   return `<section class="card" aria-label="百炼短语音">
     <h3 class="card-title">百炼短语音</h3>
+    ${readiness.supported ? '' : '<p class="settings-status" role="status">仅 Android 可用</p><details class="settings-details voice-web-details" data-settings-detail="voice-web"><summary>查看语音配置</summary>'}
     <div class="ai-set">
-      <label>服务地域<button class="ai-pick-btn" id="voice-bailian-region" data-region="${config.region}" type="button">${config.region === 'singapore' ? '新加坡' : '北京'}</button></label>
-      <label>业务空间 ID<input id="voice-bailian-workspace" value="${esc(config.workspace)}" maxlength="63" placeholder="业务空间 ID" autocomplete="off" spellcheck="false"></label>
+      <label>服务地域<button class="ai-pick-btn" id="voice-bailian-region" data-region="${config.region}" type="button"${readiness.supported ? '' : ' disabled'}>${config.region === 'singapore' ? '新加坡' : '北京'}</button></label>
+      <label>业务空间 ID<input id="voice-bailian-workspace" value="${esc(config.workspace)}" maxlength="63" placeholder="业务空间 ID" autocomplete="off" spellcheck="false"${readiness.supported ? '' : ' disabled'}></label>
       <label>语音模型<input id="voice-bailian-model" value="${BAILIAN_VOICE_MODEL}" readonly aria-label="百炼语音模型"></label>
       <div class="voice-key-label"><label for="voice-bailian-key">语音Key</label><label class="voice-key-source"><input id="voice-key-shared" type="checkbox"${shared ? ' checked' : ''}${readiness.supported ? '' : ' disabled'}>与 API Key 相同</label></div>
       <input id="voice-bailian-key" type="password" value="" maxlength="512" placeholder="${esc(masked || (shared ? '请先填写 API Key' : '输入语音 Key'))}" aria-label="语音Key" autocomplete="new-password"${shared ? ' readonly' : ''}${readiness.supported ? '' : ' disabled'}>
     </div>
     <div class="settings-status-row">
-      ${readiness.supported ? '' : '<p class="settings-status" role="status">仅 Android 可用</p>'}
       ${voiceConnectionTestHtml(readiness.supported, readiness.hasKey, readiness)}
     </div>
+    ${readiness.supported ? '' : '</details>'}
   </section>`;
 }
 

@@ -13,7 +13,7 @@ export function selectQuickCategories(
 }
 
 export function renderCategoryButton(category: Category, selected: boolean, parentName?: string): string {
-  return `<button class="cat${selected ? ' sel' : ''}" data-id="${category.id}" type="button" role="option" aria-selected="${selected}">
+  return `<button class="cat${selected ? ' sel' : ''}" data-id="${category.id}" type="button" role="option" aria-selected="${selected}" title="${esc(parentName ? `${parentName}／${category.name}` : category.name)}" aria-label="${esc(parentName ? `${parentName}／${category.name}` : category.name)}">
     <span class="cat-ic">${iconHtml(categoryIcon(category, parentName))}</span><span>${esc(category.name)}</span></button>`;
 }
 

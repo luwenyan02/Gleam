@@ -58,3 +58,21 @@
 /* 排行占比条自左展开 */
 .r-anim .rank-bar i{transform-origin:0 50%;animation:r-bar-grow .25s ease-out both}
 @keyframes r-bar-grow{from{transform:scaleX(0)}}
+
+/* 辅助信息也保持可读；全年坐标简写月份数字，保留十二个月同屏。 */
+.r-sum p:first-child{font-size:var(--text-meta);letter-spacing:0;color:var(--muted)}
+.chart-cap,.report-note{font-size:var(--text-meta);line-height:1.65;color:var(--muted)}
+.report-note{margin-top:12px;overflow-wrap:anywhere}
+.chart-empty,.donut-empty,.rank-empty{font-size:var(--text-meta)}
+.rank-head .rank-more{font-size:var(--text-meta)}
+#donut-legend li button,#donut-legend li button b{font-size:var(--text-meta)}
+#donut-legend .legend-name{flex:1;min-width:0;overflow-wrap:anywhere}
+#donut-legend li button b{flex-shrink:0;white-space:nowrap}
+#rank .rank-row{gap:10px}
+#rank .rank-top{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;font-size:var(--text-meta)}
+#rank .rank-top>span:first-child{overflow-wrap:anywhere}
+#rank .rank-top .num{white-space:nowrap}
+#rank .rank-pct{width:calc(50px * var(--seed-type));flex-shrink:0;font-size:var(--text-meta);color:var(--muted)}
+#rank .rank-section{margin-top:12px;padding:8px 0 0;font-size:var(--text-meta);font-weight:600;color:var(--muted)}
+#rank .is-refund .rank-top .num{color:var(--income)}
+#rank .chip{font-size:var(--text-meta)}

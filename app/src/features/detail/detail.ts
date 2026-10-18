@@ -13,7 +13,7 @@ import { formatFen, formatFenCny } from '../../core/money';
 import { on } from '../../core/store';
 import {
   LOAN_KIND_META,
-  type Account, type Category, type Entry,
+  type Account, type Entry,
 } from '../../core/types';
 import {
   listEntries,
@@ -36,6 +36,7 @@ import {
 import { dayLabel, sheetPick } from './detailShared';
 import { renderEntryView } from './entryView';
 import { renderRefundPage } from './refundSheet';
+import { categoryDisplayMap } from '../../core/categoryIcons';
 
 // 对外契约保持不变：左滑 / 详情 / 退款相关能力统一从本模块 re-export
 export {
@@ -65,12 +66,7 @@ async function renderDetail(body: HTMLElement): Promise<void> {
   const [tree, incomeCats, accounts, contacts] = await Promise.all([
     listExpenseTree(), listCategories('income'), listAccounts(true), listLoanAccounts(),
   ]);
-  const catMap = new Map<number, Category>();
-  for (const g of tree) {
-    catMap.set(g.parent.id, g.parent);
-    for (const ch of g.children) catMap.set(ch.id, ch);
-  }
-  for (const cat of incomeCats) catMap.set(cat.id, cat);
+  const catMap = categoryDisplayMap([...tree.flatMap(group => [group.parent, ...group.children]), ...incomeCats]);
   const acctMap = new Map<number, Account>(accounts.map((a) => [a.id, a]));
   const contactMap = new Map<number, Account>(contacts.map((p) => [p.id, p]));
 
@@ -345,8 +341,8 @@ async function renderDetail(body: HTMLElement): Promise<void> {
     void (async () => {
       if (!selected.size) { showToast('请先勾选账单'); return; }
       const picked = await sheetPick('改分类（转账 / 借贷账单将跳过）', [
-        ...tree.flatMap((g) => g.children.map((ch) => ({ id: ch.id, label: `${g.parent.name} · ${ch.name}`, icon: ch.icon }))),
-        ...incomeCats.map((cat) => ({ id: cat.id, label: `收入 · ${cat.name}`, icon: cat.icon })),
+        ...tree.flatMap((g) => g.children.map((ch) => ({ id: ch.id, label: `${g.parent.name} · ${ch.name}`, icon: catMap.get(ch.id)!.icon }))),
+        ...incomeCats.map((cat) => ({ id: cat.id, label: `收入 · ${cat.name}`, icon: catMap.get(cat.id)!.icon })),
       ]);
       if (picked == null) return;
       await runBatch(

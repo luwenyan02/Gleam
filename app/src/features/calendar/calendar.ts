@@ -8,6 +8,8 @@ import { entryDisplayAmount } from '../../core/entryAmount';
 import './calendar.css';
 import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
+import { categoryDisplayMap } from '../../core/categoryIcons';
+import { compactCalendarAmount } from './calendarAmount';
 import { on } from '../../core/store';
 import { formatFen, formatFenCny } from '../../core/money';
 import { ledgerEntriesInRange } from '../../core/repo/statsRepo';
@@ -47,7 +49,7 @@ let pendingAnim: '' | 'anim-month' | 'anim-mode' = '';
 
 const WD = ['日', '一', '二', '三', '四', '五', '六'];
 const TIPS: Record<CalMode, string> = {
-  std: '金点 = 当日有收入 · 绿色 +金额 = 当日退款净流入 · 点选日期查看当日明细',
+  std: '金额按元简写 · 点日期看完整金额 · 金点表示收入',
   heat: '颜色越深 = 当日支出越多 · 按当月最高单日支出定色阶',
   net: '绿色 = 当日结余为正（收入大于支出）· 主色 = 当日净支出',
 };
@@ -55,8 +57,6 @@ const TIPS: Record<CalMode, string> = {
 function pad2(n: number): string { return String(n).padStart(2, '0'); }
 function ymStr(y: number, m: number): string { return `${y}-${pad2(m + 1)}`; }
 function keyOf(y: number, m: number, d: number): string { return `${ymStr(y, m)}-${pad2(d)}`; }
-/** 元整数展示（原型 fmt0 语义） */
-function fmtYuan0(fen: number): string { return formatFen(fen).split('.')[0]; }
 
 /** 热力/结余模式的单元格底色（原型 calCellStyle，L1578-1588） */
 function cellStyle(rec: DayAgg | undefined, maxOut: number): string {
@@ -89,7 +89,7 @@ async function refresh(): Promise<void> {
   if (token !== refreshToken || !el.isConnected) return;
 
   const catNames = new Map<number, string>();
-  const catMap = new Map([...expenseCats, ...incomeCats].map(c => [c.id, { name: c.name, icon: c.icon }]));
+  const catMap = categoryDisplayMap([...expenseCats, ...incomeCats]);
   for (const c of [...expenseCats, ...incomeCats]) catNames.set(c.id, c.name);
   const accountNames = new Map(accounts.map(a => [a.id, a.name]));
   const merchantNames = new Map(merchants.map(m => [m.id, m.name]));
@@ -145,11 +145,11 @@ async function refresh(): Promise<void> {
     const cls = 'cal-day' + (isCurMonth && d === today.getDate() ? ' today' : '') + (sel ? ' sel' : '');
     const amt = rec && rec.expense !== 0 && mode === 'std'
       ? rec.expense > 0
-        ? `<span class="cd-amt">-${fmtYuan0(rec.expense)}</span>`
-        : `<span class="cd-amt refund" aria-label="退款净流入 ${formatFenCny(-rec.expense)}">+${fmtYuan0(-rec.expense)}</span>`
+        ? `<span class="cd-amt">-${compactCalendarAmount(rec.expense)}</span>`
+        : `<span class="cd-amt refund" aria-label="退款净流入 ${formatFenCny(-rec.expense)}">+${compactCalendarAmount(-rec.expense)}</span>`
       : '';
     const dot = rec && rec.income !== 0 && mode === 'std' ? '<span class="cd-in"></span>' : '';
-    cells.push(`<button class="${cls}" data-d="${d}" type="button" role="option" aria-selected="${sel}"${sel ? '' : cellStyle(rec, maxOut)}><span class="d-num">${d}</span>${amt}${dot}</button>`);
+    cells.push(`<button class="${cls}" data-d="${d}" type="button" role="option" aria-label="${viewM + 1}月${d}日${rec ? `，净支出 ${formatFenCny(rec.expense)}，收入 ${formatFenCny(rec.income)}` : '，暂无记录'}" aria-selected="${sel}"${sel ? '' : cellStyle(rec, maxOut)}><span class="d-num">${d}</span>${amt}${dot}</button>`);
   }
 
   /* 选中日汇总 + 明细列表 */
@@ -198,7 +198,7 @@ async function refresh(): Promise<void> {
         <button class="chip${mode === 'net' ? ' active' : ''}" data-m="net" role="tab" aria-selected="${mode === 'net'}">结余热力</button>
         <button class="chip${isFilterEmpty(calFilter) ? '' : ' active'}" data-act="filter" style="margin-left:auto">${filterLabel}</button>
       </div>
-      <p class="tiny" style="margin-top:10px">${TIPS[mode]}</p>
+      <p class="calendar-tip">${TIPS[mode]}</p>
     </section>
     <section class="card" aria-live="polite" aria-label="当日收支详情">${detailHtml}</section>`;
   el.scrollTop = savedScroll;

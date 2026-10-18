@@ -12,7 +12,7 @@ it('settings routine surface removes tutorial paragraphs instead of merely hidin
 });
 
 it('operational labels, values and security warnings remain available', () => {
-  for (const required of ['静默入账置信度阈值', 'API 地址', '回收站保留', '天后自动清除', '忘记 PIN 将无法解锁', 'ai-model-capability', '每月起始日']) expect(settings).toContain(required);
+  for (const required of ['自动入账阈值', 'API 地址', '回收站保留', '天后自动清除', '忘记 PIN 将无法解锁', 'ai-model-capability', '每月起始日']) expect(settings).toContain(required);
   for (const required of ['语音Key', '与 API Key 相同', '服务地域', '业务空间 ID', 'voiceConnectionTestHtml']) expect(voiceSettings).toContain(required);
 });
 

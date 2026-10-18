@@ -30,6 +30,7 @@ import {
 import { showToast } from '../shell/toast';
 import { confirmDialog } from '../shell/dialog';
 import { entryRowText } from '../detail/entryRowText';
+import { categoryDisplayMap } from '../../core/categoryIcons';
 import {
   ACCOUNT_GROUPS, ACCOUNT_GROUP_NAMES,
   type Account, type AccountGroup, type Entry,
@@ -227,8 +228,7 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     const flows = accountStatement(accountFlows(allEntries, targetAccountId), acct.balance);
     const balances = new Map(flows.map(flow => [flow.entry, flow.balanceAfter]));
     body.closest<HTMLElement>('.subpage')!.querySelector<HTMLElement>('.sub-head h2')!.textContent = acct.name;
-    const catMap = new Map<number, { name: string; icon: string }>();
-    for (const cat of [...expenseCats, ...incomeCats]) catMap.set(cat.id, { name: cat.name, icon: cat.icon });
+    const catMap = categoryDisplayMap([...expenseCats, ...incomeCats]);
     const acctNames = new Map<number, string>();
     for (const group of ACCOUNT_GROUPS) for (const account of groups[group]) acctNames.set(account.id, account.name);
 

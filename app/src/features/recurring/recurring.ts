@@ -26,6 +26,7 @@ import { confirmDialog } from '../shell/dialog';
 import type { Account, CategoryKind, RecurringRule, RecurFreq } from '../../core/types';
 import { openPickList, type PickListItem } from '../../shared/pickList';
 import { openDateWheel } from '../../shared/dateTimeWheel';
+import { categoryDisplayMap } from '../../core/categoryIcons';
 
 /* ── 模块状态 ── */
 let body: HTMLElement | undefined;
@@ -93,12 +94,7 @@ async function refresh(): Promise<void> {
   if (token !== refreshToken || !el.isConnected) return;
 
   const acctName = new Map<number, string>(accounts.map((a) => [a.id, a.name]));
-  const catIcon = new Map<number, string>();
-  for (const g of tree) {
-    catIcon.set(g.parent.id, g.parent.icon);
-    for (const c of g.children) catIcon.set(c.id, c.icon);
-  }
-  for (const category of incomeCategories) catIcon.set(category.id, category.icon);
+  const categories = categoryDisplayMap([...tree.flatMap(group => [group.parent, ...group.children]), ...incomeCategories]);
 
   /* 待确认卡（amountConfirm 规则到期，scheduler 分发） */
   const pendingHtml = pendingQueue.length ? `
@@ -132,7 +128,7 @@ async function refresh(): Promise<void> {
     ].filter(Boolean).join(' · ');
     return `
       <div class="row" data-id="${r.id}" role="button" tabindex="0">
-        <span class="e-ic${r.enabled ? '' : ' neutral'}">${iconHtml(catIcon.get(r.categoryId) ?? 'ic-repeat')}</span>
+        <span class="e-ic${r.enabled ? '' : ' neutral'}">${iconHtml(categories.get(r.categoryId)?.icon ?? 'ic-repeat')}</span>
         <div class="e-main">
           <p class="e-title">${esc(r.name)} <span class="e-sub rc-amount ${type}">· ${r.amountConfirm ? '约 ' : ''}${type === 'income' ? '+' : '−'}${formatFenCny(r.amount)}</span></p>
           <p class="e-meta">${meta}</p>

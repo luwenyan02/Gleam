@@ -7,6 +7,22 @@ vi.mock('../src/features/settings/bailianVoiceTestSettings', () => ({ handleVoic
 import { bailianVoiceSettingsHtml, handleVoiceSettingsChange, handleVoiceSettingsClick } from '../src/features/settings/bailianVoiceSettings';
 const ready = { supported: true, hasKey: true, credentialRevision: 'voice-revision', keySource: 'separate', maskedKey: 'abcde••••••vwxyz', maskedMainKey: 'main1••••••main2', hasMainKey: true };
 beforeEach(() => { vi.clearAllMocks(); mocks.configuration.mockResolvedValue(ready); });
+it('浏览器仅展示 Android 可用提示，配置保留在默认收起的详情中', async () => {
+ mocks.configuration.mockResolvedValue({supported:false,hasKey:false,credentialRevision:''});
+ const html = await bailianVoiceSettingsHtml();
+ expect(html).toContain('仅 Android 可用');
+ expect(html).toMatch(/<details class="settings-details voice-web-details"[^>]*>/);
+ expect(html).not.toMatch(/<details[^>]*\bopen\b/);
+ expect(html.indexOf('<summary>查看语音配置</summary>')).toBeLessThan(html.indexOf('id="voice-bailian-region"'));
+ expect(html).toContain('id="voice-bailian-key"');
+ expect(html).toMatch(/id="voice-bailian-key"[^>]*disabled/);
+});
+it('Android 保持完整语音配置，不在详情中隐藏连接测试', async () => {
+ const html = await bailianVoiceSettingsHtml();
+ expect(html).not.toContain('<details');
+ expect(html).toContain('id="voice-bailian-region"');
+ expect(html).toContain('data-voice-test');
+});
 it('existing independent key retains its source and is displayed only as an empty-input mask', async () => {
  const html = await bailianVoiceSettingsHtml();
  expect(html).toContain('语音Key');expect(html).toContain('与 API Key 相同');

@@ -23,7 +23,7 @@ def run(page, width, motion):
     expect(settings.locator('p.tiny, details')).to_have_count(0)
     for text in ('可能产生费用', '使用与隐私说明', '预设核对于', '识别请求直连'):
         expect(settings).not_to_contain_text(text)
-    expect(settings).to_contain_text('静默入账置信度阈值')
+    expect(settings).to_contain_text('自动入账阈值')
     expect(settings).to_contain_text('天后自动清除')
     initial = page.locator('#voice-bailian-workspace').input_value()
     operations = lambda: page.evaluate("window.__voiceCalls.filter(call=>['testCandidate','commitTestedKey','setKey','clearKey','testConnection','start','stop'].includes(call.method))")

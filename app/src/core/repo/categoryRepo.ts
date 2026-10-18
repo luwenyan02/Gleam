@@ -27,7 +27,7 @@ export async function addCategory(input: NewCategory): Promise<number> {
 /** 改名 / 换图标 / 调整排序 */
 export async function updateCategory(
   id: number,
-  patch: Partial<Pick<Category, 'name' | 'icon' | 'sortOrder'>>,
+  patch: Partial<Pick<Category, 'name' | 'icon' | 'iconOverride' | 'sortOrder'>>,
 ): Promise<void> {
   await db.categories.update(id, { ...patch, updatedAt: now() });
   emit('categories-changed', { id });

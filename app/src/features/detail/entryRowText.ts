@@ -1,5 +1,6 @@
-import { LOAN_KIND_META, type Entry } from '../../core/types';
+import { LOAN_KIND_META, type Category, type Entry } from '../../core/types';
 import type { LedgerItem } from '../../core/ledgerEvents';
+import { categoryIcon } from '../../core/categoryIcons';
 
 /** 隐藏导入备注中的收付款人字段，原始备注仍用于编辑和备份。 */
 export function displayEntryNote(note?: string): string {
@@ -17,13 +18,14 @@ export function displayEntryNote(note?: string): string {
 /** 共用的两行明细文案；只做展示，不修改实体或计算账务金额。 */
 export function entryRowText(
   entry: Entry & { kind?: LedgerItem['kind'] },
-  categories: ReadonlyMap<number, { name: string; icon: string }>,
+  categories: ReadonlyMap<number, Pick<Category, 'name' | 'icon'> & Partial<Pick<Category, 'kind' | 'parentId'>>>,
   accounts: ReadonlyMap<number, string>,
   options: { hideDate?: boolean } = {},
 ) {
   const category = categories.get(entry.categoryId ?? -1);
   let title = category?.name ?? (entry.type === 'income' ? '收入' : '支出');
-  let icon = category?.icon ?? 'ic-coin';
+  let icon = category ? categoryIcon({ ...category, kind: category.kind ?? (entry.type === 'income' ? 'income' : 'expense') },
+    categories.get(category.parentId ?? -1)?.name) : 'ic-coin';
   const reconciliation = entry.reconcileBeforeBalance != null && entry.reconcileTargetBalance != null;
   if (entry.kind === 'reimbursement') {
     title = '报销到账'; icon = 'ic-file';

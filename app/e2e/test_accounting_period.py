@@ -139,6 +139,15 @@ def run_width(page, width: int) -> None:
     assert_layout(page, '#sp-budget')
     page.locator('#sp-budget').screenshot(path=str(OUT / f'budget-{width}.png'), animations='disabled')
 
+    # 摘要必须与预算中心同一期，不能回退为自然月。
+    page.click('#sp-budget [data-bd-set]')
+    page.fill('#bd-total', '1000')
+    page.click('#sheet [data-act="save"]')
+    expect(page.locator('#sp-budget .bd-meta')).to_contain_text('¥876.55')
+    page.click('#sp-budget .sub-head [data-act="back"]')
+    page.wait_for_selector('#sp-budget', state='detached')
+    expect(page.locator('#page-mine [data-sub="sp-budget"] .row-note')).to_have_text('本期剩余 ¥876.55')
+
     assert not errors, errors
 
 
