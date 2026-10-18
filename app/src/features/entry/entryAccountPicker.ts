@@ -94,7 +94,11 @@ export function openEntryAccountPicker(options: {
           onCancel() { typeButton.setAttribute('aria-expanded', 'false'); },
         });
       });
-      form.querySelector('[data-back]')!.addEventListener('click', () => { heading.hidden = false; createHeading.hidden = true; list.setAttribute('role', 'listbox'); render(); });
+      form.querySelector('[data-back]')!.addEventListener('click', () => {
+        heading.hidden = false; createHeading.hidden = true;
+        list.setAttribute('role', 'listbox'); render();
+        panel.querySelector<HTMLButtonElement>('[data-add]')!.focus({ preventScroll: true });
+      });
       form.addEventListener('submit', async event => {
         event.preventDefault(); if (saving) return;
         const data = new FormData(form), name = String(data.get('name')).trim();

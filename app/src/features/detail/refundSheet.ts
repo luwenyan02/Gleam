@@ -6,18 +6,19 @@ import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
 import { formatFen, formatFenCny, parseYuanToFen } from '../../core/money';
 import {
-  getEntry, refundableAmount, createRefund,
+  getEntry, refundableAmount, createRefund, listEntries,
 } from '../../core/repo/entryRepo';
 import { listExpenseTree } from '../../core/repo/categoryRepo';
-import { listAccounts } from '../../core/repo/accountRepo';
+import { getAccount, listAccounts } from '../../core/repo/accountRepo';
 import { openDateTimeWheel } from '../../shared/dateTimeWheel';
 import { closeSubpage, SUBPAGE_CLOSE_EVENT } from '../shell/router';
 import { showToast } from '../shell/toast';
 import { canRefund, getRefundEntryId } from './entrySwipe';
-import { fullDateTime, dayLabel, sheetPick } from './detailShared';
+import { fullDateTime, dayLabel } from './detailShared';
 import { categoryDisplayMap } from '../../core/categoryIcons';
 import { openPickList } from '../../shared/pickList';
 import { entryKeyFeedback } from '../entry/entryKeyFeedback';
+import { openEntryAccountPicker } from '../entry/entryAccountPicker';
 import './refund.css';
 
 export async function renderRefundPage(body: HTMLElement): Promise<void> {
@@ -49,6 +50,7 @@ export async function renderRefundPage(body: HTMLElement): Promise<void> {
   let amountText = formatFen(remaining).replace(/,/g, '');
   let replaceAmountOnNextKey = true;
   let saving = false;
+  let choosingAccount = false;
   const orderedCategories = originalCategory
     ? [originalCategory, ...categories.filter(category => category.id !== originalCategory.id)] : categories;
   const visibleCategories = orderedCategories.slice(0, categories.length > 20 ? 19 : 20);
@@ -164,14 +166,31 @@ export async function renderRefundPage(body: HTMLElement): Promise<void> {
       item.setAttribute('aria-selected', String(item === button));
     });
   });
-  body.querySelector('#rf-account')!.addEventListener('click', () => {
-    void sheetPick('选择退款到账账户', accounts.map((account) => ({
-      id: account.id, label: account.name, icon: 'ic-wallet', note: formatFen(account.balance),
-    }))).then((picked) => {
-      if (picked == null || !active || saving) return;
-      accountId = picked;
-      body.querySelector('#rf-account span')!.textContent = accounts.find((account) => account.id === accountId)?.name ?? '选择账户';
-    });
+  body.querySelector('#rf-account')!.addEventListener('click', async () => {
+    if (!active || saving || choosingAccount) return;
+    choosingAccount = true;
+    try {
+      const now = Date.now(), from = new Date(now);
+      from.setFullYear(from.getFullYear() - 1);
+      const [choices, history] = await Promise.all([
+        listAccounts(false), listEntries({ from: from.getTime(), to: now + 1, type: 'expense' }),
+      ]);
+      if (!active || saving) return;
+      const id = await openEntryAccountPicker({
+        container: subpage, title: '选择退款到账账户', accounts: choices, entries: history,
+        type: 'expense', selected: accountId,
+      });
+      if (id == null || !active || saving) return;
+      // 选择器允许新建账户，不能仅从打开退款页时的旧快照查找。
+      const selected = await getAccount(id);
+      if (!selected || selected.hidden || !active || saving) return;
+      accountId = selected.id;
+      body.querySelector('#rf-account span')!.textContent = selected.name;
+    } catch (error) {
+      if (active) showToast(error instanceof Error ? error.message : '账户加载失败，请重试');
+    } finally {
+      choosingAccount = false;
+    }
   });
   body.querySelector('#rf-date')!.addEventListener('click', () => {
     const d = new Date(occurredAt);

@@ -8,7 +8,7 @@
 .entry-account-picker .picker-list{flex:1;padding:6px 12px calc(12px + var(--safe-bottom))}
 .entry-account-picker .picker-group-title{padding:12px 4px 8px}
 .frequent-account-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.entry-account-picker .picker-item{min-height:43.2px;padding:9px 8px;gap:4px}
+.entry-account-picker .picker-item{min-height:44px;padding:9px 8px;gap:4px}
 .entry-account-picker .frequent-account{background:var(--bg);border:1px solid transparent;border-radius:var(--r-s)}
 .entry-account-picker .frequent-account.selected{border-color:var(--primary);background:var(--accent-soft)}
 .entry-account-copy{display:flex;flex:1;min-width:0;align-items:center;gap:6px}
