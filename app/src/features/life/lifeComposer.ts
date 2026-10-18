@@ -1,6 +1,10 @@
 import { esc } from '../../core/esc';
 import type { LifeDraft, LifeNote } from '../../core/types';
 import { getEntry } from '../../core/repo/entryRepo';
+import { getCategory } from '../../core/repo/categoryRepo';
+import { listAccounts } from '../../core/repo/accountRepo';
+import { listMerchants } from '../../core/repo/merchantRepo';
+import { entryMemoryText } from './entryMemoryText';
 import { getAttachment, getLifeNote, softDeleteLifeNote, listLifeLinkedEntries } from '../../core/repo/lifeRepo';
 import { formatFenCny } from '../../core/money';
 import { claimLegacyLifeChatDraft, getLifeDraft, isLifeChatDraft, putLifeDraft, deleteLifeDraft, saveLifeDraft } from '../../core/repo/lifeDraftRepo';
@@ -56,9 +60,23 @@ export async function openLifeComposer(options: { noteId?: number; entryId?: num
       await openLifeChat(noteId ? { noteId } : {});
       return;
     }
+    let initialBody = existing?.body ?? '';
+    // 只初始化首次创建的账单草稿；已有正文或用户主动清空的草稿都保持原样。
+    if (!stored && !existing && entry) {
+      const [category, accounts, merchants] = await Promise.all([
+        entry.categoryId != null ? getCategory(entry.categoryId) : Promise.resolve(undefined),
+        listAccounts(true), entry.merchantId != null ? listMerchants() : Promise.resolve([]),
+      ]);
+      const accountNames = new Map(accounts.map(account => [account.id, account.name]));
+      initialBody = entryMemoryText(entry, {
+        categoryName: category?.name, merchantName: merchants.find(merchant => merchant.id === entry.merchantId)?.name,
+        accountName: accountNames.get(entry.accountId ?? -1),
+        fromAccountName: accountNames.get(entry.fromAccountId ?? -1), toAccountName: accountNames.get(entry.toAccountId ?? -1),
+      });
+    }
     const draft: LifeDraft = stored ?? {
       key, noteId, sourceUpdatedAt: existing?.updatedAt, entryId: options.entryId,
-      title: existing?.title ?? '', body: existing?.body ?? '', occurredAt: existing?.occurredAt ?? entry?.occurredAt ?? Date.now(),
+      title: existing?.title ?? '', body: initialBody, occurredAt: existing?.occurredAt ?? entry?.occurredAt ?? Date.now(),
       photos: [], existingPhotoRefs: [...(existing?.photoRefs ?? [])], messages: [],
       mood: existing?.mood, tags: existing?.tags, review: existing?.review ? { ...existing.review } : undefined,
       aiExcluded: existing?.aiExcluded ?? false,
@@ -108,7 +126,7 @@ function renderComposer(draft: LifeDraft, existing?: LifeNote): void {
       el.classList.add('life-composer');
       el.innerHTML = `<div class="lf-sheet-head"><p class="sheet-title">${existing ? '这一刻' : '快速记录'}</p><button class="icon-btn" data-lc-close aria-label="关闭并保留草稿">×</button></div>
         <div class="sheet-scroll lc-scroll">
-          ${draft.entryId ? '<div class="lc-linked">这一笔，也有故事 · 保存后关联原账单，不会再次记账<button class="chip" data-lc-detach>仅保存故事</button></div>' : '<p class="sub">一句话、一张照片，都可以。</p>'}
+          ${draft.entryId ? '' : '<p class="sub">一句话、一张照片，都可以。</p>'}
           ${existing?.conversation?.length ? '<button class="btn ghost" data-lc-view-conversation>查看原始对话</button>' : ''}
           <div id="lc-linked-entries"></div>
           <label class="sr-only" for="lc-body">想留下的话</label><textarea id="lc-body" class="note" maxlength="12000" placeholder="刚刚有什么想留住的？">${esc(draft.body)}</textarea>
@@ -129,7 +147,6 @@ function renderComposer(draft: LifeDraft, existing?: LifeNote): void {
           <div class="lc-row lc-footer"><button class="btn ghost" data-lc-discard>丢弃草稿</button>${existing ? '<button class="btn ghost" data-lc-delete>移入回收站</button>' : ''}</div>
         </div>`;
       el.querySelector('[data-lc-close]')!.addEventListener('click', closeSheet);
-      el.querySelector('[data-lc-detach]')?.addEventListener('click', () => { draft.entryId = undefined; el.querySelector('.lc-linked')!.textContent = '仅保存故事，不新增账单关联'; persistQuiet(); });
       el.querySelector<HTMLTextAreaElement>('#lc-body')!.oninput = event => { draft.body = (event.target as HTMLTextAreaElement).value; persistQuiet(); };
       el.querySelector<HTMLInputElement>('#lc-title')!.oninput = event => { draft.title = (event.target as HTMLInputElement).value; persistQuiet(); };
       el.querySelector('#lc-mood')!.addEventListener('click', () => openPickList({

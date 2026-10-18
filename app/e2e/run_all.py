@@ -38,7 +38,7 @@ TESTS = (
     'test_account_management_ui.py', 'test_account_active_months.py', 'test_account_footer_trend.py',
     'test_entry_receipts.py',
     'test_entity_details.py', 'test_accounting_period.py', 'test_search_month_ranges.py', 'test_search_summary_layout.py',
-    'test_life_layout.py', 'test_life_ai.py', 'test_chat_experience.py', 'test_chat_ai_settings.py',
+    'test_life_layout.py', 'test_entry_life_memory.py', 'test_life_ai.py', 'test_chat_experience.py', 'test_chat_ai_settings.py',
     'test_browser_usability.py',
     'test_large_ledger.py',
 )

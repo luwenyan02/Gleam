@@ -275,7 +275,7 @@ export async function saveLifeDraft(key: string): Promise<number> {
 
     const entry = draft.entryId == null ? undefined : await db.entries.get(draft.entryId);
     if (draft.entryId != null && (!entry || entry.deletedAt !== 0)) {
-      throw new Error('关联账单不存在或已删除，请先解除关联');
+      throw new Error('关联账单已不存在或已删除，草稿已保留');
     }
 
     const existing = draft.noteId == null ? undefined : await db.lifeNotes.get(draft.noteId);

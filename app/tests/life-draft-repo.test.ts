@@ -430,12 +430,12 @@ describe('生活故事草稿仓库', () => {
     expect(await getLifeNote(photoId)).toMatchObject({ kind: 'photo', body: undefined });
   });
 
-  it('账单已删除时要求先解除关联，事务不留下记录或附件且草稿保留', async () => {
+  it('账单已删除时阻止保存，事务不留下记录或附件且草稿保留', async () => {
     const accountId = await addAccount({ name: '虚构银行卡', group: 'debit', balance: 5_000 });
     const entryId = await addEntry({ type: 'expense', amount: 300, occurredAt, accountId });
     await softDeleteEntry(entryId);
     await putLifeDraft(draft({ entryId, photos: [{ name: '图.png', dataUrl: png() }] }));
-    await expect(saveLifeDraft('composer')).rejects.toThrow('解除');
+    await expect(saveLifeDraft('composer')).rejects.toThrow('已删除');
     expect(await db.lifeNotes.count()).toBe(0);
     expect(await db.attachments.count()).toBe(0);
     expect(await getLifeDraft('composer')).toBeDefined();
