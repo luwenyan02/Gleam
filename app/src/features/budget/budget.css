@@ -9,3 +9,11 @@
 .bd-period{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
 .bd-period .btn{flex:none;min-height:44px;width:auto}
 .bd-range{margin:0 0 12px;padding-left:2px}
+.bd-category-link{display:block;width:100%;min-height:52px;text-align:left;color:var(--fg)}
+.bd-category-link .bd-top{gap:8px}
+.bd-category-title{display:flex;align-items:center;gap:4px;min-width:0;overflow-wrap:anywhere}
+.bd-category-title svg{flex:none;color:var(--faint)}
+.bd-category-link .num{text-align:right}
+.bd-category-link .bd-bar{display:block}
+.bd-category-link:focus-visible{outline:2px solid var(--input-focus);outline-offset:2px;border-radius:8px}
+.bd-category-link:active{background:var(--bg)}

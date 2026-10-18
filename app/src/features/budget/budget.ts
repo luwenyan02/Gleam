@@ -23,6 +23,7 @@ import { openMonthWheel } from '../../shared/dateTimeWheel';
 import type { Category } from '../../core/types';
 import { accountingMonthRange, getAccountingMonth } from '../../core/repo/periodRepo';
 import { accountingRangeProgress, formatAccountingRange } from '../../core/period';
+import { openLedgerSearch } from '../search/search';
 
 /* ── 模块状态 ── */
 let body: HTMLElement | undefined;
@@ -136,10 +137,10 @@ async function refresh(): Promise<void> {
     const st = stateOf(pct);
     const flag = st === 'over' ? `<em class="bd-flag">超支 ${formatFenCny(used - limit)}</em>` : '';
     return `
-      <div class="bd-row">
-        <div class="bd-top"><span>${esc(cat.name)}</span><span class="num">${formatFenCny(used)} <em class="lim">/ ¥${fmtYuan0(limit)}</em>${flag}</span></div>
-        <div class="bd-bar"><i class="${st}" style="width:${Math.max(0, Math.min(100, pct)).toFixed(1)}%"></i></div>
-      </div>`;
+      <button class="bd-row bd-category-link" type="button" data-bd-category="${cat.id}" aria-label="${esc(`查看${cat.name}预算明细`)}" aria-describedby="bd-category-amount-${cat.id}">
+        <span class="bd-top"><span class="bd-category-title"><span>${esc(cat.name)}</span>${iconHtml('ic-right', 14)}</span><span class="num" id="bd-category-amount-${cat.id}">${formatFenCny(used)} <em class="lim">/ ¥${fmtYuan0(limit)}</em>${flag}</span></span>
+        <span class="bd-bar" aria-hidden="true"><i class="${st}" style="width:${Math.max(0, Math.min(100, pct)).toFixed(1)}%"></i></span>
+      </button>`;
   }).join('');
 
   el.innerHTML = `
@@ -151,6 +152,12 @@ async function refresh(): Promise<void> {
       <p class="bd-legend"><span><i style="background:var(--income)"></i>进度良好</span><span><i style="background:var(--primary)"></i>消费偏快</span><span><i style="background:var(--over)"></i>已超支</span></p>
     </section>
     <p class="tiny" style="text-align:center">剩余预算不结转 · ${budget?.autoRenew !== false ? '下期沿用本期额度' : '下期需重新设置'}</p>`;
+  for (const button of el.querySelectorAll<HTMLButtonElement>('[data-bd-category]')) {
+    const category = rows.find(row => row.cat.id === Number(button.dataset.bdCategory))!.cat;
+    button.addEventListener('click', () => openLedgerSearch({
+      from: range.from, to: range.to, types: ['expense'], categoryIds: [category.id],
+    }, `${category.name} · 预算明细`));
+  }
 }
 
 /* ── 预算设置抽屉 ── */
