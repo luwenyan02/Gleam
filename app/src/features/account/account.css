@@ -101,6 +101,7 @@
 .account-month-head .chev svg{transform:rotate(90deg);transition:transform .2s}.account-month.expanded .account-month-head .chev svg{transform:rotate(-90deg)}
 .account-month-entries{display:none;padding:0 14px 5px;border-top:1px solid var(--border)}.account-month.expanded .account-month-entries{display:block}
 .account-month-entries .entry{padding-top:11px;padding-bottom:11px}
+.account-more-entries{display:block;width:100%;min-height:44px;margin:4px 0;color:var(--primary);font-size:var(--text-meta);border-radius:8px;background:var(--accent-soft)}
 .account-entry-amounts{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:none;text-align:right}
 .account-entry-amounts .e-amt,.account-entry-balance{white-space:nowrap}
 .account-entry-balance{font-size:var(--text-meta);line-height:1.5;color:var(--muted);font-weight:400}

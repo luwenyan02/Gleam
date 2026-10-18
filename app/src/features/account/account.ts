@@ -16,11 +16,11 @@ import {
   reconcileAccount, reorderAccountWithinGroup, setAccountCountInNetWorth, setAccountHidden, updateAccount,
 } from '../../core/repo/accountRepo';
 import { netWorthTrend } from '../../core/repo/statsRepo';
-import { getEntry, listEntries } from '../../core/repo/entryRepo';
-import { listCategories } from '../../core/repo/categoryRepo';
+import { getEntry } from '../../core/repo/entryRepo';
+import { getAccountViewData } from '../../core/repo/accountViewRepo';
 import { accountFlows, accountMonthRows, accountStatement, accountActiveMonthRows, type LedgerItem } from '../../core/ledgerEvents';
 import { accountEffects } from '../../core/entryEffects';
-import { registerPage, registerSubpage, openSubpage } from '../shell/router';
+import { registerPage, registerSubpage, openSubpage, SUBPAGE_CLOSE_EVENT } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { openEntrySheet } from '../entry/entrySheet';
 import { openEntryDetail } from '../detail/detail';
@@ -207,11 +207,24 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
   const targetAccountId = accountId;
   const trendState = accountTrendStates.get(accountId) ?? { open: false };
   accountTrendStates.set(accountId, trendState);
-  bindTrendControls(body, trendState, refreshDetail);
+  bindTrendControls(body, trendState, renderDetail);
   let currentAccount: Account | undefined;
   let monthsShown = 8;
   let detailToken = 0;
   const expandedMonths = new Set<string>();
+  const monthEntryContent = new Map<string, (from?: number) => string>();
+  const entriesShown = new Map<string, number>();
+  const entryPageSize = 80;
+  let snapshot: {
+    account: Account;
+    flows: ReturnType<typeof accountStatement>;
+    balances: Map<LedgerItem, number>;
+    catMap: ReturnType<typeof categoryDisplayMap>;
+    acctNames: Map<number, string>;
+    activeMonths: ReturnType<typeof accountActiveMonthRows>;
+    totalIn: number;
+    totalOut: number;
+  } | undefined;
   let initializedMonths = false;
   body.classList.add('account-detail-body');
   const subpage = body.closest<HTMLElement>('.subpage')!;
@@ -228,34 +241,49 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
 
   async function refreshDetail(): Promise<void> {
     const token = ++detailToken;
-    const scroll = body.scrollTop;
-    const [acct, expenseCats, incomeCats, groups, allEntries] = await Promise.all([
-      getAccount(targetAccountId), listCategories('expense'), listCategories('income'),
-      listAccountsByGroup(), listEntries({}),
-    ]);
+    const data = await getAccountViewData(targetAccountId);
     if (token !== detailToken || !body.isConnected) return;
-    if (!acct) { footer.hidden = true; currentAccount = undefined; body.innerHTML = '<div class="placeholder"><p class="sub">账户不存在</p></div>'; return; }
-    currentAccount = acct;
-    const flows = accountStatement(accountFlows(allEntries, targetAccountId), acct.balance);
-    const balances = new Map(flows.map(flow => [flow.entry, flow.balanceAfter]));
-    body.closest<HTMLElement>('.subpage')!.querySelector<HTMLElement>('.sub-head h2')!.textContent = acct.name;
-    const catMap = categoryDisplayMap([...expenseCats, ...incomeCats]);
-    const acctNames = new Map<number, string>();
-    for (const group of ACCOUNT_GROUPS) for (const account of groups[group]) acctNames.set(account.id, account.name);
+    if (!data) {
+      snapshot = undefined; monthEntryContent.clear(); footer.hidden = true; currentAccount = undefined;
+      body.innerHTML = '<div class="placeholder"><p class="sub">账户不存在</p></div>'; return;
+    }
+    const flows = accountStatement(accountFlows(data.entries, targetAccountId), data.account.balance);
+    snapshot = {
+      account: data.account, flows, balances: new Map(flows.map(flow => [flow.entry, flow.balanceAfter])),
+      catMap: categoryDisplayMap(data.categories), acctNames: new Map(data.accounts.map(account => [account.id, account.name])),
+      activeMonths: accountActiveMonthRows(flows),
+      totalIn: flows.reduce((sum, flow) => Math.max(0, flow.delta) + sum, 0),
+      totalOut: flows.reduce((sum, flow) => Math.max(0, -flow.delta) + sum, 0),
+    };
+    renderDetail();
+  }
 
-    const activeMonths = accountActiveMonthRows(flows);
+  function renderDetail(): void {
+    if (!snapshot) return;
+    const scroll = body.scrollTop;
+    const { account: acct, flows, balances, catMap, acctNames, activeMonths, totalIn, totalOut } = snapshot;
+    currentAccount = acct;
+    body.closest<HTMLElement>('.subpage')!.querySelector<HTMLElement>('.sub-head h2')!.textContent = acct.name;
     const monthRows = activeMonths.slice(0, monthsShown);
     const availableMonths = activeMonths.length;
     if (!initializedMonths && monthRows.length) {
       expandedMonths.add(monthRows[0].key);
       initializedMonths = true;
     }
-    const totalIn = flows.reduce((sum, flow) => Math.max(0, flow.delta) + sum, 0);
-    const totalOut = flows.reduce((sum, flow) => Math.max(0, -flow.delta) + sum, 0);
     const limit = creditLimitStatus(acct);
     const trendAt = trendState.endingMonth ? new Date(`${trendState.endingMonth}-01T12:00:00`).getTime() : Date.now();
     const trend = accountMonthRows(flows, acct.balance, trendAt, 6).reverse().map((row) => ({ month: row.key, net: row.closing }));
 
+    // 收起的历史月份不生成账单 DOM，避免进入单条详情时处理大量不可见节点。
+    monthEntryContent.clear();
+    for (const row of monthRows) {
+      monthEntryContent.set(row.key, (from = 0) => {
+        const shown = entriesShown.get(row.key) ?? entryPageSize;
+        return row.entries.slice(from, shown)
+          .map(entry => flowEntryHtml(entry, targetAccountId, catMap, acctNames, balances.get(entry)!)).join('')
+          + (shown < row.entries.length ? `<button class="account-more-entries" data-account-more-entries="${row.key}">查看更多流水（${shown} / ${row.entries.length} 笔）</button>` : '');
+      });
+    }
     body.innerHTML = `
       <section class="account-detail-hero">
         <div class="account-detail-overview overview-art">
@@ -288,7 +316,7 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
               <span class="chev">${iconHtml('ic-right', 15)}</span>
             </button>
             <div class="account-month-entries">
-              ${row.entries.map((entry) => flowEntryHtml(entry, targetAccountId, catMap, acctNames, balances.get(entry)!)).join('')}
+              ${expandedMonths.has(row.key) ? monthEntryContent.get(row.key)!() : ''}
             </div>
           </section>`;
         }).join('') || '<p class="acct-flow-empty">暂无流水</p>'}
@@ -318,18 +346,38 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     }
     if (entryRow) { openEntryDetail(Number(entryRow.dataset.eid)); return; }
     const month = target.closest<HTMLElement>('[data-account-month]');
-    if (month && target.closest('.account-month-head')) {
-      month.classList.toggle('expanded');
+    if (month && target.closest('[data-account-more-entries]')) {
       const key = month.dataset.accountMonth!;
-      if (month.classList.contains('expanded')) expandedMonths.add(key); else expandedMonths.delete(key);
-      month.querySelector('.account-month-head')!.setAttribute('aria-expanded', String(month.classList.contains('expanded')));
+      entriesShown.set(key, (entriesShown.get(key) ?? entryPageSize) + entryPageSize);
+      // 追加新行，保留现有行、滚动位置和键盘焦点。
+      const rows = month.querySelector<HTMLElement>('.account-month-entries')!;
+      const visible = rows.querySelectorAll('[data-eid]').length;
+      target.closest('[data-account-more-entries]')!.remove();
+      rows.insertAdjacentHTML('beforeend', monthEntryContent.get(key)?.(visible) ?? '');
+      const nextFocus = rows.querySelector<HTMLElement>('[data-account-more-entries]')
+        ?? rows.querySelectorAll<HTMLElement>('.entry-swipe-content')[visible];
+      nextFocus?.focus({ preventScroll: true });
+      return;
+    }
+    if (month && target.closest('.account-month-head')) {
+      const expanded = month.classList.toggle('expanded');
+      const key = month.dataset.accountMonth!;
+      const rows = month.querySelector<HTMLElement>('.account-month-entries')!;
+      if (expanded) {
+        expandedMonths.add(key);
+        rows.innerHTML = monthEntryContent.get(key)?.() ?? '';
+      } else {
+        expandedMonths.delete(key);
+        rows.replaceChildren();
+      }
+      month.querySelector('.account-month-head')!.setAttribute('aria-expanded', String(expanded));
       return;
     }
     const action = target.closest<HTMLElement>('[data-account-action]')?.dataset.accountAction;
     const acct = currentAccount;
     if (!action || !acct) return;
-    if (action === 'more-months') { monthsShown += 8; void refreshDetail(); }
-    else if (action === 'all-months') { monthsShown = Infinity; void refreshDetail(); }
+    if (action === 'more-months') { monthsShown += 8; renderDetail(); }
+    else if (action === 'all-months') { monthsShown = Infinity; renderDetail(); }
     else if (action === 'edit') void openAccountForm(acct);
     else if (action === 'reconcile') openReconcileSheet(acct);
   });
@@ -347,6 +395,9 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     if (!body.isConnected) { offEntries(); return; }
     void refreshDetail();
   });
+  subpage.addEventListener(SUBPAGE_CLOSE_EVENT, () => {
+    detailToken++; snapshot = undefined; monthEntryContent.clear(); entriesShown.clear(); offAccounts(); offEntries();
+  }, { once: true });
   await refreshDetail();
 }
 

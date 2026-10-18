@@ -36,6 +36,7 @@ const subpages = new Map<string, SubpageDef>();
 const subStack: HTMLElement[] = [];
 const HISTORY_DEPTH_KEY = 'gleamSubDepth';
 const SYSTEM_BACK_EVENT = 'gleam:system-back';
+export const SUBPAGE_CLOSE_EVENT = 'gleam:subpage-close';
 
 let viewport: HTMLElement | undefined;
 let appEl: HTMLElement | undefined;
@@ -207,6 +208,8 @@ function closeTopSubpage(): void {
   sp.inert = true;
   sp.setAttribute('aria-hidden', 'true');
   sp.classList.remove('open');
+  // 立即释放页面订阅和延迟渲染缓存，不等待退场动画结束。
+  sp.dispatchEvent(new Event(SUBPAGE_CLOSE_EVENT));
   sp.addEventListener('transitionend', () => sp.remove(), { once: true });
   window.setTimeout(() => sp.remove(), 400); // transitionend 兜底
   syncNavigationState();
