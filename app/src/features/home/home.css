@@ -47,10 +47,11 @@
 .home-empty>.chip{flex:none;padding:7px 11px;color:var(--primary);border-color:color-mix(in oklab,var(--seed-primary) 24%,var(--border))}
 
 /* 时间线加载提示 */
+/* 保留完整流水及左滑操作，屏外行由浏览器延后布局绘制；再次进入沿用实测高度。 */
+#page-home.hm-defer-rows #hm-days .entry-swipe{content-visibility:auto;contain-intrinsic-block-size:auto calc(44px * var(--seed-type) + 24px * var(--seed-density))}
 .hm-more{text-align:center;padding:6px 0 12px}
 .hm-more{min-height:48px;font-size:var(--text-meta);color:var(--primary)}
 .hm-more:disabled{color:var(--muted)}
-.hm-empty-month{padding:16px 4px;color:var(--muted);font-size:var(--text-meta)}
 .hm-month-overlay{position:sticky;top:0;z-index:8;height:0}
 .hm-month-summary{width:100%;display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,1fr) 14px;align-items:center;gap:8px;min-height:72px;margin:0;padding:10px 12px;background:var(--accent-soft);color:var(--fg);border:1px solid var(--border);border-radius:var(--r-s);text-align:left}
 .hm-summary-date,.hm-summary-flows,.hm-summary-balance{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:var(--text-meta)}

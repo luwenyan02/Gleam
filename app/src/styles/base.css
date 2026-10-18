@@ -357,7 +357,7 @@ button.chip,.tab,.fab,.icon-btn,.btn,button.row,.seg button,.qa,.lf-check{min-wi
 .keypad .save:active{background:color-mix(in oklab, var(--seed-primary) 88%, var(--seed-fg))}
 
 /* ── Toast ────────────────────────── */
-#toast{position:absolute;left:50%;bottom:calc(120px + var(--safe-bottom));transform:translate(-50%,16px);z-index:70;background:color-mix(in oklab, var(--seed-fg) 94%, var(--seed-bg));color:var(--bg);font-size:12.5px;padding:11px 18px;border-radius:999px;opacity:0;pointer-events:none;transition:all .24s;max-width:320px;text-align:center;line-height:1.5;box-shadow:var(--shadow)}
+#toast{position:absolute;left:50%;bottom:calc(120px + var(--safe-bottom));transform:translate(-50%,16px);z-index:70;background:color-mix(in oklab, var(--seed-fg) 94%, var(--seed-bg));color:var(--bg);font-size:12.5px;padding:11px 18px;border-radius:999px;opacity:0;pointer-events:none;transition:all .24s;width:max-content;max-width:min(320px,calc(100% - 32px));text-align:center;line-height:1.5;box-shadow:var(--shadow)}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 
 /* ── 确认对话框（沿用令牌，原型无此组件） ── */

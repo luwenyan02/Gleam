@@ -4,13 +4,28 @@
  * 写操作后 emit 'entries-changed'（标签仅依附账单展示，无独立事件）。
  */
 import { db, now, stamp } from '../db';
-import type { Tag } from '../types';
+import type { EntryTag, Tag } from '../types';
 import { emitAfterCommit as emit } from './transactionEvents';
 
 /** 全部标签，按名称排序 */
 export async function listTags(): Promise<Tag[]> {
   const rows = await db.tags.toArray();
   return rows.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+}
+
+/** 批量读取当前结果的标签关联；未传范围用于全局关键词匹配。 */
+export async function listEntryTagLinks(entryIds?: readonly number[]): Promise<EntryTag[]> {
+  if (!entryIds) return db.entryTags.toArray();
+  const ids = [...new Set(entryIds)].sort((a, b) => a - b);
+  const links: EntryTag[] = [];
+  // 并行的精确索引读取可使用原生 getAll，避免稀疏 anyOf 游标反复跨线程跳转。
+  // 分批限制未完成请求数，同时保留原索引顺序及空范围语义。
+  for (let start = 0; start < ids.length; start += 128) {
+    const batch = await Promise.all(ids.slice(start, start + 128)
+      .map(id => db.entryTags.where('entryId').equals(id).toArray()));
+    for (const rows of batch) for (const row of rows) links.push(row);
+  }
+  return links;
 }
 
 /**

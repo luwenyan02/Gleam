@@ -14,13 +14,14 @@ import { esc } from '../../core/esc';
 import { categoryDisplayMap } from '../../core/categoryIcons';
 import { positiveComposition, compositionPercent } from './reportComposition';
 import { on } from '../../core/store';
+import { dayKey } from '../../core/repo/entryRepo';
 import { formatFen, formatFenCny } from '../../core/money';
 import * as statsRepo from '../../core/repo/statsRepo';
 import { listCategories } from '../../core/repo/categoryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
 import { listTags } from '../../core/repo/tagRepo';
 import { listMerchants } from '../../core/repo/merchantRepo';
-import { registerPage } from '../shell/router';
+import { registerPage, currentPage } from '../shell/router';
 import type { Account } from '../../core/types';
 import {
   collapseRankRows, reportSelectionToLedgerQuery,
@@ -66,6 +67,17 @@ let rankExpanded = false;
 let root: HTMLElement | undefined;
 /** 并发刷新令牌：仅最后一次 refresh 的结果允许上屏 */
 let refreshToken = 0;
+let needsRefresh = true;
+let refreshedDay = '';
+
+function showReport(): void {
+  if (needsRefresh || refreshedDay !== dayKey(Date.now())) void refresh();
+}
+
+function invalidateReport(): void {
+  needsRefresh = true;
+  void refresh();
+}
 /** 待应用的切换过渡范围：'all'=周期切换整页内容淡入，'rank'=仅排行卡 */
 let pendingAnim: 'all' | 'rank' | null = null;
 /** 月视图使用财务月键；为空时按当前日期和全局起始日初始化。 */
@@ -172,36 +184,22 @@ function trendBuckets(range: { from: number; to: number }): { label: string; fro
   return buckets;
 }
 
-/** 趋势数据严格取当前周期，柱/点的范围可直接转换为明细查询。 */
-async function loadTrend(range: { from: number; to: number }): Promise<ReportData['trend']> {
-  const buckets = trendBuckets(range);
-  const summaries = await Promise.all(buckets.map((bucket) => statsRepo.rangeSummary(bucket.from, bucket.to)));
-  return {
-    labels: buckets.map((bucket) => bucket.label),
-    expense: summaries.map((summary) => summary.expense),
-    incomes: summaries.map((summary) => summary.income),
-    ranges: buckets.map(({ from, to }) => ({ from, to })),
-  };
-}
-
 /** 装载当前周期全部数据（汇总 + 趋势 + 三维排行） */
 async function loadData(): Promise<ReportData> {
   const range = await currentRange();
   const { from, to } = range;
-  const [summary, trend, breakdown, acctRank, tagRank, incomeRank, merchantRank, expenseCats, incomeCats, accounts, tags, merchants] = await Promise.all([
-    statsRepo.rangeSummary(from, to),
-    loadTrend(range),
-    statsRepo.categoryBreakdown(from, to),
-    statsRepo.accountRanking(from, to),
-    statsRepo.tagRanking(from, to),
-    statsRepo.incomeCategoryBreakdown(from, to),
-    statsRepo.merchantRanking(from, to),
-    listCategories('expense'),
-    listCategories('income'),
-    listAccounts(),
-    listTags(),
-    listMerchants(),
+  const buckets = trendBuckets(range);
+  const [stats, expenseCats, incomeCats, accounts, tags, merchants] = await Promise.all([
+    statsRepo.loadReportStats(from, to, buckets),
+    listCategories('expense'), listCategories('income'), listAccounts(), listTags(), listMerchants(),
   ]);
+  const { summary, categories: breakdown, accounts: acctRank, tags: tagRank, incomes: incomeRank, merchants: merchantRank } = stats;
+  const trend = {
+    labels: buckets.map(bucket => bucket.label),
+    expense: stats.trend.map(summary => summary.expense),
+    incomes: stats.trend.map(summary => summary.income),
+    ranges: buckets.map(({ from, to }) => ({ from, to })),
+  };
   const catMap = categoryDisplayMap([...expenseCats, ...incomeCats]);
   const acctMap = new Map<number, Account>(accounts.map((a) => [a.id, a]));
   const tagMap = new Map(tags.map((t) => [t.id, t.name]));
@@ -439,12 +437,13 @@ function animateIn(selectors: string[]): void {
 
 /** 重新取数并整页刷新（带并发令牌，丢弃过期结果） */
 async function refresh(): Promise<void> {
-  if (!root) return;
+  if (!root || root.inert || currentPage() !== 'page-report') return;
+  needsRefresh = true;
   const token = ++refreshToken;
   const anim = pendingAnim;
   pendingAnim = null;
   const data = await loadData();
-  if (token !== refreshToken || !root) return;
+  if (token !== refreshToken || !root || root.inert || currentPage() !== 'page-report') return;
   activeRange = data.range;
   root.querySelector<HTMLElement>('#r-label')!.textContent = data.label;
   root.querySelector<HTMLElement>('#r-spend')!.textContent = formatFenCny(data.summary.expense);
@@ -456,6 +455,8 @@ async function refresh(): Promise<void> {
   renderDonut(data.cats);
   renderRank(data);
   applyDimensionView();
+  needsRefresh = false;
+  refreshedDay = dayKey(Date.now());
   if (anim) animateIn(anim === 'rank' ? ['#rank'] : ['.r-sum', '#trend', '.donut-wrap', '#rank']);
 }
 
@@ -635,10 +636,13 @@ function render(el: HTMLElement): void {
   });
 
   // 数据变化联动刷新（口径/分类/账户名变化也影响展示）
-  on('entries-changed', () => void refresh());
-  on('settings-changed', () => void refresh());
-  on('categories-changed', () => void refresh());
-  on('accounts-changed', () => void refresh());
+  on('entries-changed', invalidateReport);
+  on('settings-changed', payload => {
+    const key = (payload as { key?: string } | undefined)?.key;
+    if (!key || key === 'reimburse.countAsIncome' || key === 'accounting.monthStartDay') invalidateReport();
+  });
+  on('categories-changed', invalidateReport);
+  on('accounts-changed', invalidateReport);
 
   setPeriodButtons(el);
   for (const button of el.querySelectorAll<HTMLElement>('#report-dim button')) {
@@ -646,10 +650,9 @@ function render(el: HTMLElement): void {
     button.classList.toggle('active', active);
     button.setAttribute('aria-selected', String(active));
   }
-  void refresh();
 }
 
 /** 注册报表一级页（覆盖占位页），main.ts 在 mountShell 后调用 */
 export function registerReportPage(): void {
-  registerPage('page-report', { render, onShow: () => void refresh() });
+  registerPage('page-report', { render, onShow: showReport, onReveal: showReport });
 }

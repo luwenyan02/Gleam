@@ -151,7 +151,8 @@ def asset_trend(page,width):
     chart.locator('.balance-trend-details summary').click()
     initial=chart.locator('[data-trend-month]').get_attribute('value')
     chart.locator('[data-trend-shift="-6"]').click()
-    page.wait_for_function('initial=>document.querySelector("#page-acct [data-trend-month]")?.value!==initial',arg=initial)
+    page.wait_for_function('''initial=>{const button=document.querySelector("#page-acct [data-trend-month]");
+      return button && button.value!==initial;}''',arg=initial)
     assert chart.locator('.balance-trend-chart').is_visible()
     assert '本月截至当前' not in chart.inner_text()
     chart.locator('[data-trend-shift="6"]').click()

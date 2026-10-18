@@ -68,7 +68,10 @@ def run(browser, width, scale, theme, start_day, date):
     home.evaluate('(e,y)=>e.scrollTop=y',threshold+2)
     expect(summary).to_be_visible()
     page.wait_for_timeout(200)
+    # The short timeline keeps its full layout; the overlay must not move the flow.
     assert home.evaluate('e=>e.scrollHeight')==height
+    flow_bottom=latest.evaluate('(e)=>{const h=document.querySelector("#page-home");return e.getBoundingClientRect().bottom-h.getBoundingClientRect().top-h.clientTop+h.scrollTop}')
+    assert abs(flow_bottom-threshold)<1
     assert abs(home.evaluate('e=>e.scrollTop')-(threshold+2))<2
     home.evaluate('(e,y)=>e.scrollTop=y',threshold-2)
     expect(summary).to_be_hidden()
@@ -90,6 +93,12 @@ def run(browser, width, scale, theme, start_day, date):
         session.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]});session.detach();count(page,120)
     target=page.locator(f'#hm-days [data-home-month="{months[1]}"]').first
     target.evaluate('e=>e.scrollIntoView({block:"start"})')
+    home.evaluate('''el=>new Promise(resolve=>{
+      let previous=-1,stable=0;
+      const frame=()=>{const current=el.scrollTop;stable=Math.abs(current-previous)<.5?stable+1:0;previous=current;
+        if(stable>=3)resolve();else requestAnimationFrame(frame);};
+      requestAnimationFrame(frame);
+    })''')
     summary=page.locator('#hm-visible-month')
     expect(summary).to_have_attribute('data-month',months[1])
     expected_top=home.bounding_box()['y']+home.evaluate('e=>parseFloat(getComputedStyle(e).paddingTop)')
@@ -150,20 +159,25 @@ def life_only_months(browser):
       await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});db.close();
     }""")
     page.reload();page.locator('#fab').wait_for()
-    expect(page.locator('#hm-days [data-home-month]')).to_have_count(3)
+    expect(page.locator('#hm-days [data-home-month]')).to_have_count(1)
+    expect(page.locator('#hm-days .hm-empty-month')).to_have_count(0)
+    expect(page.locator('#hm-days')).not_to_contain_text('暂无记录')
+    page.screenshot(path=str(OUT/'empty-months-hidden-390.png'),animations='disabled')
     expect(page.locator('#hm-more')).to_have_text('再上拉加载2026年7月')
     page.locator('#hm-more').click()
-    expect(page.locator('#hm-days [data-home-month]')).to_have_count(4)
+    expect(page.locator('#hm-days [data-home-month]')).to_have_count(1)
     expect(page.locator('#hm-more')).to_have_text('再上拉加载2026年6月')
     expect(page.locator('#hm-days')).not_to_contain_text('虚构六月生活记录')
     page.locator('#hm-more').click()
-    expect(page.locator('#hm-days [data-home-month]')).to_have_count(5)
+    expect(page.locator('#hm-days [data-home-month]')).to_have_count(2)
+    expect(page.locator('#hm-days')).not_to_contain_text('暂无记录')
     expect(page.locator('#hm-days')).to_contain_text('虚构六月生活记录')
     expect(page.locator('#hm-more')).to_have_text('已展示全部流水')
     expect(page.locator('#hm-more')).to_be_disabled()
     count(page,0)
     page.locator('[data-home-month="2026-06"]').evaluate('e=>e.scrollIntoView({block:"start"})')
     expect(page.locator('#hm-visible-month')).to_be_hidden()
+    page.screenshot(path=str(OUT/'life-only-history-390.png'),animations='disabled')
     context.close();print('PASS empty months, life-only history and exhaustion',flush=True)
 
 

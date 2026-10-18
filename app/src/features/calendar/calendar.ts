@@ -15,7 +15,7 @@ import { formatFen, formatFenCny } from '../../core/money';
 import { ledgerEntriesInRange } from '../../core/repo/statsRepo';
 import { listCategories } from '../../core/repo/categoryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
-import { listTags, listEntryIdsByTag } from '../../core/repo/tagRepo';
+import { listEntryTagLinks } from '../../core/repo/tagRepo';
 import { listMerchants } from '../../core/repo/merchantRepo';
 import { getSetting } from '../../core/repo/settingsRepo';
 import { ledgerItems } from '../../core/ledgerEvents';
@@ -82,9 +82,9 @@ async function refresh(): Promise<void> {
   const monthStart = new Date(viewY, viewM, 1).getTime();
   const monthEnd = new Date(viewY, viewM + 1, 1).getTime();
   const countAsIncome = await getSetting('reimburse.countAsIncome');
-  const [entries, expenseCats, incomeCats, accounts, tags, merchants] = await Promise.all([
+  const [entries, expenseCats, incomeCats, accounts, merchants] = await Promise.all([
     ledgerEntriesInRange(monthStart, monthEnd, countAsIncome),
-    listCategories('expense'), listCategories('income'), listAccounts(), listTags(), listMerchants(),
+    listCategories('expense'), listCategories('income'), listAccounts(), listMerchants(),
   ]);
   if (token !== refreshToken || !el.isConnected) return;
 
@@ -95,11 +95,10 @@ async function refresh(): Promise<void> {
   const merchantNames = new Map(merchants.map(m => [m.id, m.name]));
   const tagIdsByEntry = new Map<number, number[]>();
   const tagNamesByEntry = new Map<number, string[]>();
-  const tagLinks = await Promise.all(tags.map(async (tag) => ({ tag, entryIds: await listEntryIdsByTag(tag.id) })));
-  for (const { tag, entryIds } of tagLinks) {
-    for (const entryId of entryIds) {
-      tagIdsByEntry.set(entryId, [...(tagIdsByEntry.get(entryId) ?? []), tag.id]);
-      tagNamesByEntry.set(entryId, [...(tagNamesByEntry.get(entryId) ?? []), tag.name]);
+  if (calFilter.tagIds.length) {
+    const links = await listEntryTagLinks(entries.map(entry => entry.id));
+    for (const link of links) {
+      tagIdsByEntry.set(link.entryId, [...(tagIdsByEntry.get(link.entryId) ?? []), link.tagId]);
     }
   }
   if (token !== refreshToken || !el.isConnected) return;
@@ -350,7 +349,6 @@ export function initCalendar(): void {
         }
       });
       el.addEventListener('scroll', () => { savedScroll = el.scrollTop; }, { passive: true });
-      void refresh();
     },
     onShow() { void refresh(); },
   });

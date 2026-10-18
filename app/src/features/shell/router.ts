@@ -19,6 +19,8 @@ export interface PageDef {
   render(el: HTMLElement): void | Promise<void>;
   /** 每次显示时调用（含首次），用于刷新数据 */
   onShow?(): void;
+  /** 最后一层子页关闭后恢复可见，可补齐此前延后的数据刷新。 */
+  onReveal?(): void;
 }
 
 /** 子页定义（标题显示在 sub-head） */
@@ -213,6 +215,8 @@ function closeTopSubpage(): void {
   sp.addEventListener('transitionend', () => sp.remove(), { once: true });
   window.setTimeout(() => sp.remove(), 400); // transitionend 兜底
   syncNavigationState();
+  // 最后一层子页退出后，一级页重新可见；补齐其延后的数据刷新。
+  if (subStack.length === 0) pages.get(activePage)?.onReveal?.();
   requestAnimationFrame(() => opener?.isConnected && opener.focus());
 }
 

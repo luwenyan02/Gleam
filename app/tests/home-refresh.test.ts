@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Entry } from '../src/core/types';
 
 const mocks = vi.hoisted(() => ({
-  registerPage: vi.fn(), on: vi.fn(), listEntries: vi.fn(),
+  registerPage: vi.fn(), currentPage: vi.fn(), on: vi.fn(), listEntries: vi.fn(),
   ledgerEntriesInRange: vi.fn(), monthSummary: vi.fn(), refreshRhythm: vi.fn(),
   modules: { month: true, quick: true, today: true, past: true },
 }));
@@ -37,7 +37,7 @@ vi.mock('../src/core/repo/homeLayoutRepo', () => ({
 }));
 vi.mock('../src/features/search/search', () => ({ openLedgerSearch: vi.fn() }));
 vi.mock('../src/core/notify', () => ({ listInAppReminders: async () => [] }));
-vi.mock('../src/features/shell/router', () => ({ registerPage: mocks.registerPage, openSubpage: vi.fn() }));
+vi.mock('../src/features/shell/router', () => ({ registerPage: mocks.registerPage, currentPage: mocks.currentPage, openSubpage: vi.fn() }));
 vi.mock('../src/features/shell/toast', () => ({ showToast: vi.fn() }));
 vi.mock('../src/features/entry/entrySheet', () => ({ openEntrySheet: vi.fn() }));
 vi.mock('../src/features/detail/detail', () => ({
@@ -49,16 +49,18 @@ vi.mock('../src/shared/pickList', () => ({ openPickList: vi.fn() }));
 class ElementStub {
   innerHTML = ''; textContent = ''; hidden = false; inert = false; isConnected = true;
   scrollTop = 0; clientHeight = 844; scrollHeight = 6000;
+  rectBottom = 844;
   dataset: Record<string, string> = {}; disabled = false;
   style: Record<string, string> = {};
   classList = { toggle: vi.fn(), contains: () => true };
   children = new Map<string, ElementStub>();
   listeners = new Map<string, (event?: unknown) => void>();
   querySelector(selector: string): ElementStub {
-    if (!this.children.has(selector)) this.children.set(selector, new ElementStub());
+    if (!this.children.has(selector)) { const child = new ElementStub(); child.rectBottom = 6000; this.children.set(selector, child); }
     return this.children.get(selector)!;
   }
   querySelectorAll(): ElementStub[] { return []; }
+  getBoundingClientRect(): { top: number; bottom: number } { return { top: 0, bottom: this.rectBottom }; }
   addEventListener(event: string, fn: (event?: unknown) => void): void { this.listeners.set(event, fn); }
   scrollToBottom(pull = true): void {
     this.scrollTop = this.scrollHeight - this.clientHeight;
@@ -85,6 +87,8 @@ async function mount(): Promise<ElementStub> {
   initHome();
   const el = new ElementStub();
   mocks.registerPage.mock.calls[0][1].render(el);
+  mocks.registerPage.mock.calls[0][1].onShow();
+  await vi.advanceTimersByTimeAsync(50);
   await flush();
   return el;
 }
@@ -100,6 +104,7 @@ beforeEach(() => {
   vi.stubGlobal('window', { setTimeout, clearTimeout, requestAnimationFrame: (fn: () => void) => setTimeout(fn, 0) });
   vi.stubGlobal('document', { hidden: false, addEventListener: vi.fn() });
   mocks.modules = { month: true, quick: true, today: true, past: true };
+  mocks.currentPage.mockReturnValue('page-home');
   entries = fixture();
   mocks.monthSummary.mockResolvedValue(summary);
   mocks.listEntries.mockImplementation(async ({ limit, to = Infinity }) =>
@@ -108,6 +113,50 @@ beforeEach(() => {
     entries.filter(entry => entry.occurredAt >= from && entry.occurredAt < to).map(entry => ({ ...entry, kind: 'entry' })));
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+it('隐藏首页不读取账本，重新进入时展示期间发生的数据变更', async () => {
+  mocks.currentPage.mockReturnValue('page-mine');
+  const el = await mount();
+  entries = fixture(75);
+  const changed = mocks.on.mock.calls.find(([event]) => event === 'entries-changed')![1];
+  changed(); await vi.advanceTimersByTimeAsync(100); await flush();
+  expect(mocks.ledgerEntriesInRange).not.toHaveBeenCalled();
+  expect(mocks.monthSummary).not.toHaveBeenCalled();
+  mocks.currentPage.mockReturnValue('page-home');
+  mocks.registerPage.mock.calls[0][1].onShow();
+  await vi.advanceTimersByTimeAsync(50); await flush();
+  expect(el.rowCount()).toBe(75);
+});
+
+it('返回未改动的子页复用首页；子页期间有变更才补齐刷新', async () => {
+  const el = await mount();
+  const page = mocks.registerPage.mock.calls[0][1];
+  page.onReveal(); await vi.advanceTimersByTimeAsync(50); await flush();
+  expect(mocks.ledgerEntriesInRange).toHaveBeenCalledTimes(1);
+  el.inert = true;
+  entries = fixture(80);
+  mocks.on.mock.calls.find(([event]) => event === 'entries-changed')![1]();
+  await vi.advanceTimersByTimeAsync(100); await flush();
+  expect(mocks.ledgerEntriesInRange).toHaveBeenCalledTimes(1);
+  el.inert = false;
+  page.onReveal(); await vi.advanceTimersByTimeAsync(50); await flush();
+  expect(el.rowCount()).toBe(80);
+});
+
+it('刷新途中离开首页，回来仍会补齐未显示的数据', async () => {
+  const el = await mount();
+  entries = fixture(85);
+  const release = holdMonth();
+  mocks.on.mock.calls.find(([event]) => event === 'entries-changed')![1]();
+  await vi.advanceTimersByTimeAsync(50); await flush();
+  el.inert = true;
+  release(); await flush();
+  el.inert = false;
+  mocks.registerPage.mock.calls[0][1].onReveal();
+  await vi.advanceTimersByTimeAsync(50); await flush();
+  expect(el.rowCount()).toBe(85);
+  expect(mocks.monthSummary).toHaveBeenCalledTimes(3);
+});
 
 it('首页仍在刷新总览时，单次触底请求不会丢失', async () => {
   const release = holdMonth();
@@ -222,6 +271,14 @@ it('只滚动到底部不自动加载，明确的继续上拉才加载一个月'
   el.scrollToBottom(false); await flush();
   expect(el.rowCount()).toBe(60);
   expect(mocks.ledgerEntriesInRange).toHaveBeenCalledTimes(1);
+  el.listeners.get('wheel')?.({ deltaY: 100, deltaX: 0 }); await flush();
+  expect(el.rowCount()).toBe(61);
+});
+
+it('加载提示已可见时，屏外高度测量不应吞掉继续上拉', async () => {
+  const el = await mount();
+  el.scrollTop = 4000;
+  el.querySelector('#hm-more').rectBottom = el.clientHeight;
   el.listeners.get('wheel')?.({ deltaY: 100, deltaX: 0 }); await flush();
   expect(el.rowCount()).toBe(61);
 });
