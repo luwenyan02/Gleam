@@ -34,7 +34,8 @@
 .cm-parent-copy{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px}
 .cm-parent-copy .cm-category-label{flex:0 1 auto;gap:6px}
 .cm-parent-copy .cm-category-name{font-weight:600}
-.cm-subcount{flex:none;font-size:var(--text-small);color:var(--muted);white-space:nowrap}
+.cm-subcount{position:relative;flex:none;font-size:var(--text-small);color:var(--muted);white-space:nowrap}
+.cm-count-separator{position:absolute;right:100%;width:6px;text-align:center}
 .cm-item>.chev,.cm-item>[data-addsub]{flex:none}
 
 .cm-item[data-drag-group="parents"]{gap:8px}

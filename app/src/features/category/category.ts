@@ -78,7 +78,7 @@ export function initCategoryManager(): void {
             <section class="card list" style="margin-bottom:12px" aria-label="${esc(g.parent.name)}大类">
               <div class="row cm-item" data-id="${g.parent.id}" data-drag-group="parents" draggable="true" role="button" tabindex="0">
                 <span class="e-ic sm">${iconHtml(categoryIcon(g.parent), 17)}</span>
-                <span class="cm-parent-copy">${label(g.parent)}<span class="cm-subcount">${g.children.length} 个小类</span></span>
+                <span class="cm-parent-copy">${label(g.parent)}<span class="cm-subcount"><span class="cm-count-separator" aria-hidden="true">·</span>${g.children.length} 个小类</span></span>
                 <button class="restore-link" data-addsub="${g.parent.id}">添加小类</button>
               </div>
               ${g.children.map((c) => `
