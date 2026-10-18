@@ -532,7 +532,7 @@ function renderCats(): void {
   const jump = q('#cat-jump');
   jump.hidden = !c.showAllCategories || isTransfer || isLoan;
   if (!jump.hidden) {
-    jump.innerHTML = `<button class="chip" type="button" data-cat-collapse>返回常用</button><div class="category-group-nav">${c.type === 'expense' ? c.expenseTree.map((group, index) => `<button class="chip${index === 0 ? ' active' : ''}" type="button" data-cat-jump="${group.parent.id}" aria-label="定位到分类大类：${esc(group.parent.name)}" aria-pressed="${index === 0}">${esc(group.parent.name)}</button>`).join('') : ''}</div>`;
+    jump.innerHTML = `<button class="chip" type="button" data-cat-collapse aria-label="返回常用分类" title="收起，返回常用分类">${iconHtml('ic-left', 18)}</button><div class="category-group-nav">${c.type === 'expense' ? c.expenseTree.map((group, index) => `<button class="chip${index === 0 ? ' active' : ''}" type="button" data-cat-jump="${group.parent.id}" aria-label="定位到分类大类：${esc(group.parent.name)}" aria-pressed="${index === 0}">${esc(group.parent.name)}</button>`).join('') : ''}</div>`;
   }
   if (isLoan) {
     if (c.accounts.find(account => account.id === c.accountId)?.group === 'receivable') c.accountId = c.accounts.find(account => account.group !== 'receivable')?.id;

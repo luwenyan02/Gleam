@@ -97,3 +97,5 @@
 .category-group-nav{display:flex;gap:6px;overflow-x:auto;min-width:0;scrollbar-width:none}
 .category-jump button{flex:none;white-space:nowrap;min-height:44px;font-size:13px;padding:6px 10px}
 #sheet .pick-name{min-width:0;overflow-wrap:anywhere}#sheet .pick-card .amt{flex:none}
+
+.category-jump [data-cat-collapse]{min-width:44px}
