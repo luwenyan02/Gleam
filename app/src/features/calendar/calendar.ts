@@ -160,7 +160,7 @@ async function refresh(): Promise<void> {
     const d = Number(dStr);
     const rec = agg.get(selKey);
     const wd = WD[new Date(viewY, viewM, d).getDay()];
-    const addChip = `<button class="chip" data-act="add" style="margin-top:10px">给 ${viewM + 1}月${d}日 记一笔</button>`;
+    const addChip = `<button class="chip" data-act="add">给 ${viewM + 1}月${d}日 记一笔</button>`;
     const expenseText = rec?.expense != null
       ? rec.expense < 0 ? formatFenCny(rec.expense) : `-¥${formatFen(rec.expense)}`
       : '';
@@ -174,11 +174,13 @@ async function refresh(): Promise<void> {
       return `<button class="row" data-eid="${item.id}"><span class="e-ic${text.neutral ? ' neutral' : ''}">${iconHtml(text.icon, 18)}</span><div class="e-main"><p class="e-title">${esc(text.title)}${note}</p><p class="e-meta">${esc(text.meta)}</p></div>${amount}</button>`;
     }).join('');
     detailHtml = `
-      <h3 class="card-title">${viewM + 1}月${d}日 · 周${wd}${isCurMonth && d === today.getDate() ? ' <span class="tiny">今天</span>' : ''}</h3>
+      <div class="card-heading cal-day-heading">
+        <h3 class="card-title">${viewM + 1}月${d}日 · 周${wd}${isCurMonth && d === today.getDate() ? ' <span class="tiny">今天</span>' : ''}</h3>
+        ${addChip}
+      </div>
       ${rec
         ? `<div class="cd-sum"><span>${rec.expense < 0 ? '净支出' : '支出'}<b${rec.expense < 0 ? ' class="in"' : ''}>${expenseText}</b></span>${rec.income !== 0 ? `<span>收入${rec.income < 0 ? '净额' : ''}<b class="${rec.income < 0 ? 'out' : 'in'}">${rec.income > 0 ? '+' : ''}${formatFenCny(rec.income)}</b></span>` : ''}<span>共 ${rec.count} 笔</span></div>`
         : '<p class="sub" style="margin-top:6px">这一天还没有记录</p>'}
-      ${addChip}
       ${rows ? `<div class="card list" style="margin-top:10px">${rows}</div>` : ''}`;
   }
 

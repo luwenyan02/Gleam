@@ -29,3 +29,6 @@
 .cd-sum{flex-wrap:wrap;gap:8px 18px;font-size:var(--text-meta)}
 .cd-sum>span{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;min-width:0}
 .cd-sum b{margin-left:0;overflow-wrap:anywhere}
+
+.cal-day-heading{align-items:flex-start}
+.cal-day-heading .card-title{overflow-wrap:anywhere}
