@@ -6,6 +6,7 @@ import { nextLocalDayStart } from '../../core/queryValidation';
  * 高级筛选面板、关键词搜索（流水 + 生活记录）、左滑操作、entries-changed 自动刷新。
  */
 import './search.css';
+import { filterSearchSummary, searchExtraSummaries, SUMMARY_LABELS, type SearchSummaryFilter } from './searchSummary';
 import { openEntityInsight } from '../tagmerchant/tagmerchant';
 import { expandCategoryIds, parseAmountRange, validateDateRange } from '../../core/queryValidation';
 import { iconHtml } from '../../assets/icons';
@@ -56,7 +57,7 @@ let customFrom: DateWheelResult | null = null;
 let customTo: DateWheelResult | null = null;
 let fieldMode: FieldMode = 'all';
 let filterState: FilterState = emptyFilter();
-let summaryFilter: 'all' | 'expense' | 'income' = 'all';
+let summaryFilter: SearchSummaryFilter = 'all';
 let queryTypes: EntryType[] = [];
 let ledgerOnly = false;
 let batchMode = false;
@@ -313,12 +314,12 @@ async function doSearch(kw: string): Promise<void> {
   });
   const summaryOptions = { reimburseMode: countReimburseAsIncome ? 'income' as const : 'offset' as const };
   const summary = summarizeLedgerEntries(matchedEntries, summaryOptions);
+  const extras = searchExtraSummaries(matchedEntries);
+  if (!['all', 'expense', 'income'].includes(summaryFilter) && !extras.some(card => card.filter === summaryFilter)) summaryFilter = 'all';
   renderActiveFilters({ catNames, accountNames, tagNames, merchantNames });
 
   // 按汇总卡筛选显示
-  let displayEntries = matchedEntries;
-  if (summaryFilter === 'expense') displayEntries = matchedEntries.filter(e => e.type === 'expense');
-  else if (summaryFilter === 'income') displayEntries = matchedEntries.filter(e => e.type === 'income');
+  const displayEntries = filterSearchSummary(matchedEntries, summaryFilter);
   batchResultIds = [...new Set(displayEntries.filter((entry) => entry.kind === 'entry').map((entry) => entry.id))];
   if (batchMode && batchSelectAll) {
     batchSelected.clear();
@@ -362,6 +363,8 @@ async function doSearch(kw: string): Promise<void> {
   const groupedEntries = groupLedgerEntries(hitEntries);
   const fullGroups = new Map(groupLedgerEntries(displayEntries).map(g => [g.day, summarizeLedgerEntries(g.entries, summaryOptions)]));
 
+  const summaryScroll = resultsEl.querySelector<HTMLElement>('.sr-summary-row')?.scrollLeft ?? 0;
+  const focusedSummary = resultsEl.contains(document.activeElement) ? (document.activeElement as HTMLElement)?.dataset.sf : undefined;
   resultsEl.innerHTML = `
     ${batchMode ? `<div class="sr-batch-scope"><b>批量处理当前全部结果</b><span>已载入 ${batchResultIds.length} 笔，不受分页限制</span></div>` : ''}
     <div class="sr-summary-row" role="group" aria-label="搜索结果汇总，可横向滑动">
@@ -377,8 +380,9 @@ async function doSearch(kw: string): Promise<void> {
         <div class="sc-label">收入(${summary.incomeCount})</div>
         <div class="sc-amount">${formatFen(summary.income)}</div>
       </button>
+      ${extras.map(card => `<button class="sr-summary-card${summaryFilter === card.filter ? ' active' : ''}" data-sf="${card.filter}" aria-pressed="${summaryFilter === card.filter}"><div class="sc-label">${card.label}(${card.count})</div><div class="sc-amount">${formatFen(card.amount)}</div></button>`).join('')}
     </div>
-    ${!hitEntries.length && !hitNotes.length ? `<p class="sr-empty">当前${summaryFilter === 'income' ? '收入' : summaryFilter === 'expense' ? '支出' : ''}筛选下没有记录，可切换上方类型或清除筛选条件</p>` : ''}
+    ${!hitEntries.length && !hitNotes.length ? `<p class="sr-empty">当前${SUMMARY_LABELS[summaryFilter]}筛选下没有记录，可切换上方类型或清除筛选条件</p>` : ''}
     ${groupedEntries.map((group) => {
       const daySummary = fullGroups.get(group.day)!;
       return `<div class="sr-day-head"><h3>${group.day}</h3><span>支出 ${formatFen(daySummary.expense)} · 收入 ${formatFen(daySummary.income)}</span></div>
@@ -391,6 +395,9 @@ async function doSearch(kw: string): Promise<void> {
       ${hitNotes.map(noteRow).join('')}
     </section>` : ''}`;
   resultsEl.setAttribute('aria-busy', 'false');
+  const summaryRow = resultsEl.querySelector<HTMLElement>('.sr-summary-row');
+  if (summaryRow) summaryRow.scrollLeft = summaryScroll;
+  if (focusedSummary) resultsEl.querySelector<HTMLButtonElement>(`[data-sf="${focusedSummary}"]`)?.focus({ preventScroll: true });
   updateBatchControls();
 }
 
@@ -848,7 +855,7 @@ export function initSearch(): void {
         // 汇总卡切换
         const sf = t.closest<HTMLElement>('[data-sf]');
         if (sf) {
-          summaryFilter = sf.dataset.sf as 'all' | 'expense' | 'income';
+          summaryFilter = sf.dataset.sf as SearchSummaryFilter;
           void doSearch(input.value.trim());
           return;
         }

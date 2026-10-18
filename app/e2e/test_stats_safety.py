@@ -264,7 +264,7 @@ def home_dense_single_day_page(page):
       const now = new Date();
       return {
         current: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0).getTime(),
-        older: new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 12, 0, 0, 0).getTime(),
+        older: new Date(now.getFullYear(), now.getMonth() - 3, 15, 12, 0, 0, 0).getTime(),
       };
     }''')
     entries = [{
@@ -293,8 +293,11 @@ def home_dense_single_day_page(page):
         'categoryId': 1, 'accountId': 1, 'note': '虚构更早流水',
     }])
     page.wait_for_function("document.querySelectorAll('#hm-today [data-entry-row]').length === 60")
-    assert page.locator('#hm-more').inner_text() == '下拉加载更早的流水…'
+    assert page.locator('#hm-more').inner_text().startswith('再上拉加载')
     page.locator('#page-home').evaluate('element => { element.scrollTop = element.scrollHeight; }')
+    page.wait_for_timeout(250)
+    assert page.locator('#hm-days [data-entry-row]').count()==60
+    page.locator('#hm-more').click()
     page.wait_for_function("document.querySelectorAll('#hm-days [data-entry-row]').length === 61")
     assert page.locator('#hm-today [data-entry-row]').count() == 60
     assert page.locator('#hm-more').inner_text() == '已展示全部流水'
@@ -303,7 +306,7 @@ def home_dense_single_day_page(page):
 def home_dense_multi_page_day(page):
     dates = page.evaluate('''() => {
       const now = new Date();
-      return [0, -1].map(offset => new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, 12).getTime());
+      return [new Date(now.getFullYear(),now.getMonth(),now.getDate(),12).getTime(),new Date(now.getFullYear(),now.getMonth()-3,15,12).getTime()];
     }''')
     entries = [{
         'id': index + 1, 'type': 'expense', 'amount': 100,
@@ -315,8 +318,11 @@ def home_dense_multi_page_day(page):
         'categoryId': 1, 'accountId': 1, 'note': '虚构更早流水',
     }])
     page.wait_for_function("document.querySelectorAll('#hm-today [data-entry-row]').length === 100")
-    assert page.locator('#hm-more').inner_text() == '下拉加载更早的流水…'
+    assert page.locator('#hm-more').inner_text().startswith('再上拉加载')
     page.locator('#page-home').evaluate('element => { element.scrollTop = element.scrollHeight; }')
+    page.wait_for_timeout(250)
+    assert page.locator('#hm-days [data-entry-row]').count()==100
+    page.locator('#hm-more').click()
     page.wait_for_function("document.querySelectorAll('#hm-days [data-entry-row]').length === 101")
     assert page.locator('#hm-today [data-entry-row]').count() == 100
     assert page.locator('#hm-more').inner_text() == '已展示全部流水'

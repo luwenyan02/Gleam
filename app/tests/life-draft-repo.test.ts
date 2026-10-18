@@ -481,3 +481,16 @@ describe('账单与生活记录关系仓库', () => {
     expect((await listLifeLinkedEntries(noteId)).map(entry => entry.id)).toEqual([entryId]);
   });
 });
+
+it('生活记录可只读探测更早数据，先筛类型再限量并保持日期边界', async () => {
+  const base = { title: '虚构片段', body: '', createdAt: 1, updatedAt: 1, deletedAt: 0 };
+  await db.lifeNotes.bulkPut([
+    { ...base, id: 1, kind: 'photo', occurredAt: 100 },
+    { ...base, id: 2, kind: 'diary', occurredAt: 200 },
+    { ...base, id: 3, kind: 'photo', occurredAt: 300 },
+    { ...base, id: 4, kind: 'photo', occurredAt: 150, deletedAt: 2 },
+  ]);
+  expect((await listLifeNotes({ to: 299, limit: 1 })).map(row => row.id)).toEqual([2]);
+  expect((await listLifeNotes({ to: 299, kind: 'photo', limit: 1 })).map(row => row.id)).toEqual([1]);
+  expect((await listLifeNotes({ from: 200, to: 300 })).map(row => row.id)).toEqual([3, 2]);
+});

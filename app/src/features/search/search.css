@@ -44,7 +44,7 @@
 .sr-history-chips .chip{font-size:12px;padding:6px 12px}
 
 /* ── D. 结果汇总卡（始终并排，长金额仅在此行横向滚动） ── */
-.sr-summary-row{display:grid;grid-template-columns:repeat(3,minmax(max-content,1fr));gap:8px;padding:4px 2px 12px;overflow-x:auto;scrollbar-width:thin}
+.sr-summary-row{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(max-content,calc((100% - 16px)/3));gap:8px;padding:4px 2px 12px;overflow-x:auto;scrollbar-width:thin}
 .sr-summary-card{min-width:0;padding:12px 8px;text-align:left;border-radius:var(--r-s);background:var(--surface);border:1px solid var(--border);cursor:pointer;transition:border-color .18s}
 .sr-summary-card.active{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}
 .sr-net{font-size:12px;line-height:1.6;color:var(--muted);white-space:normal;margin-top:4px}
@@ -57,6 +57,7 @@
 .sr-summary-card:nth-child(1) .sc-amount{color:var(--fg)}
 .sr-summary-card:nth-child(2) .sc-amount{color:var(--expense)}
 .sr-summary-card:nth-child(3) .sc-amount{color:var(--income)}
+.sr-summary-card[data-sf="refund"] .sc-amount,.sr-summary-card[data-sf="collect"] .sc-amount{color:var(--income)}
 
 /* ── E. 结果列表头 ── */
 .sr-list-head{display:flex;align-items:center;justify-content:space-between;padding:4px 2px 8px}

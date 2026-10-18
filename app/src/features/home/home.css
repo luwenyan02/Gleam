@@ -48,6 +48,18 @@
 
 /* 时间线加载提示 */
 .hm-more{text-align:center;padding:6px 0 12px}
+.hm-more{min-height:48px;font-size:var(--text-meta);color:var(--primary)}
+.hm-more:disabled{color:var(--muted)}
+.hm-empty-month{padding:16px 4px;color:var(--muted);font-size:var(--text-meta)}
+.hm-month-summary{position:sticky;top:0;z-index:8;display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,1fr) 14px;align-items:center;gap:8px;min-height:72px;margin:0 0 10px;padding:10px 12px;background:var(--surface);color:var(--fg);border:1px solid var(--border);border-radius:var(--r-s);text-align:left}
+.hm-summary-date,.hm-summary-flows,.hm-summary-balance{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:var(--text-meta)}
+.hm-summary-date b{font-size:var(--text-body)}
+.hm-summary-date small,.hm-summary-balance small{font-size:var(--text-small);color:var(--muted)}
+.hm-summary-flows{color:var(--muted)}
+.hm-summary-flows b{font-weight:500;overflow-wrap:anywhere}
+.hm-summary-balance{align-items:flex-end;text-align:right;overflow-wrap:anywhere}
+.hm-month-summary>svg{color:var(--muted)}
+.hm-month-summary:focus-visible{outline:2px solid var(--input-focus);outline-offset:-2px}
 
 @media (max-width:360px){
   .mc-overview{padding:13px 14px}
