@@ -11,18 +11,25 @@ import {
 import { listExpenseTree } from '../../core/repo/categoryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
 import { openDateTimeWheel } from '../../shared/dateTimeWheel';
-import { closeSubpage } from '../shell/router';
+import { closeSubpage, SUBPAGE_CLOSE_EVENT } from '../shell/router';
 import { showToast } from '../shell/toast';
 import { canRefund, getRefundEntryId } from './entrySwipe';
 import { fullDateTime, dayLabel, sheetPick } from './detailShared';
 import { categoryDisplayMap } from '../../core/categoryIcons';
+import { openPickList } from '../../shared/pickList';
+import { entryKeyFeedback } from '../entry/entryKeyFeedback';
+import './refund.css';
 
 export async function renderRefundPage(body: HTMLElement): Promise<void> {
+  const subpage = body.closest<HTMLElement>('.subpage')!;
+  let active = true;
+  subpage.addEventListener(SUBPAGE_CLOSE_EVENT, () => { active = false; }, { once: true });
   const originalId = getRefundEntryId();
   if (originalId == null) { body.innerHTML = '<p class="tiny">未指定原账单</p>'; return; }
   const [original, remaining, tree, accounts] = await Promise.all([
     getEntry(originalId), refundableAmount(originalId), listExpenseTree(), listAccounts(false),
   ]);
+  if (!active) return;
   if (!original || original.deletedAt !== 0 || !canRefund(original)) {
     body.innerHTML = '<div class="placeholder"><p class="sub">原支出账单不存在或不可退款</p></div>';
     return;
@@ -42,42 +49,69 @@ export async function renderRefundPage(body: HTMLElement): Promise<void> {
   let amountText = formatFen(remaining).replace(/,/g, '');
   let replaceAmountOnNextKey = true;
   let saving = false;
+  const orderedCategories = originalCategory
+    ? [originalCategory, ...categories.filter(category => category.id !== originalCategory.id)] : categories;
+  const visibleCategories = orderedCategories.slice(0, categories.length > 20 ? 19 : 20);
 
   body.classList.add('refund-page');
   body.innerHTML = `
-    <section class="refund-origin">
-      <span class="e-ic">${iconHtml(originalCategory?.icon ?? 'ic-coin', 20)}</span>
-      <div><p>原支出 · ${esc(originalCategory?.name ?? '未分类')}</p><small>${fullDateTime(original.occurredAt)}</small></div>
-      <strong class="num">-${formatFen(original.amount)}</strong>
-    </section>
-    <section class="refund-amount-card">
-      <div><p>退款金额</p><small>本次最多可退 ${formatFenCny(remaining)}</small></div>
+    <section class="pick-card refund-amount-card">
+      <div><p>退款金额</p><small>最多可退 ${formatFenCny(remaining)}</small></div>
       <label class="refund-amount-value num">
         <i>¥</i>
-        <input id="rf-amount" type="text" inputmode="decimal" enterkeyhint="done"
+        <input id="rf-amount" type="text" inputmode="none" enterkeyhint="done" placeholder="0.00"
           maxlength="11" autocomplete="off" spellcheck="false" aria-label="退款金额">
       </label>
     </section>
-    <div class="refund-section-title"><span>退款分类</span><small>默认沿用原支出分类</small></div>
-    <div class="cat-grid refund-cats" id="rf-cats">
-      ${categories.map((cat) => `<button class="cat${cat.id === categoryId ? ' sel' : ''}" data-rf-cat="${cat.id}"><span class="cat-ic">${iconHtml(cat.icon)}</span><span>${esc(cat.name)}</span></button>`).join('')}
+    <div class="refund-scroll">
+      <section class="refund-origin">
+        <span class="e-ic">${iconHtml(originalCategory?.icon ?? 'ic-coin', 18)}</span>
+        <div><p>原支出 · ${esc(originalCategory?.name ?? '未分类')}</p><small>${fullDateTime(original.occurredAt)}</small></div>
+        <strong class="num">-${formatFen(original.amount)}</strong>
+      </section>
+      <div class="entry-section-head"><span>退款分类</span></div>
+      <div class="cat-grid" id="rf-cats" role="listbox" aria-label="选择退款分类"></div>
     </div>
-    <input class="note" id="rf-note" maxlength="80" placeholder="输入退款备注…">
+    <div class="refund-note-field">
+      <input class="note" id="rf-note" maxlength="80" placeholder="写点备注（可选）" aria-label="退款备注">
+      <button type="button" id="rf-note-clear" aria-label="清空退款备注" hidden>${iconHtml('ic-close', 16)}</button>
+    </div>
     <div class="meta-row refund-meta">
       <button class="chip" id="rf-date">${iconHtml('ic-cal', 15)}<span>${dayLabel(occurredAt)}</span></button>
       <button class="chip" id="rf-account">${iconHtml('ic-wallet', 15)}<span>${esc(accounts.find((account) => account.id === accountId)?.name ?? '选择账户')}</span></button>
-      <span class="chip tag">关联 #${original.id}</span>
     </div>
-    <div class="refund-keypad" id="rf-keypad" aria-label="退款金额键盘">
-      <button data-rk="1">1</button><button data-rk="2">2</button><button data-rk="3">3</button><button data-rk="del">${iconHtml('ic-del', 18)}</button>
-      <button data-rk="4">4</button><button data-rk="5">5</button><button data-rk="6">6</button><button data-rk="clear" class="muted">清空</button>
-      <button data-rk="7">7</button><button data-rk="8">8</button><button data-rk="9">9</button><button data-rk="save" class="save">保存退款</button>
-      <button data-rk="0" class="zero">0</button><button data-rk=".">.</button>
-    </div>`;
+    <div class="entry-keyboard">
+    <div class="keypad" id="rf-keypad" aria-label="退款金额键盘">
+      <button data-rk="1">1</button><button data-rk="2">2</button><button data-rk="3">3</button><button data-rk="del" class="op" aria-label="删除一位">${iconHtml('ic-del')}</button>
+      <button data-rk="4">4</button><button data-rk="5">5</button><button data-rk="6">6</button><button data-rk="full" class="again" aria-label="填入剩余可退全额">全额</button>
+      <button data-rk="7">7</button><button data-rk="8">8</button><button data-rk="9">9</button><button data-rk="save" class="save" aria-label="保存退款">保存</button>
+      <button data-rk="clear" class="clear" aria-label="清空退款金额">清空</button><button data-rk="0" class="zero">0</button><button data-rk=".">.</button>
+    </div></div>`;
+
+  const renderCategories = () => {
+    body.querySelector('#rf-cats')!.innerHTML = visibleCategories.map(cat => `
+      <button class="cat${cat.id === categoryId ? ' sel' : ''}" data-rf-cat="${cat.id}" role="option" aria-selected="${cat.id === categoryId}">
+        <span class="cat-ic">${iconHtml(cat.icon)}</span><span>${esc(cat.name)}</span>
+      </button>`).join('') + (categories.length > 20 ? `
+      <button class="cat cat-more" id="rf-more"><span class="cat-ic">${iconHtml('ic-set')}</span><span>更多</span></button>` : '');
+  };
+  renderCategories();
 
   const amountEl = body.querySelector<HTMLInputElement>('#rf-amount')!;
-  const refreshAmount = () => { amountEl.value = amountText; };
+  const refreshAmount = () => {
+    amountEl.value = amountText;
+    amountEl.style.width = `${Math.max(4, amountText.length)}ch`;
+    body.querySelector<HTMLButtonElement>('[data-rk="clear"]')!.disabled = saving || !amountText;
+  };
   refreshAmount();
+
+  const note = body.querySelector<HTMLInputElement>('#rf-note')!;
+  const noteClear = body.querySelector<HTMLButtonElement>('#rf-note-clear')!;
+  note.addEventListener('input', () => { noteClear.hidden = !note.value; });
+  note.addEventListener('focus', () => { body.classList.add('refund-note-editing'); });
+  note.addEventListener('blur', () => { body.classList.remove('refund-note-editing'); });
+  noteClear.addEventListener('pointerdown', event => event.preventDefault());
+  noteClear.addEventListener('click', () => { note.value = ''; noteClear.hidden = true; note.focus(); });
 
   amountEl.addEventListener('focus', () => {
     requestAnimationFrame(() => amountEl.select());
@@ -95,20 +129,46 @@ export async function renderRefundPage(body: HTMLElement): Promise<void> {
     const nextInteger = digits.slice(0, integerLength);
     const nextDecimals = digits.slice(integerLength);
     amountText = hasDecimal ? `${nextInteger || '0'}.${nextDecimals}` : nextInteger;
-    if (amountEl.value !== amountText) amountEl.value = amountText;
+    refreshAmount();
   });
 
   body.querySelector('#rf-cats')!.addEventListener('click', (event) => {
+    if (saving || !active) return;
+    if ((event.target as HTMLElement).closest('#rf-more')) {
+      openPickList({
+        container: subpage, title: '选择退款分类', selected: categoryId,
+        items: categories.map(cat => ({ value: cat.id, label: cat.name, icon: cat.icon,
+          group: categoryMap.get(cat.parentId ?? cat.id)?.name })),
+        onPick(value) {
+          if (!active || saving) return;
+          categoryId = Number(value);
+          if (!visibleCategories.some(cat => cat.id === categoryId)) {
+            visibleCategories[visibleCategories.length - 1] = categoryMap.get(categoryId)!;
+          }
+          renderCategories();
+          requestAnimationFrame(() => {
+            if (!active) return;
+            const selected = body.querySelector<HTMLElement>(`[data-rf-cat="${categoryId}"]`);
+            selected?.focus({ preventScroll: true });
+            selected?.scrollIntoView({ block: 'nearest' });
+          });
+        },
+      });
+      return;
+    }
     const button = (event.target as HTMLElement).closest<HTMLElement>('[data-rf-cat]');
     if (!button) return;
     categoryId = Number(button.dataset.rfCat);
-    body.querySelectorAll('[data-rf-cat]').forEach((item) => item.classList.toggle('sel', item === button));
+    body.querySelectorAll('[data-rf-cat]').forEach(item => {
+      item.classList.toggle('sel', item === button);
+      item.setAttribute('aria-selected', String(item === button));
+    });
   });
   body.querySelector('#rf-account')!.addEventListener('click', () => {
     void sheetPick('选择退款到账账户', accounts.map((account) => ({
       id: account.id, label: account.name, icon: 'ic-wallet', note: formatFen(account.balance),
     }))).then((picked) => {
-      if (picked == null) return;
+      if (picked == null || !active || saving) return;
       accountId = picked;
       body.querySelector('#rf-account span')!.textContent = accounts.find((account) => account.id === accountId)?.name ?? '选择账户';
     });
@@ -121,18 +181,28 @@ export async function renderRefundPage(body: HTMLElement): Promise<void> {
       initial: { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() },
       maxDate: { year: today.getFullYear(), month: today.getMonth() + 1, day: today.getDate() },
       onConfirm(r) {
+        if (!active || saving) return;
         occurredAt = new Date(r.year, r.month - 1, r.day, 12, 0).getTime();
         body.querySelector('#rf-date span')!.textContent = dayLabel(occurredAt);
       },
     });
     document.body.appendChild(panel);
   });
-  body.querySelector('#rf-keypad')!.addEventListener('click', (event) => {
-    const button = (event.target as HTMLElement).closest<HTMLElement>('[data-rk]');
-    if (!button) return;
+  const keypad = body.querySelector<HTMLElement>('#rf-keypad')!;
+  keypad.addEventListener('pointerdown', event => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-rk]');
+    if (button && !button.disabled && active && !saving && event.isPrimary && event.button === 0) void entryKeyFeedback();
+  });
+  keypad.addEventListener('click', (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-rk]');
+    if (!button || button.disabled || saving || !active) return;
+    if (event.detail === 0) void entryKeyFeedback();
     const key = button.dataset.rk!;
     if (key === 'save') { void saveRefund(); return; }
-    if (key === 'clear') {
+    if (key === 'full') {
+      amountText = formatFen(remaining).replace(/,/g, '');
+      replaceAmountOnNextKey = true;
+    } else if (key === 'clear') {
       amountText = '';
       replaceAmountOnNextKey = false;
     } else if (key === 'del') {
@@ -156,7 +226,7 @@ export async function renderRefundPage(body: HTMLElement): Promise<void> {
   });
 
   async function saveRefund(): Promise<void> {
-    if (saving) return;
+    if (saving || !active) return;
     let amount: number;
     try { amount = parseYuanToFen(amountText); }
     catch (error) { showToast(String(error instanceof Error ? error.message : error)); return; }
@@ -164,6 +234,7 @@ export async function renderRefundPage(body: HTMLElement): Promise<void> {
     if (amount > remaining) { showToast(`本次最多可退 ${formatFenCny(remaining)}`); return; }
     if (accountId == null) { showToast('请选择退款到账账户'); return; }
     saving = true;
+    body.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input').forEach(control => { control.disabled = true; });
     try {
       await createRefund({
         originalEntryId: sourceEntry.id,
@@ -174,12 +245,18 @@ export async function renderRefundPage(body: HTMLElement): Promise<void> {
         merchantId: sourceEntry.merchantId,
         note: body.querySelector<HTMLInputElement>('#rf-note')!.value.trim() || undefined,
       });
-      showToast(`退款已记录：${formatFenCny(amount)}，并已关联原账单`);
-      closeSubpage();
+      if (active) {
+        showToast(`退款已记录：${formatFenCny(amount)}，并已关联原账单`);
+        closeSubpage();
+      }
     } catch (error) {
-      showToast(String(error instanceof Error ? error.message : error));
+      if (active) showToast(String(error instanceof Error ? error.message : error));
     } finally {
       saving = false;
+      if (active) {
+        body.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input').forEach(control => { control.disabled = false; });
+        refreshAmount();
+      }
     }
   }
 }
