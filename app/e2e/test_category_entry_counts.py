@@ -17,6 +17,7 @@ SEED = '''async extra => {
    {id:5,name:'工资',kind:'income'},{id:6,name:'虚构未使用分类',kind:'income'},
    {id:7,name:'虚构非常长的交通分类名称用于窄屏检查',kind:'expense',parentId:1}])
    tx.objectStore('categories').put({...stamp,icon:'ic-tag',sortOrder:c.id,...c});
+ for(let id=20;id<36;id++)tx.objectStore('categories').put({...stamp,id,name:`虚构备用小类${id}`,kind:'expense',parentId:1,icon:'ic-tag',sortOrder:id});
  tx.objectStore('accounts').put({...stamp,id:1,name:'虚构现金',group:'cash',balance:100000,hidden:false,sortOrder:1});
  const rows=[{categoryId:1},{categoryId:3},{categoryId:3,refundFlag:true},{categoryId:4,amount:-50},
    {categoryId:4,deletedAt:2},{categoryId:5,type:'income',occurredAt:new Date(2000,0,1).getTime()},
@@ -49,6 +50,12 @@ def run(browser, width, theme, scale, extra):
         name=label.locator('.cm-category-name').bounding_box();badge=label.locator('.cm-entry-count').bounding_box()
         assert name['x']+name['width']+6<=badge['x']+1
         assert label.evaluate('e=>e.scrollWidth<=e.clientWidth+1')
+    for parent in page.locator('#cm-list .cm-parent-copy').all():
+        badge=parent.locator('.cm-entry-count').bounding_box();children=parent.locator('.cm-subcount').bounding_box()
+        assert abs(badge['y']-children['y'])<1.1
+        assert badge['x']+badge['width']+6<=children['x']+1
+        assert parent.locator('.cm-category-name').evaluate('e=>e.scrollWidth<=e.clientWidth+1')
+        assert parent.evaluate('e=>e.scrollWidth<=e.clientWidth+1')
     assert page.locator('#sp-categories').evaluate('e=>e.scrollWidth<=e.clientWidth+1')
     label=f'{width}-{theme}-text{scale}'
     page.screenshot(path=str(OUT/f'expense-{label}.png'),animations='disabled')

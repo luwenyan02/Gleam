@@ -27,11 +27,15 @@
 .cm-merge-path span{font-size:13px;color:var(--muted)}.cm-merge-path strong{font-size:16px;overflow-wrap:anywhere}
 .cm-merge-path strong+span{margin-top:10px}.cm-merge-actions{display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-top:16px}
 
-/* 分类名称与账单笔数同行；大类的小类数量放在副行，给窄屏留出空间。 */
+/* 分类名称、账单笔数与小类数量同行，长名称按可用空间省略。 */
 .cm-category-label{display:flex;align-items:baseline;gap:8px;flex:1;min-width:0}
 .cm-category-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cm-entry-count{flex:none;font-size:var(--text-small);font-weight:400;color:var(--muted);white-space:nowrap}
-.cm-parent-copy{flex:1;min-width:0;display:grid;gap:3px}
+.cm-parent-copy{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px}
+.cm-parent-copy .cm-category-label{flex:0 1 auto;gap:6px}
 .cm-parent-copy .cm-category-name{font-weight:600}
-.cm-subcount{font-size:var(--text-small);color:var(--muted)}
+.cm-subcount{flex:none;font-size:var(--text-small);color:var(--muted);white-space:nowrap}
 .cm-item>.chev,.cm-item>[data-addsub]{flex:none}
+
+.cm-item[data-drag-group="parents"]{gap:8px}
+.cm-item[data-drag-group="parents"]>[data-addsub]{padding-inline:8px}
