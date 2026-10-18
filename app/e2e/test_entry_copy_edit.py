@@ -46,7 +46,7 @@ def open_copy(page, source):
     assert page.locator('.entry-date-actions').evaluate('''el=>{
       const style=getComputedStyle(el), date=getComputedStyle(el.querySelector('#date-chip')),
         today=getComputedStyle(el.querySelector('#date-today'));
-      return parseFloat(style.borderTopWidth)>0 && parseFloat(date.borderTopWidth)===0 && parseFloat(today.borderTopWidth)===0;
+      return style.boxShadow.includes('inset') && parseFloat(date.borderTopWidth)===0 && parseFloat(today.borderTopWidth)===0;
     }''')
 
 def close_detail(page):
@@ -81,6 +81,7 @@ def run(browser, width, theme, scale):
             geometry=page.evaluate('''()=>{const box=s=>document.querySelector(s).getBoundingClientRect().toJSON();
               return {date:box('#date-chip'),field:box('.entry-date-actions'),today:box('#date-today'),account:box('#acct-btn'),keyboard:box('#entry-keyboard')};}''')
             assert abs(geometry['field']['top']-geometry['account']['top'])<1,geometry
+            assert abs(geometry['field']['height']-geometry['account']['height'])<1,geometry
             assert geometry['today']['width']>=44 and geometry['today']['height']>=44,geometry
             assert geometry['account']['bottom']<=geometry['keyboard']['top'],geometry
         page.wait_for_timeout(300)
