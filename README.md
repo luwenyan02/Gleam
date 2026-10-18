@@ -1,18 +1,29 @@
 # 拾光 Gleam
 
+> 记清每一笔钱，留住每一份日常。
 > 本地优先的记账与生活记录应用。
 
 [![Android](https://img.shields.io/badge/Android-Capacitor-3DDC84)](https://capacitorjs.com/)
 [![PWA](https://img.shields.io/badge/PWA-offline--ready-D66A2C)](https://developer.mozilla.org/docs/Web/Progressive_web_apps)
-[![v1.11.1](https://img.shields.io/badge/release-v1.11.1-orange)](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.1)
+[![最新版本](https://img.shields.io/github/v/release/luwenyan02/Gleam?label=release&color=orange)](https://github.com/luwenyan02/Gleam/releases/latest)
 
-记清每一笔钱，也留住日常的小片段。拾光把账目、账户、预算报表和生活记录放在同一个本地应用中：可以快速记一笔、写一句随记，也可以和拾光聊聊，再把选中的片段整理成周刊。数据默认保存在设备内；云备份、AI 识别与生活 AI 均为用户主动配置的可选能力。
+一顿早餐、一趟出行、一段值得记住的时光。拾光把日常收支与生活片段放在一起：记一笔账，写一句随记，用照片留住当时的心情，再将选中的片段整理成拾光周刊。
 
-> [v1.11.1 已于 2026-10-12 正式发布](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.1)，用户已在手机完成覆盖安装验收。提供 Android APK 与 SHA-256 校验文件；正式附件沿用已验收原包，未重新构建。
+从快速记账到账户管理、预算与报表，让每一笔钱有迹可循；从生活随记到和拾光聊聊，让平常的日子也值得回看。无需注册账号即可使用，核心数据默认留在设备内；云备份、AI 识别与生活 AI 按需配置。
 
-当前正式基线为 **v1.11.1**，源码和标签对应 `e96e31b7de2a90adfcb5a8fd2b58e428956a8d39`，[最终 CI](https://github.com/luwenyan02/Gleam/actions/runs/38195964629) 通过。本版保留首页七日消费节奏与短语音功能，修复 Android 升级后仍加载旧网页缓存的问题，保留账目、设置及安全存储。自动化环境为 API 35 / WebView 124.0.6367.219，加上用户手机验收，不代表所有设备组合均已验证。权限过程被 Activity 重建打断后，需主动重新发起语音。
+## 宣传片 · 暖光生活篇
 
-仍不能直接覆盖旧云端证书签名的 v1.8.0／v1.8.1；升级前保留应用之外的可用加密备份。当前状态和后续工作见[项目交接](docs/PROJECT_STATUS.md)，云端开发恢复见[云环境指南](docs/CLOUD_DEVELOPMENT.md)。持续语音暂缓；本轮环境维护不合并或发布。
+[![拾光宣传片《暖光生活篇》：点击观看，40 秒](docs/assets/promo/gleam-warm-life-cover.jpg)](docs/assets/promo/gleam-warm-life.mp4)
+
+**[▶ 观看《暖光生活篇》](docs/assets/promo/gleam-warm-life.mp4)** · 40 秒 · 1080p
+
+跟随暖光中的日常片段，看看拾光如何把记账与生活记录连在一起。点击封面或上方链接进入视频文件页；也可[下载原片](https://github.com/luwenyan02/Gleam/raw/refs/heads/main/docs/assets/promo/gleam-warm-life.mp4)。
+
+## 下载与了解
+
+- **Android**：前往[最新正式发布页](https://github.com/luwenyan02/Gleam/releases/latest)下载 APK 与 SHA-256 校验文件；当前最新正式版为 **v1.11.15**。安装与升级限制见下方说明及对应版本发布记录。
+- **PWA**：支持安装为网页应用，核心功能可离线使用。
+- **隐私与数据**：查看[隐私说明](PRIVACY.md)与[数据备份指南](docs/data-backup.md)。
 
 ## 为什么是拾光
 
@@ -88,9 +99,9 @@
 
 ## 安装与使用
 
-- Android 7.0 及以上：从 [v1.11.1 发布页](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.1) 下载 APK 与 SHA-256 校验文件；安装前阅读对应版本的验证范围和升级提示。
+- Android 7.0 及以上：从 [最新正式发布页](https://github.com/luwenyan02/Gleam/releases/latest) 下载 APK 与 SHA-256 校验文件；安装前阅读对应版本的验证范围和升级提示。
 - 本轮复用原本地证书，不能直接覆盖云端签名的 v1.8.0／v1.8.1。使用这两个云端版本的用户，应先在“我的 → 数据与备份”导出加密备份并另存到应用之外，确认副本可读取，再考虑卸载、安装与恢复；卸载会删除应用内数据，没有可用外部备份时不要卸载。原本地签名系列不应仅因版本较旧而卸载；签名一致也不能代替真机覆盖更新与恢复验收。
-- v1.11.1 已正式发布并完成用户手机覆盖安装验收；其他系统与 WebView 组合仍需单独验证，范围以发布说明为准。
+- 当前最新正式版为 v1.11.15；各版本的构建检查、CI 状态和手机验收范围以对应发布说明为准。
 - PWA 通过网页生产构建和预览使用；实时语音仅在配置了本机中转的开发服务中可用。
 - 自行构建的方法见[发布指南](docs/release.md)；本地 APK 与校验文件保存在被 Git 忽略的 `release/` 目录，不进入源码历史。
 
@@ -137,6 +148,8 @@ npm run test:e2e
 更多信息见[开发指南](docs/development.md)、[架构说明](docs/architecture.md)、[数据与备份](docs/data-backup.md)和[发布指南](docs/release.md)。
 
 ## 版本与验收
+
+当前最新正式版为 [v1.11.15](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.15)，各版验证范围见对应发布说明。以下为 v1.11.1 的历史验收记录。
 
 v1.11.1 正式提交 `e96e31b7de2a90adfcb5a8fd2b58e428956a8d39` 的[最终 CI](https://github.com/luwenyan02/Gleam/actions/runs/38195964629) 已通过，用户已验收手机覆盖安装。详细发布、升级限制和历史原生自动化范围见[正式发布说明](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.1)与[项目状态](docs/PROJECT_STATUS.md)。上面的 v1.8.0 截图仅为历史界面演示，不作为当前版本验收证据。
 
