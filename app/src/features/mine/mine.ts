@@ -8,16 +8,15 @@
  */
 import './mine.css';
 import { appVersionText, getAppVersion, type AppVersionInfo } from '../../core/appVersion';
-import { esc } from '../../core/esc';
 import { iconHtml } from '../../assets/icons';
 import { on } from '../../core/store';
 import { formatFenCny } from '../../core/money';
-import { listEntries, dayKey } from '../../core/repo/entryRepo';
+import { getMineEntrySummary } from '../../core/repo/mineRepo';
 import { ensureMonthBudget } from '../../core/repo/budgetRepo';
 import { getAccountingMonth } from '../../core/repo/periodRepo';
 import { budgetUsage } from '../../core/repo/statsRepo';
 import { listLoanAccounts } from '../../core/repo/loanRepo';
-import { registerPage, openSubpage } from '../shell/router';
+import { registerPage, openSubpage, currentPage } from '../shell/router';
 import { showToast } from '../shell/toast';
 import { openAbout } from '../settings/about';
 import { openSettingsManual } from '../settings/settingsManual';
@@ -26,6 +25,8 @@ import { openSettingsManual } from '../settings/settingsManual';
 let body: HTMLElement | undefined;
 /** 并发刷新令牌 */
 let refreshToken = 0;
+let pendingRefresh: Promise<void> | undefined;
+let pendingBody: HTMLElement | undefined;
 let displayedVersion: AppVersionInfo | undefined;
 
 /** 入口行 */
@@ -46,47 +47,20 @@ function groupHtml(title: string, rows: string, label: string): string {
 
 /* ── 页面渲染 ── */
 
-async function refresh(): Promise<void> {
-  const el = body;
-  if (!el?.isConnected) return;
-  const token = ++refreshToken;
-  const month = await getAccountingMonth();
-  const [entries, budget, usage, contacts, appVersion] = await Promise.all([
-    listEntries(), ensureMonthBudget(month), budgetUsage(month), listLoanAccounts(), getAppVersion(),
-  ]);
-  if (token !== refreshToken || !el.isConnected) return;
-  displayedVersion = appVersion;
-
-  /* 头部统计：记账天数（有记录的自然日）与流水笔数 */
-  const days = new Set(entries.map((e) => dayKey(e.occurredAt))).size;
-
-  /* 动态入口备注 */
-  const budgetNote = budget && budget.totalLimit > 0
-    ? `本期剩余 ${formatFenCny(budget.totalLimit - usage.totalUsed)}` : '未设置';
-  const owedToMe = contacts.reduce((s, c) => s + Math.max(0, c.balance), 0);
-  const iOwe = contacts.reduce((s, c) => s + Math.max(0, -c.balance), 0);
-  const loanNote = contacts.length
-    ? (owedToMe > 0 || iOwe > 0
-      ? [owedToMe > 0 ? `待收 ${formatFenCny(owedToMe)}` : '', iOwe > 0 ? `待还 ${formatFenCny(iOwe)}` : ''].filter(Boolean).join(' · ')
-      : `${contacts.length} 个账户 · 已结清`)
-    : '借入借出与还款收款';
-  const pendingBx = entries.filter((e) => e.type === 'expense' && e.reimburseStatus === 'pending');
-  const bxNote = pendingBx.length
-    ? `${pendingBx.length} 笔 · ${formatFenCny(pendingBx.reduce((s, e) => s + e.amount, 0))}` : '待报销归集';
-
+function renderContent(el: HTMLElement): void {
   el.innerHTML = `
     <header class="mine-head" aria-label="我的">
       <span class="avatar" aria-hidden="true">拾</span>
       <div>
         <h2>我的拾光</h2>
-        <p class="sub">已记录 ${days} 天 · ${entries.length} 条流水</p>
+        <p class="sub" data-mine-stats>正在统计流水</p>
       </div>
       <button class="icon-btn" data-sub="sp-settings" aria-label="应用设置">${iconHtml('ic-set')}</button>
     </header>
     ${groupHtml('记账偏好', `
-      ${rowHtml('sp-reimburse', 'ic-file', '报销管理', bxNote)}
-      ${rowHtml('sp-budget', 'ic-coin', '预算中心', budgetNote)}
-      ${rowHtml('sp-loan', 'ic-loan-in', '应收应付', loanNote)}
+      ${rowHtml('sp-reimburse', 'ic-file', '报销管理', '读取中')}
+      ${rowHtml('sp-budget', 'ic-coin', '预算中心', '读取中')}
+      ${rowHtml('sp-loan', 'ic-loan-in', '应收应付', '读取中')}
       ${rowHtml('sp-recurring', 'ic-repeat', '周期账', '固定支出自动入账')}
       ${rowHtml('sp-categories', 'ic-set', '分类管理', '支出两级 · 收入单级')}
       ${rowHtml('sp-template-manage', 'ic-bolt', '速记模板', '分类加金额 · 一键记账')}
@@ -111,12 +85,65 @@ async function refresh(): Promise<void> {
       </button>
       <button class="row" data-about>
         <span class="e-ic">${iconHtml('ic-file', 18)}</span>关于拾光
-        <span class="row-note" data-app-version>${esc(appVersionText(appVersion))} · ${appVersion.platform}</span>
+        <span class="row-note" data-app-version>读取中</span>
         <span class="chev">${iconHtml('ic-right', 15)}</span>
       </button>
       </div>
     </section>
     <p class="tiny" style="text-align:center;padding:4px 0 10px">账本数据本地保存 · 云备份、AI 识别和检查更新由你主动发起</p>`;
+}
+
+/** 内容先显示，摘要分别更新；同一页面只保留一组读取，变化后再刷新。 */
+function refresh(): Promise<void> {
+  const el = body;
+  if (!el?.isConnected || currentPage() !== 'page-mine') return Promise.resolve();
+  if (pendingRefresh && pendingBody === el) return pendingRefresh;
+  const token = refreshToken;
+  const current = () => body === el && el.isConnected && token === refreshToken;
+  const text = (selector: string, value: string) => {
+    if (current()) { const node = el.querySelector(selector); if (node) node.textContent = value; }
+  };
+  const stats = getMineEntrySummary().then(summary => {
+    text('[data-mine-stats]', `已记录 ${summary.days} 天 · ${summary.count} 条流水`);
+    text('[data-sub="sp-reimburse"] .row-note', summary.pendingCount
+      ? `${summary.pendingCount} 笔 · ${formatFenCny(summary.pendingAmount)}` : '待报销归集');
+  }).catch(() => {
+    text('[data-mine-stats]', '流水统计暂不可用');
+    text('[data-sub="sp-reimburse"] .row-note', '暂未读取');
+  });
+  const budget = (async () => {
+    const month = await getAccountingMonth();
+    const limit = await ensureMonthBudget(month);
+    const usage = limit && limit.totalLimit > 0 ? await budgetUsage(month) : undefined;
+    text('[data-sub="sp-budget"] .row-note', usage && limit
+      ? `本期剩余 ${formatFenCny(limit.totalLimit - usage.totalUsed)}` : '未设置');
+  })().catch(() => text('[data-sub="sp-budget"] .row-note', '暂未读取'));
+  const loans = listLoanAccounts().then(contacts => {
+    const owedToMe = contacts.reduce((sum, contact) => sum + Math.max(0, contact.balance), 0);
+    const iOwe = contacts.reduce((sum, contact) => sum + Math.max(0, -contact.balance), 0);
+    const note = contacts.length
+      ? [owedToMe > 0 ? `待收 ${formatFenCny(owedToMe)}` : '', iOwe > 0 ? `待还 ${formatFenCny(iOwe)}` : ''].filter(Boolean).join(' · ') || `${contacts.length} 个账户 · 已结清`
+      : '借入借出与还款收款';
+    text('[data-sub="sp-loan"] .row-note', note);
+  }).catch(() => text('[data-sub="sp-loan"] .row-note', '暂未读取'));
+  const version = getAppVersion().then(info => {
+    if (current()) displayedVersion = info;
+    text('[data-app-version]', `${appVersionText(info)} · ${info.platform}`);
+  }).catch(() => text('[data-app-version]', '暂未读取'));
+  const task = Promise.all([stats, budget, loans, version]).then(() => undefined);
+  pendingBody = el;
+  pendingRefresh = task;
+  void task.finally(() => {
+    if (pendingRefresh !== task) return;
+    pendingRefresh = undefined;
+    if (body === el && el.isConnected && token !== refreshToken) void refresh();
+  });
+  return task;
+}
+
+function invalidate(): void {
+  refreshToken++;
+  void refresh();
 }
 
 /* ── 装配 ── */
@@ -126,6 +153,9 @@ export function initMine(): void {
   registerPage('page-mine', {
     render(el) {
       body = el;
+      displayedVersion = undefined;
+      refreshToken++;
+      renderContent(el);
       el.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
         const sub = target.closest<HTMLElement>('[data-sub]');
@@ -135,15 +165,19 @@ export function initMine(): void {
           return;
         }
         if (target.closest('[data-help-manual]')) openSettingsManual();
-        if (target.closest('[data-about]') && displayedVersion) openAbout(displayedVersion);
+        if (target.closest('[data-about]')) {
+          if (displayedVersion) openAbout(displayedVersion);
+          else showToast('正在读取应用版本，请稍后重试');
+        }
       });
-      void refresh();
     },
-    onShow() { void refresh(); },
+    onShow() { invalidate(); },
   });
 
-  // 流水/预算变化时刷新头部统计与入口备注（页面常驻，body 始终连接）
-  on('entries-changed', () => void refresh());
-  on('budgets-changed', () => void refresh());
-  on('settings-changed', () => void refresh());
+  // 隐藏页只标记失效，不在后台反复遍历账本；下次显示时读取。
+  on('entries-changed', invalidate);
+  on('accounts-changed', invalidate);
+  on('categories-changed', invalidate);
+  on('budgets-changed', invalidate);
+  on('settings-changed', invalidate);
 }
