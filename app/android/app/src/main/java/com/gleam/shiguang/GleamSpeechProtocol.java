@@ -27,6 +27,12 @@ final class GleamSpeechProtocol {
             if ("error".equals(type)) { engine.cancel(providerCode(event.optJSONObject("error"))); return; }
             if ("session.created".equals(type)) { engine.sessionCreated(event); return; }
             if ("session.updated".equals(type)) { engine.sessionUpdated(event); return; }
+            if ("conversation.item.input_audio_transcription.delta".equals(type)) {
+                if (event.opt("text") instanceof String && event.opt("stash") instanceof String) {
+                    engine.partial(event.optString("item_id", null), event.optString("text") + event.optString("stash"), event.optInt("content_index", -1));
+                }
+                return;
+            }
             engine.event(type, event.optString("item_id", null), event.optString("transcript", null), event.optInt("content_index", -1));
         } catch (Exception ignored) { engine.protocolFailure(FRAME_PROCESSING_FAILED); }
     }

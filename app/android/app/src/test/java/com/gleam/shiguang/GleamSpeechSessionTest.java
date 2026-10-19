@@ -10,6 +10,7 @@ public class GleamSpeechSessionTest {
         final List<String> sent = new ArrayList<>();
         final List<Runnable> scheduled = new ArrayList<>();
         final List<String> states = new ArrayList<>();
+        final List<String> previews = new ArrayList<>();
         int starts, stops, closes, results, errors, connections;
         String text, code;
         boolean sendOk = true;
@@ -20,6 +21,7 @@ public class GleamSpeechSessionTest {
         public void stop() { stops++; }
         public void state(String value) { states.add(value); }
         public void complete(String value) { results++; text = value; }
+        public void partial(String value) { previews.add(value); }
         public void connected() { connections++; }
         public void fail(String value) { errors++; code = value; }
         public GleamSpeechSession.Timer after(long ms, Runnable work) { scheduled.add(work); return () -> {}; }
@@ -30,6 +32,28 @@ public class GleamSpeechSessionTest {
         void pcm() { session.audio(new byte[3200], 3200); }
         void committed() { session.event("input_audio_buffer.committed", "item-fictional", null, -1); }
         void finalText(String value) { session.event("conversation.item.input_audio_transcription.completed", "item-fictional", value, 0); }
+    }
+    @Test public void partialReplacesPreviewButCannotCompleteOrCrossItems() {
+        Fixture f = new Fixture(); f.ready(); f.pcm();
+        GleamSpeechProtocol.receive(f.session, "{\"type\":\"conversation.item.input_audio_transcription.delta\",\"item_id\":\"item-fictional\",\"content_index\":0,\"text\":\"午餐\",\"stash\":\"二十\"}");
+        GleamSpeechProtocol.receive(f.session, "{\"type\":\"conversation.item.input_audio_transcription.delta\",\"item_id\":\"item-fictional\",\"content_index\":0,\"text\":\"午餐\",\"stash\":\"28元\"}");
+        assertEquals(java.util.Arrays.asList("午餐二十", "午餐28元"), f.previews);
+        assertEquals(0, f.results);
+        f.session.partial("foreign", "其他录音", 0);
+        f.session.partial("item-fictional", "错误索引", 1);
+        f.session.partial("item-fictional", new String(new char[501]).replace('\0', '中'), 0);
+        assertEquals(2, f.previews.size());
+        f.session.stop(); f.committed(); f.finalText("午餐28.01元");
+        assertEquals("午餐28.01元", f.text); assertEquals(1, f.results);
+        f.session.partial("item-fictional", "迟到", 0); assertEquals(2, f.previews.size());
+    }
+    @Test public void cancelledAndUnconfiguredSessionsCannotPreviewAudio() {
+        Fixture f = new Fixture();
+        f.session.partial("item-fictional", "未开始", 0); assertTrue(f.previews.isEmpty());
+        f.ready(); f.session.partial("item-fictional", "没有音频", 0); assertTrue(f.previews.isEmpty());
+        f.pcm(); f.session.cancel("SPEECH_CANCELLED");
+        f.session.partial("item-fictional", "取消后", 0); assertTrue(f.previews.isEmpty());
+        assertEquals(0, f.results);
     }
     @Test public void manualStopCommitsExactlyOneUtteranceWithoutAssistantGeneration() {
         Fixture f = new Fixture(); f.ready(); f.pcm(); f.session.stop(); f.session.stop(); f.committed(); f.finalText("午饭二十八元"); f.finalText("重复");

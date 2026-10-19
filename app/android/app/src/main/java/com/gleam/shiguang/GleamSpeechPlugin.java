@@ -193,6 +193,15 @@ public final class GleamSpeechPlugin extends Plugin {
         GleamSpeechSession.Listener listener = new GleamSpeechSession.Listener() {
             public void state(String value) { main.post(() -> { if (active == session && !session.engine.isClosed()) { JSObject event = new JSObject(); event.put("sessionId", session.id); event.put("state", value); notifyListeners("state", event); } }); }
             public void complete(String text) { main.post(() -> resolve(session, text)); }
+            public void partial(String text) {
+                main.post(() -> {
+                    if (active != session || session.engine.isClosed() || !foreground || destroyed
+                        || !credentials.revision().equals(session.revision)) return;
+                    JSObject event = new JSObject(); event.put("sessionId", session.id);
+                    event.put("state", "listening"); event.put("text", text);
+                    notifyListeners("state", event);
+                });
+            }
             public void connected() { main.post(() -> resolve(session, null)); }
             public void fail(String code) {
                 GleamSpeechSession.Phase phase = session.engine.phase();

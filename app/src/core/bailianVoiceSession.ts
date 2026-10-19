@@ -8,6 +8,7 @@ export type ShortVoiceState = 'idle' | NativeSpeechStateEvent['state'];
 interface SessionCallbacks {
   onState(state: ShortVoiceState): void;
   onText(text: string): void;
+  onPartial?(text: string): void;
   onError(message: string): void;
 }
 type ActiveSession = { id: string; listener?: { remove(): Promise<void> }; timer?: ReturnType<typeof setTimeout> };
@@ -32,6 +33,11 @@ export class BailianVoiceSession {
     try {
       const listener = await this.bridge.addListener('state', event => {
         if (this.active !== session || this.disposed || event.sessionId !== session.id) return;
+        if (event.text !== undefined) {
+          if ((event.state === 'listening' || event.state === 'transcribing')
+            && typeof event.text === 'string' && event.text.length <= 500) this.callbacks.onPartial?.(event.text);
+          return;
+        }
         this.update(event.state);
       });
       if (this.active !== session || this.disposed) { await listener.remove(); return; }
@@ -40,7 +46,7 @@ export class BailianVoiceSession {
         expectedCredentialRevision: readiness.credentialRevision, consent: true, userInitiated: true });
       if (this.active !== session || this.disposed || result.sessionId !== session.id) return;
       const text = result.text.trim();
-      if (!text || text.length > 500) throw new Error('未得到可核对的短句，请重试或手动输入');
+      if (!text || text.length > 500) throw { code: text ? 'SPEECH_TRANSCRIPT_LIMIT' : 'SPEECH_AUDIO_EMPTY', data: { phase: 'transcribing' } };
       this.finish(session);
       this.callbacks.onText(text);
     } catch (error) {

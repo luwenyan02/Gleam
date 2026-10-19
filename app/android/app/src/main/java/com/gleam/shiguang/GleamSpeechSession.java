@@ -18,7 +18,7 @@ final class GleamSpeechSession {
     static final String SESSION_UPDATE = "{\"type\":\"session.update\",\"session\":{\"modalities\":[\"text\"],\"turn_detection\":null,\"input_audio_transcription\":{\"model\":\"qwen3-asr-flash-realtime\"},\"enable_search\":false,\"tools\":[],\"audio\":{\"input\":{\"format\":{\"type\":\"pcm\",\"sample_rate\":16000,\"sample_format\":\"s16le\",\"channels\":1,\"packing\":\"interleaved\",\"channel_layout\":\"mono\"}}}}}";
     interface Transport { boolean send(String message); void close(); }
     interface Audio { void start() throws Exception; void stop(); }
-    interface Listener { void state(String value); void complete(String text); void fail(String code); default void connected() {} }
+    interface Listener { void state(String value); void complete(String text); void fail(String code); default void connected() {} default void partial(String text) {} }
     interface Timer { void cancel(); }
     interface Clock { Timer after(long ms, Runnable work); }
     enum Phase {
@@ -39,6 +39,7 @@ final class GleamSpeechSession {
     private Timer deadline;
     private int bytes;
     private String committedItem, pendingItem, pendingText;
+    private String previewItem;
     private boolean audioStarted;
     private boolean manualUpdatePending;
     private String serverSessionId;
@@ -139,6 +140,15 @@ final class GleamSpeechSession {
             cancel("SPEECH_TRANSCRIPTION_FAILED");
         }
         // Non-creation response output and partial input transcription never become input results.
+    }
+    /** Provider delta text + stash replaces the preview; only completed + committed can finish. */
+    synchronized void partial(String itemId, String text, int contentIndex) {
+        if ((state != State.LISTENING && state != State.TRANSCRIBING) || bytes == 0 || !validItem(itemId)
+            || contentIndex != 0 || text == null || text.length() > MAX_TRANSCRIPT_CHARS) return;
+        if (committedItem != null && !committedItem.equals(itemId)) return;
+        if (previewItem != null && !previewItem.equals(itemId)) return;
+        previewItem = itemId;
+        listener.partial(text);
     }
     private void acceptTranscript(String text) {
         if (text == null || text.trim().isEmpty()) { cancel("SPEECH_AUDIO_EMPTY"); return; }

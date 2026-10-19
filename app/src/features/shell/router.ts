@@ -11,6 +11,7 @@ import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { closeSheet, isSheetOpen } from './sheet';
 import { dismissTopOverlay } from '../../shared/overlay';
+import { dismissEntrySwipe } from '../../shared/entrySwipeDismiss';
 import { handleLayerHistory, pushPageHistory, withoutLayerHistory } from '../../shared/layerHistory';
 
 /** 页面定义 */
@@ -104,6 +105,7 @@ function handleSystemBack(): void {
     closeSheet();
     return;
   }
+  if (dismissEntrySwipe()) return;
   if (subStack.length > 0) {
     closeSubpage();
     return;

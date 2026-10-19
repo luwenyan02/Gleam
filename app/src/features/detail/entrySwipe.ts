@@ -12,6 +12,7 @@ import { openSubpage } from '../shell/router';
 import { showToast } from '../shell/toast';
 import { confirmDialog } from '../shell/dialog';
 import { openEntrySheet } from '../entry/entrySheet';
+import { dismissEntrySwipe, revealEntrySwipe } from '../../shared/entrySwipeDismiss';
 
 let viewEntryId: number | undefined;
 let refundEntryId: number | undefined;
@@ -68,7 +69,7 @@ export function bindEntrySwipeActions(container: HTMLElement): void {
 
   const closeOthers = (except?: HTMLElement) => {
     for (const item of container.querySelectorAll<HTMLElement>('.entry-swipe.swipe-open')) {
-      if (item !== except) item.classList.remove('swipe-open');
+      if (item !== except) dismissEntrySwipe();
     }
   };
 
@@ -108,9 +109,9 @@ export function bindEntrySwipeActions(container: HTMLElement): void {
     }
     if (horizontal && deltaX < -46) {
       closeOthers(current);
-      current.classList.add('swipe-open');
+      revealEntrySwipe(current);
     } else if (horizontal) {
-      current.classList.remove('swipe-open');
+      dismissEntrySwipe();
     }
     row = null;
   };
@@ -120,6 +121,7 @@ export function bindEntrySwipeActions(container: HTMLElement): void {
 
 /** 统一执行详情页、明细页和首页的账单动作。 */
 export async function runEntryQuickAction(action: EntryQuickAction, entry: Entry): Promise<'deleted' | 'done' | 'opened'> {
+  dismissEntrySwipe();
   if (entry.sourceAdjustment && (action === 'edit' || action === 'copy')) {
     showToast('挖财原始冲回/零额记录保留原值，可删除后重新导入');
     return 'done';

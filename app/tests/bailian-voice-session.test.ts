@@ -13,14 +13,28 @@ function setup() {
     start: vi.fn(() => new Promise<NativeSpeechResult>(done => { resolve = done; })),
     stop: vi.fn(async () => {}), cancel: vi.fn(async () => {}),
   } as unknown as NativeSpeechPlugin;
-  const callbacks = { onState: vi.fn(), onText: vi.fn(), onError: vi.fn() };
+  const callbacks = { onState: vi.fn(), onText: vi.fn(), onPartial: vi.fn(), onError: vi.fn() };
   const session = new BailianVoiceSession(bridge, callbacks);
   return { session, bridge, callbacks, remove,
     event: (state: NativeSpeechStateEvent['state'], id?: string) => event({ sessionId: id ?? vi.mocked(bridge.start).mock.calls.at(-1)![0].sessionId, state }),
     resolve: (text: string, id?: string) => resolve({ text, sessionId: id ?? vi.mocked(bridge.start).mock.calls.at(-1)![0].sessionId }),
+    partial: (text: string, id?: string) => event({ sessionId: id ?? vi.mocked(bridge.start).mock.calls.at(-1)![0].sessionId, state: 'listening', text }),
   };
 }
 afterEach(() => vi.useRealTimers());
+
+it('中间转写仅预览，隔离旧会话、超长文字及取消后的事件，最终结果仍独立核验', async () => {
+  const s = setup(); const pending = s.session.start(config, readiness);
+  await vi.waitFor(() => expect(s.bridge.start).toHaveBeenCalledOnce());
+  s.partial('旧文字', 'stale'); s.partial('x'.repeat(501));
+  expect(s.callbacks.onPartial).not.toHaveBeenCalled();
+  s.partial('午餐二十'); s.partial('午餐28元');
+  expect(s.callbacks.onPartial).toHaveBeenLastCalledWith('午餐28元');
+  expect(s.callbacks.onText).not.toHaveBeenCalled();
+  s.session.cancel(); s.partial('取消后文字'); s.resolve('迟到最终文字'); await pending;
+  expect(s.callbacks.onPartial).toHaveBeenCalledTimes(2);
+  expect(s.callbacks.onText).not.toHaveBeenCalled();
+});
 
 it('只在明确开始时创建一次会话，重复点击与旧事件不进入第二次采集', async () => {
   const s = setup(); expect(s.bridge.start).not.toHaveBeenCalled();

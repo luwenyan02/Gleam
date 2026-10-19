@@ -1,0 +1,26 @@
+.hold-voice-mask{position:fixed;inset:0;z-index:640;background:rgba(0,0,0,.58);touch-action:none;overscroll-behavior:contain}
+.hold-voice-stage{position:relative;width:min(100%,480px);height:100%;margin:auto;display:flex;align-items:flex-end;color:var(--fg)}
+.hold-voice-close{position:absolute;z-index:1;top:max(16px,env(safe-area-inset-top));right:16px;background:var(--surface);color:var(--fg)}
+.hold-voice-capture{position:relative;width:100%;height:100%;padding:0 20px;box-sizing:border-box;display:flex;align-items:center;flex-direction:column;user-select:none;-webkit-user-select:none}
+.hold-voice-bubble{margin-top:clamp(68px,23dvh,230px);width:100%;min-height:104px;max-height:calc(100dvh - 340px);overflow:auto;background:var(--primary);color:var(--on-accent);border-radius:22px;padding:20px;box-sizing:border-box;display:flex;align-items:center;justify-content:center}
+.hold-voice-bubble p{font-size:calc(18px * var(--seed-type));line-height:1.6;margin:0;width:100%;overflow-wrap:anywhere;white-space:pre-wrap}
+.hold-voice-bubble p:empty{display:none}
+.hold-voice-wave{display:flex;gap:4px;align-items:center;justify-content:center;height:50px}
+.hold-voice-wave i{display:block;width:4px;height:12px;border-radius:8px;background:currentColor;animation:hold-voice-wave 1s ease-in-out infinite}
+.hold-voice-wave i:nth-child(3n){animation-delay:-.3s;height:22px}.hold-voice-wave i:nth-child(4n){animation-delay:-.6s;height:32px}
+.hold-voice-mask:not([data-state="listening"]) .hold-voice-wave i{animation-play-state:paused}
+.hold-voice-status{max-width:100%;color:white;background:rgba(0,0,0,.55);border-radius:24px;padding:6px 12px;font-size:var(--text-meta);text-align:center;line-height:1.5;margin:12px 0}
+.hold-voice-bottom{width:100%;margin-top:auto;padding:12px 0 calc(16px + max(env(safe-area-inset-bottom),var(--safe-bottom,0px)));background:linear-gradient(transparent,rgba(0,0,0,.35));border-radius:32px}
+.hold-voice-choices{display:flex;gap:28px;margin-bottom:20px}
+.hold-voice-choices button{flex:1;min-width:0;min-height:64px;border:1px solid rgba(255,255,255,.35);border-radius:32px;background:color-mix(in srgb,var(--surface) 22%,#343434);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;font-size:calc(15px * var(--seed-type));transition:background .12s,color .12s,transform .12s}
+.hold-voice-choices button.selected{background:var(--surface);color:var(--primary);box-shadow:0 0 0 2px var(--surface)}
+.hold-voice-send{width:100%;min-height:76px;border-radius:32px;background:var(--surface);color:var(--fg);border:0;display:flex;align-items:center;justify-content:center;gap:10px;font-weight:650;font-size:calc(17px * var(--seed-type));touch-action:none}
+.hold-voice-mask[data-zone="cancel"] .hold-voice-send,.hold-voice-mask[data-zone="edit"] .hold-voice-send{background:rgba(255,255,255,.1);color:#fff}
+.hold-voice-tip{margin:10px 0 0;text-align:center;font-size:var(--text-small);line-height:1.5;color:#eee}
+.hold-voice-editor{width:100%;max-height:calc(100dvh - 72px);overflow:auto;box-sizing:border-box;border-radius:24px 24px 0 0;background:var(--surface);padding:24px 16px calc(20px + max(env(safe-area-inset-bottom),var(--safe-bottom,0px)));touch-action:pan-y}
+.hold-voice-editor h3{margin:0 0 12px;font-size:calc(18px * var(--seed-type))}.hold-voice-editor p{font-size:var(--text-meta);line-height:1.5;margin:0 0 12px;color:var(--muted)}.hold-voice-editor p:empty{display:none}
+.hold-voice-editor textarea{display:block;width:100%;resize:none;box-sizing:border-box;min-height:120px;max-height:30dvh;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px;color:var(--fg);font:inherit;line-height:1.6;touch-action:pan-y}
+.hold-voice-editor>div{display:flex;gap:10px;margin-top:16px}.hold-voice-editor .btn{min-height:48px;min-width:0;width:auto;white-space:normal}.hold-voice-editor [data-hv-send]{flex:1}
+.hold-voice-mask [hidden]{display:none!important}
+@keyframes hold-voice-wave{50%{transform:scaleY(1.7)}}
+@media(prefers-reduced-motion:reduce){.hold-voice-wave i{animation:none}.hold-voice-choices button{transition:none}}

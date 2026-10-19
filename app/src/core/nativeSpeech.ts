@@ -41,6 +41,8 @@ export interface NativeSpeechResult { sessionId: string; text: string }
 export interface NativeSpeechStateEvent {
   sessionId: string;
   state: 'connecting' | 'listening' | 'transcribing';
+  /** 当前会话的中间转写，仅用于预览；不能作为最终账单输入。 */
+  text?: string;
 }
 export interface NativeSpeechPlugin {
   configuration(): Promise<NativeSpeechConfiguration>;

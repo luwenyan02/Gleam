@@ -46,7 +46,7 @@ MOCK_NATIVE = r'''(() => {
     PluginHeaders: [
       {name:'GleamSpeech',methods:methods(['configuration','setKey','clearKey','invalidateConfiguration','testCandidate','commitTestedKey','testConnection','start','stop','cancel'],['addListener','removeListener'])},
       {name:'GleamSecrets',methods:methods(['get','set','remove'])},
-      {name:'GleamEntry',methods:methods(['setShortcuts','updateWidget'])},
+      {name:'GleamEntry',methods:methods(['setShortcuts','updateWidget','keyFeedback'])},
       {name:'App',methods:methods(['getInfo','getLaunchUrl','exitApp'],['addListener','removeListener'])},
     ],
     nativeCallback(plugin, method, options, callback) {
@@ -57,6 +57,7 @@ MOCK_NATIVE = r'''(() => {
       return 'mock-listener';
     },
     async nativePromise(plugin, method, options={}) {
+      if (plugin === 'GleamEntry' && method === 'keyFeedback') { window.__haptics=(window.__haptics||0)+1; return {}; }
       if (plugin === 'App' && method === 'getInfo') {
         window.__appInfoCalls++;
         if (window.__appInfoFailure) throw new Error('synthetic package info unavailable');

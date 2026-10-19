@@ -31,6 +31,8 @@ import type { NewLifeNote } from '../../core/repo/lifeRepo';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { setFabAction } from '../shell/shell';
+import { bindHomeVoice } from './holdVoice';
+import type { AiParsedBill } from '../../core/repo/aiRepo';
 import { showToast } from '../shell/toast';
 import { openDateTimeWheel } from '../../shared/dateTimeWheel';
 import { openPickList, type PickListItem } from '../../shared/pickList';
@@ -68,6 +70,8 @@ import './entry.css';
  * 打开「记一笔」抽屉的选项。
  */
 export interface EntrySheetOptions {
+  /** 首页按住说话只生成待确认草稿，仍由现有保存流程入账。 */
+  voiceBill?: AiParsedBill;
   receiptDrafts?: ReceiptDraft[];
   /**
    * 编辑模式：传入已有账单 id，抽屉预填该账单全部字段
@@ -178,6 +182,8 @@ let sheetEl: HTMLElement | null = null;
 /** 注册 FAB：首页「+」打开记一笔（main.ts 调用一次） */
 export function initEntry(): void {
   setFabAction(() => void openEntrySheet());
+  const fab = document.querySelector<HTMLElement>('#fab');
+  if (fab) bindHomeVoice(fab, { container: fab, onBill: bill => { void openEntrySheet({ voiceBill: bill }); } });
 }
 
 /**
@@ -322,8 +328,11 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     c.amt = String(sourceEntry.amount / 100);
     c.replaceAmountOnInput = true;
     initialNote = sourceEntry.note ?? '';
-  } else if (options.draft) {
-    const draft = options.draft;
+  } else if (options.draft || options.voiceBill) {
+    const bill = options.voiceBill;
+    const draft = bill ? { type: bill.type, amount: bill.amount, occurredAt: bill.occurredAt, note: bill.note,
+      categoryId: mapCategoryNameToId(bill.type, bill.categoryName ?? '', tree.flatMap(group => [group.parent, ...group.children]), incomeCats),
+      accountId: accounts.find(account => account.name === bill.accountName)?.id, merchantName: bill.merchantName } : options.draft!;
     if (draft.occurredAt != null) c.date = draft.occurredAt;
     if (draft.type === 'expense' || draft.type === 'income') c.type = draft.type;
     if (c.type === 'expense' || c.type === 'income') {
