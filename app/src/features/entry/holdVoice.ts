@@ -10,7 +10,7 @@ import { entryKeyFeedback } from './entryKeyFeedback';
 import './holdVoice.css';
 
 type Zone = 'send' | 'cancel' | 'edit';
-type Options = { container: HTMLElement; onBill(bill: AiParsedBill): void };
+type Options = { container: HTMLElement; onBill(bill: AiParsedBill, beforeOpen: () => boolean): Promise<void> };
 type Pointer = { pointerId: number; clientX: number; clientY: number };
 
 /** 普通点击仍交给现有记账入口；仅有效长按消费其后合成的 click。 */
@@ -158,7 +158,7 @@ function openHoldVoice(options: Options, initial: Pointer): void {
     if (intent === 'cancel') { close(); return; }
     if (intent === 'edit') {
       // 编辑只接管此刻可见文字；取消原生会话，避免迟到结果覆盖用户输入。
-      recordingRevision++; session.cancel(); editor(finalText || partial); return;
+      editCurrent(); return;
     }
     if (finalText) { settle(); return; }
     if (state === 'listening') void session.stop();
@@ -174,6 +174,7 @@ function openHoldVoice(options: Options, initial: Pointer): void {
   async function begin(): Promise<void> {
     const token = ++recordingRevision;
     void entryKeyFeedback();
+    root.dataset.state = 'preparing'; status('正在准备语音…');
     try {
       const readiness = await nativeSpeech.configuration();
       if (closed || token !== recordingRevision || pointer === undefined) return;
@@ -192,27 +193,34 @@ function openHoldVoice(options: Options, initial: Pointer): void {
     q<HTMLButtonElement>('send').disabled = true; q<HTMLButtonElement>('rerecord').disabled = true;
     status('正在识别这笔账单…'); q('message').textContent = '正在识别这笔账单…';
     controller = new AbortController();
+    let openingDraft = false;
     try {
       const preview = await prepareVoiceRecognition(text);
       if (closed || token !== revision) { revokeVoicePreview(preview); return; }
       const bill = await recognizeVoiceDraft(approveVoiceRecognition(preview), controller.signal);
       if (closed || token !== revision) return;
-      close(); options.onBill(bill);
+      openingDraft = true; status('正在打开草稿…'); q('message').textContent = '正在打开草稿…';
+      q('cue').textContent = '正在打开草稿…';
+      await options.onBill(bill, () => {
+        if (closed || token !== revision) return false;
+        close(); return true;
+      });
     } catch (error) {
       if (closed || token !== revision) return;
       const message = error instanceof Error ? error.message : '';
-      editor(text, /单笔|一笔|金额|修改文字|支出或收入/.test(message) ? '未识别到明确的收支，请补充用途和金额' :
+      editor(text, openingDraft ? '草稿未打开，文字已保留，请重试' : /单笔|一笔|金额|修改文字|支出或收入/.test(message) ? '未识别到明确的收支，请补充用途和金额' :
         /转账|借贷|退款|报销|还款/.test(message) ? '这类账务请使用手动记账' : '识别未完成，请检查 AI 设置或网络后重试');
     } finally { if (!closed && token === revision) controller = undefined; }
+  }
+  function editCurrent(): void {
+    revision++; recordingRevision++; controller?.abort(); session.cancel();
+    editor(finalText || partial);
   }
   q('close').addEventListener('click', close);
   root.addEventListener('contextmenu', event => { if (phase !== 'editor') event.preventDefault(); });
   root.querySelector('[data-hv-zone="cancel"]')!.addEventListener('click', () => { if (pointer === undefined) close(); });
   root.querySelector('[data-hv-zone="edit"]')!.addEventListener('click', () => {
-    if (pointer === undefined && phase === 'ready') editor('');
-    else if (pointer === undefined && phase === 'processing') {
-      revision++; controller?.abort(); editor(finalText || partial);
-    }
+    if (pointer === undefined && phase !== 'editor') editCurrent();
   });
   q('rerecord').addEventListener('click', () => {
     if (phase !== 'editor') return;

@@ -8,6 +8,7 @@
 .hold-voice-wave i{display:block;width:4px;height:12px;border-radius:8px;background:currentColor;animation:hold-voice-wave 1s ease-in-out infinite}
 .hold-voice-wave i:nth-child(3n){animation-delay:-.3s;height:22px}.hold-voice-wave i:nth-child(4n){animation-delay:-.6s;height:32px}
 .hold-voice-mask:not([data-state="listening"]) .hold-voice-wave i{animation-play-state:paused}
+.hold-voice-mask[data-state="preparing"] .hold-voice-wave{animation:hold-voice-prepare 1.2s ease-in-out infinite}
 .hold-voice-status{max-width:100%;color:white;background:rgba(0,0,0,.55);border-radius:24px;padding:6px 12px;font-size:var(--text-meta);text-align:center;line-height:1.5;margin:12px 0}
 .hold-voice-bottom{width:calc(100% + 40px);margin-top:auto;padding-top:12px}
 .hold-voice-choices{display:flex;gap:28px;margin:0 20px 16px}
@@ -29,8 +30,9 @@
 .hold-voice-editor textarea{display:block;width:100%;resize:none;box-sizing:border-box;min-height:120px;max-height:30dvh;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px;color:var(--fg);font:inherit;line-height:1.6;touch-action:pan-y}
 .hold-voice-editor>div{display:flex;gap:10px;margin-top:16px}.hold-voice-editor .btn{min-height:48px;min-width:0;width:auto;white-space:normal}.hold-voice-editor [data-hv-send]{flex:1}
 .hold-voice-mask [hidden]{display:none!important}
+@keyframes hold-voice-prepare{50%{opacity:.35}}
 @keyframes hold-voice-wave{50%{transform:scaleY(1.7)}}
-@media(prefers-reduced-motion:reduce){.hold-voice-wave i{animation:none}.hold-voice-arc,.hold-voice-send-area{transition:none}}
+@media(prefers-reduced-motion:reduce){.hold-voice-wave,.hold-voice-wave i{animation:none!important}.hold-voice-arc,.hold-voice-send-area{transition:none}}
 @media(max-height:640px){
   .hold-voice-bubble{margin-top:clamp(76px,24dvh,150px);min-height:96px}
   .hold-voice-status{margin:10px 0}

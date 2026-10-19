@@ -72,6 +72,8 @@ import './entry.css';
 export interface EntrySheetOptions {
   /** 首页按住说话只生成待确认草稿，仍由现有保存流程入账。 */
   voiceBill?: AiParsedBill;
+  /** 异步准备后、打开前核对来源仍有效；语音交接在这里关闭原蒙层。 */
+  beforeOpen?: () => boolean;
   receiptDrafts?: ReceiptDraft[];
   /**
    * 编辑模式：传入已有账单 id，抽屉预填该账单全部字段
@@ -183,7 +185,7 @@ let sheetEl: HTMLElement | null = null;
 export function initEntry(): void {
   setFabAction(() => void openEntrySheet());
   const fab = document.querySelector<HTMLElement>('#fab');
-  if (fab) bindHomeVoice(fab, { container: fab, onBill: bill => { void openEntrySheet({ voiceBill: bill }); } });
+  if (fab) bindHomeVoice(fab, { container: fab, onBill: (bill, beforeOpen) => openEntrySheet({ voiceBill: bill, beforeOpen }) });
 }
 
 /**
@@ -197,7 +199,6 @@ export function initEntry(): void {
  * @param options 见 {@link EntrySheetOptions}
  */
 export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<void> {
-  savedCallback = options.onSaved;
   const openedAt = Date.now();
   const [tree, incomeCats, accounts, templates, tags, merchants, loanAccounts, lastUsed, recentEntries] = await Promise.all([
     listExpenseTree(), listCategories('income'), listAccounts(false),
@@ -367,6 +368,8 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
   applyNoteCategory(c, initialNote);
   const initialReceipts = c.editingId == null ? options.receiptDrafts ?? [] : await listEntryAttachments(c.editingId);
   if (initialReceipts.length) c.advancedOpen = true;
+  if (options.beforeOpen && !options.beforeOpen()) return;
+  savedCallback = options.onSaved;
   ctx = c;
   openSheet({
     ariaLabel: c.editingId ? '编辑账单' : '记一笔',
