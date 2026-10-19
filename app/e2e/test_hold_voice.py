@@ -71,17 +71,37 @@ def run(browser,width,height,theme,scale,safe):
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
         bounds=page.locator('[data-hv-send]' if page.locator('[data-hv-editor]').is_visible() else '[data-hv-hold]').bounding_box()
         assert bounds and bounds['y']>=0 and bounds['y']+bounds['height']<=height-safe+1,bounds
+        if page.locator('[data-hv-capture]').is_visible():
+            bubble=page.locator('.hold-voice-bubble').bounding_box()
+            status=page.locator('[data-hv-status]').bounding_box()
+            choices=page.locator('.hold-voice-choices').bounding_box()
+            tip=page.locator('[data-hv-tip]').bounding_box()
+            assert bubble['y']+bubble['height']<=status['y']+1
+            assert status['y']+status['height']<=choices['y']+1
+            assert tip['y']+tip['height']<=height-safe+1,tip
+        else:
+            header=page.locator('.hold-voice-editor-heading').bounding_box()
+            exit=page.locator('[data-hv-close]').bounding_box()
+            assert exit['x']>=header['x'] and exit['y']>=header['y']
+            assert exit['x']+exit['width']<=header['x']+header['width']+1
         page.screenshot(path=str(OUT/f'{name}-{width}-{theme}-{scale}.png'),animations='disabled')
     def none():
         expect(page.locator('.hold-voice-mask')).to_have_count(0)
         expect(page.locator('#sheet.open')).to_have_count(0)
     page.locator('#fab').click();page.locator('#keypad').wait_for()
     page.locator('#sheet-close').click();expect(page.locator('#sheet.open')).to_have_count(0)
-    sid=hold(page);expect(page.locator('[data-hv-wave]')).to_be_visible();capture('listening')
+    sid=hold(page);expect(page.locator('[data-hv-wave]')).to_be_visible()
+    expect(page.locator('[data-hv-close]')).to_be_hidden();capture('listening')
     preview(page,'午餐28元','stale');expect(page.locator('[data-hv-transcript]')).to_have_text('')
     preview(page,'今天午餐');preview(page,'今天午餐28.01元，虚构现金')
     expect(page.locator('[data-hv-transcript]')).to_have_text('今天午餐28.01元，虚构现金')
     expect(page.locator('[data-hv-wave]')).to_be_hidden();capture('transcript')
+    if height==560:
+        preview(page,'虚构长语音文字'*70);capture('long-transcript')
+        preview(page,'今天午餐28.01元，虚构现金')
+    page.mouse.move(*center(page.locator('[data-hv-zone="cancel"]')))
+    expect(page.locator('[data-hv-zone="cancel"]')).to_have_class('selected');capture('cancel-selected')
+    page.mouse.move(*center(page.locator('[data-hv-hold]')))
     haptics=page.evaluate('window.__haptics')
     page.mouse.move(*center(page.locator('[data-hv-zone="edit"]')))
     expect(page.locator('[data-hv-zone="edit"]')).to_have_class('selected')
@@ -97,7 +117,19 @@ def run(browser,width,height,theme,scale,safe):
     page.wait_for_timeout(100);none()
     page.evaluate("window.__voiceText=''");hold(page);release_at(page,'send');none();assert not requests
     page.evaluate("window.__voiceText='今天午餐28.01元，虚构现金'")
-    hold(page);release_at(page,'edit')
+    # Edit immediately opens even empty, never waiting for final ASR or requesting AI.
+    sid=hold(page);release_at(page,'edit')
+    expect(page.locator('[data-hv-editor]')).to_be_visible()
+    expect(page.locator('[data-hv-text]')).to_have_value('')
+    expect(page.locator('[data-hv-send]')).to_be_disabled()
+    expect(page.locator('[data-hv-close]')).to_have_text('退出')
+    assert not requests
+    page.locator('[data-hv-text]').fill('手填内容')
+    page.evaluate("id=>window.__voicePending.get(id).resolve({sessionId:id,text:'迟到的最终文字'})",sid)
+    page.wait_for_timeout(100)
+    expect(page.locator('[data-hv-text]')).to_have_value('手填内容')
+    page.locator('[data-hv-close]').click();none()
+    hold(page);preview(page,'今天午餐28.01元，虚构现金');release_at(page,'edit')
     expect(page.locator('[data-hv-text]')).to_have_value('今天午餐28.01元，虚构现金')
     assert not requests;capture('editor')
     page.locator('[data-hv-text]').fill('虚构午餐18.25元，现金')
@@ -184,7 +216,7 @@ def run_unavailable(browser):
         expect(page.locator('[data-hv-message]')).to_contain_text(message)
         page.locator('[data-hv-close]').click();expect(page.locator('.hold-voice-mask')).to_have_count(0)
     page.evaluate('window.__voiceError=null;window.__voiceHasKey=true')
-    hold(page)
+    hold(page);preview(page,'今天午餐28.01元，现金')
     bounds=page.locator('[data-hv-zone="edit"]').bounding_box()
     page.mouse.move(bounds['x']+bounds['width']/2,bounds['y']+bounds['height']-1)
     page.wait_for_timeout(180);page.mouse.up()
@@ -192,6 +224,14 @@ def run_unavailable(browser):
     expect(page.locator('[data-hv-text]')).to_have_value('今天午餐28.01元，现金')
     assert not calls,'Moving into the edge of Edit must not accidentally send'
     page.locator('[data-hv-close]').click()
+    page.evaluate('window.__holdListening=true')
+    page.mouse.move(*center(page.locator('#fab')));page.mouse.down();page.wait_for_timeout(550)
+    expect(page.locator('.hold-voice-mask')).to_have_attribute('data-state','connecting')
+    release_at(page,'edit')
+    expect(page.locator('[data-hv-editor]')).to_be_visible()
+    expect(page.locator('[data-hv-text]')).to_have_value('')
+    assert not calls
+    page.locator('[data-hv-close]').click();page.evaluate('window.__holdListening=false')
     pending=[]
     page.route('https://short-voice.invalid/**',lambda route:pending.append(route))
     hold(page);release_at(page,'send')

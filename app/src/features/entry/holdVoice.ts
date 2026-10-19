@@ -49,18 +49,19 @@ export function bindHomeVoice(button: HTMLElement, options: Options): void {
 function openHoldVoice(options: Options, initial: Pointer): void {
   const root = document.createElement('div');
   root.className = 'hold-voice-mask'; root.setAttribute('aria-label', '语音记账');
+  const arc = '<svg class="hold-voice-arc" viewBox="0 0 200 92" preserveAspectRatio="none" aria-hidden="true"><path d="M29 21 Q89 4 161 4 C185 4 198 20 198 42 C198 64 184 75 162 76 Q96 76 37 90 C14 95 2 80 2 58 C2 39 9 27 29 21Z"/></svg>';
   root.innerHTML = `<div class="hold-voice-stage">
-    <button class="icon-btn hold-voice-close" data-hv-close aria-label="关闭语音记账">${iconHtml('ic-close')}</button>
     <section class="hold-voice-capture" data-hv-capture>
       <div class="hold-voice-bubble"><div class="hold-voice-wave" data-hv-wave aria-hidden="true">${'<i></i>'.repeat(17)}</div><p data-hv-transcript></p></div>
       <p class="hold-voice-status" data-hv-status role="status" aria-live="polite"></p>
       <div class="hold-voice-bottom"><div class="hold-voice-choices">
-        <button data-hv-zone="cancel">${iconHtml('ic-close', 22)}<span>取消</span></button>
-        <button data-hv-zone="edit">${iconHtml('ic-pen', 22)}<span>编辑文字</span></button>
-      </div><button class="hold-voice-send" data-hv-hold aria-label="按住说话">${iconHtml('ic-mic', 24)}<span data-hv-cue>松开发送</span></button>
-      <p class="hold-voice-tip" data-hv-tip>上滑取消或编辑，移回下方继续说话</p></div>
+        <button data-hv-zone="cancel">${arc}<span>${iconHtml('ic-close', 22)}取消</span></button>
+        <button data-hv-zone="edit">${arc}<span>${iconHtml('ic-pen', 22)}编辑文字</span></button>
+      </div><div class="hold-voice-send-area"><button class="hold-voice-send" data-hv-hold aria-label="按住说话">${iconHtml('ic-mic', 24)}<span data-hv-cue>松开发送</span></button>
+      <p class="hold-voice-tip" data-hv-tip>上滑取消或编辑，移回下方继续说话</p></div></div>
     </section>
-    <section class="hold-voice-editor" data-hv-editor hidden><h3>短语音记账</h3>
+    <section class="hold-voice-editor" data-hv-editor hidden>
+      <header class="hold-voice-editor-heading"><h3>短语音记账</h3><button class="hold-voice-exit" data-hv-close aria-label="退出短语音记账">退出</button></header>
       <p data-hv-message role="status"></p>
       <textarea data-hv-text rows="4" maxlength="500" aria-label="编辑语音文字" placeholder="说了什么、花了多少钱？"></textarea>
       <div><button class="btn ghost" data-hv-rerecord>重新录音</button><button class="btn primary" data-hv-send>发送并生成草稿</button></div>
@@ -155,6 +156,10 @@ function openHoldVoice(options: Options, initial: Pointer): void {
     if (event.pointerId !== pointer) return;
     event.preventDefault(); intent = pickZone(event); pointer = undefined;
     if (intent === 'cancel') { close(); return; }
+    if (intent === 'edit') {
+      // 编辑只接管此刻可见文字；取消原生会话，避免迟到结果覆盖用户输入。
+      recordingRevision++; session.cancel(); editor(finalText || partial); return;
+    }
     if (finalText) { settle(); return; }
     if (state === 'listening') void session.stop();
     else if (state !== 'transcribing') { session.cancel(); close(); }
@@ -164,8 +169,7 @@ function openHoldVoice(options: Options, initial: Pointer): void {
   window.addEventListener('pointerup', up, true); window.addEventListener('pointercancel', cancelPointer, true);
   function settle(): void {
     if (!finalText.trim()) { close(); return; }
-    if (intent === 'edit') editor(finalText);
-    else if (intent === 'send') void send(finalText);
+    if (intent === 'send') void send(finalText);
   }
   async function begin(): Promise<void> {
     const token = ++recordingRevision;
