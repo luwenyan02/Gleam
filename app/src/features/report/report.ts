@@ -8,7 +8,6 @@
  * 年 = 所选年 12 个月支出+收入双柱。转账/借贷不计收支由 statsRepo 保证。
  */
 import './report.css';
-import { openEntityInsight } from '../tagmerchant/tagmerchant';
 import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
 import { categoryDisplayMap } from '../../core/categoryIcons';
@@ -364,7 +363,7 @@ function renderRank(data: ReportData): void {
         <div class="rank-top"><span>${dimension === 'tag' ? '#' + esc(r.name) : esc(r.name)}</span><span class="num">${formatFenCny(r.amount)}</span></div>
         ${pct == null ? '' : `<div class="rank-bar"><i style="width:${Math.min(100, pct).toFixed(1)}%;background:var(--c${(i % 6) + 1})"></i></div>`}
       </div>
-      <span class="rank-pct num"${pct == null ? ` aria-label="${r.amount < 0 ? isIncome ? '负净收入，不计占比' : '退款净额，不计占比' : '零金额，不计占比'}"` : ''}>${pct == null ? '—' : `${pct.toFixed(1)}%`}</span></button>${(dimension === 'tag' || dimension === 'merchant') && r.queryIds.length === 1 ? `<button class="chip" data-entity-kind="${dimension}" data-entity-id="${r.queryIds[0]}" aria-label="${esc(r.name)}详情">详情 ›</button>` : ''}</li>`;
+      <span class="rank-pct num"${pct == null ? ` aria-label="${r.amount < 0 ? isIncome ? '负净收入，不计占比' : '退款净额，不计占比' : '零金额，不计占比'}"` : ''}>${pct == null ? '—' : `${pct.toFixed(1)}%`}</span></button></li>`;
   };
   list.innerHTML = shown.map(rowHtml).join('')
     + (refundRows.length ? `<li class="rank-section">${isIncome ? '负净收入' : '退款净额'}</li>${refundRows.map(rowHtml).join('')}` : '');
@@ -617,8 +616,6 @@ function render(el: HTMLElement): void {
     }
 
     const drill = target.closest<HTMLElement>('[data-report-dim][data-report-ids]');
-    const entity = target.closest<HTMLElement>('[data-entity-kind]');
-    if (entity) { openEntityInsight(entity.dataset.entityKind as 'tag' | 'merchant', Number(entity.dataset.entityId)); return; }
     if (drill) {
       const selectedIds = (drill.dataset.reportIds ?? '').split(',').map(Number).filter(Number.isFinite);
       const selectedDimension = drill.dataset.reportDim as Exclude<ReportDimension, 'trend'>;
