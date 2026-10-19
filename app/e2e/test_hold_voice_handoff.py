@@ -110,6 +110,7 @@ def handoff(browser):
                 assert page.evaluate('window.__handoffGap')==0
                 expect(page.locator('#keypad [data-k="save"]')).to_be_enabled()
                 page.locator('#sheet-close').click()
+                expect(page.locator('#fab')).to_be_focused()
             else:
                 expect(page.locator('#sheet.open')).to_have_count(0)
                 if action=='edit':

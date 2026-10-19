@@ -74,6 +74,7 @@ export interface EntrySheetOptions {
   voiceBill?: AiParsedBill;
   /** 异步准备后、打开前核对来源仍有效；语音交接在这里关闭原蒙层。 */
   beforeOpen?: () => boolean;
+  opener?: HTMLElement;
   receiptDrafts?: ReceiptDraft[];
   /**
    * 编辑模式：传入已有账单 id，抽屉预填该账单全部字段
@@ -185,7 +186,7 @@ let sheetEl: HTMLElement | null = null;
 export function initEntry(): void {
   setFabAction(() => void openEntrySheet());
   const fab = document.querySelector<HTMLElement>('#fab');
-  if (fab) bindHomeVoice(fab, { container: fab, onBill: (bill, beforeOpen) => openEntrySheet({ voiceBill: bill, beforeOpen }) });
+  if (fab) bindHomeVoice(fab, { container: fab, onBill: (bill, beforeOpen) => openEntrySheet({ voiceBill: bill, beforeOpen, opener: fab }) });
 }
 
 /**
@@ -373,6 +374,7 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
   ctx = c;
   openSheet({
     ariaLabel: c.editingId ? '编辑账单' : '记一笔',
+    opener: options.opener,
     render(el) {
       sheetEl = el;
       renderSheet(el, initialNote);

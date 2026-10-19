@@ -10,6 +10,8 @@ import { trackHistoryLayer } from '../../shared/layerHistory';
 export interface SheetOptions {
   /** 无障碍标签 */
   ariaLabel: string;
+  /** 连续弹层交接时保留最初入口，关闭后恢复焦点。 */
+  opener?: HTMLElement;
   /** 渲染抽屉内容（el 为 .sheet 容器，已清空） */
   render(el: HTMLElement): void;
   /** 关闭后回调（含点遮罩关闭） */
@@ -30,7 +32,7 @@ export function openSheet(opts: SheetOptions): void {
   const scrim = document.getElementById('scrim');
   if (!sheet || !scrim) return;
   if (!current) {
-    restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    restoreFocus = opts.opener ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     const toast = document.getElementById('toast');
     restoreBackground = isolateModal(toast ? [sheet, scrim, toast] : [sheet, scrim]);
     releaseHistory = trackHistoryLayer(closeSheet);
