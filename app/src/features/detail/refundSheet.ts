@@ -109,6 +109,8 @@ export async function renderRefundPage(body: HTMLElement): Promise<void> {
 
   const note = body.querySelector<HTMLInputElement>('#rf-note')!;
   const noteClear = body.querySelector<HTMLButtonElement>('#rf-note-clear')!;
+  note.value = original.note ?? '';
+  noteClear.hidden = !note.value;
   note.addEventListener('input', () => { noteClear.hidden = !note.value; });
   note.addEventListener('focus', () => { body.classList.add('refund-note-editing'); });
   note.addEventListener('blur', () => { body.classList.remove('refund-note-editing'); });
