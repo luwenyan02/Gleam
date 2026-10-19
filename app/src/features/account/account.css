@@ -14,10 +14,10 @@
 .balance-trend-heading::-webkit-details-marker{display:none}
 .balance-trend .trend-collapse,.balance-trend[open] .trend-expand{display:none}
 .balance-trend[open] .trend-collapse{display:inline}
-.balance-trend-controls{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 8px}
-.balance-trend-controls button{min-width:44px;min-height:44px;border:1px solid var(--border);border-radius:10px;font-size:22px}
+.balance-trend-controls{display:flex;align-items:stretch;gap:0;margin:0 0 8px;border:1px solid var(--border);border-radius:10px;background:var(--bg);overflow:hidden}
+.balance-trend-controls button{flex:0 0 44px;min-width:44px;min-height:44px;border:0;border-radius:0;background:transparent;font-size:22px}
 .balance-trend-controls button:disabled{opacity:.35;cursor:default}
-.balance-trend-controls .trend-month-button{display:flex;align-items:center;justify-content:center;gap:8px;min-width:0;flex:1;max-width:190px;padding:8px 12px;font-size:var(--text-meta);font-weight:500;background:var(--bg);color:var(--fg);white-space:nowrap}
+.balance-trend-controls .trend-month-button{display:flex;align-items:center;justify-content:center;gap:8px;min-width:0;flex:1;padding:8px 12px;border-inline:1px solid var(--border);font-size:var(--text-meta);font-weight:500;color:var(--fg);white-space:nowrap}
 .balance-trend-heading strong{font-size:var(--text-meta);font-weight:600;color:var(--fg)}
 .balance-trend-heading>span{font-size:var(--text-small);color:var(--muted)}
 .balance-trend-chart{display:grid;grid-template-columns:max-content minmax(0,1fr);column-gap:10px;row-gap:7px}
