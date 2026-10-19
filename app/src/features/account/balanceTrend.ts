@@ -89,9 +89,9 @@ export function balanceTrendHtml(trend: { month: string; net: number }[], metric
   return `<details class="balance-trend" ${state.open ? 'open' : ''} aria-label="${esc(metric)}走势">
     <summary class="balance-trend-heading"><strong>${esc(metric)}走势</strong><span class="trend-expand">展开</span><span class="trend-collapse">收起</span></summary>
     <div class="balance-trend-controls">
-      <button type="button" data-trend-shift="-6" aria-label="前六个月" ${endMonth <= '1900-01' ? 'disabled' : ''}>‹</button>
+      <button type="button" data-trend-shift="-6" aria-label="前六个月" ${endMonth <= '1900-01' ? 'disabled' : ''}>${iconHtml('ic-left', 16)}</button>
       <button type="button" class="trend-month-button" data-trend-month aria-label="选择趋势结束月份" aria-haspopup="dialog" value="${esc(endMonth)}">${iconHtml('ic-cal', 16)}<span>${esc(endMonth.split('-')[0])}年${Number(endMonth.split('-')[1])}月</span></button>
-      <button type="button" data-trend-shift="6" aria-label="后六个月" ${current ? 'disabled' : ''}>›</button>
+      <button type="button" data-trend-shift="6" aria-label="后六个月" ${current ? 'disabled' : ''}>${iconHtml('ic-right', 16)}</button>
     </div>
     <div class="balance-trend-chart">
       <div class="balance-trend-axis" aria-hidden="true">${ticks.map(tick => `<span>${axisLabel(tick)}</span>`).join('')}</div>
