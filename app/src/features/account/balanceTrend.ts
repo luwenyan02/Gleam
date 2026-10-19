@@ -1,5 +1,5 @@
 import { esc } from '../../core/esc';
-import { formatFen, formatFenCny } from '../../core/money';
+import { formatFenCny } from '../../core/money';
 import { openMonthWheel } from '../../shared/dateTimeWheel';
 import { iconHtml } from '../../assets/icons';
 
@@ -66,18 +66,21 @@ export function bindTrendControls(root: HTMLElement, state: TrendViewState, refr
 export function balanceTrendHtml(trend: { month: string; net: number }[], metric = '净资产', state: TrendViewState = { open: false }): string {
   if (trend.length < 2) return '';
   const values = trend.map(point => point.net);
-  let low = Math.min(0, ...values), high = Math.max(0, ...values);
-  if (high === low) { low = -100; high = 100; }
-  const magnitude = 10 ** Math.floor(Math.log10((high - low) / 2));
-  const step = Math.ceil((high - low) / 2 / magnitude) * magnitude;
-  low = Math.floor(low / step) * step;
-  high = Math.ceil(high / step) * step;
+  let low = Math.min(...values), high = Math.max(...values);
+  // 留出上下余量，不强制包含零；恒定数据也保持有效范围和水平线。
+  const padding = high === low ? Math.max(100, Math.abs(high) * 0.001) : Math.max(1, (high - low) * 0.1);
+  const magnitude = 10 ** Math.floor(Math.log10((high - low + padding * 2) / 4));
+  low = Math.floor((low - padding) / magnitude) * magnitude;
+  high = Math.ceil((high + padding) / magnitude) * magnitude;
   const y = (net: number) => 8 + (high - net) / (high - low) * 96;
   const points = trend.map((point, i) => ({ x: 8 + i * 284 / (trend.length - 1), y: y(point.net) }));
   const last = points[points.length - 1];
   const ticks = [high, (high + low) / 2, low];
-  const compact = new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 2 });
-  const axisLabel = (fen: number) => compact.format(Number(formatFen(fen).replaceAll(',', '')));
+  const largest = Math.max(Math.abs(low), Math.abs(high));
+  const [unit, suffix] = largest >= 1e14 ? [1e14, '万亿'] : largest >= 1e10 ? [1e10, '亿'] : largest >= 1e6 ? [1e6, '万'] : [100, ''];
+  // 中间刻度可能落在半个 magnitude，精度随范围变化，避免小波动时刻度同名。
+  const axisFormat = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: Math.min(12, Math.max(0, Math.ceil(Math.log10(unit / magnitude)) + 1)) });
+  const axisLabel = (fen: number) => `${axisFormat.format(fen === 0 ? 0 : fen / unit)}${suffix}`;
   const monthLabel = (month: string) => `${Number(month.split('-')[1])}月`;
   const delta = values[values.length - 1] - values[values.length - 2];
   const change = delta === 0 ? '无变化' : `${delta > 0 ? '+' : ''}${formatFenCny(delta)}`;
@@ -86,9 +89,9 @@ export function balanceTrendHtml(trend: { month: string; net: number }[], metric
   return `<details class="balance-trend" ${state.open ? 'open' : ''} aria-label="${esc(metric)}走势">
     <summary class="balance-trend-heading"><strong>${esc(metric)}走势</strong><span class="trend-expand">展开</span><span class="trend-collapse">收起</span></summary>
     <div class="balance-trend-controls">
-      <button type="button" data-trend-shift="-6" aria-label="前六个月" ${endMonth <= '1900-01' ? 'disabled' : ''}>‹</button>
+      <button type="button" data-trend-shift="-6" aria-label="前六个月" ${endMonth <= '1900-01' ? 'disabled' : ''}>${iconHtml('ic-left', 16)}</button>
       <button type="button" class="trend-month-button" data-trend-month aria-label="选择趋势结束月份" aria-haspopup="dialog" value="${esc(endMonth)}">${iconHtml('ic-cal', 16)}<span>${esc(endMonth.split('-')[0])}年${Number(endMonth.split('-')[1])}月</span></button>
-      <button type="button" data-trend-shift="6" aria-label="后六个月" ${current ? 'disabled' : ''}>›</button>
+      <button type="button" data-trend-shift="6" aria-label="后六个月" ${current ? 'disabled' : ''}>${iconHtml('ic-right', 16)}</button>
     </div>
     <div class="balance-trend-chart">
       <div class="balance-trend-axis" aria-hidden="true">${ticks.map(tick => `<span>${axisLabel(tick)}</span>`).join('')}</div>
