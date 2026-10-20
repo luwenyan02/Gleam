@@ -2,7 +2,7 @@ import { getSetting } from './settingsRepo';
 import { requestAiChat } from './aiRepo';
 import { getLifeWeekSources, type LifeEditionInput } from './lifeEditionRepo';
 import { shiftLifeWeek } from '../lifeWeek';
-import type { LifeChatMessage, LifeSummaryProposal } from '../types';
+import type { ChatWebSearch, LifeChatMessage, LifeSummaryProposal } from '../types';
 import { getLifeNote } from './lifeRepo';
 import { recentChatContext } from '../lifeChatContext';
 import { LIFE_CHAT_PROMPT, LIFE_CHAT_TEXT_STYLE } from '../lifeChatPrompt';
@@ -27,6 +27,7 @@ export interface LifeAiInput {
   /** 当次账本摘要的一次性授权；不写入草稿、记录或备份。 */
   ledgerGrant?: LifeLedgerGrant;
   onDelta?: (text: string) => void;
+  onSearch?: (state: ChatWebSearch) => void;
   expectedDestination?: { baseUrl: string; model: string };
   body: string;
   messages: LifeChatMessage[];
@@ -39,6 +40,7 @@ export interface LifeAiInput {
 export interface LifeChatTurnResult {
   reply: string;
   readyToSummarize: boolean;
+  search?: ChatWebSearch;
 }
 
 async function checkSource(input: LifeAiInput): Promise<void> {
@@ -133,8 +135,13 @@ export async function continueLifeChat(input: LifeAiInput): Promise<LifeChatTurn
     const turns = ledgerReview ? [{ role: 'user' as const, content: source }] : textMessages(recent);
     if (input.body.trim()) turns.unshift({ role: 'user', content: input.body });
     if (photos.length && turns.at(-1)?.role !== 'user') turns.push({ role: 'user', content: '（一张照片）' });
+    let search: ChatWebSearch | undefined;
     const reply = await requestAiChat({
       onDelta: input.onDelta,
+      // 账本摘要及含账本分析的上下文不交给搜索工具，不扩大财务数据使用范围。
+      ...(!ledgerReview && !recent.some(message => message.ledgerAnalysis) ? { onSearch: (state: ChatWebSearch) => {
+        search = state; input.onSearch?.(state);
+      } } : {}),
       privateContent: true,
       signal: input.signal,
       requireImageModel: photos.length > 0,
@@ -156,13 +163,14 @@ export async function continueLifeChat(input: LifeAiInput): Promise<LifeChatTurn
       }
       await checkEnabled(input.signal, true);
     }
+    let result: LifeChatTurnResult;
     if (input.onDelta) {
-      try { return parseLifeChatTurn(reply); } catch {
-        if (reply.trim() && reply.length <= 12_000) return { reply: reply.trim(), readyToSummarize: false };
-        throw new Error('回复为空或过长，请重试');
+      try { result = parseLifeChatTurn(reply); } catch {
+        if (!reply.trim() || reply.length > 12_000) throw new Error('回复为空或过长，请重试');
+        result = { reply: reply.trim(), readyToSummarize: false };
       }
-    }
-    return parseLifeChatTurn(reply);
+    } else result = parseLifeChatTurn(reply);
+    return { ...result, ...(search ? { search } : {}) };
   } finally {
     if (input.ledgerGrant) revokeLifeLedgerGrant(input.ledgerGrant);
   }

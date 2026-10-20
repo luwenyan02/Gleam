@@ -307,6 +307,12 @@ export interface LifeReview {
   dismissedAt?: number;
 }
 
+/** 服务商工具返回的本轮搜索事实；不是从模型正文提取的链接。 */
+export interface ChatWebSearch {
+  status: 'enabled' | 'searching' | 'searched' | 'not-used' | 'unsupported' | 'failed';
+  sources: Array<{ title: string; url: string }>;
+}
+
 export interface LifeChatMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -314,6 +320,7 @@ export interface LifeChatMessage {
   ledgerAnalysis?: boolean;
   /** AI 回复完成的时间点；旧消息和语音转写可缺省。 */
   repliedAt?: number;
+  search?: ChatWebSearch;
   /** 草稿中用户明确随本轮发送的本地照片；不会随之后的纯文字请求再次上传。 */
   photos?: LifeDraftPhoto[];
   /** 正式记录中该轮照片的本地附件引用，避免在会话里重复保存 base64。 */
@@ -354,6 +361,7 @@ export interface LifeDraft {
     status: 'waiting' | 'streaming' | 'failed' | 'stopped';
     content: string;
     ledgerAnalysis?: boolean;
+    search?: ChatWebSearch;
   };
   /** AI 生成但尚未确认为正式记录的独立摘要方案。 */
   summaryProposal?: LifeSummaryProposal;

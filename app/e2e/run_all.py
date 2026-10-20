@@ -40,7 +40,7 @@ TESTS = (
     'test_account_detail_performance.py', 'test_account_detail_upgrade.py', 'test_account_detail_pagination.py',
     'test_entry_receipts.py', 'test_entry_detail_performance.py', 'test_entry_detail_upgrade.py',
     'test_entity_details.py', 'test_accounting_period.py', 'test_search_month_ranges.py', 'test_search_summary_layout.py', 'test_search_filter_groups.py',
-    'test_life_layout.py', 'test_entry_life_memory.py', 'test_life_ai.py', 'test_chat_experience.py', 'test_chat_resume.py', 'test_chat_ai_settings.py',
+    'test_life_layout.py', 'test_entry_life_memory.py', 'test_life_ai.py', 'test_chat_experience.py', 'test_chat_resume.py', 'test_chat_web_search.py', 'test_chat_ai_settings.py',
     'test_browser_usability.py',
     'test_large_ledger.py',
 )

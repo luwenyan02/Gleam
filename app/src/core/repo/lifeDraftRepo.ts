@@ -2,6 +2,7 @@ import { db, now, stamp } from '../db';
 import type { Attachment, LifeChatMessage, LifeDraft, LifeDraftPhoto, LifeNote } from '../types';
 import { emitAfterCommit as emit } from './transactionEvents';
 import { collectUnreferencedAttachments, MAX_ENTRY_ATTACHMENTS, MAX_RECEIPT_BYTES } from './entryAttachmentRepo';
+import { validChatWebSearch } from '../chatWebSearch';
 
 const DATA_URL_RE = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]*={0,2})$/;
 
@@ -134,6 +135,7 @@ export function validateLifeDraft(input: unknown): asserts input is LifeDraft {
       || (reply.ledgerAnalysis != null && typeof reply.ledgerAnalysis !== 'boolean')) {
       throw new Error('未完成回复结构无效');
     }
+    if (reply.search != null && !validChatWebSearch(reply.search)) throw new Error('未完成回复的搜索信息无效');
   }
   if (draft.review != null && (typeof draft.review !== 'object'
     || (draft.review.verdict != null && !['again', 'neutral', 'not-for-me'].includes(draft.review.verdict))
@@ -156,6 +158,7 @@ export function validateLifeDraft(input: unknown): asserts input is LifeDraft {
       throw new Error('对话草稿结构无效');
     }
     if (message.ledgerAnalysis != null && typeof message.ledgerAnalysis !== 'boolean') throw new Error('账本分析标记无效');
+    if (message.search != null && (message.role !== 'assistant' || !validChatWebSearch(message.search))) throw new Error('对话搜索信息无效');
     if (message.photos != null && !Array.isArray(message.photos)) throw new Error('对话照片结构无效');
     for (const photo of message.photos ?? []) validatePhoto(photo);
     if (message.photoRefs != null && (!Array.isArray(message.photoRefs)
@@ -324,6 +327,7 @@ export async function saveLifeDraft(key: string): Promise<number> {
         role: message.role,
         content: message.content,
         ...(message.repliedAt != null ? { repliedAt: message.repliedAt } : {}),
+        ...(message.search ? { search: structuredClone(message.search) } : {}),
         ...(message.ledgerAnalysis ? { ledgerAnalysis: true } : {}),
         ...(messageRefs.length ? { photoRefs: messageRefs } : {}),
       });
