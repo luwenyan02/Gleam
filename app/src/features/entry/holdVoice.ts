@@ -46,7 +46,8 @@ export function bindHomeVoice(button: HTMLElement, options: Options): void {
 }
 
 /** 同一蒙层承载录音、文字修正和重录；发送区松手即本次文字识别授权。 */
-function openHoldVoice(options: Options, initial: Pointer): void {
+export function openHoldVoice(options: Options, initial?: Pointer): void {
+  if (document.querySelector('.hold-voice-mask')) return;
   const root = document.createElement('div');
   root.className = 'hold-voice-mask'; root.setAttribute('aria-label', '语音记账');
   const arc = '<svg class="hold-voice-arc" viewBox="0 0 200 92" preserveAspectRatio="none" aria-hidden="true"><path d="M29 21 Q89 4 161 4 C185 4 198 20 198 42 C198 64 184 75 162 76 Q96 76 37 90 C14 95 2 80 2 58 C2 39 9 27 29 21Z"/></svg>';
@@ -70,8 +71,8 @@ function openHoldVoice(options: Options, initial: Pointer): void {
   document.body.appendChild(root);
   const q = <T extends HTMLElement>(s: string) => root.querySelector<T>(`[data-hv-${s}]`)!;
   const input = q<HTMLTextAreaElement>('text');
-  let closed = false, revision = 0, phase: 'capture' | 'ready' | 'editor' | 'processing' = 'capture';
-  let state: ShortVoiceState = 'idle', pointer: number | undefined = initial.pointerId;
+  let closed = false, revision = 0, phase: 'capture' | 'ready' | 'editor' | 'processing' = initial ? 'capture' : 'ready';
+  let state: ShortVoiceState = 'idle', pointer: number | undefined = initial?.pointerId;
   let zone: Zone = 'send', intent: Zone | undefined;
   let partial = '', finalText = '', startedAt = 0, recordingRevision = 0;
   let controller: AbortController | undefined;
@@ -202,7 +203,7 @@ function openHoldVoice(options: Options, initial: Pointer): void {
       openingDraft = true; status('正在打开草稿…'); q('message').textContent = '正在打开草稿…';
       q('cue').textContent = '正在打开草稿…';
       await options.onBill(bill, () => {
-        if (closed || token !== revision) return false;
+        if (closed || token !== revision || !options.container.isConnected) return false;
         close(); return true;
       });
     } catch (error) {
@@ -216,6 +217,14 @@ function openHoldVoice(options: Options, initial: Pointer): void {
     revision++; recordingRevision++; controller?.abort(); session.cancel();
     editor(finalText || partial);
   }
+  function ready(): void {
+    phase = 'ready'; pointer = undefined; intent = undefined;
+    q('editor').hidden = true; q('capture').hidden = false;
+    q<HTMLButtonElement>('hold').disabled = false; select('send');
+    root.dataset.state = 'idle'; drawText();
+    status('按住下方按钮说话'); q('cue').textContent = '按住说话';
+    requestAnimationFrame(() => { if (!closed && phase === 'ready') q('hold').focus({ preventScroll: true }); });
+  }
   q('close').addEventListener('click', close);
   root.addEventListener('contextmenu', event => { if (phase !== 'editor') event.preventDefault(); });
   root.querySelector('[data-hv-zone="cancel"]')!.addEventListener('click', () => { if (pointer === undefined) close(); });
@@ -226,10 +235,7 @@ function openHoldVoice(options: Options, initial: Pointer): void {
     if (phase !== 'editor') return;
     revision++; recordingRevision++; controller?.abort(); session.cancel();
     input.value = ''; finalText = ''; partial = ''; intent = undefined; startedAt = 0;
-    phase = 'ready'; q('editor').hidden = true; q('capture').hidden = false;
-    q<HTMLButtonElement>('hold').disabled = false; select('send');
-    drawText(); status('按住下方按钮说话'); q('cue').textContent = '按住说话';
-    q('hold').focus({ preventScroll: true });
+    ready();
   });
   q('hold').addEventListener('pointerdown', event => {
     if (phase !== 'ready' || !event.isPrimary || event.button !== 0) return;
@@ -239,5 +245,6 @@ function openHoldVoice(options: Options, initial: Pointer): void {
   q('hold').addEventListener('click', event => { if (event.detail === 0 && phase === 'ready') editor(''); });
   input.addEventListener('input', () => { q<HTMLButtonElement>('send').disabled = !input.value.trim(); q('message').textContent = ''; });
   q('send').addEventListener('click', () => { if (phase === 'editor') void send(input.value); });
-  select('send'); void begin();
+  if (initial) { select('send'); void begin(); }
+  else ready();
 }

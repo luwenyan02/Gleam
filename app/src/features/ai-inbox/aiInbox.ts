@@ -12,7 +12,7 @@ import { iconHtml } from '../../assets/icons';
 import { esc } from '../../core/esc';
 import { formatFen, formatFenCny, parseYuanToFen } from '../../core/money';
 import { entryIdentity } from '../../core/entryIdentity';
-import { canAutoConfirmAiItem, voiceDraftItem } from '../../core/aiInboxPolicy';
+import { canAutoConfirmAiItem } from '../../core/aiInboxPolicy';
 import type { AiPendingItem, Account, Category } from '../../core/types';
 import { on } from '../../core/store';
 import { getSetting } from '../../core/repo/settingsRepo';
@@ -34,7 +34,7 @@ import {
 import { registerSubpage, openSubpage } from '../shell/router';
 import { showToast } from '../shell/toast';
 import { openEntrySheet } from '../entry/entrySheet';
-import { openShortVoice } from '../entry/shortVoice';
+import { openHoldVoice } from '../entry/holdVoice';
 import { openDateTimeWheel } from '../../shared/dateTimeWheel';
 import { openPickList, type PickListItem } from '../../shared/pickList';
 
@@ -509,6 +509,9 @@ async function refresh(): Promise<void> {
   }
 
   const textDraft = el.querySelector<HTMLTextAreaElement>('#ai-text')?.value ?? '';
+  // 保留入口身份，后台刷新不打断语音，也能在草稿关闭后恢复原入口焦点。
+  const voiceEntry = el.querySelector<HTMLButtonElement>('[data-act="short-voice"]');
+  const voiceFocused = voiceEntry != null && document.activeElement === voiceEntry;
   el.innerHTML = `
     ${configured ? '' : `
     <section class="card ai-guide">
@@ -549,6 +552,10 @@ async function refresh(): Promise<void> {
     </section>` : ''}`;
   const textInput = el.querySelector<HTMLTextAreaElement>('#ai-text');
   if (textInput) textInput.value = textDraft;
+  if (voiceEntry) {
+    el.querySelector('[data-act="short-voice"]')!.replaceWith(voiceEntry);
+    if (voiceFocused && !voiceEntry.closest('[inert]')) voiceEntry.focus({ preventScroll: true });
+  }
 }
 
 /* ── 装配 ── */
@@ -638,14 +645,13 @@ export function initAiInbox(): void {
         if (!act) return;
         if (act === 'go-settings') openSubpage('sp-settings');
         else if (act === 'pick-img') el.querySelector<HTMLInputElement>('#ai-file')?.click();
-        else if (act === 'short-voice') openShortVoice({ container: el, applyLabel: '加入收件箱待确认',
-          applyNote: '只保存到本机待确认队列，语音草稿不会自动入账；可在卡片修改后确认。',
-          async onApply(bill, text) {
-            if (!el.isConnected) throw new Error('收件箱已关闭');
-            await addAiPendingItems([voiceDraftItem(bill, text)]);
-            showToast('语音草稿已加入待确认，尚未入账');
-          },
-        });
+        else if (act === 'short-voice') {
+          const opener = el.querySelector<HTMLButtonElement>('[data-act="short-voice"]')!;
+          opener.focus({ preventScroll: true });
+          openHoldVoice({ container: opener,
+            onBill: (bill, beforeOpen) => openEntrySheet({ voiceBill: bill, beforeOpen, opener }),
+          });
+        }
         else if (act === 'recognize-text') {
           const ta = el.querySelector<HTMLTextAreaElement>('#ai-text');
           const text = ta?.value.trim();

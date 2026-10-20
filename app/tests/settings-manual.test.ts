@@ -25,13 +25,15 @@ it('opens only a local sheet with an accessible close control', () => {
   } finally { vi.unstubAllGlobals(); }
 });
 
-it('documents the remaining voice entries and manual inbox approval', () => {
+it('documents the shared voice flow and manual draft saving', () => {
   const html = settingsManualHtml();
   expect(html).toContain('首页按住说话');
   expect(html).toContain('首页「AI 记账」或「我的 → AI 记账收件箱」点「语音记账」');
   expect(html).not.toContain('记账页点麦克风');
   expect(html).not.toContain('填入当前草稿');
-  expect(html).toContain('「加入收件箱待确认」只保存到本机待确认队列，可修改后再确认入账');
+  expect(html).toContain('打开与首页相同的圆弧界面');
+  expect(html).toContain('点「保存」才入账，不受自动入账阈值影响');
+  expect(html).not.toContain('「加入收件箱待确认」');
 });
 
 it('uses nine local screenshots with captions, optional galleries and explicit zoom controls', () => {
