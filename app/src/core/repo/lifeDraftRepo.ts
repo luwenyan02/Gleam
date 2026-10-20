@@ -158,6 +158,8 @@ export function validateLifeDraft(input: unknown): asserts input is LifeDraft {
       throw new Error('对话草稿结构无效');
     }
     if (message.ledgerAnalysis != null && typeof message.ledgerAnalysis !== 'boolean') throw new Error('账本分析标记无效');
+    if (message.voiceDisplay != null && (message.role !== 'assistant' || typeof message.voiceDisplay !== 'string'
+      || !message.voiceDisplay.trim() || message.voiceDisplay.length > 12_000)) throw new Error('语音排版内容无效');
     if (message.search != null && (message.role !== 'assistant' || !validChatWebSearch(message.search))) throw new Error('对话搜索信息无效');
     if (message.photos != null && !Array.isArray(message.photos)) throw new Error('对话照片结构无效');
     for (const photo of message.photos ?? []) validatePhoto(photo);
@@ -326,6 +328,7 @@ export async function saveLifeDraft(key: string): Promise<number> {
       persistedMessages.push({
         role: message.role,
         content: message.content,
+        ...(message.voiceDisplay ? { voiceDisplay: message.voiceDisplay } : {}),
         ...(message.repliedAt != null ? { repliedAt: message.repliedAt } : {}),
         ...(message.search ? { search: structuredClone(message.search) } : {}),
         ...(message.ledgerAnalysis ? { ledgerAnalysis: true } : {}),

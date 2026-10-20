@@ -1,6 +1,6 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import { LIFE_CHAT_PROMPT } from './lifeChatPrompt';
-import type { LifeChatMessage } from './types';
+import type { VoiceTranscriptMessage } from './voiceTranscript';
 import type { VoiceState } from './realtimeVoice';
 
 export interface LiveVoiceReadiness { ready: boolean; credentialRevision: string; }
@@ -9,7 +9,7 @@ interface LiveState {
   state: 'connecting' | 'listening' | 'speaking' | 'muted' | 'ended';
   reason?: string;
   message?: string;
-  messages?: LifeChatMessage[];
+  messages?: VoiceTranscriptMessage[];
 }
 interface LivePlugin {
   configuration(): Promise<LiveVoiceReadiness>;
@@ -23,7 +23,7 @@ export const liveVoicePlugin = registerPlugin<LivePlugin>('GleamLiveVoice');
 export const nativeLiveVoiceSupported = () => Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 interface Options {
   onStatus: (text: string) => void;
-  onTranscript: (messages: LifeChatMessage[]) => void;
+  onTranscript: (messages: VoiceTranscriptMessage[]) => void;
   onEnd: () => void;
   onState?: (state: VoiceState) => void;
 }
@@ -49,7 +49,9 @@ export class NativeLiveVoice {
         if (event.messages) {
           if (!Array.isArray(event.messages) || event.messages.length > 120
             || event.messages.some(m => !m || !['user', 'assistant'].includes(m.role) || typeof m.content !== 'string' || m.content.length > 12_000)) return;
-          this.options.onTranscript(event.messages.map(({ role, content }) => ({ role, content })));
+          this.options.onTranscript(event.messages.map(({ role, content, id, complete }) => ({ role, content,
+            ...(typeof id === 'string' && id.length > 0 && id.length <= 160 ? { id, ...(typeof complete === 'boolean' ? { complete } : {}) } : {}),
+          })));
         }
         if (event.state === 'ended') {
           this.options.onStatus(event.message || '语音已结束'); this.close(); return;

@@ -1,8 +1,8 @@
 import { esc } from '../../core/esc';
-import type { LifeDraft, LifeNote } from '../../core/types';
+import type { LifeChatMessage, LifeDraft, LifeNote } from '../../core/types';
 import { getAttachment, getLifeNote } from '../../core/repo/lifeRepo';
 import { claimLegacyLifeChatDraft, getLifeDraft, listLifeChatSessions, migrateLifeDraft, saveLifeDraft } from '../../core/repo/lifeDraftRepo';
-import { generateLifeSummary, getLifeAiDestination } from '../../core/repo/lifeAiRepo';
+import { formatLifeVoiceReply, generateLifeSummary, getLifeAiDestination } from '../../core/repo/lifeAiRepo';
 import { on } from '../../core/store';
 import { getSetting } from '../../core/repo/settingsRepo';
 import { prepareReceipt } from '../entry/receiptEditor';
@@ -15,6 +15,7 @@ import './lifeAi.css';
 import './lifeChat.css';
 import { renderChatText } from './chatText';
 import { openLifeVoice } from './lifeVoice';
+import { VoiceReplyLayouts } from './voiceReplyLayout';
 import { chatIcon } from './chatIcons';
 import { formatChatReplyTime } from './chatReplyTime';
 import { chatSearchSources } from './chatSearchSources';
@@ -106,6 +107,14 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   const ledgerResults = new Map<number, LifeLedgerReview>();
   const ledgerScopes = new Map<number, LifeLedgerScope>();
   const isCurrentSession = () => chatSessionVersions.get(draft.key) === sessionVersion;
+  const voiceLayouts = new VoiceReplyLayouts({
+    format: input => formatLifeVoiceReply({ ...input, noteId: draft.noteId, sourceUpdatedAt: draft.sourceUpdatedAt }),
+    isCurrent: message => !disposed && !saved && !document.hidden && isCurrentSession() && !draft.aiExcluded && !existing?.aiExcluded && draft.messages.includes(message),
+    onChange: () => { persistQuiet(); render(false); },
+    onError: () => showToast('文字排版暂不可用，已保留原文'),
+  });
+  const stopLayoutsInBackground = () => { if (document.hidden) voiceLayouts.cancel(); };
+  document.addEventListener('visibilitychange', stopLayoutsInBackground);
   let replyTask: ChatReply | undefined;
   let offReply: (() => void) | undefined;
   const stageDraft = () => stageChatDraft(draft);
@@ -127,7 +136,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   observer.observe(document.body, { childList: true, subtree: true });
   const subpage = host.closest('.subpage');
   subpage?.addEventListener(SUBPAGE_CLOSE_EVENT, dispose, { once: true });
-  const off = on('settings-changed', () => { void getSetting('life.aiEnabled').then(enabled => { if (!enabled) { controller?.abort(); stopVoice?.(); } }); });
+  const off = on('settings-changed', () => { void getSetting('life.aiEnabled').then(enabled => { if (!enabled) { controller?.abort(); voiceLayouts.cancel(); stopVoice?.(); } }); });
 
   host.classList.add('life-chat-page');
   const header = host.parentElement!.querySelector('.sub-head')!;
@@ -165,6 +174,8 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   function dispose(): void {
     if (disposed) return;
     disposed = true;
+    voiceLayouts.cancel();
+    document.removeEventListener('visibilitychange', stopLayoutsInBackground);
     clearTimeout(persistTimer);
     if (voicePaint != null) cancelAnimationFrame(voicePaint);
     controller?.abort();
@@ -187,7 +198,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       const sources = [...(message.photos ?? []).map(photo => photo.dataUrl), ...(message.photoRefs ?? []).map(ref => messagePhotoUrls.get(ref)).filter((url): url is string => !!url)];
       const replyTime = formatChatReplyTime(message.repliedAt);
       const actions = message.role === 'assistant' ? `<div class="chat-message-actions"><button data-chat-copy="${index}" aria-label="复制第 ${index + 1} 条消息" title="复制">${chatIcon('copy')}</button>${index === draft.messages.length - 1 ? `<button data-chat-regenerate aria-label="重新回答" title="重新回答">${chatIcon('retry')}</button>` : ''}${replyTime ? `<time class="chat-reply-time" datetime="${new Date(message.repliedAt!).toISOString()}" title="${esc(new Date(message.repliedAt!).toLocaleString())}" aria-label="回复时间 ${replyTime}">${replyTime}</time>` : ''}</div>` : '';
-      return `<article class="life-chat-bubble ${message.role}">${message.role === 'assistant' ? `<div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div>` : ''}<div class="chat-message-content"><div class="chat-message-text">${message.role === 'user' ? esc(message.content) : renderChatText(message.content)}</div>${sources.length ? `<div class="life-chat-message-photos">${sources.map((src, photoIndex) => `<img src="${src}" alt="本轮照片 ${photoIndex + 1}">`).join('')}</div>` : ''}${message.role === 'assistant' ? chatSearchSources(message.search) : ''}</div>${ledgerResults.has(index) ? lifeLedgerResultHtml(ledgerResults.get(index)!, index, sending) : ''}${actions}${failedMessageIndex === index ? '<div class="life-chat-failed">未完成 <button class="chip" data-life-chat-retry>重试</button></div>' : ''}</article>`;
+      return `<article class="life-chat-bubble ${message.role}">${message.role === 'assistant' ? `<div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div>` : ''}<div class="chat-message-content"><div class="chat-message-text">${message.role === 'user' ? esc(message.content) : renderChatText(message.voiceDisplay ?? message.content)}</div>${sources.length ? `<div class="life-chat-message-photos">${sources.map((src, photoIndex) => `<img src="${src}" alt="本轮照片 ${photoIndex + 1}">`).join('')}</div>` : ''}${message.role === 'assistant' ? chatSearchSources(message.search) : ''}</div>${ledgerResults.has(index) ? lifeLedgerResultHtml(ledgerResults.get(index)!, index, sending) : ''}${actions}${failedMessageIndex === index ? '<div class="life-chat-failed">未完成 <button class="chip" data-life-chat-retry>重试</button></div>' : ''}</article>`;
     }).join('');
     const proposalStale = !!draft.summaryProposal && (draft.summaryProposal.sourceMessageCount < draft.messages.length || draft.photos.length > 0);
     const card = !summaryCardHidden && (readyToSummarize || draft.summaryProposal) ? `<section class="life-summary-card"><strong>${proposalStale ? '已有建议稿，对话已有新内容' : draft.summaryProposal ? '已有一版建议稿' : '已经有一个值得留下的片段了'}</strong><p>${proposalStale ? '建议稿不会自动覆盖你的修改；需要时可手动重新整理。' : '想把这段话整理成一条记录吗？'}</p><div><button class="btn primary" data-life-chat-summary>${draft.summaryProposal ? '查看建议稿' : '生成记录'}</button><button class="btn ghost" data-life-chat-continue>再聊聊</button></div></section>` : '';
@@ -211,7 +222,8 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     });
     messagesEl.querySelectorAll<HTMLButtonElement>('[data-chat-prompt]').forEach(button => button.onclick = () => { input.value = button.dataset.chatPrompt!; input.dispatchEvent(new Event('input')); input.focus(); });
     messagesEl.querySelectorAll<HTMLButtonElement>('[data-chat-copy]').forEach(button => button.onclick = () => {
-      void navigator.clipboard.writeText(draft.messages[Number(button.dataset.chatCopy)].content).then(() => {
+      const message = draft.messages[Number(button.dataset.chatCopy)];
+      void navigator.clipboard.writeText(message.voiceDisplay ?? message.content).then(() => {
         button.innerHTML = chatIcon('check'); button.title = '已复制'; showToast('已复制');
         setTimeout(() => { if (button.isConnected) { button.innerHTML = chatIcon('copy'); button.title = '复制'; } }, 1600);
       }).catch(() => showToast('复制失败，可长按选择文字'));
@@ -440,12 +452,22 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   messagesEl.addEventListener('scroll', () => { host.querySelector<HTMLButtonElement>('[data-chat-jump]')!.hidden = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100; });
   host.querySelector('[data-chat-voice]')!.addEventListener('click', () => {
     if (sending || voiceOpen || draft.aiExcluded || existing?.aiExcluded) return;
-    const prefix = structuredClone(draft.messages);
+    // Keep message identities: a completed reply may finish layout after voice is ended.
+    const prefix = [...draft.messages];
+    const voiceMessages = new Map<string, LifeChatMessage>();
     voiceOpen = true; syncComposer();
     stopVoice = openLifeVoice({ container: host.querySelector('.life-chat-input-wrap')!,
-      onTranscript: messages => {
-        if (disposed) return;
-        draft.messages = [...prefix, ...messages];
+      onTranscript: (messages, destination) => {
+        if (disposed || !isCurrentSession()) return;
+        const current = messages.map((snapshot, index) => {
+          const id = snapshot.id ?? `legacy:${index}`;
+          let message = voiceMessages.get(id);
+          if (!message || message.role !== snapshot.role) { message = { role: snapshot.role, content: snapshot.content }; voiceMessages.set(id, message); }
+          if (message.content !== snapshot.content) { message.content = snapshot.content; delete message.voiceDisplay; }
+          return message;
+        });
+        draft.messages = [...prefix, ...current];
+        if (destination) messages.forEach((snapshot, index) => { if (snapshot.id && snapshot.complete === true) voiceLayouts.add(current[index], destination); });
         if (voicePaint == null) voicePaint = requestAnimationFrame(() => { voicePaint = undefined; persistQuiet(); render(false); });
       },
       onClose() {

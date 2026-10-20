@@ -316,6 +316,8 @@ export interface ChatWebSearch {
 export interface LifeChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** 语音回复的可选 Markdown 展示稿；content 始终保留原始转写作为后续上下文。 */
+  voiceDisplay?: string;
   /** 含已确认账本分析；后续携带此会话文字时必须再次展示并确认。不是授权凭据。 */
   ledgerAnalysis?: boolean;
   /** AI 回复完成的时间点；旧消息和语音转写可缺省。 */

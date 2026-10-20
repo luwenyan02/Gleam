@@ -11,7 +11,7 @@ beforeEach(async () => { await db.delete(); await db.open(); });
 it('备份和恢复包含本地草稿与小报，但不继承生活 AI 授权', async () => {
   const messages = [
     { role: 'user' as const, content: '虚构原话' },
-    { role: 'assistant' as const, content: '虚构追问' },
+    { role: 'assistant' as const, content: '虚构追问', voiceDisplay: '## 虚构标题\n\n- 虚构追问' },
   ];
   await putLifeDraft({
     key: 'new', title: '', body: '', occurredAt: 1, photos: [], existingPhotoRefs: [], messages, aiExcluded: false,

@@ -1,11 +1,12 @@
 import type { LifeChatMessage } from './types';
 import { LIFE_CHAT_PROMPT } from './lifeChatPrompt';
+import type { VoiceTranscriptMessage } from './voiceTranscript';
 
 export type VoiceState = 'connecting' | 'listening' | 'speaking' | 'muted' | 'ended';
 export interface VoiceOptions {
   model: string; region: string; workspace: string;
   onStatus: (text: string) => void;
-  onTranscript: (messages: LifeChatMessage[]) => void;
+  onTranscript: (messages: VoiceTranscriptMessage[]) => void;
   onEnd: () => void;
   onState?: (state: VoiceState) => void;
 }
@@ -28,7 +29,8 @@ export class RealtimeVoice {
   private blocked = new Set<string>();
   private finalized = new Set<string>();
   private seen = new Set<string>();
-  private transcript = new Map<string, LifeChatMessage>();
+  private transcript = new Map<string, VoiceTranscriptMessage>();
+  private responseItems = new Set<string>();
   private order: string[] = [];
   private leave = () => { this.options.onStatus('页面已离开，麦克风已关闭'); this.close(); };
   private visibility = () => { if (document.hidden) this.leave(); };
@@ -91,10 +93,17 @@ export class RealtimeVoice {
     const id = event.item_id ?? event.item?.id;
     if (id && !this.order.includes(id)) this.order.push(id);
     if (event.type === 'input_audio_buffer.speech_started') { this.interrupt(); this.options.onStatus('正在听你说…'); }
-    if (event.type === 'response.created') { this.responseId = event.response?.id; this.responding = true; this.audio.muted = false; this.options.onStatus('拾光正在回应…'); this.options.onState?.(this.muted ? 'muted' : 'speaking'); }
+    if (event.type === 'response.created') { this.responseId = event.response?.id; this.responseItems.clear(); this.responding = true; this.audio.muted = false; this.options.onStatus('拾光正在回应…'); this.options.onState?.(this.muted ? 'muted' : 'speaking'); }
     if (event.type === 'response.done') {
       const responseId = event.response?.id;
       if (responseId && (responseId !== this.responseId || this.blocked.has(responseId))) return;
+      if (responseId && event.response?.status === 'completed') {
+        for (const item of this.responseItems) {
+          const message = this.transcript.get(item);
+          if (message?.role === 'assistant' && this.finalized.has(item)) message.complete = true;
+        }
+        this.publishTranscript();
+      }
       this.responding = false; this.options.onStatus(this.muted ? '麦克风已静音' : '已连接，随时开口'); this.options.onState?.(this.muted ? 'muted' : 'listening');
     }
     if (event.type === 'error') { this.options.onStatus('语音服务返回错误，请结束后重试或更换模型'); this.close(); return; }
@@ -111,10 +120,15 @@ export class RealtimeVoice {
     if (id.length > 160 || this.order.length > 120 || text.length > 12_000) { this.options.onStatus('本次语音已结束，可重新开始'); this.close(); return; }
     const content = complete ? text.trim() : text;
     if (complete) this.finalized.add(id);
-    this.transcript.set(id, { role, content });
+    this.transcript.set(id, { role, content, id });
+    if (role === 'assistant' && this.responseId) this.responseItems.add(id);
+    this.publishTranscript();
+  }
+
+  private publishTranscript(): void {
     const messages = this.order.flatMap(key => this.transcript.get(key)?.content.trim() ? [this.transcript.get(key)!] : []);
     if (messages.reduce((sum, message) => sum + message.content.length, 0) > 24_000) { this.close(); return; }
-    this.options.onTranscript(messages);
+    this.options.onTranscript(messages.map(message => ({ ...message })));
   }
 
   async start(): Promise<void> {

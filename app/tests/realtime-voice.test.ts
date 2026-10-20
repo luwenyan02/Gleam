@@ -19,7 +19,7 @@ it('先按事件顺序定位，转录异步到达也不会把用户与 AI 颠倒
   event({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'user', transcript: '测试' });
   event({ type: 'response.audio_transcript.done', event_id: 'b1', item_id: 'bot', transcript: '重复' });
   expect(onTranscript).toHaveBeenCalledTimes(2);
-  expect(onTranscript.mock.calls.at(-1)?.[0]).toEqual([{ role: 'user', content: '测试' }, { role: 'assistant', content: '你好' }]);
+  expect(onTranscript.mock.calls.at(-1)?.[0]).toEqual([{ role: 'user', content: '测试', id: 'user' }, { role: 'assistant', content: '你好', id: 'bot' }]);
 });
 it('关闭后不采用迟到事件；重复关闭只触发一次结束', () => {
   const { voice, event, onTranscript, onEnd } = setup();
@@ -81,14 +81,14 @@ it('语音转录随增量更新同一轮气泡，最终修正覆盖临时文字�
   const { event, onTranscript } = setup();
   event({ type: 'input_audio_buffer.speech_started', item_id: 'user' });
   event({ type: 'conversation.item.input_audio_transcription.delta', item_id: 'user', text: '', stash: '周六' });
-  expect(onTranscript).toHaveBeenLastCalledWith([{ role: 'user', content: '周六' }]);
+  expect(onTranscript).toHaveBeenLastCalledWith([{ role: 'user', content: '周六', id: 'user' }]);
   event({ type: 'conversation.item.input_audio_transcription.delta', item_id: 'user', text: '周六', stash: '去散步' });
   event({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'user', transcript: '周六去爬山' });
   event({ type: 'response.created', response: { id: 'reply' } });
   event({ type: 'response.audio_transcript.delta', event_id: 'd1', response_id: 'reply', item_id: 'bot', delta: 'Hello ' });
   event({ type: 'response.audio_transcript.delta', event_id: 'd1', response_id: 'reply', item_id: 'bot', delta: 'Hello ' });
   event({ type: 'response.output_audio_transcript.delta', response_id: 'reply', item_id: 'bot', delta: 'world' });
-  expect(onTranscript).toHaveBeenLastCalledWith([{ role: 'user', content: '周六去爬山' }, { role: 'assistant', content: 'Hello world' }]);
+  expect(onTranscript).toHaveBeenLastCalledWith([{ role: 'user', content: '周六去爬山', id: 'user' }, { role: 'assistant', content: 'Hello world', id: 'bot' }]);
   event({ type: 'response.audio_transcript.done', response_id: 'reply', item_id: 'bot', transcript: 'Hello, world!' });
   event({ type: 'response.audio_transcript.delta', response_id: 'reply', item_id: 'bot', delta: '迟到' });
   expect(onTranscript.mock.calls.at(-1)?.[0][1].content).toBe('Hello, world!');
@@ -102,4 +102,18 @@ it('打断后的旧回复结束事件不会停止新回复的状态与后续打�
   event({ type: 'response.done', response: { id: 'old', status: 'cancelled' } });
   voice.interrupt();
   expect(channel.send).toHaveBeenCalledTimes(2);
+});
+
+it('只有当前成功结束的完整转写可排版，取消与重复完成不产生新轮次', () => {
+  const { voice, event, onTranscript } = setup();
+  event({ type: 'response.created', response: { id: 'reply-1' } });
+  event({ type: 'response.audio_transcript.done', response_id: 'reply-1', item_id: 'bot-1', transcript: '第一轮' });
+  expect(onTranscript.mock.calls.at(-1)?.[0][0].complete).not.toBe(true);
+  event({ type: 'response.done', response: { id: 'reply-1', status: 'completed' } });
+  expect(onTranscript.mock.calls.at(-1)?.[0][0]).toMatchObject({ id: 'bot-1', complete: true });
+  event({ type: 'response.created', response: { id: 'reply-2' } });
+  event({ type: 'response.audio_transcript.done', response_id: 'reply-2', item_id: 'bot-2', transcript: '被打断' });
+  voice.interrupt(); event({ type: 'response.done', response: { id: 'reply-2', status: 'completed' } });
+  expect(onTranscript.mock.calls.at(-1)?.[0][1].complete).not.toBe(true);
+  voice.close();
 });

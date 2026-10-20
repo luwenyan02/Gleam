@@ -66,13 +66,22 @@ it('只接受本会话的合法文字和状态，结束后隔离迟到结果且�
   s.event({ state: 'speaking', messages: [null] });
   s.event({ state: 'speaking', messages: [{ role: 'tool', content: '工具结果' }] });
   expect(s.callbacks.onTranscript).not.toHaveBeenCalled();
-  s.event({ state: 'speaking', messages: [{ role: 'user', content: '你好' }, { role: 'assistant', content: '你好呀', id: 'discard-extra' }] });
+  s.event({ state: 'speaking', messages: [{ role: 'user', content: '你好' }, { role: 'assistant', content: '你好呀', unknown: 'discard-extra' }] });
   expect(s.callbacks.onTranscript).toHaveBeenCalledExactlyOnceWith([{ role: 'user', content: '你好' }, { role: 'assistant', content: '你好呀' }]);
   expect(s.callbacks.onStatus).toHaveBeenLastCalledWith('拾光在说话…');
   s.event({ state: 'ended', reason: 'background' }); s.voice.close();
   s.event({ state: 'speaking', messages: [{ role: 'assistant', content: '迟到' }] });
   expect(s.callbacks.onTranscript).toHaveBeenCalledOnce(); expect(bridge.end).toHaveBeenCalledOnce();
   expect(s.remove).toHaveBeenCalledOnce(); expect(s.callbacks.onEnd).toHaveBeenCalledOnce();
+});
+
+it('透传原生稳定消息标识与完整回复标记，旧插件仍可只转写', async () => {
+  const s = setup(); await s.voice.start();
+  s.event({ state: 'listening', messages: [{ role: 'assistant', content: '完整口语回复', id: 'assistant-1', complete: true, voiceDisplay: '不信任桥外排版' }] });
+  expect(s.callbacks.onTranscript).toHaveBeenLastCalledWith([{ role: 'assistant', content: '完整口语回复', id: 'assistant-1', complete: true }]);
+  s.event({ state: 'listening', messages: [{ role: 'assistant', content: '旧插件文字', complete: true }] });
+  expect(s.callbacks.onTranscript).toHaveBeenLastCalledWith([{ role: 'assistant', content: '旧插件文字' }]);
+  s.voice.close();
 });
 
 it('麦克风授权等待不会被短暂失焦取消；真正进入后台后停止且不自动恢复', async () => {

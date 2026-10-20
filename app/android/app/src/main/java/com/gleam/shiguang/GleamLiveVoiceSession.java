@@ -16,8 +16,8 @@ final class GleamLiveVoiceSession {
     }
     interface Listener { void ready(); void state(String value); void transcript(List<Turn> turns); void ended(String reason); }
     static final class Turn {
-        final String role, text;
-        Turn(String role,String text) { this.role=role;this.text=text; }
+        final String id, role, text; final boolean complete;
+        Turn(String id,String role,String text,boolean complete) { this.id=id;this.role=role;this.text=text;this.complete=complete; }
     }
     private final GleamSpeechSession.Transport transport;
     private final Audio audio;
@@ -26,8 +26,9 @@ final class GleamLiveVoiceSession {
     private final String instructions;
     private final LinkedHashMap<String,Turn> turns=new LinkedHashMap<>();
     private final LinkedHashSet<String> blocked=new LinkedHashSet<>(), seen=new LinkedHashSet<>(), finalized=new LinkedHashSet<>();
+    private final LinkedHashSet<String> responseItems=new LinkedHashSet<>();
     private GleamSpeechSession.Timer deadline, duration;
-    private boolean begun, configuring, ready, closed, muted, responding, responseFinished, cancelPending;
+    private boolean begun, configuring, ready, closed, muted, responding, responseFinished, responseSucceeded, completionPublished, cancelPending;
     private String serverId, responseId;
     GleamLiveVoiceSession(GleamSpeechSession.Transport transport,Audio audio,Listener listener,GleamSpeechSession.Clock clock,String instructions) {
         this.transport=transport;this.audio=audio;this.listener=listener;this.clock=clock;this.instructions=instructions;
@@ -77,7 +78,7 @@ final class GleamLiveVoiceSession {
     }
     private void reserve(String id,String role) {
         if(id==null||id.isEmpty()||id.length()>160)return;
-        if(!turns.containsKey(id))turns.put(id,new Turn(role,""));
+        if(!turns.containsKey(id))turns.put(id,new Turn(id,role,"",false));
         if(turns.size()>120)end("LIVE_LIMIT");
     }
     private void transcript(String id,String role,String text,boolean complete) {
@@ -85,7 +86,12 @@ final class GleamLiveVoiceSession {
         reserve(id,role);if(closed)return;
         if(text.length()>12000){end("LIVE_LIMIT");return;}
         if(complete)finalized.add(id);
-        turns.put(id,new Turn(role,complete?text.trim():text));int count=0;List<Turn> result=new ArrayList<>();
+        turns.put(id,new Turn(id,role,complete?text.trim():text,false));
+        if("assistant".equals(role))responseItems.add(id);
+        publish();
+    }
+    private void publish() {
+        int count=0;List<Turn> result=new ArrayList<>();
         for(Turn turn:turns.values()){count+=turn.text.length();if(!turn.text.trim().isEmpty())result.add(turn);}
         if(count>24000){end("LIVE_LIMIT");return;}listener.transcript(result);
     }
@@ -121,7 +127,7 @@ final class GleamLiveVoiceSession {
             if("response.created".equals(type)) {
                 JSONObject response=event.optJSONObject("response");if(response==null||response.optString("id").isEmpty()){end("LIVE_PROTOCOL");return;}
                 if(responseId!=null){blockResponse(responseId);audio.clear();}
-                responseId=response.getString("id");responding=true;responseFinished=false;
+                responseId=response.getString("id");responding=true;responseFinished=false;responseSucceeded=false;completionPublished=false;responseItems.clear();
             }
             if("response.output_item.added".equals(type)) {
                 JSONObject item=event.optJSONObject("item");if(item!=null&&"assistant".equals(item.optString("role")))reserve(item.optString("id"),"assistant");
@@ -146,11 +152,23 @@ final class GleamLiveVoiceSession {
                 if(!response.optString("id").equals(responseId)||blocked.contains(responseId))return;
                 responding=false;responseFinished=true;
                 if("failed".equals(response.optString("status"))){end("LIVE_PROVIDER");return;}
+                responseSucceeded="completed".equals(response.optString("status"));
                 audio.finish();drained();
             }
         } catch(Exception ignored){end("LIVE_PROTOCOL");}
     }
-    synchronized void drained() { if(!closed&&responseFinished&&!audio.playing())listener.state(muted?"muted":"listening"); }
+    synchronized void drained() {
+        if(closed||!responseFinished||audio.playing())return;
+        if(responseSucceeded&&!completionPublished) {
+            completionPublished=true;
+            for(String id:responseItems) {
+                Turn turn=turns.get(id);
+                if(turn!=null&&"assistant".equals(turn.role)&&finalized.contains(id))turns.put(id,new Turn(id,turn.role,turn.text,true));
+            }
+            publish();
+        }
+        listener.state(muted?"muted":"listening");
+    }
     synchronized void mute(boolean value) {
         if(closed||!ready)return;muted=value;audio.mute(value);
         if(value)send("{\"type\":\"input_audio_buffer.clear\"}");listener.state(value?"muted":audio.playing()?"speaking":"listening");

@@ -1,4 +1,5 @@
-import type { LifeChatMessage } from '../../core/types';
+import type { VoiceTranscriptMessage, VoiceTextDestination } from '../../core/voiceTranscript';
+import { getLifeAiDestination } from '../../core/repo/lifeAiRepo';
 import { iconHtml } from '../../assets/icons';
 import { RealtimeVoice, type VoiceState } from '../../core/realtimeVoice';
 import { NativeLiveVoice, liveVoicePlugin, nativeLiveVoiceSupported } from '../../core/nativeLiveVoice';
@@ -8,14 +9,15 @@ import { openAiSettings } from '../settings/settings';
 import { chatIcon } from './chatIcons';
 
 /** Both transports share the small call UI; Android reads only the native tested configuration. */
-export function openLifeVoice(options: { container: HTMLElement; onTranscript: (messages: LifeChatMessage[]) => void; onClose: () => void }): () => void {
+export function openLifeVoice(options: { container: HTMLElement; onTranscript: (messages: VoiceTranscriptMessage[], destination?: VoiceTextDestination) => void; onClose: () => void }): () => void {
   const native = nativeLiveVoiceSupported();
   let voice: NativeLiveVoice | RealtimeVoice | undefined;
   let closed = false, starting = false, ready = false;
   let startRevision = 0;
   let reset = () => {};
   let workspace = '', region = 'beijing';
-  let conversation: LifeChatMessage[] = [];
+  let conversation: VoiceTranscriptMessage[] = [];
+  let textDestination: VoiceTextDestination | undefined;
   const configController = new AbortController();
   const stop = () => { startRevision++; starting = false; const current = voice; voice = undefined; current?.close(); reset(); };
   const el = document.createElement('section');
@@ -87,9 +89,9 @@ export function openLifeVoice(options: { container: HTMLElement; onTranscript: (
             state(value);
             if (value === 'listening' || value === 'speaking' || value === 'muted') busy('connected');
           },
-          onTranscript(messages: LifeChatMessage[]) {
+          onTranscript(messages: VoiceTranscriptMessage[]) {
             if (closed || revision !== startRevision) return;
-            conversation = [...previous, ...messages]; options.onTranscript(conversation);
+            conversation = [...previous, ...messages.map(message => ({ ...message, ...(message.id ? { id: `${revision}:${message.id}` } : {}) }))]; options.onTranscript(conversation, textDestination);
           },
           onEnd() { if (revision === startRevision) { voice = undefined; busy(false); } },
         };
@@ -113,6 +115,13 @@ export function openLifeVoice(options: { container: HTMLElement; onTranscript: (
   play.onclick = () => { if (voice instanceof RealtimeVoice) void voice.resumeAudio().then(() => { play.hidden = true; }).catch(() => status('点击「播放声音」继续')); };
   void (async () => {
     try {
+      textDestination = await getLifeAiDestination().catch(() => undefined);
+      if (closed) return;
+      if (textDestination) {
+        let service = '当前文字模型';
+        try { service = new URL(textDestination.baseUrl).hostname; } catch { /* Request boundary validates the configured destination. */ }
+        el.querySelector('.voice-consent')!.textContent = `声音发送至百炼，长回复由 ${service} 排版，可能产生费用`;
+      }
       if (native) {
         const config = await liveVoicePlugin.configuration();
         if (closed) return;

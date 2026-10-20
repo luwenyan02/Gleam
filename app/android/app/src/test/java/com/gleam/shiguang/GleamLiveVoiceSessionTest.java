@@ -7,6 +7,17 @@ import org.json.JSONObject;
 import org.junit.Test;
 
 public class GleamLiveVoiceSessionTest {
+    @Test public void layoutRequiresSuccessfulResponseAndDrainedAudioNotJustTranscriptDone() {
+        Fixture f=new Fixture();f.connected();f.response();f.audio("reply-1");
+        f.engine.receive("{\"type\":\"response.audio_transcript.done\",\"response_id\":\"reply-1\",\"item_id\":\"bot\",\"transcript\":\"完整回复\"}");
+        assertFalse(f.turns.get(0).complete);assertEquals("bot",f.turns.get(0).id);
+        f.engine.receive("{\"type\":\"response.done\",\"response\":{\"id\":\"reply-1\",\"status\":\"completed\"}}");
+        assertFalse(f.turns.get(0).complete);f.playing=false;f.engine.drained();assertTrue(f.turns.get(0).complete);
+        f=new Fixture();f.connected();f.response();
+        f.engine.receive("{\"type\":\"response.audio_transcript.done\",\"response_id\":\"reply-1\",\"item_id\":\"cut\",\"transcript\":\"中断原话\"}");
+        f.engine.interrupt();f.engine.receive("{\"type\":\"response.done\",\"response\":{\"id\":\"reply-1\",\"status\":\"completed\"}}");
+        f.engine.drained();assertFalse(f.turns.get(0).complete);
+    }
     static final String ACK = "{\"type\":\"session.updated\",\"session\":{\"id\":\"server-1\",\"model\":\"qwen3.8-omni-flash-realtime\",\"modalities\":[\"text\",\"audio\"],\"turn_detection\":{\"type\":\"server_vad\"},\"enable_search\":false,\"tools\":[],\"audio\":{\"input\":{\"format\":{\"type\":\"pcm\",\"sample_rate\":16000,\"channels\":1}},\"output\":{\"format\":{\"type\":\"pcm\",\"sample_rate\":24000}}}}}";
     static class Fixture implements GleamSpeechSession.Transport, GleamLiveVoiceSession.Audio, GleamLiveVoiceSession.Listener, GleamSpeechSession.Clock {
         int starts, stops, clears, plays, ready, closes; boolean muted, playing, failStart, failStop, denyStart;
