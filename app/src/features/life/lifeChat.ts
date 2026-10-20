@@ -96,6 +96,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   let saved = false;
   let failedMessageIndex: number | undefined;
   let failedRegenerate = false;
+  const cancelledTurns = new Map<LifeChatMessage, { question: LifeChatMessage; regenerate: boolean; text: string }>();
   let controller: AbortController | undefined;
   let persistTimer: ReturnType<typeof setTimeout> | undefined;
   let authorisedDestination: Destination | undefined;
@@ -197,8 +198,13 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     const messages = draft.messages.map((message, index) => {
       const sources = [...(message.photos ?? []).map(photo => photo.dataUrl), ...(message.photoRefs ?? []).map(ref => messagePhotoUrls.get(ref)).filter((url): url is string => !!url)];
       const replyTime = formatChatReplyTime(message.repliedAt);
+      const cancelled = cancelledTurns.get(message);
+      const retryIndex = cancelled ? draft.messages.indexOf(cancelled.question) : failedMessageIndex;
+      const retryRegenerate = cancelled?.regenerate ?? failedRegenerate;
+      const failure = (cancelled || failedMessageIndex === index) && retryIndex != null && retryIndex >= 0
+        ? `<div class="life-chat-failed" ${cancelled ? 'data-chat-cancelled' : ''}><span>${esc(cancelled?.text ?? '未完成')}</span><button class="chip" data-life-chat-retry="${retryIndex}" data-retry-regenerate="${retryRegenerate}">重试</button></div>` : '';
       const actions = message.role === 'assistant' ? `<div class="chat-message-actions"><button data-chat-copy="${index}" aria-label="复制第 ${index + 1} 条消息" title="复制">${chatIcon('copy')}</button>${index === draft.messages.length - 1 ? `<button data-chat-regenerate aria-label="重新回答" title="重新回答">${chatIcon('retry')}</button>` : ''}${replyTime ? `<time class="chat-reply-time" datetime="${new Date(message.repliedAt!).toISOString()}" title="${esc(new Date(message.repliedAt!).toLocaleString())}" aria-label="回复时间 ${replyTime}">${replyTime}</time>` : ''}</div>` : '';
-      return `<article class="life-chat-bubble ${message.role}">${message.role === 'assistant' ? `<div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div>` : ''}<div class="chat-message-content"><div class="chat-message-text">${message.role === 'user' ? esc(message.content) : renderChatText(message.voiceDisplay ?? message.content)}</div>${sources.length ? `<div class="life-chat-message-photos">${sources.map((src, photoIndex) => `<img src="${src}" alt="本轮照片 ${photoIndex + 1}">`).join('')}</div>` : ''}${message.role === 'assistant' ? chatSearchSources(message.search) : ''}</div>${ledgerResults.has(index) ? lifeLedgerResultHtml(ledgerResults.get(index)!, index, sending) : ''}${actions}${failedMessageIndex === index ? '<div class="life-chat-failed">未完成 <button class="chip" data-life-chat-retry>重试</button></div>' : ''}</article>`;
+      return `<article class="life-chat-bubble ${message.role}">${message.role === 'assistant' ? `<div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div>` : ''}<div class="chat-message-content"><div class="chat-message-text">${message.role === 'user' ? esc(message.content) : renderChatText(message.voiceDisplay ?? message.content)}</div>${sources.length ? `<div class="life-chat-message-photos">${sources.map((src, photoIndex) => `<img src="${src}" alt="本轮照片 ${photoIndex + 1}">`).join('')}</div>` : ''}${message.role === 'assistant' ? chatSearchSources(message.search) : ''}</div>${ledgerResults.has(index) ? lifeLedgerResultHtml(ledgerResults.get(index)!, index, sending) : ''}${actions}${failure}</article>`;
     }).join('');
     const proposalStale = !!draft.summaryProposal && (draft.summaryProposal.sourceMessageCount < draft.messages.length || draft.photos.length > 0);
     const card = !summaryCardHidden && (readyToSummarize || draft.summaryProposal) ? `<section class="life-summary-card"><strong>${proposalStale ? '已有建议稿，对话已有新内容' : draft.summaryProposal ? '已有一版建议稿' : '已经有一个值得留下的片段了'}</strong><p>${proposalStale ? '建议稿不会自动覆盖你的修改；需要时可手动重新整理。' : '想把这段话整理成一条记录吗？'}</p><div><button class="btn primary" data-life-chat-summary>${draft.summaryProposal ? '查看建议稿' : '生成记录'}</button><button class="btn ghost" data-life-chat-continue>再聊聊</button></div></section>` : '';
@@ -234,7 +240,10 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       onFollowup: (question, scope) => { void sendLedgerFollowup(question, scope); },
     });
     messagesEl.querySelector('[data-chat-regenerate]')?.addEventListener('click', () => { void requestTurn(draft.messages.length - 2, true); });
-    messagesEl.querySelector('[data-life-chat-retry]')?.addEventListener('click', () => { if (failedMessageIndex != null) void requestTurn(failedMessageIndex, failedRegenerate); });
+    messagesEl.querySelectorAll<HTMLButtonElement>('[data-life-chat-retry]').forEach(button => button.onclick = () => {
+      const index = Number(button.dataset.lifeChatRetry);
+      if (Number.isSafeInteger(index) && draft.messages[index]?.role === 'user') void requestTurn(index, button.dataset.retryRegenerate === 'true');
+    });
     messagesEl.querySelector('[data-life-chat-summary]')?.addEventListener('click', () => { if (draft.summaryProposal) openSummary(); else void summarize(); });
     messagesEl.querySelector('[data-life-chat-continue]')?.addEventListener('click', () => { readyToSummarize = false; summaryCardHidden = true; render(); });
     syncComposer();
@@ -340,12 +349,24 @@ function renderChat(host: HTMLElement, launch: Launch): void {
         scope: ledgerScopes.get(messageIndex), onScopeChange: scope => ledgerScopes.set(messageIndex, scope),
       }) : undefined;
       const expectedDestination = ledgerRequest ? (ledger ? ledger.expectedDestination : false) : await authorise(sourcePreview(photos), photos, signal);
-      if (!expectedDestination || disposed || signal.aborted) { failedMessageIndex = messageIndex; status('未发送，消息和照片仍保存在本机。'); render(); return; }
+      if (disposed || !isCurrentSession()) return;
+      if (!expectedDestination || signal.aborted) {
+        const question = draft.messages[messageIndex];
+        if (question?.role !== 'user') return;
+        const answer = draft.messages[messageIndex + 1];
+        const target = regenerate && answer?.role === 'assistant' ? answer : question;
+        cancelledTurns.set(target, { question, regenerate, text: regenerate ? '已取消重新回答，原回复保留。'
+          : draft.chatReply?.messageIndex === messageIndex ? '已取消重试，已有内容保留。'
+            : photos.length ? '未发送，消息和照片仍保存在本机。' : '未发送，消息仍保存在本机。' });
+        failedMessageIndex = undefined;
+        status(''); render(); return;
+      }
       status('拾光正在想…');
       const task = startChatReply(draft, messageIndex, regenerate, {
         photos: ledger ? [] : photos, ledgerGrant: ledger ? ledger.ledgerGrant : undefined,
         expectedDestination, ledgerAnalysis: !!ledger, ledgerReview: ledger ? ledger.review : undefined,
       });
+      cancelledTurns.clear();
       // 从这里起请求归会话持有；页面销毁只解除订阅，不中止已确认的发送。
       controller = undefined;
       watchReply(task);
@@ -459,6 +480,9 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     stopVoice = openLifeVoice({ container: host.querySelector('.life-chat-input-wrap')!,
       onTranscript: (messages, destination) => {
         if (disposed || !isCurrentSession()) return;
+        if (cancelledTurns.size && messages.some(message => message.role === 'assistant' && message.content.trim())) {
+          cancelledTurns.clear(); status('');
+        }
         const current = messages.map((snapshot, index) => {
           const id = snapshot.id ?? `legacy:${index}`;
           let message = voiceMessages.get(id);

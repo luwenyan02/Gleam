@@ -101,6 +101,9 @@
 .chat-compose-tools .life-chat-send:disabled{background:var(--bg);color:var(--faint);opacity:.65}
 .chat-compose-tools .life-chat-send:not(:disabled):hover,.chat-compose-tools .life-chat-stop:hover{background:var(--expense)}
 .life-chat-status{margin:4px 22px 8px;font-size:12px;line-height:1.6;color:var(--muted)}
+.life-chat-failed{display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--muted);font-size:calc(12px * var(--seed-type));line-height:1.5}
+.life-chat-failed>span{flex:1;min-width:0}
+.life-chat-failed>.chip{flex-shrink:0}
 .chat-config-link{align-self:flex-start;display:flex;align-items:center;gap:8px;min-height:44px;margin:0 18px 8px;padding:0 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--primary);font:inherit;font-size:13px;cursor:pointer}
 .chat-config-link[hidden]{display:none}
 .is-chat-busy .life-chat-status:before{content:'';display:inline-block;width:6px;height:6px;border-radius:3px;background:var(--primary);margin-right:8px;vertical-align:2px;animation:chat-breathe 1.2s ease-in-out infinite}
