@@ -11,7 +11,7 @@ function deferred<T>() {
 }
 function setup() {
   let event!: (value: unknown) => void;
-  const remove = vi.fn(async () => {}), callbacks = { onStatus: vi.fn(), onTranscript: vi.fn(), onEnd: vi.fn() };
+  const remove = vi.fn(async () => {}), callbacks = { onStatus: vi.fn(), onTranscript: vi.fn(), onState: vi.fn(), onEnd: vi.fn() };
   bridge.addListener.mockImplementation(async (_name, listener) => { event = listener; return { remove }; });
   const voice = new NativeLiveVoice(callbacks);
   return { voice, callbacks, remove, event: (data: object) => event({ sessionId: bridge.start.mock.calls[0]?.[0].sessionId, ...data }) };
@@ -26,6 +26,18 @@ beforeEach(() => {
   for (const method of [bridge.end, bridge.mute, bridge.interrupt]) method.mockResolvedValue({});
 });
 afterEach(() => vi.unstubAllGlobals());
+
+it('用实际会话状态驱动动画，旧会话和结束后的状态不回写', async () => {
+  const s = setup(); await s.voice.start();
+  expect(s.callbacks.onState).toHaveBeenCalledWith('connecting');
+  expect(s.callbacks.onState).toHaveBeenLastCalledWith('listening');
+  s.event({ sessionId: 'old', state: 'speaking' });
+  expect(s.callbacks.onState).toHaveBeenLastCalledWith('listening');
+  s.event({ state: 'speaking' }); expect(s.callbacks.onState).toHaveBeenLastCalledWith('speaking');
+  s.event({ state: 'muted' }); expect(s.callbacks.onState).toHaveBeenLastCalledWith('muted');
+  s.voice.close(); s.event({ state: 'speaking' });
+  expect(s.callbacks.onState).toHaveBeenLastCalledWith('ended');
+});
 
 it('只按一次主动开始，使用原生已验证版本，不传 Key、地址或已有聊天，也不启用浏览器麦克风', async () => {
   const s = setup(); expect(bridge.start).not.toHaveBeenCalled();

@@ -25,7 +25,7 @@ final class GleamLiveVoiceSession {
     private final GleamSpeechSession.Clock clock;
     private final String instructions;
     private final LinkedHashMap<String,Turn> turns=new LinkedHashMap<>();
-    private final LinkedHashSet<String> blocked=new LinkedHashSet<>(), seen=new LinkedHashSet<>();
+    private final LinkedHashSet<String> blocked=new LinkedHashSet<>(), seen=new LinkedHashSet<>(), finalized=new LinkedHashSet<>();
     private GleamSpeechSession.Timer deadline, duration;
     private boolean begun, configuring, ready, closed, muted, responding, responseFinished, cancelPending;
     private String serverId, responseId;
@@ -80,12 +80,13 @@ final class GleamLiveVoiceSession {
         if(!turns.containsKey(id))turns.put(id,new Turn(role,""));
         if(turns.size()>120)end("LIVE_LIMIT");
     }
-    private void transcript(String id,String role,String text) {
-        if(id==null||id.isEmpty()||id.length()>160||text==null||text.trim().isEmpty())return;
+    private void transcript(String id,String role,String text,boolean complete) {
+        if(id==null||id.isEmpty()||id.length()>160||text==null||finalized.contains(id))return;
         reserve(id,role);if(closed)return;
         if(text.length()>12000){end("LIVE_LIMIT");return;}
-        turns.put(id,new Turn(role,text.trim()));int count=0;List<Turn> result=new ArrayList<>();
-        for(Turn turn:turns.values()){count+=turn.text.length();if(!turn.text.isEmpty())result.add(turn);}
+        if(complete)finalized.add(id);
+        turns.put(id,new Turn(role,complete?text.trim():text));int count=0;List<Turn> result=new ArrayList<>();
+        for(Turn turn:turns.values()){count+=turn.text.length();if(!turn.text.trim().isEmpty())result.add(turn);}
         if(count>24000){end("LIVE_LIMIT");return;}listener.transcript(result);
     }
     synchronized void receive(String raw) {
@@ -131,8 +132,15 @@ final class GleamLiveVoiceSession {
                 if(bytes==null||bytes.size()==0||bytes.size()%2!=0){end("LIVE_PROTOCOL");return;}
                 audio.play(bytes.toByteArray());listener.state(muted?"muted":"speaking");
             }
-            if("conversation.item.input_audio_transcription.completed".equals(type))transcript(itemId,"user",event.optString("transcript",null));
-            if(("response.audio_transcript.done".equals(type)||"response.output_audio_transcript.done".equals(type))&&current)transcript(itemId,"assistant",event.optString("transcript",null));
+            if(event.optInt("content_index",0)==0) {
+                if("conversation.item.input_audio_transcription.delta".equals(type))transcript(itemId,"user",event.optString("text","")+event.optString("stash",""),false);
+                if("conversation.item.input_audio_transcription.completed".equals(type))transcript(itemId,"user",event.optString("transcript",null),true);
+                if(("response.audio_transcript.delta".equals(type)||"response.output_audio_transcript.delta".equals(type))&&current) {
+                    Turn previous=turns.get(itemId);String delta=event.optString("delta",null);
+                    if(delta!=null)transcript(itemId,"assistant",(previous==null?"":previous.text)+delta,false);
+                }
+                if(("response.audio_transcript.done".equals(type)||"response.output_audio_transcript.done".equals(type))&&current)transcript(itemId,"assistant",event.optString("transcript",null),true);
+            }
             if("response.done".equals(type)) {
                 JSONObject response=event.optJSONObject("response");if(response==null)return;
                 if(!response.optString("id").equals(responseId)||blocked.contains(responseId))return;

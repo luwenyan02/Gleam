@@ -1,6 +1,7 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import { LIFE_CHAT_PROMPT } from './lifeChatPrompt';
 import type { LifeChatMessage } from './types';
+import type { VoiceState } from './realtimeVoice';
 
 export interface LiveVoiceReadiness { ready: boolean; credentialRevision: string; }
 interface LiveState {
@@ -24,6 +25,7 @@ interface Options {
   onStatus: (text: string) => void;
   onTranscript: (messages: LifeChatMessage[]) => void;
   onEnd: () => void;
+  onState?: (state: VoiceState) => void;
 }
 
 /** JS sees only readiness, an isolation revision and returned text. Audio and keys remain native. */
@@ -40,6 +42,7 @@ export class NativeLiveVoice {
   async start(): Promise<void> {
     if (this.begun || this.closed) return;
     this.begun = true;
+    this.options.onState?.('connecting');
     try {
       const listener = await liveVoicePlugin.addListener('state', event => {
         if (this.closed || event.sessionId !== this.id) return;
@@ -51,6 +54,7 @@ export class NativeLiveVoice {
         if (event.state === 'ended') {
           this.options.onStatus(event.message || '语音已结束'); this.close(); return;
         }
+        this.options.onState?.(event.state);
         this.options.onStatus(event.state === 'muted' ? '麦克风已静音' : event.state === 'speaking' ? '拾光在说话…' : event.state === 'connecting' ? '正在连接…' : '正在听，直接说话就好');
       });
       if (this.closed) { await listener.remove(); return; }
@@ -65,7 +69,7 @@ export class NativeLiveVoice {
       });
       if (this.closed) return;
       if (document.hidden) { this.options.onStatus('语音已结束'); this.close(); return; }
-      this.connected = true; this.options.onStatus('正在听，直接说话就好');
+      this.connected = true; this.options.onState?.('listening'); this.options.onStatus('正在听，直接说话就好');
     } catch (error) {
       if (!this.closed) { this.options.onStatus(error instanceof Error ? error.message : '语音未连接，请重试'); this.close(); }
     }
@@ -83,6 +87,7 @@ export class NativeLiveVoice {
     window.removeEventListener('pagehide', this.leave); document.removeEventListener('visibilitychange', this.visibility);
     void liveVoicePlugin.end({ sessionId: this.id }).catch(() => {});
     void this.listener?.remove().catch(() => {}); this.listener = undefined;
+    this.options.onState?.('ended');
     this.options.onEnd();
   }
 }

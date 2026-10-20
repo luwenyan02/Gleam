@@ -100,6 +100,8 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   let authorisedDestination: Destination | undefined;
   let streamedReply = '';
   let stopVoice: (() => void) | undefined;
+  let voiceOpen = false;
+  let voicePaint: number | undefined;
   const messagePhotoUrls = new Map<number, string>();
   const ledgerResults = new Map<number, LifeLedgerReview>();
   const ledgerScopes = new Map<number, LifeLedgerScope>();
@@ -138,10 +140,12 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     <p id="life-chat-draft-status" class="life-chat-draft-status sr-only">本地草稿</p><p id="life-chat-status" class="life-chat-status" role="status"></p>
     <button class="chat-config-link" data-chat-config-error hidden>${chatIcon('settings')}<span>配置 AI 接口</span></button>
     <div class="life-chat-input-wrap">
+      <div class="chat-compose-fields">
       <div class="life-chat-photos" id="life-chat-photos"></div>
       <input id="lchat-file" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>
       <label class="sr-only" for="life-chat-input">和拾光说说</label><textarea id="life-chat-input" rows="1" maxlength="8000" placeholder="想说什么，都可以…"></textarea>
       <div class="chat-compose-tools"><button data-life-chat-photo aria-label="添加照片" title="添加照片">${chatIcon('photo')}<span>照片</span></button><button data-chat-voice aria-label="实时语音" title="实时语音">${chatIcon('voice')}<span>语音聊</span></button><button data-chat-organize aria-label="整理成记录" title="整理成记录">${chatIcon('bookmark')}<span>整理</span></button><button class="btn primary life-chat-send" data-life-chat-send aria-label="发送" title="发送">${chatIcon('send')}</button><button class="btn ghost life-chat-stop" data-life-chat-stop aria-label="停止" title="停止" hidden>${chatIcon('stop')}</button></div>
+      </div>
     </div>
   </div>`;
   const messagesEl = host.querySelector<HTMLElement>('#life-chat-messages')!;
@@ -162,6 +166,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     if (disposed) return;
     disposed = true;
     clearTimeout(persistTimer);
+    if (voicePaint != null) cancelAnimationFrame(voicePaint);
     controller?.abort();
     offReply?.();
     stopVoice?.();
@@ -175,7 +180,6 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   }
   function render(forceBottom = true): void {
     if (disposed) return;
-    syncComposer();
     const scrollTop = messagesEl.scrollTop;
     const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100;
     const welcome = !draft.messages.length ? `<section class="chat-welcome"><div class="chat-welcome-heading"><div class="chat-emblem" aria-hidden="true">${chatIcon('spark')}</div><div><div class="chat-eyebrow">一处随时能坐坐的地方</div><h3>你好，我是拾光</h3></div></div><p>今天有什么小事，或突然冒出的想法？<br>可以一起琢磨，也可以只是聊聊。</p><div class="chat-starters"><button data-chat-prompt="今天有件小事，想和你聊聊。"><i>${chatIcon('chat')}</i>聊聊今天</button><button data-chat-prompt="我有一个想法，想请你帮我一起想想。"><i>${chatIcon('idea')}</i>帮我想想</button><button data-chat-prompt="我有个问题，想请你解释一下："><i>${chatIcon('question')}</i>解答问题</button><button data-chat-prompt="帮我分析一下我这个月的消费情况。"><i>${chatIcon('ledger')}</i>分析消费</button></div></section>` : '';
@@ -221,6 +225,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     messagesEl.querySelector('[data-life-chat-retry]')?.addEventListener('click', () => { if (failedMessageIndex != null) void requestTurn(failedMessageIndex, failedRegenerate); });
     messagesEl.querySelector('[data-life-chat-summary]')?.addEventListener('click', () => { if (draft.summaryProposal) openSummary(); else void summarize(); });
     messagesEl.querySelector('[data-life-chat-continue]')?.addEventListener('click', () => { readyToSummarize = false; summaryCardHidden = true; render(); });
+    syncComposer();
     messagesEl.scrollTop = forceBottom || nearBottom ? messagesEl.scrollHeight : scrollTop;
     host.querySelector<HTMLButtonElement>('[data-chat-jump]')!.hidden = forceBottom || nearBottom;
   }
@@ -248,16 +253,11 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     if (disposed) return;
     host.querySelector<HTMLButtonElement>('[data-chat-config-error]')!.disabled = value;
     host.classList.toggle('is-chat-busy', value);
-    input.disabled = value;
-    syncComposer();
     host.querySelector<HTMLButtonElement>('[data-life-chat-stop]')!.hidden = !value;
-    host.querySelector<HTMLButtonElement>('[data-life-chat-photo]')!.disabled = value;
-    host.querySelector<HTMLButtonElement>('[data-chat-voice]')!.disabled = value;
-    header.querySelectorAll<HTMLButtonElement>('button:not([data-act="back"])').forEach(button => { button.disabled = value; });
-    messagesEl.querySelectorAll<HTMLButtonElement>('[data-ledger-evidence],[data-ledger-followup]').forEach(button => { button.disabled = value; });
+    syncComposer();
   }
   async function addPhotos(files: FileList | null): Promise<void> {
-    if (!files?.length || sending) return;
+    if (!files?.length || sending || voiceOpen) return;
     const sentPhotoCount = draft.messages.reduce((count, message) => count + (message.photos?.length ?? 0), 0);
     if (files.length + draft.photos.length + draft.existingPhotoRefs.length + sentPhotoCount > 9) { showToast('这条记录最多保留 9 张照片'); return; }
     try {
@@ -284,7 +284,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       ...draft.messages.map(message => `${message.role === 'user' ? '我' : '拾光'}：${message.content}`), `照片：${photos.length} 张${photos.length ? '（仅本条消息附件）' : '，不发送图片'}`].join('\n');
   }
   async function send(): Promise<void> {
-    if (sending || disposed || (!input.value.trim() && !draft.photos.length)) return;
+    if (sending || voiceOpen || disposed || (!input.value.trim() && !draft.photos.length)) return;
     if (draft.aiExcluded || existing?.aiExcluded) { status('这条记录已排除 AI，不能发送对话。'); return; }
     const text = input.value.trim() || '（一张照片）';
     const photos = structuredClone(draft.photos);
@@ -303,7 +303,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     await turn;
   }
   async function sendLedgerFollowup(question: string, scope: LifeLedgerScope): Promise<void> {
-    if (sending || disposed || draft.aiExcluded || existing?.aiExcluded) return;
+    if (sending || voiceOpen || disposed || draft.aiExcluded || existing?.aiExcluded) return;
     const messageIndex = draft.messages.length;
     draft.messages.push({ role: 'user', content: question });
     ledgerScopes.set(messageIndex, { ...scope });
@@ -315,7 +315,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     await turn;
   }
   async function requestTurn(messageIndex: number, regenerate = false): Promise<void> {
-    if (sending || disposed) return;
+    if (sending || voiceOpen || disposed) return;
     if (draft.aiExcluded || existing?.aiExcluded) { status('这条记录已排除 AI，不能发送对话。'); return; }
     controller = new AbortController();
     failedRegenerate = regenerate;
@@ -381,12 +381,13 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   }
 
   async function switchSession(key: string, noteId?: number): Promise<void> {
-    if (sending || disposed) return;
+    if (sending || voiceOpen || disposed) return;
     try {
       await persist();
       const note = noteId == null ? undefined : await getLifeNote(noteId);
       if (noteId != null && (!note || note.deletedAt)) throw new Error('记录已删除');
       const stored = unsavedChatDrafts.get(key) ?? await getLifeDraft(key);
+      if (disposed || voiceOpen) return;
       dispose();
       renderChat(host, { draft: getActiveChatReply(key)?.draft ?? (stored ? migrateLifeDraft(stored) : newDraft(key, note)), existing: note, sessionVersion: nextSessionVersion(key) });
     } catch { showToast('会话切换失败，当前内容仍保留'); }
@@ -396,7 +397,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     try {
       await persist();
       const sessions = await listLifeChatSessions();
-      if (disposed) return;
+      if (disposed || voiceOpen) return;
       openSheet({ ariaLabel: '历史会话', render(el) {
         el.innerHTML = `<div class="sheet-head"><h3>历史会话</h3><button class="icon-btn" data-history-close aria-label="关闭历史会话">×</button></div><div class="sheet-scroll chat-history"><label class="sr-only" for="chat-history-search">搜索会话</label><input id="chat-history-search" class="note" placeholder="搜索会话标题"><div id="chat-history-list"></div></div>`;
         const list = el.querySelector('#chat-history-list')!;
@@ -413,12 +414,18 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   }
 
   function syncComposer(): void {
+    const blocked = sending || voiceOpen;
+    host.querySelector<HTMLButtonElement>('[data-chat-config-error]')!.disabled = blocked;
     const hasInput = !!input.value.trim() || draft.photos.length > 0;
     host.querySelector<HTMLButtonElement>('[data-life-chat-send]')!.hidden = sending;
-    host.querySelector<HTMLButtonElement>('[data-life-chat-send]')!.disabled = sending || !hasInput;
-    header.querySelectorAll<HTMLButtonElement>('[data-chat-start],[data-chat-settings]').forEach(button => { button.disabled = sending; });
+    host.querySelector<HTMLButtonElement>('[data-life-chat-send]')!.disabled = blocked || !hasInput;
+    input.disabled = blocked;
+    host.querySelectorAll<HTMLButtonElement>('[data-life-chat-photo],[data-chat-voice]').forEach(button => { button.disabled = blocked; });
+    host.querySelector('[data-chat-voice]')!.setAttribute('aria-expanded', String(voiceOpen));
+    header.querySelectorAll<HTMLButtonElement>('button:not([data-act="back"])').forEach(button => { button.disabled = blocked; });
+    messagesEl.querySelectorAll<HTMLButtonElement>('[data-chat-prompt],[data-chat-regenerate],[data-life-chat-retry],[data-life-chat-summary],[data-life-chat-continue],[data-ledger-evidence],[data-ledger-followup]').forEach(button => { button.disabled = blocked; });
     const organize = host.querySelector<HTMLButtonElement>('[data-chat-organize]')!;
-    organize.disabled = sending || !draft.messages.some(message => message.role === 'user');
+    organize.disabled = blocked || !draft.messages.some(message => message.role === 'user');
     organize.querySelector('span')!.textContent = draft.summaryProposal ? '草稿' : '整理';
     organize.title = draft.summaryProposal ? '查看记录草稿' : '整理成记录';
     organize.setAttribute('aria-label', organize.title);
@@ -432,12 +439,26 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   host.querySelector('[data-chat-jump]')!.addEventListener('click', () => { messagesEl.scrollTop = messagesEl.scrollHeight; host.querySelector<HTMLButtonElement>('[data-chat-jump]')!.hidden = true; });
   messagesEl.addEventListener('scroll', () => { host.querySelector<HTMLButtonElement>('[data-chat-jump]')!.hidden = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100; });
   host.querySelector('[data-chat-voice]')!.addEventListener('click', () => {
-    if (sending || draft.aiExcluded || existing?.aiExcluded) return;
+    if (sending || voiceOpen || draft.aiExcluded || existing?.aiExcluded) return;
     const prefix = structuredClone(draft.messages);
-    stopVoice = openLifeVoice({ onTranscript: messages => { if (!disposed) { draft.messages = [...prefix, ...messages]; persistQuiet(); render(); } } });
+    voiceOpen = true; syncComposer();
+    stopVoice = openLifeVoice({ container: host.querySelector('.life-chat-input-wrap')!,
+      onTranscript: messages => {
+        if (disposed) return;
+        draft.messages = [...prefix, ...messages];
+        if (voicePaint == null) voicePaint = requestAnimationFrame(() => { voicePaint = undefined; persistQuiet(); render(false); });
+      },
+      onClose() {
+        voiceOpen = false; stopVoice = undefined;
+        if (!disposed) {
+          if (voicePaint != null) { cancelAnimationFrame(voicePaint); voicePaint = undefined; persistQuiet(); render(false); }
+          else syncComposer();
+        }
+      },
+    });
   });
   async function summarize(): Promise<void> {
-    if (sending || disposed) return;
+    if (sending || voiceOpen || disposed) return;
     if (draft.aiExcluded || existing?.aiExcluded) { status('这条记录已排除 AI，不能生成摘要。'); return; }
     controller = new AbortController();
     const signal = controller.signal;

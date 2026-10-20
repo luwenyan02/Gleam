@@ -12,16 +12,26 @@ export function dismissTopOverlay(): boolean {
 }
 
 /** 兼容调用方先构建、再挂载的选择器；关闭时需调用返回的 release。 */
-export function manageOverlay(root: HTMLElement, cancel: () => void): () => void {
-  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+export function manageOverlay(root: HTMLElement, cancel: () => void, options: { modal?: boolean; opener?: HTMLElement } = {}): () => void {
+  const opener = options.opener ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
   const item = { root, cancel };
   let released = false;
   let releaseFocus: () => void = () => {};
   const states: {element:HTMLElement;inert:boolean;hidden:string|null}[] = [];
   overlays.push(item);
   const releaseHistory = trackHistoryLayer(cancel);
+  const escape = (event: KeyboardEvent) => {
+    if (event.key !== 'Escape' || overlays.at(-1) !== item) return;
+    event.preventDefault(); event.stopPropagation(); cancel();
+  };
   const frame = requestAnimationFrame(() => {
     if (released || !root.isConnected) return;
+    if (options.modal === false) {
+      root.tabIndex = -1;
+      document.addEventListener('keydown', escape, true);
+      root.focus({ preventScroll: true });
+      return;
+    }
     root.setAttribute('role', root.getAttribute('role') ?? 'dialog');
     root.setAttribute('aria-modal', 'true');
     root.tabIndex = -1;
@@ -40,6 +50,7 @@ export function manageOverlay(root: HTMLElement, cancel: () => void): () => void
   return () => {
     if (released) return;
     released = true; cancelAnimationFrame(frame); releaseFocus();
+    document.removeEventListener('keydown', escape, true);
     const index = overlays.indexOf(item);
     if (index >= 0) overlays.splice(index,1);
     releaseHistory();

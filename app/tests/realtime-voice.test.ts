@@ -76,3 +76,30 @@ it('空闲时打断不发无效取消；回复中只取消一次', () => {
   expect(channel.send).toHaveBeenCalledOnce();
   expect(channel.send).toHaveBeenCalledWith(JSON.stringify({ type: 'response.cancel' }));
 });
+
+it('语音转录随增量更新同一轮气泡，最终修正覆盖临时文字且不接受迟到增量', () => {
+  const { event, onTranscript } = setup();
+  event({ type: 'input_audio_buffer.speech_started', item_id: 'user' });
+  event({ type: 'conversation.item.input_audio_transcription.delta', item_id: 'user', text: '', stash: '周六' });
+  expect(onTranscript).toHaveBeenLastCalledWith([{ role: 'user', content: '周六' }]);
+  event({ type: 'conversation.item.input_audio_transcription.delta', item_id: 'user', text: '周六', stash: '去散步' });
+  event({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'user', transcript: '周六去爬山' });
+  event({ type: 'response.created', response: { id: 'reply' } });
+  event({ type: 'response.audio_transcript.delta', event_id: 'd1', response_id: 'reply', item_id: 'bot', delta: 'Hello ' });
+  event({ type: 'response.audio_transcript.delta', event_id: 'd1', response_id: 'reply', item_id: 'bot', delta: 'Hello ' });
+  event({ type: 'response.output_audio_transcript.delta', response_id: 'reply', item_id: 'bot', delta: 'world' });
+  expect(onTranscript).toHaveBeenLastCalledWith([{ role: 'user', content: '周六去爬山' }, { role: 'assistant', content: 'Hello world' }]);
+  event({ type: 'response.audio_transcript.done', response_id: 'reply', item_id: 'bot', transcript: 'Hello, world!' });
+  event({ type: 'response.audio_transcript.delta', response_id: 'reply', item_id: 'bot', delta: '迟到' });
+  expect(onTranscript.mock.calls.at(-1)?.[0][1].content).toBe('Hello, world!');
+});
+
+it('打断后的旧回复结束事件不会停止新回复的状态与后续打断', () => {
+  const { voice, event, channel } = setup();
+  event({ type: 'session.created' }); vi.mocked(channel.send).mockClear();
+  event({ type: 'response.created', response: { id: 'old' } }); voice.interrupt();
+  event({ type: 'response.created', response: { id: 'new' } });
+  event({ type: 'response.done', response: { id: 'old', status: 'cancelled' } });
+  voice.interrupt();
+  expect(channel.send).toHaveBeenCalledTimes(2);
+});

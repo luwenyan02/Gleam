@@ -114,10 +114,10 @@ def run(page, width):
     assert page.locator('#voice-workspace,[data-voice-model],[data-voice-region]').count() == 0
     page.locator('[data-voice-start]').click()
     page.get_by_text('麦克风未获授权，可在浏览器设置中允许后重试').wait_for()
-    screenshot(page, 'voice-permission', width, '#sheet')
+    screenshot(page, 'voice-permission', width, '.life-chat-input-wrap')
     page.screenshot(path=str(OUT / f'voice-{width}.png'), animations='disabled')
     page.locator('[data-voice-close]').click()
-    page.locator('#sheet.open').wait_for(state='hidden')
+    page.locator('.chat-voice-overlay').wait_for(state='hidden')
     assert page.locator('#life-chat-input').input_value() == '虚构草稿：打开语音时也不能丢。'
     page.locator('[data-chat-start]').click()
     page.locator('.chat-welcome').wait_for()

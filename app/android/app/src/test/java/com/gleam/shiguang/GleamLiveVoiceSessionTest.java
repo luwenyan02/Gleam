@@ -85,4 +85,22 @@ public class GleamLiveVoiceSessionTest {
         f.engine.receive("{\"type\":\"error\",\"error\":{\"code\":\"response_cancel_not_active\"}}");
         assertFalse(f.engine.closed());f.audio("reply-2");assertEquals(1,f.plays);
     }
+    @Test public void liveTranscriptionReplacesUserPreviewAndAppendsAssistantDeltasOnlyOnce() {
+        Fixture f=new Fixture();f.connected();
+        f.engine.receive("{\"type\":\"input_audio_buffer.speech_started\",\"item_id\":\"user-1\"}");
+        f.engine.receive("{\"type\":\"conversation.item.input_audio_transcription.delta\",\"item_id\":\"user-1\",\"content_index\":0,\"text\":\"\",\"stash\":\"周六\"}");
+        assertEquals("周六",f.turns.get(0).text);
+        f.engine.receive("{\"type\":\"conversation.item.input_audio_transcription.delta\",\"item_id\":\"user-1\",\"content_index\":0,\"text\":\"周六\",\"stash\":\"去散步\"}");
+        assertEquals("周六去散步",f.turns.get(0).text);assertEquals(1,f.turns.size());
+        f.engine.receive("{\"type\":\"conversation.item.input_audio_transcription.completed\",\"item_id\":\"user-1\",\"transcript\":\"周六去爬山\"}");
+        f.engine.receive("{\"type\":\"conversation.item.input_audio_transcription.delta\",\"item_id\":\"user-1\",\"text\":\"迟到\",\"stash\":\"\"}");
+        assertEquals("周六去爬山",f.turns.get(0).text);f.response();
+        String delta="{\"type\":\"response.audio_transcript.delta\",\"event_id\":\"delta-1\",\"response_id\":\"reply-1\",\"item_id\":\"assistant-1\",\"delta\":\"Hello \"}";
+        f.engine.receive(delta);f.engine.receive(delta);
+        f.engine.receive("{\"type\":\"response.output_audio_transcript.delta\",\"response_id\":\"reply-1\",\"item_id\":\"assistant-1\",\"delta\":\"world\"}");
+        assertEquals("Hello world",f.turns.get(1).text);assertEquals(2,f.turns.size());
+        f.engine.receive("{\"type\":\"response.audio_transcript.done\",\"response_id\":\"reply-1\",\"item_id\":\"assistant-1\",\"transcript\":\"Hello, world!\"}");
+        f.engine.receive("{\"type\":\"response.audio_transcript.delta\",\"response_id\":\"reply-1\",\"item_id\":\"assistant-1\",\"delta\":\"迟到\"}");
+        assertEquals("Hello, world!",f.turns.get(1).text);
+    }
 }
