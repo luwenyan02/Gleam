@@ -62,7 +62,7 @@ def run(browser, width, theme, scale):
     assert order==['page-report','page-acct','tab-home','page-life','page-mine'],order
     page.locator('[data-page="page-report"]').click();expect(page.locator('#page-report')).to_be_visible()
     page.locator('#tab-home').click();page.locator('#fab').click();page.locator('#keypad').wait_for()
-    expect(page.locator('#btn-voice')).to_have_count(0);expect(page.locator('#sheet-close')).to_have_text('关闭')
+    expect(page.locator('#btn-voice')).to_have_count(0);expect(page.locator('#sheet-close')).to_have_accessible_name('关闭记一笔')
     for kind in ['income','transfer','loan','expense']:
         page.locator(f'#seg [data-type="{kind}"]').click()
         assert_usable(page,'#sheet .sheet-head')

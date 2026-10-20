@@ -11,7 +11,8 @@
 #sheet .sheet-head .seg{min-width:0;justify-content:space-between;gap:6px}
 #sheet .sheet-head .seg button{flex:1;min-height:44px;white-space:nowrap}
 #sheet.entry-workspace .sheet-head{flex:none;margin-bottom:4px}
-#sheet.entry-workspace .entry-close{flex:none;min-width:56px;min-height:44px;padding:8px 12px;border:0;border-radius:var(--r-s);background:var(--bg);color:var(--muted);font-size:var(--text-meta);font-weight:600}
+#sheet.entry-workspace .entry-close{flex:none;display:inline-flex;align-items:center;justify-content:center;width:60px;min-height:44px;padding:0 12px;border:1px solid var(--border);border-radius:999px;background:var(--bg);color:var(--muted)}
+#sheet.entry-workspace .entry-close .ic{stroke-width:1.5}
 #sheet.entry-workspace .entry-close:active{background:var(--border);color:var(--fg)}
 #sheet .pick-card{position:relative;overflow:hidden;background:var(--bg);box-shadow:none}
 #sheet.entry-workspace .pick-card{flex:none;min-height:58px;padding:8px 12px}

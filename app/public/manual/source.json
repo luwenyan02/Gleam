@@ -1,14 +1,14 @@
 {
   "version": "1.11.23",
-  "captureBaseCommit": "0a937932c1b699b134a8fa6b024ec064bf2cb132",
+  "captureBaseCommit": "723ae1c61a6198ffa1f1c804ec2ee7145a59f60a",
   "captureScript": "app/e2e/capture_manual.py",
-  "captureContext": "Account search/navigation preview working tree; fictional ledger; short voice opened from AI inbox with a simulated native bridge, no real microphone or service. Source hashes identify the working-tree UI.",
+  "captureContext": "Entry close capsule preview working tree; entry and account-picker recaptured with fictional data. Other figures retained from the preceding account-search/navigation preview. All images are original browser captures; voice uses a simulated native bridge, no real microphone or service.",
   "synthetic": true,
   "imagesUnmodified": true,
   "sha256": {
-    "account-picker.png": "03b80e73995928fdd5f86d9b9a6a67db95d0b51d78b58e7918a44b344f7de902",
+    "account-picker.png": "9db807cfed473da3ec18e0b1aa9730419fac5a94b2c991779bf3973fd53cef48",
     "backup.png": "9c9ace53767eb741506237be82cffda449733c2efa2b79b14305f700fa2a4a45",
-    "entry.png": "cad877872cbeaffad288e7569780bfa1d94e80643fc813b80fbbfe96ff640d40",
+    "entry.png": "7aa1cf8b2d9c3f49686383be2ce5322775d7ebc81b1ce8a7e0f22fefad097bef",
     "manual-entry.png": "666058a76ee99663ad3aaa21c9596ba2194f9535b844ef002c2cd8c6d9dbb0a4",
     "report.png": "662ef9eee76a3ccd3db6ef1687b5cdfaad84c216b2a1fc278185913a1139eb88",
     "voice-listening.png": "49e5be90ff07020f4e82de58ecbf6e4d33c972e0261168e9c0d9c59112b94c7f",
@@ -19,10 +19,10 @@
   "sourceSha256": {
     "app/e2e/capture_manual.py": "18ca243cb25c8a35a4ed57ec6531158cb03263766cab9a5a6a0894c27b361b1f",
     "app/src/features/shell/shell.ts": "1156fda4465832cbda789876148ae02f43fcda2ecc7ae8374bcbae68a7c89919",
-    "app/src/features/entry/entrySheet.ts": "c2d3f899ec4bfc013e342ac1227be9ca76f62e73b7a915b13ae008516c403441",
-    "app/src/features/entry/entry.css": "d683e8fd87dae78778e2961619235a0265f5a00b20cca596b4ad4953d2f6e8c3",
+    "app/src/features/entry/entrySheet.ts": "986d97a210b606e9e4bbe183b66157dde132ad451f0a58ca02939a04ff0058db",
+    "app/src/features/entry/entry.css": "75d43dc7b6f1dfa3cd758696cba05dbba0d5782277001cb6ba47bfe41e240446",
     "app/src/features/ai-inbox/aiInbox.ts": "08426e7ca1d00378c9a7a3aa17f091af8ab4bde5c8d64e01a2a311f6d682bb90",
-    "app/src/features/settings/settingsManual.ts": "94228d19eff602bea21f342f48f297c16e106f45faf8f94aa2a0f0a628ddb5a5",
+    "app/src/features/settings/settingsManual.ts": "c90daf3f6794479159c7144aed0956822c89515c3aaca4602c7669e34481a59b",
     "app/src/features/settings/settings.ts": "38419f7a9dccea6acaef0d421697d9c58ee37e7c485cba9184aebbe68ca3e07d",
     "app/src/features/mine/mine.ts": "bf8a5ec6ce073432307124ab13627cca9ac01151280007e2eef22deaa45c552b"
   }

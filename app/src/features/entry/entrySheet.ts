@@ -413,7 +413,7 @@ function renderSheet(el: HTMLElement, note: string): void {
           return `<button data-type="${t}" role="tab" class="${t === c.type ? 'active' : ''}" aria-selected="${t === c.type}">${names[t]}</button>`;
         }).join('')}
       </div>
-      <button class="entry-close" id="sheet-close" aria-label="关闭记一笔">关闭</button>
+      <button class="entry-close" id="sheet-close" aria-label="关闭记一笔" title="关闭">${iconHtml('ic-close')}</button>
     </header>
     <div class="pick-card">
       <span class="pick-ic" id="pick-ic"></span>
