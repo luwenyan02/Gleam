@@ -107,14 +107,11 @@ def run(page, width):
     # 打开语音面板不申请麦克风、也不建立云端连接。
     page.add_init_script("navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('denied', 'NotAllowedError'); }")
     page.evaluate("() => { navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('denied', 'NotAllowedError'); }; }")
-    page.route('**/__gleam/voice/config', lambda route: route.fulfill(json={'configured': True}))
+    page.route('**/__gleam/voice/config', lambda route: route.fulfill(json={'configured': True, 'workspace': 'synthetic-workspace'}))
     page.locator('#life-chat-input').fill('虚构草稿：打开语音时也不能丢。')
     page.locator('[data-chat-voice]').click()
     page.locator('[data-voice-start]:enabled').wait_for()
-    page.locator('#voice-workspace').fill('synthetic-workspace')
-    page.locator('[data-voice-model]').click()
-    assert page.locator('.picker-item').count() == 3
-    page.locator('.picker-item').filter(has_text='qwen-audio-3.1-realtime-plus').click()
+    assert page.locator('#voice-workspace,[data-voice-model],[data-voice-region]').count() == 0
     page.locator('[data-voice-start]').click()
     page.get_by_text('麦克风未获授权，可在浏览器设置中允许后重试').wait_for()
     screenshot(page, 'voice-permission', width, '#sheet')

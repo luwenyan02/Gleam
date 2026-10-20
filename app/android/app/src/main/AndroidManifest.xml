@@ -64,6 +64,7 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- 仅在用户确认百炼说明并主动开始短语音后申请，不在启动时申请。 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- R07 本地通知：Android 13+ 发送通知运行时权限 + 闹钟提醒排期（@capacitor/local-notifications） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
