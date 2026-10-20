@@ -18,7 +18,7 @@ public class GleamLiveVoiceSessionTest {
         f.engine.interrupt();f.engine.receive("{\"type\":\"response.done\",\"response\":{\"id\":\"reply-1\",\"status\":\"completed\"}}");
         f.engine.drained();assertFalse(f.turns.get(0).complete);
     }
-    static final String ACK = "{\"type\":\"session.updated\",\"session\":{\"id\":\"server-1\",\"model\":\"qwen3.8-omni-flash-realtime\",\"modalities\":[\"text\",\"audio\"],\"turn_detection\":{\"type\":\"server_vad\"},\"enable_search\":false,\"tools\":[],\"audio\":{\"input\":{\"format\":{\"type\":\"pcm\",\"sample_rate\":16000,\"channels\":1}},\"output\":{\"format\":{\"type\":\"pcm\",\"sample_rate\":24000}}}}}";
+    static final String ACK = "{\"type\":\"session.updated\",\"session\":{\"id\":\"server-1\",\"model\":\"qwen3.8-omni-flash-realtime\",\"modalities\":[\"text\",\"audio\"],\"turn_detection\":{\"type\":\"server_vad\"},\"enable_search\":true,\"tools\":[],\"audio\":{\"input\":{\"format\":{\"type\":\"pcm\",\"sample_rate\":16000,\"channels\":1}},\"output\":{\"format\":{\"type\":\"pcm\",\"sample_rate\":24000}}}}}";
     static class Fixture implements GleamSpeechSession.Transport, GleamLiveVoiceSession.Audio, GleamLiveVoiceSession.Listener, GleamSpeechSession.Clock {
         int starts, stops, clears, plays, ready, closes; boolean muted, playing, failStart, failStop, denyStart;
         String ended; List<GleamLiveVoiceSession.Turn> turns = new ArrayList<>();
@@ -51,14 +51,26 @@ public class GleamLiveVoiceSessionTest {
         JSONObject update=new JSONObject(f.sent.get(0)).getJSONObject("session");
         assertEquals("server_vad",update.getJSONObject("turn_detection").getString("type"));
         assertEquals(24000,update.getJSONObject("audio").getJSONObject("output").getJSONObject("format").getInt("sample_rate"));
+        assertTrue(update.getBoolean("enable_search"));assertTrue(update.getJSONObject("search_options").getBoolean("enable_source"));assertFalse(update.has("tools"));
         assertFalse(update.has("messages"));f.engine.receive(ACK);assertEquals(1,f.starts);assertEquals(1,f.ready);
         f.engine.receive(ACK);assertTrue(f.engine.closed());assertEquals(1,f.starts);
     }
     @Test public void unsafeAckCannotAcquireAudio() throws Exception {
-        for(String wrong:new String[]{ACK.replace("24000","16000"),ACK.replace("server_vad","manual"),ACK.replace("\"channels\":1","\"channels\":2"),ACK.replace("server-1","other"),ACK.replace("\"enable_search\":false","\"enable_search\":true")}) {
+        for(String wrong:new String[]{ACK.replace("24000","16000"),ACK.replace("server_vad","manual"),ACK.replace("\"channels\":1","\"channels\":2"),ACK.replace("server-1","other"),ACK.replace("\"enable_search\":true","\"enable_search\":false"),ACK.replace("\"tools\":[]","\"tools\":[{\"type\":\"function\"}]")}) {
             Fixture f=new Fixture();f.engine.begin();f.engine.receive("{\"type\":\"session.created\",\"session\":{\"id\":\"server-1\"}}");f.engine.receive(wrong);
             assertEquals(0,f.starts);assertTrue(f.engine.closed());
         }
+    }
+    @Test public void searchResultsStayOnTheirResponseAndSurviveAudioDrain() throws Exception {
+        Fixture f=new Fixture();f.connected();f.response();f.audio("reply-1");
+        f.engine.receive("{\"type\":\"response.audio_transcript.done\",\"response_id\":\"reply-1\",\"item_id\":\"a1\",\"transcript\":\"本轮天气\"}");
+        f.engine.receive("{\"type\":\"response.done\",\"response\":{\"id\":\"reply-1\",\"status\":\"completed\",\"usage\":{\"plugins\":{\"search\":{\"count\":1}}},\"search_results\":[{\"title\":\"天气\",\"url\":\"https://weather.invalid/\"}]}}");
+        assertEquals("searched",f.turns.get(0).search.getString("status"));assertFalse(f.turns.get(0).complete);
+        f.playing=false;f.engine.drained();assertTrue(f.turns.get(0).complete);assertEquals(1,f.turns.get(0).search.getJSONArray("sources").length());
+        f.engine.receive("{\"type\":\"response.created\",\"response\":{\"id\":\"reply-2\"}}");
+        f.engine.receive("{\"type\":\"response.audio_transcript.done\",\"response_id\":\"reply-2\",\"item_id\":\"a2\",\"transcript\":\"被打断\"}");f.engine.interrupt();
+        f.engine.receive("{\"type\":\"response.done\",\"response\":{\"id\":\"reply-2\",\"status\":\"completed\",\"usage\":{\"plugins\":{\"search\":{\"count\":1}}}}}");
+        assertEquals("enabled",f.turns.get(1).search.getString("status"));assertEquals("searched",f.turns.get(0).search.getString("status"));
     }
     @Test public void duplexPlaybackAndFinalTranscriptsRemainOrdered() {
         Fixture f=new Fixture();f.connected();

@@ -39,7 +39,7 @@ export function openLifeVoice(options: { container: HTMLElement; onTranscript: (
   el.innerHTML = `<div class="voice-inline-head"><div class="voice-identity" aria-hidden="true">${chatIcon('voice')}</div>
       <p class="voice-state" data-voice-status role="status">正在准备…</p>
       <button class="icon-btn" data-voice-close aria-label="关闭语音聊">${iconHtml('ic-close')}</button></div>
-    <p class="voice-consent">声音发送至百炼，可能产生费用</p>
+    <p class="voice-consent">声音发送至百炼</p>
     <div class="voice-inline-actions">
       <button class="btn primary" data-voice-start disabled>开始语音</button>
       <button class="btn ghost" data-voice-mute aria-label="麦克风静音" aria-pressed="false" hidden>静音</button>
@@ -117,11 +117,7 @@ export function openLifeVoice(options: { container: HTMLElement; onTranscript: (
     try {
       textDestination = await getLifeAiDestination().catch(() => undefined);
       if (closed) return;
-      if (textDestination) {
-        let service = '当前文字模型';
-        try { service = new URL(textDestination.baseUrl).hostname; } catch { /* Request boundary validates the configured destination. */ }
-        el.querySelector('.voice-consent')!.textContent = `声音发送至百炼，长回复由 ${service} 排版，可能产生费用`;
-      }
+      if (textDestination) el.querySelector('.voice-consent')!.textContent = '声音发送至百炼，长回复会通过模型加工排版';
       if (native) {
         const config = await liveVoicePlugin.configuration();
         if (closed) return;

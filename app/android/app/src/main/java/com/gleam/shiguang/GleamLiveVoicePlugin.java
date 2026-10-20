@@ -91,7 +91,7 @@ public final class GleamLiveVoicePlugin extends Plugin {
             public void state(String value){onMain(()->{if(active!=session||!session.authorization.allowed())return;session.state=value;event(session,value,null,null);});}
             public void transcript(List<GleamLiveVoiceSession.Turn> turns){onMain(()->{
                 if(active!=session||!session.authorization.allowed())return;JSArray messages=new JSArray();
-                for(GleamLiveVoiceSession.Turn turn:turns){JSObject message=new JSObject();message.put("id",turn.id);message.put("role",turn.role);message.put("content",turn.text);message.put("complete",turn.complete);messages.put(message);}event(session,session.state,messages,null);
+                for(GleamLiveVoiceSession.Turn turn:turns){JSObject message=new JSObject();message.put("id",turn.id);message.put("role",turn.role);message.put("content",turn.text);message.put("complete",turn.complete);if(turn.search!=null)message.put("search",turn.search);messages.put(message);}event(session,session.state,messages,null);
             });}
             public void ended(String reason){onMain(()->finish(session,reason));}
         };

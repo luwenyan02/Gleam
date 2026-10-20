@@ -1,5 +1,5 @@
 import type { LifeChatMessage } from './types';
-import { LIFE_CHAT_PROMPT } from './lifeChatPrompt';
+import { liveVoiceSearch, supportsVoiceSearch, voiceInstructions } from './liveVoiceSearch';
 import type { VoiceTranscriptMessage } from './voiceTranscript';
 
 export type VoiceState = 'connecting' | 'listening' | 'speaking' | 'muted' | 'ended';
@@ -71,19 +71,23 @@ export class RealtimeVoice {
 
   private receive(raw: string, channel: RTCDataChannel): void {
     if (this.closed) return;
-    let event: { type: string; event_id?: string; item_id?: string; response_id?: string; text?: string; stash?: string; delta?: string; content_index?: number; transcript?: string; item?: { id?: string }; response?: { id?: string; status?: string } };
+    let event: { type: string; event_id?: string; item_id?: string; response_id?: string; text?: string; stash?: string; delta?: string; content_index?: number; transcript?: string; session?: { enable_search?: unknown }; item?: { id?: string }; response?: { id?: string; status?: string } };
     try { event = JSON.parse(raw); } catch { return; }
     if (event.event_id) { if (this.seen.has(event.event_id)) return; this.seen.add(event.event_id); }
     if (event.type === 'session.created') {
       this.channel = channel;
       channel.send(JSON.stringify({ type: 'session.update', session: {
         modalities: ['text', 'audio'], voice: this.options.model.startsWith('qwen-audio') ? 'longanqian_v3.1' : 'Tina',
-        instructions: `${LIFE_CHAT_PROMPT}\n使用自然中文口语，先讲最有用的内容，适合语音听取，不朗读 Markdown 标记。`,
+        instructions: voiceInstructions(supportsVoiceSearch(this.options.model)),
+        ...(supportsVoiceSearch(this.options.model) ? { enable_search: true, search_options: { enable_source: true } } : {}),
         ...(this.options.model.startsWith('qwen-audio') ? {} : { input_audio_transcription: { model: 'qwen3-asr-flash-realtime' } }),
         turn_detection: { type: 'server_vad', threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 700 },
       } }));
     }
     if (event.type === 'session.updated') {
+      if (supportsVoiceSearch(this.options.model) && event.session?.enable_search === false) {
+        this.options.onStatus('语音联网搜索未启用，请重新连接'); this.close(); return;
+      }
       this.configured = true; clearTimeout(this.deadline);
       this.stream?.getAudioTracks().forEach(track => { track.enabled = !this.muted; });
       void Promise.all(this.senders.map(({ sender, track }) => sender.replaceTrack(track))).then(() => {
@@ -97,10 +101,12 @@ export class RealtimeVoice {
     if (event.type === 'response.done') {
       const responseId = event.response?.id;
       if (responseId && (responseId !== this.responseId || this.blocked.has(responseId))) return;
-      if (responseId && event.response?.status === 'completed') {
+      if (responseId) {
         for (const item of this.responseItems) {
           const message = this.transcript.get(item);
-          if (message?.role === 'assistant' && this.finalized.has(item)) message.complete = true;
+          if (message?.role !== 'assistant') continue;
+          message.search = supportsVoiceSearch(this.options.model) ? liveVoiceSearch(event.response) : { status: 'unsupported', sources: [] };
+          if (event.response?.status === 'completed' && this.finalized.has(item)) message.complete = true;
         }
         this.publishTranscript();
       }
@@ -120,7 +126,7 @@ export class RealtimeVoice {
     if (id.length > 160 || this.order.length > 120 || text.length > 12_000) { this.options.onStatus('本次语音已结束，可重新开始'); this.close(); return; }
     const content = complete ? text.trim() : text;
     if (complete) this.finalized.add(id);
-    this.transcript.set(id, { role, content, id });
+    this.transcript.set(id, { role, content, id, ...(role === 'assistant' ? { search: { status: supportsVoiceSearch(this.options.model) ? 'enabled' : 'unsupported', sources: [] } as const } : {}) });
     if (role === 'assistant' && this.responseId) this.responseItems.add(id);
     this.publishTranscript();
   }

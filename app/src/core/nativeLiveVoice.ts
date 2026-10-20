@@ -1,5 +1,5 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
-import { LIFE_CHAT_PROMPT } from './lifeChatPrompt';
+import { sanitizeVoiceSearch, voiceInstructions } from './liveVoiceSearch';
 import type { VoiceTranscriptMessage } from './voiceTranscript';
 import type { VoiceState } from './realtimeVoice';
 
@@ -49,9 +49,13 @@ export class NativeLiveVoice {
         if (event.messages) {
           if (!Array.isArray(event.messages) || event.messages.length > 120
             || event.messages.some(m => !m || !['user', 'assistant'].includes(m.role) || typeof m.content !== 'string' || m.content.length > 12_000)) return;
-          this.options.onTranscript(event.messages.map(({ role, content, id, complete }) => ({ role, content,
-            ...(typeof id === 'string' && id.length > 0 && id.length <= 160 ? { id, ...(typeof complete === 'boolean' ? { complete } : {}) } : {}),
-          })));
+          this.options.onTranscript(event.messages.map(({ role, content, id, complete, search }) => {
+            const state = role === 'assistant' ? sanitizeVoiceSearch(search) : undefined;
+            return { role, content,
+              ...(typeof id === 'string' && id.length > 0 && id.length <= 160 ? { id, ...(typeof complete === 'boolean' ? { complete } : {}) } : {}),
+              ...(state ? { search: state } : {}),
+            };
+          }));
         }
         if (event.state === 'ended') {
           this.options.onStatus(event.message || '语音已结束'); this.close(); return;
@@ -67,7 +71,7 @@ export class NativeLiveVoice {
       if (!readiness.ready) throw new Error('请先在 AI 设置中完成语音配置');
       await liveVoicePlugin.start({ sessionId: this.id, expectedCredentialRevision: readiness.credentialRevision,
         consent: true, userInitiated: true,
-        instructions: `${LIFE_CHAT_PROMPT}\n使用简短自然的中文口语，不朗读 Markdown。当前语音未提供联网搜索工具，实时信息未核实，不沿用其他文字对话的工具能力。`,
+        instructions: voiceInstructions(true),
       });
       if (this.closed) return;
       if (document.hidden) { this.options.onStatus('语音已结束'); this.close(); return; }

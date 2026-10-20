@@ -73,7 +73,7 @@ def run(browser, width, height, theme, scale):
             expect(page.locator('.user .chat-message-text')).to_have_text('旧桥用户后返回')
             expect(page.locator('.assistant .chat-message-text')).to_have_text('旧桥助手先返回')
         user = {'id': 'u1', 'role': 'user', 'content': '请给我周末行程建议'}
-        assistant = {'id': 'a1', 'role': 'assistant', 'content': RAW[:40], 'complete': False}
+        assistant = {'id': 'a1', 'role': 'assistant', 'content': RAW[:40], 'complete': False, 'search': {'status': 'searched', 'sources': [{'title': '虚构来源', 'url': 'https://source.invalid/voice'}]}}
         emit(page, [user, assistant], 'speaking')
         expect(page.locator('.assistant .chat-message-text')).to_contain_text(RAW[:40])
         assistant['content'] = RAW
@@ -99,6 +99,8 @@ def run(browser, width, height, theme, scale):
         expect(page.locator('.assistant blockquote')).to_contain_text('天气尚未核实')
         expect(page.locator('.assistant h2,.assistant h3,.assistant ul,.assistant table')).to_have_count(0)
         expect(page.locator('.assistant .chat-message-text')).to_have_count(1)
+        expect(page.locator('.assistant [data-chat-search="searched"]')).to_have_count(1)
+        expect(page.locator('.assistant .chat-search-sources a')).to_have_attribute('href', 'https://source.invalid/voice')
         emit(page, [user, assistant, {'id': 'u2', 'role': 'user', 'content': '我再想一想'}])
         expect(page.locator('.assistant strong').first).to_have_text('周六')
         page.locator('[data-chat-copy]').click()

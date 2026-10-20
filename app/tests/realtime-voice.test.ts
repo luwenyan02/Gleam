@@ -19,7 +19,7 @@ it('先按事件顺序定位，转录异步到达也不会把用户与 AI 颠倒
   event({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'user', transcript: '测试' });
   event({ type: 'response.audio_transcript.done', event_id: 'b1', item_id: 'bot', transcript: '重复' });
   expect(onTranscript).toHaveBeenCalledTimes(2);
-  expect(onTranscript.mock.calls.at(-1)?.[0]).toEqual([{ role: 'user', content: '测试', id: 'user' }, { role: 'assistant', content: '你好', id: 'bot' }]);
+  expect(onTranscript.mock.calls.at(-1)?.[0]).toEqual([{ role: 'user', content: '测试', id: 'user' }, { role: 'assistant', content: '你好', id: 'bot', search: { status: 'enabled', sources: [] } }]);
 });
 it('关闭后不采用迟到事件；重复关闭只触发一次结束', () => {
   const { voice, event, onTranscript, onEnd } = setup();
@@ -88,7 +88,7 @@ it('语音转录随增量更新同一轮气泡，最终修正覆盖临时文字�
   event({ type: 'response.audio_transcript.delta', event_id: 'd1', response_id: 'reply', item_id: 'bot', delta: 'Hello ' });
   event({ type: 'response.audio_transcript.delta', event_id: 'd1', response_id: 'reply', item_id: 'bot', delta: 'Hello ' });
   event({ type: 'response.output_audio_transcript.delta', response_id: 'reply', item_id: 'bot', delta: 'world' });
-  expect(onTranscript).toHaveBeenLastCalledWith([{ role: 'user', content: '周六去爬山', id: 'user' }, { role: 'assistant', content: 'Hello world', id: 'bot' }]);
+  expect(onTranscript).toHaveBeenLastCalledWith([{ role: 'user', content: '周六去爬山', id: 'user' }, { role: 'assistant', content: 'Hello world', id: 'bot', search: { status: 'enabled', sources: [] } }]);
   event({ type: 'response.audio_transcript.done', response_id: 'reply', item_id: 'bot', transcript: 'Hello, world!' });
   event({ type: 'response.audio_transcript.delta', response_id: 'reply', item_id: 'bot', delta: '迟到' });
   expect(onTranscript.mock.calls.at(-1)?.[0][1].content).toBe('Hello, world!');
@@ -116,4 +116,29 @@ it('只有当前成功结束的完整转写可排版，取消与重复完成不�
   voice.interrupt(); event({ type: 'response.done', response: { id: 'reply-2', status: 'completed' } });
   expect(onTranscript.mock.calls.at(-1)?.[0][1].complete).not.toBe(true);
   voice.close();
+});
+
+it('实时会话启用内置搜索与来源，搜索计量按回复隔离并拒绝打断后的迟到结果', () => {
+  const { voice, event, channel, onTranscript } = setup();
+  event({ type: 'session.created' });
+  const session = JSON.parse(vi.mocked(channel.send).mock.calls[0][0] as string).session;
+  expect(session.enable_search).toBe(true); expect(session.search_options).toEqual({ enable_source: true });
+  expect(session.tools).toBeUndefined();
+  expect(session.instructions).not.toContain('当前语音未提供联网搜索工具');
+  event({ type: 'response.created', response: { id: 'weather' } });
+  event({ type: 'response.audio_transcript.done', response_id: 'weather', item_id: 'a1', transcript: '根据预报，今天有雨。' });
+  event({ type: 'response.done', response: { id: 'weather', status: 'completed', usage: { plugins: { search: { count: 1 } } }, search_info: { search_results: [{ title: '天气', url: 'https://weather.invalid/beijing' }] } } });
+  expect(onTranscript.mock.calls.at(-1)?.[0][0].search).toEqual({ status: 'searched', sources: [{ title: '天气', url: 'https://weather.invalid/beijing' }] });
+  event({ type: 'response.created', response: { id: 'cancelled' } });
+  event({ type: 'response.audio_transcript.delta', response_id: 'cancelled', item_id: 'a2', delta: '未完成' });
+  voice.interrupt();
+  event({ type: 'response.done', response: { id: 'cancelled', status: 'completed', usage: { plugins: { search: { count: 1 } } } } });
+  expect(onTranscript.mock.calls.at(-1)?.[0][1].search?.status).not.toBe('searched');
+  voice.close();
+});
+
+it('服务端明确关闭搜索时结束连接，不把未启用冒充可联网', () => {
+  const { event, onEnd } = setup();
+  event({ type: 'session.updated', session: { enable_search: false } });
+  expect(onEnd).toHaveBeenCalledOnce();
 });

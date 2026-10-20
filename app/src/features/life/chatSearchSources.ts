@@ -7,6 +7,7 @@ export function chatSearchSources(value: unknown): string {
   const labels = {
     enabled: '可联网搜索', searching: '正在联网搜索…', searched: '已联网搜索',
     'not-used': '本次未使用联网搜索', unsupported: '当前配置未接入联网搜索', failed: '联网搜索未完成',
+    unknown: '本次搜索状态未返回',
   };
   const sources = value.sources.map(safeSearchSource).filter(source => source != null);
   const status = value.status === 'searched' && !sources.length ? '已联网搜索，未返回可用来源' : labels[value.status];

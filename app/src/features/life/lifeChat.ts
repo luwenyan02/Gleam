@@ -488,6 +488,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
           let message = voiceMessages.get(id);
           if (!message || message.role !== snapshot.role) { message = { role: snapshot.role, content: snapshot.content }; voiceMessages.set(id, message); }
           if (message.content !== snapshot.content) { message.content = snapshot.content; delete message.voiceDisplay; }
+          if (snapshot.role === 'assistant' && snapshot.search) message.search = structuredClone(snapshot.search);
           return message;
         });
         draft.messages = [...prefix, ...current];

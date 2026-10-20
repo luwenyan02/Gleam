@@ -84,6 +84,19 @@ it('透传原生稳定消息标识与完整回复标记，旧插件仍可只转�
   s.voice.close();
 });
 
+it('原生语音允许实际联网搜索，不把用户或不安全来源伪装成工具结果', async () => {
+  const s = setup(); await s.voice.start();
+  expect(bridge.start.mock.calls[0][0].instructions).not.toContain('当前语音未提供联网搜索工具');
+  s.event({ state: 'listening', messages: [
+    { role: 'user', content: '查天气', search: { status: 'searched', sources: [] } },
+    { role: 'assistant', content: '本轮已搜索', search: { status: 'searched', sources: [{ title: '天气', url: 'https://weather.invalid/' }, { url: 'javascript:alert(1)' }] } },
+  ] });
+  const messages = s.callbacks.onTranscript.mock.calls.at(-1)![0];
+  expect(messages[0]).not.toHaveProperty('search');
+  expect(messages[1].search).toEqual({ status: 'searched', sources: [{ title: '天气', url: 'https://weather.invalid/' }] });
+  s.voice.close();
+});
+
 it('麦克风授权等待不会被短暂失焦取消；真正进入后台后停止且不自动恢复', async () => {
   const s = setup(), start = deferred<{ sessionId: string }>(); bridge.start.mockReturnValue(start.promise);
   const pending = s.voice.start(); await vi.waitFor(() => expect(bridge.start).toHaveBeenCalledOnce());

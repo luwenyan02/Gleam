@@ -16,8 +16,8 @@ final class GleamLiveVoiceSession {
     }
     interface Listener { void ready(); void state(String value); void transcript(List<Turn> turns); void ended(String reason); }
     static final class Turn {
-        final String id, role, text; final boolean complete;
-        Turn(String id,String role,String text,boolean complete) { this.id=id;this.role=role;this.text=text;this.complete=complete; }
+        final String id, role, text; final boolean complete; final JSONObject search;
+        Turn(String id,String role,String text,boolean complete,JSONObject search) { this.id=id;this.role=role;this.text=text;this.complete=complete;this.search=search; }
     }
     private final GleamSpeechSession.Transport transport;
     private final Audio audio;
@@ -61,7 +61,7 @@ final class GleamLiveVoiceSession {
         JSONArray modalities=session.optJSONArray("modalities"),tools=session.optJSONArray("tools");
         if(modalities==null||modalities.length()!=2||!("text".equals(modalities.opt(0))&&"audio".equals(modalities.opt(1))||"audio".equals(modalities.opt(0))&&"text".equals(modalities.opt(1))))return false;
         if(session.has("tools")&&(tools==null||tools.length()!=0))return false;
-        if(session.has("enable_search")&&!Boolean.FALSE.equals(session.opt("enable_search")))return false;
+        if(!Boolean.TRUE.equals(session.opt("enable_search")))return false;
         JSONObject vad=session.optJSONObject("turn_detection"),config=session.optJSONObject("audio");
         return vad!=null&&"server_vad".equals(vad.opt("type"))
             &&format(object(object(config,"input"),"format"),16000)&&format(object(object(config,"output"),"format"),24000);
@@ -73,20 +73,20 @@ final class GleamLiveVoiceSession {
             .put("audio",new JSONObject().put("input",new JSONObject().put("format",input)).put("output",new JSONObject().put("format",output).put("voice","Tina")))
             .put("input_audio_transcription",new JSONObject().put("model","qwen3-asr-flash-realtime"))
             .put("turn_detection",new JSONObject().put("type","server_vad").put("threshold",0.5).put("prefix_padding_ms",300).put("silence_duration_ms",700))
-            .put("enable_search",false).put("tools",new JSONArray()).put("instructions",instructions);
+            .put("enable_search",true).put("search_options",new JSONObject().put("enable_source",true)).put("instructions",instructions);
         return new JSONObject().put("type","session.update").put("session",session).toString();
     }
-    private void reserve(String id,String role) {
+    private void reserve(String id,String role) throws Exception {
         if(id==null||id.isEmpty()||id.length()>160)return;
-        if(!turns.containsKey(id))turns.put(id,new Turn(id,role,"",false));
+        if(!turns.containsKey(id))turns.put(id,new Turn(id,role,"",false,"assistant".equals(role)?GleamLiveVoiceSearch.state("enabled"):null));
         if(turns.size()>120)end("LIVE_LIMIT");
     }
-    private void transcript(String id,String role,String text,boolean complete) {
+    private void transcript(String id,String role,String text,boolean complete) throws Exception {
         if(id==null||id.isEmpty()||id.length()>160||text==null||finalized.contains(id))return;
         reserve(id,role);if(closed)return;
         if(text.length()>12000){end("LIVE_LIMIT");return;}
         if(complete)finalized.add(id);
-        turns.put(id,new Turn(id,role,complete?text.trim():text,false));
+        turns.put(id,new Turn(id,role,complete?text.trim():text,false,turns.get(id).search));
         if("assistant".equals(role))responseItems.add(id);
         publish();
     }
@@ -151,6 +151,12 @@ final class GleamLiveVoiceSession {
                 JSONObject response=event.optJSONObject("response");if(response==null)return;
                 if(!response.optString("id").equals(responseId)||blocked.contains(responseId))return;
                 responding=false;responseFinished=true;
+                JSONObject search=GleamLiveVoiceSearch.result(response);
+                for(String id:responseItems) {
+                    Turn turn=turns.get(id);
+                    if(turn!=null&&"assistant".equals(turn.role))turns.put(id,new Turn(id,turn.role,turn.text,turn.complete,search));
+                }
+                publish();
                 if("failed".equals(response.optString("status"))){end("LIVE_PROVIDER");return;}
                 responseSucceeded="completed".equals(response.optString("status"));
                 audio.finish();drained();
@@ -163,7 +169,7 @@ final class GleamLiveVoiceSession {
             completionPublished=true;
             for(String id:responseItems) {
                 Turn turn=turns.get(id);
-                if(turn!=null&&"assistant".equals(turn.role)&&finalized.contains(id))turns.put(id,new Turn(id,turn.role,turn.text,true));
+                if(turn!=null&&"assistant".equals(turn.role)&&finalized.contains(id))turns.put(id,new Turn(id,turn.role,turn.text,true,turn.search));
             }
             publish();
         }

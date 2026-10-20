@@ -1,6 +1,6 @@
 import type { ChatWebSearch } from './types';
 
-const STATES = ['enabled', 'searching', 'searched', 'not-used', 'unsupported', 'failed'];
+const STATES = ['enabled', 'searching', 'searched', 'not-used', 'unsupported', 'failed', 'unknown'];
 const SEARCH_TIMEOUT = 120_000;
 const MAX_REPLY = 12_000;
 

@@ -309,7 +309,7 @@ export interface LifeReview {
 
 /** 服务商工具返回的本轮搜索事实；不是从模型正文提取的链接。 */
 export interface ChatWebSearch {
-  status: 'enabled' | 'searching' | 'searched' | 'not-used' | 'unsupported' | 'failed';
+  status: 'enabled' | 'searching' | 'searched' | 'not-used' | 'unsupported' | 'failed' | 'unknown';
   sources: Array<{ title: string; url: string }>;
 }
 
