@@ -61,6 +61,7 @@ let filterState: FilterState = emptyFilter();
 let summaryFilter: SearchSummaryFilter = 'all';
 let queryTypes: EntryType[] = [];
 let ledgerOnly = false;
+let accountScope: number | undefined;
 let batchMode = false;
 let batchSelectAll = false;
 const batchSelected = new Set<number>();
@@ -75,6 +76,7 @@ let lastQueryKey = '';
 interface PendingLedgerSearch {
   query: LedgerQuery;
   title?: string;
+  accountScope?: number;
 }
 
 let pendingLedgerSearch: PendingLedgerSearch | undefined;
@@ -106,6 +108,12 @@ function batchPreviewText(preview: BatchEntryPreview): string {
 /** 从报表或账户页进入携带相同条件的统一明细查询。 */
 export function openLedgerSearch(query: LedgerQuery, title?: string): void {
   pendingLedgerSearch = { query, title };
+  openSubpage('sp-search');
+}
+
+/** 账户详情内搜索始终限定该账户，日期和其他条件仍可调整。 */
+export function openAccountSearch(accountId: number, name: string): void {
+  pendingLedgerSearch = { query: { accountIds: [accountId] }, title: `${name} · 搜索`, accountScope: accountId };
   openSubpage('sp-search');
 }
 
@@ -216,7 +224,11 @@ function renderActiveFilters(maps: FilterLabelMaps): void {
     chip('type', `类型：${typeLabels.join('、')}`);
   }
   for (const id of filterState.categoryIds) chip('category', maps.catNames.get(id) ?? '已删除分类', id);
-  for (const id of filterState.accountIds) chip('account', maps.accountNames.get(id) ?? '已删除账户', id);
+  if (accountScope != null) {
+    chips.push(`<span class="chip">账户：${esc(maps.accountNames.get(accountScope) ?? '已删除账户')}</span>`);
+  } else {
+    for (const id of filterState.accountIds) chip('account', maps.accountNames.get(id) ?? '已删除账户', id);
+  }
   for (const id of filterState.tagIds) chip('tag', `#${maps.tagNames.get(id) ?? '已删除标签'}`, id);
   for (const id of filterState.merchantIds) chip('merchant', maps.merchantNames.get(id) ?? '已删除商家', id);
   for (const id of filterState.tagIds) chips.push(`<button class="chip" data-entity-kind="tag" data-entity-id="${id}">${esc(maps.tagNames.get(id) ?? '标签')}详情 ›</button>`);
@@ -238,7 +250,7 @@ async function doSearch(kw: string): Promise<void> {
     resultsEl.innerHTML = '<p class="sr-empty" role="status">正在筛选账单…</p>';
   }
 
-  const hasStructuredQuery = dateRange !== 'all' || !isFilterEmpty(filterState) || queryTypes.length > 0;
+  const hasStructuredQuery = accountScope != null || dateRange !== 'all' || !isFilterEmpty(filterState) || queryTypes.length > 0;
   // 没有关键词也没有任何结构化条件时才显示历史；报表下钻可直接列出全部匹配账单。
   if (!kw && !hasStructuredQuery) {
     batchResultIds = [];
@@ -297,7 +309,7 @@ async function doSearch(kw: string): Promise<void> {
     to: win?.to,
     types: queryTypes.length ? [...queryTypes] : undefined,
     categoryIds: filterState.categoryIds.length ? expandCategoryIds(filterState.categoryIds, [...expenseCats, ...incomeCats]) : undefined,
-    accountIds: filterState.accountIds.length ? [...filterState.accountIds] : undefined,
+    accountIds: accountScope != null ? [accountScope] : filterState.accountIds.length ? [...filterState.accountIds] : undefined,
     tagIds: filterState.tagIds.length ? [...filterState.tagIds] : undefined,
     merchantIds: filterState.merchantIds.length ? [...filterState.merchantIds] : undefined,
     ...parseAmountRange(filterState.amountMin, filterState.amountMax),
@@ -496,6 +508,7 @@ export function initSearch(): void {
       summaryFilter = 'all';
       queryTypes = [];
       ledgerOnly = false;
+      accountScope = preset?.accountScope;
       batchMode = false;
       batchSelectAll = false;
       batchSelected.clear();
@@ -691,6 +704,7 @@ export function initSearch(): void {
         let releasePanel: () => void = () => {};
         const panel = await createFilterPanel({
           initial: filterState,
+          accountScope,
           onConfirm(state) {
             filterState = state;
             releasePanel();

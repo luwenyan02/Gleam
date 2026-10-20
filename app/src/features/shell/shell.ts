@@ -63,8 +63,8 @@ export function mountShell(root: HTMLElement): void {
         ${PAGE_META.map((p) => `<section class="page" id="${p.id}"></section>`).join('')}
       </main>
       <nav class="tabbar" aria-label="主导航">
-        <button class="tab" data-page="page-acct">${iconHtml('ic-wallet')}账户</button>
         <button class="tab" data-page="page-report">${iconHtml('ic-chart')}报表</button>
+        <button class="tab" data-page="page-acct">${iconHtml('ic-wallet')}账户</button>
         <button class="fab" id="fab" aria-label="记一笔">${iconHtml('ic-plus')}</button>
         <button class="tab" id="tab-home" data-page="page-home" hidden>${iconHtml('ic-home')}首页</button>
         <button class="tab" data-page="page-life">${iconHtml('ic-book')}拾光</button>

@@ -185,3 +185,5 @@
 .cr-pays li .restore-link { margin-left:auto; }
 .cr-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
 .cr-actions .btn { min-height:44px; }
+#sp-account-detail .sub-head h2{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#account-detail-search{flex:none}

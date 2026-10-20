@@ -25,10 +25,12 @@ it('opens only a local sheet with an accessible close control', () => {
   } finally { vi.unstubAllGlobals(); }
 });
 
-it('explains draft replacement and preserved fields, with inbox approval still required', () => {
+it('documents the remaining voice entries and manual inbox approval', () => {
   const html = settingsManualHtml();
-  expect(html).toContain('替换类型、金额、分类、账户、时间和备注');
-  expect(html).toContain('保留标签与凭证，保存后才入账');
+  expect(html).toContain('首页按住说话');
+  expect(html).toContain('首页「AI 记账」或「我的 → AI 记账收件箱」点「短语音」');
+  expect(html).not.toContain('记账页点麦克风');
+  expect(html).not.toContain('填入当前草稿');
   expect(html).toContain('「加入收件箱待确认」只保存到本机待确认队列，可修改后再确认入账');
 });
 

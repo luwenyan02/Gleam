@@ -24,6 +24,7 @@ import { registerPage, registerSubpage, openSubpage, currentPage, SUBPAGE_CLOSE_
 import { openSheet, closeSheet } from '../shell/sheet';
 import { openEntrySheet } from '../entry/entrySheet';
 import { openEntryDetail } from '../detail/detail';
+import { openAccountSearch } from '../search/search';
 import {
   bindEntrySwipeActions, entrySwipeActionsHtml, runEntryQuickAction, type EntryQuickAction,
 } from '../detail/entrySwipe';
@@ -257,6 +258,16 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
   let initializedMonths = false;
   body.classList.add('account-detail-body');
   const subpage = body.closest<HTMLElement>('.subpage')!;
+  const search = document.createElement('button');
+  search.id = 'account-detail-search';
+  search.className = 'icon-btn';
+  search.setAttribute('aria-label', '搜索当前账户账单');
+  search.innerHTML = iconHtml('ic-search');
+  search.disabled = true;
+  subpage.querySelector('.sub-head')!.appendChild(search);
+  search.addEventListener('click', () => {
+    if (currentAccount) openAccountSearch(currentAccount.id, currentAccount.name);
+  });
   subpage.querySelector('.account-detail-footer')?.remove();
   const footer = document.createElement('div');
   footer.className = 'account-detail-footer';
@@ -273,7 +284,7 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     const data = await getAccountViewData(targetAccountId);
     if (token !== detailToken || !body.isConnected) return;
     if (!data) {
-      snapshot = undefined; monthEntryContent.clear(); footer.hidden = true; currentAccount = undefined;
+      snapshot = undefined; monthEntryContent.clear(); footer.hidden = true; currentAccount = undefined; search.disabled = true;
       body.innerHTML = '<div class="placeholder"><p class="sub">账户不存在</p></div>'; return;
     }
     const flows = accountStatement(accountFlows(data.entries, targetAccountId), data.account.balance);
@@ -292,6 +303,7 @@ async function renderAccountDetail(body: HTMLElement): Promise<void> {
     const scroll = body.scrollTop;
     const { account: acct, flows, balances, catMap, acctNames, activeMonths, totalIn, totalOut } = snapshot;
     currentAccount = acct;
+    search.disabled = false;
     body.closest<HTMLElement>('.subpage')!.querySelector<HTMLElement>('.sub-head h2')!.textContent = acct.name;
     const monthRows = activeMonths.slice(0, monthsShown);
     const availableMonths = activeMonths.length;

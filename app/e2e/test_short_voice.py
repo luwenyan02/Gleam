@@ -153,9 +153,10 @@ def seed_config(page):
     }''')
 
 
-def open_entry_voice(page):
-    page.locator('#fab').click(); page.locator('#keypad').wait_for();
-    page.locator('#btn-voice').click(); page.locator('[data-sv-text]').wait_for()
+def open_inbox_voice(page):
+    if not page.locator('#sp-ai-inbox.open').count():
+        page.locator('[data-qa="ai"]').click()
+    page.locator('[data-act="short-voice"]').click(); page.locator('[data-sv-text]').wait_for()
 
 
 def image(page, name, width, motion):
@@ -212,19 +213,17 @@ def run(page, width, motion):
     page.locator('#sp-settings [data-act="back"]').click()
     page.locator('[data-page="page-home"]').click()
 
-    # Opening never captures/sends; dismiss keeps every underlying draft field.
-    page.locator('#fab').click(); page.locator('#note').fill('原本的虚构草稿')
-    page.locator('#note').blur()
-    page.locator('#keypad [data-k="9"]').click(); page.locator('#btn-voice').click()
+    # Opening never captures/sends; dismiss preserves the unsent inbox text.
+    page.locator('[data-qa="ai"]').click(); page.locator('#ai-text').fill('原本的虚构草稿')
+    open_inbox_voice(page)
     expect(page.locator('[data-sv-start]')).to_be_enabled()
     expect(page.locator('[data-sv-start]')).to_have_accessible_name('开始说话，使用阿里云百炼')
     expect(page.locator('[data-sv-consent]')).to_have_count(0)
     assert page.evaluate("window.__voiceCalls.filter(x=>x.method==='start').length") == 0
     image(page, 'consent', width, motion)
-    page.locator('[data-sv-close]').click(); expect(page.locator('#note')).to_have_value('原本的虚构草稿')
-    expect(page.locator('#amt')).to_have_text('9'); page.locator('#sheet-close').click()
+    page.locator('[data-sv-close]').click(); expect(page.locator('#ai-text')).to_have_value('原本的虚构草稿')
 
-    open_entry_voice(page)
+    open_inbox_voice(page)
     page.locator('[data-sv-start]').click(); expect(page.locator('[data-sv-status]')).to_contain_text('正在听')
     page.locator('[data-sv-start]').dispatch_event('click')
     assert page.evaluate("window.__voiceCalls.filter(x=>x.method==='start').length") == 1
@@ -243,14 +242,15 @@ def run(page, width, motion):
     assert payloads[-1]['messages'][1]['content'] == '最终核对午餐28.01元，现金'
     assert len(read_rows(page,'entries')) == 0
     page.locator('[data-sv-apply]').click(); expect(page.locator('[data-sv-text]')).to_have_count(0)
-    expect(page.locator('#amt')).to_contain_text('28.01')
-    page.locator('#keypad [data-k="save"]').click()
-    page.locator('#keypad [data-k="save"]').dispatch_event('click') if page.locator('#keypad [data-k="save"]').count() else None
-    page.locator('#sheet.open').wait_for(state='hidden')
+    assert not read_rows(page,'entries')
+    queue=next(row['value'] for row in read_rows(page,'settings') if row['key']=='ai.pendingItems')
+    assert len(queue)==1 and queue[0]['source']=='voice' and queue[0]['status']=='ready'
+    page.locator('.ai-card [data-act="confirm"]').click()
+    page.locator('.ai-card').wait_for(state='detached')
     rows=read_rows(page,'entries'); assert len(rows)==1 and rows[0]['amount']==2801
 
     # Cancelled and replaced sessions cannot apply late text; private provider errors stay private.
-    open_entry_voice(page); page.locator('[data-sv-start]').click()
+    open_inbox_voice(page); page.locator('[data-sv-start]').click()
     expect(page.locator('[data-sv-status]')).to_contain_text('正在听')
     old=page.evaluate("window.__voiceCalls.filter(x=>x.method==='start').at(-1).sessionId")
     page.locator('[data-sv-cancel]').click(); page.locator('[data-sv-text]').fill('取消后的手改文字')
@@ -261,11 +261,10 @@ def run(page, width, motion):
     page.locator('[data-sv-start]').click(); expect(page.locator('[data-sv-status]')).to_contain_text('麦克风未获授权')
     assert 'PRIVATE_PROVIDER_ECHO' not in page.locator('.short-voice-panel').inner_text()
     image(page,'permission-error',width,motion)
-    page.locator('[data-sv-close]').click(); page.locator('#sheet-close').click()
+    page.locator('[data-sv-close]').click()
     page.evaluate('window.__voiceError=null')
 
     # High-confidence voice draft remains ready until an explicit inbox confirmation.
-    page.locator('[data-qa="ai"]').click()
     page.locator('#ai-text').fill('原本尚未发送的收件箱虚构草稿')
     page.locator('[data-act="short-voice"]').click()
     page.locator('[data-sv-text]').fill('虚构午餐28.01元现金')
@@ -284,11 +283,11 @@ def run(page, width, motion):
 
 def web_mode(page,width,motion):
     page.goto(URL);page.locator('#fab').wait_for()
-    page.locator('#fab').click();page.locator('#btn-voice').click()
+    open_inbox_voice(page)
     expect(page.locator('[data-sv-status]')).to_contain_text('仅支持 Android')
     expect(page.locator('[data-sv-start]')).to_be_disabled()
     image(page,'web-fallback',width,motion)
-    page.locator('[data-sv-close]').click();page.locator('#sheet-close').click()
+    page.locator('[data-sv-close]').click();page.locator('#sp-ai-inbox [data-act="back"]').click()
     page.locator('[data-page="page-mine"]').click();page.get_by_role('button', name='应用设置', exact=True).click()
     expect(page.locator('#voice-bailian-key')).to_be_disabled()
     expect(page.locator('#voice-key-shared')).to_be_disabled()

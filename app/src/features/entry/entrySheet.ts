@@ -62,7 +62,6 @@ import { mountReceiptEditor, type ReceiptDraft } from './receiptEditor';
 import { rankMerchantSuggestions } from '../../core/repo/entityInsightsRepo';
 import { loanDirection, loanAccountId as relatedLoanAccountId, loanFundAccountId } from '../../core/loanLedger';
 import { bindNoteCompletion, matchNoteCategoryId } from './entryNoteMatching';
-import { openShortVoice } from './shortVoice';
 import { mapCategoryNameToId } from '../../core/repo/aiRepo';
 import './entry.css';
 
@@ -172,7 +171,6 @@ interface SheetCtx {
     categoryId?: number; locked: boolean; noteCategoryId?: number;
   }>>;
   disposeNoteCompletion?: () => void;
-  disposeVoice?: () => void;
   accountSelectionLocked: boolean;
   showAllCategories: boolean;
   advancedOpen: boolean;
@@ -381,7 +379,6 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
       c.receipts = mountReceiptEditor(el.querySelector<HTMLElement>('#receipt-editor')!, initialReceipts);
     },
     onClose() {
-      c.disposeVoice?.();
       c.disposeNoteCompletion?.();
       c.receipts?.dispose();
       sheetEl?.classList.remove('entry-workspace', 'note-editing', 'categories-expanded');
@@ -416,8 +413,7 @@ function renderSheet(el: HTMLElement, note: string): void {
           return `<button data-type="${t}" role="tab" class="${t === c.type ? 'active' : ''}" aria-selected="${t === c.type}">${names[t]}</button>`;
         }).join('')}
       </div>
-      <button class="icon-btn" id="btn-voice" aria-label="语音记账">${iconHtml('ic-mic')}</button>
-      <button class="icon-btn" id="sheet-close" aria-label="关闭记一笔">${iconHtml('ic-close')}</button>
+      <button class="entry-close" id="sheet-close" aria-label="关闭记一笔">关闭</button>
     </header>
     <div class="pick-card">
       <span class="pick-ic" id="pick-ic"></span>
@@ -766,39 +762,10 @@ function switchEntryType(type: EntryType): void {
   refreshMeta();
 }
 
-function startVoiceInput(): void {
-  const c = ctx, el = sheetEl;
-  if (!c || !el || saving) return;
-  if (c.editingId || !['expense', 'income'].includes(c.type) || c.bx || c.tk || c.refundOfEntryId || c.reimbursedDone) {
-    showToast('编辑、转账、借贷、退款和报销请用手动记账，保留原账务关联');
-    return;
-  }
-  c.disposeVoice?.();
-  c.disposeVoice = openShortVoice({ container: el, applyLabel: '填入当前草稿',
-    applyNote: '填入后替换当前草稿的类型、金额、分类、账户、时间和备注；确认保存才入账。标签和凭证保持原选择。',
-    onApply(bill) {
-      if (ctx !== c || sheetEl !== el || saving) throw new Error('草稿已关闭');
-      switchEntryType(bill.type);
-      c.amt = formatFen(bill.amount).replace(/,/g, ''); c.prev = null; c.prevAmount = null; c.op = null;
-      c.replaceAmountOnInput = false;
-      const expenseCats = c.expenseTree.flatMap(group => [group.parent, ...group.children]);
-      c.categoryId = mapCategoryNameToId(bill.type, bill.categoryName ?? '', expenseCats, c.incomeCats);
-      c.categorySelectionLocked = true; c.noteCategoryId = undefined;
-      c.accountId = c.accounts.find(account => account.name === bill.accountName)?.id;
-      c.accountSelectionLocked = true; c.date = bill.occurredAt;
-      c.merchantId = c.merchants.find(merchant => merchant.name === bill.merchantName)?.id;
-      q<HTMLInputElement>('#note').value = bill.note ?? '';
-      renderCats(); refreshMeta(); refreshAmt();
-      showToast('草稿已填入，请核对分类、账户与金额后保存');
-    },
-  });
-}
-
 /* ── 事件绑定 ─────────────────────── */
 
 function bindEvents(el: HTMLElement): void {
   el.querySelector('#sheet-close')!.addEventListener('click', closeSheet);
-  el.querySelector('#btn-voice')!.addEventListener('click', startVoiceInput);
 
   const noteInput = el.querySelector<HTMLInputElement>('#note')!;
   const noteClear = el.querySelector<HTMLButtonElement>('#note-clear')!;

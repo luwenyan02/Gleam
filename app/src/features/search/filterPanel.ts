@@ -32,6 +32,7 @@ export function isFilterEmpty(f: FilterState): boolean {
 
 export interface FilterPanelOptions {
   initial: FilterState;
+  accountScope?: number;
   onConfirm(state: FilterState): void;
   onCancel(): void;
 }
@@ -42,6 +43,8 @@ export interface FilterPanelOptions {
 export async function createFilterPanel(opts: FilterPanelOptions): Promise<HTMLElement> {
   const state: FilterState = { ...opts.initial, categoryIds: [...opts.initial.categoryIds], accountIds: [...opts.initial.accountIds], tagIds: [...opts.initial.tagIds], merchantIds: [...opts.initial.merchantIds] };
 
+  if (opts.accountScope != null) state.accountIds = [opts.accountScope];
+
   const [expenseCats, incomeCats, accounts, tags, merchants] = await Promise.all([
     listCategories('expense'), listCategories('income'), listAccounts(), listTags(), listMerchants(),
   ]);
@@ -50,7 +53,7 @@ export async function createFilterPanel(opts: FilterPanelOptions): Promise<HTMLE
   const expenseIds = new Set(expenseCats.map(category => category.id));
   const categoryGroups = expenseCats.filter(category => category.parentId == null || !expenseIds.has(category.parentId))
     .map(parent => ({ parent, children: expenseCats.filter(category => category.parentId === parent.id) }));
-  const accountGroups = ACCOUNT_GROUPS.map(group => ({ group, accounts: accounts.filter(account => account.group === group) }))
+  const accountGroups = (opts.accountScope != null ? [] : ACCOUNT_GROUPS).map(group => ({ group, accounts: accounts.filter(account => account.group === group) }))
     .filter(group => group.accounts.length);
 
   const panel = document.createElement('div');
@@ -96,7 +99,8 @@ export async function createFilterPanel(opts: FilterPanelOptions): Promise<HTMLE
       updateGroup(panel.querySelector(`[data-account-group="${group}"]`)!, members.map(account => account.id), state.accountIds);
     }
     panel.querySelector('[data-expand="category"] .fp-value')!.textContent = `${selectedText(selectedCategoryIds(), allCats)} ›`;
-    panel.querySelector('[data-expand="account"] .fp-value')!.textContent = `${selectedText(state.accountIds, accounts)} ›`;
+    const accountValue = panel.querySelector('[data-expand="account"] .fp-value');
+    if (accountValue) accountValue.textContent = `${selectedText(state.accountIds, accounts)} ›`;
   }
 
   function renderPanel(): void {
@@ -123,7 +127,7 @@ export async function createFilterPanel(opts: FilterPanelOptions): Promise<HTMLE
           </div>
         </div>
         <div class="fp-section">
-          <button type="button" class="fp-row" data-expand="account" aria-expanded="false" aria-controls="fp-accts">
+          ${opts.accountScope != null ? `<div class="fp-row"><span class="fp-label">账户</span><span class="fp-value">${esc(selectedText([opts.accountScope], accounts))}</span></div>` : `<button type="button" class="fp-row" data-expand="account" aria-expanded="false" aria-controls="fp-accts">
             <span class="fp-label">账户</span>
             <span class="fp-value">${esc(selectedText(state.accountIds, accounts))} ›</span>
           </button>
@@ -132,7 +136,7 @@ export async function createFilterPanel(opts: FilterPanelOptions): Promise<HTMLE
               ${groupButton(ACCOUNT_GROUP_NAMES[group], `data-account-group="${group}"`)}
               <div class="fp-chips">${members.map(a => `<button type="button" class="chip" data-aid="${a.id}">${esc(a.name)}${a.hidden ? '（已隐藏）' : ''}</button>`).join('')}</div>
             </section>`).join('') || '<p class="fp-empty">暂无账户</p>'}
-          </div>
+          </div>`}
         </div>
         <div class="fp-section">
           <button type="button" class="fp-row" data-expand="tag" aria-expanded="false" aria-controls="fp-tags">
@@ -269,7 +273,7 @@ export async function createFilterPanel(opts: FilterPanelOptions): Promise<HTMLE
     // 重置
     if (target.closest('.fp-reset')) {
       state.categoryIds = [];
-      state.accountIds = [];
+      state.accountIds = opts.accountScope != null ? [opts.accountScope] : [];
       state.tagIds = [];
       state.merchantIds = [];
       state.amountMin = '';

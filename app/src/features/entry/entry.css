@@ -11,15 +11,13 @@
 #sheet .sheet-head .seg{min-width:0;justify-content:space-between;gap:6px}
 #sheet .sheet-head .seg button{flex:1;min-height:44px;white-space:nowrap}
 #sheet.entry-workspace .sheet-head{flex:none;margin-bottom:4px}
-#sheet.entry-workspace .sheet-head .icon-btn{width:44px;height:44px;flex:none}
+#sheet.entry-workspace .entry-close{flex:none;min-width:56px;min-height:44px;padding:8px 12px;border:0;border-radius:var(--r-s);background:var(--bg);color:var(--muted);font-size:var(--text-meta);font-weight:600}
+#sheet.entry-workspace .entry-close:active{background:var(--border);color:var(--fg)}
 #sheet .pick-card{position:relative;overflow:hidden;background:var(--bg);box-shadow:none}
 #sheet.entry-workspace .pick-card{flex:none;min-height:58px;padding:8px 12px}
 #sheet .pick-ic,#sheet .pick-name,#sheet .amt{position:relative;z-index:1}
 #sheet.note-editing .entry-keyboard{display:none}
 #sheet.entry-workspace .sheet-scroll{flex:1;min-height:0;margin:7px 0 5px;padding:0 1px 3px;overscroll-behavior:contain}
-#btn-voice.listening{color:var(--primary);border-color:color-mix(in oklab,var(--seed-primary) 36%,var(--border));animation:voice-pulse 1.1s infinite}
-@keyframes voice-pulse{50%{box-shadow:0 0 0 7px color-mix(in oklab,var(--seed-primary) 9%,transparent)}}
-
 /* 支出分类宫格的大类分区标题（跨满整行） */
 .cat-sec{
   grid-column:1/-1;

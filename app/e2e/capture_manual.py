@@ -46,7 +46,7 @@ def main():
         page.locator('[data-page="page-mine"]').click();page.get_by_role('button',name='应用设置',exact=True).click()
         page.locator('#voice-bailian-key').fill('fictional-demo-voice-key');page.locator('#voice-bailian-workspace').fill('demo-workspace');page.locator('#voice-bailian-workspace').press('Tab');page.locator('[data-voice-test]').click();expect(page.locator('[data-voice-test]')).to_have_attribute('data-state','success')
         page.locator('#sp-settings section[aria-label="百炼短语音"]').evaluate('e=>e.scrollIntoView({block:"start"})');capture(page,'voice-settings','#voice-bailian-key')
-        page.locator('#sp-settings .sub-head [data-act="back"]').click();page.locator('#tab-home').click();page.locator('#fab').click();page.locator('#btn-voice').click();capture(page,'voice-start','[data-sv-start]')
+        page.locator('#sp-settings .sub-head [data-act="back"]').click();page.locator('#tab-home').click();page.locator('[data-qa="ai"]').click();page.locator('[data-act="short-voice"]').click();capture(page,'voice-start','[data-sv-start]')
         page.locator('[data-sv-start]').click();expect(page.locator('[data-sv-status]')).to_contain_text('正在听');capture(page,'voice-listening','[data-sv-stop]')
         page.locator('[data-sv-stop]').click();page.locator('[data-sv-text]').fill('今天午餐28元，现金');page.locator('[data-sv-text]').blur();page.locator('[data-sv-send-panel]').wait_for();capture(page,'voice-review','[data-sv-send-panel]')
         assert page.evaluate('window.__micCalls')==0

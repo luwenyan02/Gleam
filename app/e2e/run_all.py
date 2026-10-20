@@ -36,7 +36,7 @@ TESTS = (
     'test_home_configuration.py', 'test_query_integrity.py', 'test_budget_periods.py', 'test_budget_category_details.py',
     'test_calendar_daylist.py', 'test_report_composition.py', 'test_credit_statements.py',
     'test_account_reconcile_credit_limit.py',
-    'test_account_management_ui.py', 'test_account_active_months.py', 'test_account_footer_trend.py', 'test_net_worth_trend.py',
+    'test_account_search_navigation.py', 'test_account_management_ui.py', 'test_account_active_months.py', 'test_account_footer_trend.py', 'test_net_worth_trend.py',
     'test_account_detail_performance.py', 'test_account_detail_upgrade.py', 'test_account_detail_pagination.py',
     'test_entry_receipts.py', 'test_entry_detail_performance.py', 'test_entry_detail_upgrade.py',
     'test_entity_details.py', 'test_accounting_period.py', 'test_search_month_ranges.py', 'test_search_summary_layout.py', 'test_search_filter_groups.py',
