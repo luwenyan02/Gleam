@@ -519,8 +519,8 @@ async function refresh(): Promise<void> {
     <section class="card ai-input" aria-label="添加素材">
       <textarea id="ai-text" rows="3" placeholder="粘贴短信或账单，例如：午饭 28 元"></textarea>
       <div class="ai-actions">
+        <button class="btn ghost" data-act="short-voice">${iconHtml('ic-mic', 16)} 语音记账</button>
         <button class="btn ghost" data-act="pick-img">${iconHtml('ic-camera', 16)} 选择截图</button>
-        <button class="btn ghost" data-act="short-voice">${iconHtml('ic-mic', 16)} 短语音</button>
         <button class="btn primary" data-act="recognize-text">识别文本</button>
       </div>
       <input type="file" id="ai-file" accept="image/*" multiple hidden>

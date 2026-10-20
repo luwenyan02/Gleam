@@ -8,6 +8,8 @@
 .ai-input textarea{width:100%;border:1px solid var(--border);border-radius:calc(var(--r) - 4px);background:var(--surface);padding:10px 12px;font-size:14px;font-family:var(--font-body);color:var(--fg);resize:vertical;min-height:64px}
 .ai-input textarea:focus{outline:none;border-color:var(--primary)}
 .ai-input .ai-actions{margin-top:10px}
+.ai-input .ai-actions .btn{padding-inline:10px}
+.ai-input [data-act="short-voice"]{margin-right:auto}
 .ai-input .tiny{margin-top:8px}
 
 /* 素材 / 待确认卡片 */

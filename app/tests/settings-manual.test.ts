@@ -28,7 +28,7 @@ it('opens only a local sheet with an accessible close control', () => {
 it('documents the remaining voice entries and manual inbox approval', () => {
   const html = settingsManualHtml();
   expect(html).toContain('首页按住说话');
-  expect(html).toContain('首页「AI 记账」或「我的 → AI 记账收件箱」点「短语音」');
+  expect(html).toContain('首页「AI 记账」或「我的 → AI 记账收件箱」点「语音记账」');
   expect(html).not.toContain('记账页点麦克风');
   expect(html).not.toContain('填入当前草稿');
   expect(html).toContain('「加入收件箱待确认」只保存到本机待确认队列，可修改后再确认入账');
