@@ -1,29 +1,30 @@
 {
   "version": "1.11.23",
-  "captureBaseCommit": "723ae1c61a6198ffa1f1c804ec2ee7145a59f60a",
+  "captureBaseCommit": "67f75774cfb435f1abcc1f39c9ffc00664acb030",
   "captureScript": "app/e2e/capture_manual.py",
-  "captureContext": "Entry close capsule preview working tree; entry and account-picker recaptured with fictional data. Other figures retained from the preceding account-search/navigation preview. All images are original browser captures; voice uses a simulated native bridge, no real microphone or service.",
+  "captureContext": "Subtle round buttons preview working tree; all figures recaptured with fictional data. Images are unmodified browser captures; voice uses a simulated native bridge, no real microphone or service.",
   "synthetic": true,
   "imagesUnmodified": true,
   "sha256": {
-    "account-picker.png": "9db807cfed473da3ec18e0b1aa9730419fac5a94b2c991779bf3973fd53cef48",
-    "backup.png": "9c9ace53767eb741506237be82cffda449733c2efa2b79b14305f700fa2a4a45",
-    "entry.png": "7aa1cf8b2d9c3f49686383be2ce5322775d7ebc81b1ce8a7e0f22fefad097bef",
+    "account-picker.png": "7085711aa0438884abf2e4a36326a024f1c6d04f97a38648f57961d998c999b7",
+    "backup.png": "e8fb18a07d60542b2e25ef46f291ffa82e54fd8bf30d8374b3524aac1de14f11",
+    "entry.png": "b84b2302570824d8e7b621e8c3e9c0bfb9a793a2b7b5d39fcb538e0ac936252c",
     "manual-entry.png": "666058a76ee99663ad3aaa21c9596ba2194f9535b844ef002c2cd8c6d9dbb0a4",
     "report.png": "662ef9eee76a3ccd3db6ef1687b5cdfaad84c216b2a1fc278185913a1139eb88",
-    "voice-listening.png": "49e5be90ff07020f4e82de58ecbf6e4d33c972e0261168e9c0d9c59112b94c7f",
-    "voice-review.png": "c2dac7a6c72af9c793fd8c392a1174b196fe1298ea3c96ac9ea51f42d94223d0",
-    "voice-settings.png": "3d103094e4dc7d179fa1951f0e947dcb84bf487fc82148e18ee8a1a95553554d",
-    "voice-start.png": "fc3b81f8f6bb369ad90a4d89a0af570003be72dd6f946d97ba075f8233104d65"
+    "voice-listening.png": "0339111299f552ab64983a2d042e3fa438e06035d5fd4309e4d10a1bb61e2caa",
+    "voice-review.png": "1d9618576ecb784ee2fedf12d81e0325b2ea20eb4729eaeaa2d7a8c289ec0beb",
+    "voice-settings.png": "2f4b5fc752b35d55ba48e8c5d6a7b874a1ace823c2458265e2c7efeb202ace70",
+    "voice-start.png": "bd1067d47fdcec2367709fcc047d923cb4b18616438e5b1ccddd943147eb3622"
   },
   "sourceSha256": {
     "app/e2e/capture_manual.py": "18ca243cb25c8a35a4ed57ec6531158cb03263766cab9a5a6a0894c27b361b1f",
     "app/src/features/shell/shell.ts": "1156fda4465832cbda789876148ae02f43fcda2ecc7ae8374bcbae68a7c89919",
-    "app/src/features/entry/entrySheet.ts": "986d97a210b606e9e4bbe183b66157dde132ad451f0a58ca02939a04ff0058db",
-    "app/src/features/entry/entry.css": "75d43dc7b6f1dfa3cd758696cba05dbba0d5782277001cb6ba47bfe41e240446",
+    "app/src/features/entry/entrySheet.ts": "d94bbede5b1dba0eeccafe60761baa1aa919f10a3595208d1a4135010ec4b50d",
+    "app/src/features/entry/entry.css": "09ec245e43dffb7f1c25c4ba1394d84729ebbc6a710216b49bec4b71c1846cf1",
     "app/src/features/ai-inbox/aiInbox.ts": "08426e7ca1d00378c9a7a3aa17f091af8ab4bde5c8d64e01a2a311f6d682bb90",
-    "app/src/features/settings/settingsManual.ts": "c90daf3f6794479159c7144aed0956822c89515c3aaca4602c7669e34481a59b",
+    "app/src/features/settings/settingsManual.ts": "d5ff633bacfbadbe009e7eb83b34e1ceda98ec28958b8195438532b68af044e2",
     "app/src/features/settings/settings.ts": "38419f7a9dccea6acaef0d421697d9c58ee37e7c485cba9184aebbe68ca3e07d",
-    "app/src/features/mine/mine.ts": "bf8a5ec6ce073432307124ab13627cca9ac01151280007e2eef22deaa45c552b"
+    "app/src/features/mine/mine.ts": "bf8a5ec6ce073432307124ab13627cca9ac01151280007e2eef22deaa45c552b",
+    "app/src/styles/base.css": "6557c077c07996e3e79ef91ee21e04bc8d32b225895710ae300a45fd3a0477db"
   }
 }

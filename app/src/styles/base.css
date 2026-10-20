@@ -66,7 +66,7 @@ button.chip,.tab,.fab,.icon-btn,.btn,button.row,.seg button,.qa,.lf-check{min-wi
 .chip.active{background:var(--accent-soft);border-color:var(--primary);color:var(--primary);font-weight:600}
 .chip.tag{border-radius:999px;background:var(--gold-soft);border-color:transparent;color:color-mix(in oklab, var(--seed-accent) 70%, var(--seed-fg));font-size:11px;padding:5px 11px}
 .chip.danger{color:var(--over);border-color:color-mix(in oklab, var(--over) 36%, var(--seed-bg))}
-.icon-btn{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--surface);border:1px solid var(--border);color:var(--muted);transition:all .18s}
+.icon-btn{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--surface);border:1px solid color-mix(in oklab,var(--border) 60%,transparent);color:var(--muted);transition:all .18s}
 .icon-btn:active{transform:scale(.92)}
 .btn{display:block;width:100%;padding:14px;border-radius:var(--r-s);font-size:calc(14px * var(--seed-type));font-weight:600;text-align:center;transition:all .18s;letter-spacing:.04em}
 .btn.compact,.field>.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;width:auto;padding:9px 12px;font-size:var(--text-meta);letter-spacing:0;white-space:nowrap}
