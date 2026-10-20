@@ -37,7 +37,7 @@ export function validChatWebSearch(value: unknown): value is ChatWebSearch {
 export function searchInstructions(messages: unknown[], enabled: boolean): unknown[] {
   const date = new Date().toLocaleDateString('sv-SE');
   const instruction = `当前设备日期：${date}。${enabled
-    ? '本次已提供 web_search 联网搜索工具，按问题需要调用；不要沿用历史对话中的“不能联网”声明。只有工具实际执行并返回结果后，才可说已搜索或核实。未执行搜索、失败或来源不足时，明确说明，不能编造实时结论。来源由应用展示，不编造来源编号。'
+    ? '本次已提供 web_search 联网搜索工具，按问题需要调用；不要沿用历史对话中的“不能联网”声明。只有工具实际执行并返回结果后，才可说已搜索或核实。未执行搜索、失败或来源不足时，明确说明，不能编造实时结论。不编造来源编号。'
     : '本次配置未接入联网搜索，不能核实实时信息；只说明本次请求的限制，不宣称模型本身没有搜索能力。'}`;
   const first = messages[0] as { role?: string; content?: unknown } | undefined;
   return first?.role === 'system' && typeof first.content === 'string'

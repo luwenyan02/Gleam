@@ -57,15 +57,6 @@
 .chat-reply-time{display:inline-block;margin:0;padding:0 6px;width:52px;font-size:12px;line-height:44px;font-variant-numeric:tabular-nums;color:var(--faint);white-space:nowrap}
 .life-chat-bubble .chat-action-slot{display:inline-block;height:1em;vertical-align:bottom;user-select:none;max-width:100%;font:inherit;margin:0}
 .life-chat-bubble .chat-action-slot-block{display:block;height:17px;margin-left:auto}
-.chat-web-search{margin-top:14px;border-top:1px solid var(--border);padding-top:8px;font-size:12px;line-height:1.5;color:var(--muted)}
-.chat-search-status{margin:0;font-size:12px}
-.chat-search-sources summary{display:list-item;min-height:44px;align-content:center;cursor:pointer;color:var(--fg);font-size:13px}
-.chat-search-sources ol{margin:0;padding-left:22px}
-.chat-search-sources li{padding-left:2px}
-.chat-search-sources a{display:flex;flex-direction:column;justify-content:center;gap:3px;min-height:44px;padding:7px 0;color:var(--primary);font-size:13px;overflow-wrap:anywhere;text-decoration:none}
-.chat-search-sources a:hover{text-decoration:underline}
-.chat-search-sources a:focus-visible,.chat-search-sources summary:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:4px}
-.chat-search-sources small{font-size:11px;color:var(--muted)}
 .chat-message-actions button:hover,.chat-message-actions button:active,.chat-head-actions button:hover{background:var(--bg);color:var(--fg)}
 .chat-message-actions button:focus-visible,.chat-head-actions button:focus-visible{outline:2px solid var(--input-focus);outline-offset:-3px}
 .life-chat-bubble.user .chat-message-actions{margin-top:0}

@@ -18,7 +18,6 @@ import { openLifeVoice } from './lifeVoice';
 import { VoiceReplyLayouts } from './voiceReplyLayout';
 import { chatIcon } from './chatIcons';
 import { formatChatReplyTime } from './chatReplyTime';
-import { chatSearchSources } from './chatSearchSources';
 import { openAiSettings } from '../settings/settings';
 import { AiConfigError } from '../../core/repo/aiRepo';
 import { isLifeLedgerQuestion, type LifeLedgerReview, type LifeLedgerScope } from '../../core/repo/lifeLedgerContextRepo';
@@ -204,11 +203,11 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       const failure = (cancelled || failedMessageIndex === index) && retryIndex != null && retryIndex >= 0
         ? `<div class="life-chat-failed" ${cancelled ? 'data-chat-cancelled' : ''}><span>${esc(cancelled?.text ?? '未完成')}</span><button class="chip" data-life-chat-retry="${retryIndex}" data-retry-regenerate="${retryRegenerate}">重试</button></div>` : '';
       const actions = message.role === 'assistant' ? `<div class="chat-message-actions"><button data-chat-copy="${index}" aria-label="复制第 ${index + 1} 条消息" title="复制">${chatIcon('copy')}</button>${index === draft.messages.length - 1 ? `<button data-chat-regenerate aria-label="重新回答" title="重新回答">${chatIcon('retry')}</button>` : ''}${replyTime ? `<time class="chat-reply-time" datetime="${new Date(message.repliedAt!).toISOString()}" title="${esc(new Date(message.repliedAt!).toLocaleString())}" aria-label="回复时间 ${replyTime}">${replyTime}</time>` : ''}</div>` : '';
-      return `<article class="life-chat-bubble ${message.role}">${message.role === 'assistant' ? `<div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div>` : ''}<div class="chat-message-content"><div class="chat-message-text">${message.role === 'user' ? esc(message.content) : renderChatText(message.voiceDisplay ?? message.content)}</div>${sources.length ? `<div class="life-chat-message-photos">${sources.map((src, photoIndex) => `<img src="${src}" alt="本轮照片 ${photoIndex + 1}">`).join('')}</div>` : ''}${message.role === 'assistant' ? chatSearchSources(message.search) : ''}</div>${ledgerResults.has(index) ? lifeLedgerResultHtml(ledgerResults.get(index)!, index, sending) : ''}${actions}${failure}</article>`;
+      return `<article class="life-chat-bubble ${message.role}">${message.role === 'assistant' ? `<div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div>` : ''}<div class="chat-message-content"><div class="chat-message-text">${message.role === 'user' ? esc(message.content) : renderChatText(message.voiceDisplay ?? message.content)}</div>${sources.length ? `<div class="life-chat-message-photos">${sources.map((src, photoIndex) => `<img src="${src}" alt="本轮照片 ${photoIndex + 1}">`).join('')}</div>` : ''}</div>${ledgerResults.has(index) ? lifeLedgerResultHtml(ledgerResults.get(index)!, index, sending) : ''}${actions}${failure}</article>`;
     }).join('');
     const proposalStale = !!draft.summaryProposal && (draft.summaryProposal.sourceMessageCount < draft.messages.length || draft.photos.length > 0);
     const card = !summaryCardHidden && (readyToSummarize || draft.summaryProposal) ? `<section class="life-summary-card"><strong>${proposalStale ? '已有建议稿，对话已有新内容' : draft.summaryProposal ? '已有一版建议稿' : '已经有一个值得留下的片段了'}</strong><p>${proposalStale ? '建议稿不会自动覆盖你的修改；需要时可手动重新整理。' : '想把这段话整理成一条记录吗？'}</p><div><button class="btn primary" data-life-chat-summary>${draft.summaryProposal ? '查看建议稿' : '生成记录'}</button><button class="btn ghost" data-life-chat-continue>再聊聊</button></div></section>` : '';
-    messagesEl.innerHTML = `${welcome}${messages}${streamedReply ? `<article class="life-chat-bubble assistant ${sending ? 'chat-streaming' : 'chat-incomplete'}" aria-label="${sending ? '正在回复' : '未完成的回复'}"><div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div><div class="chat-message-content"><div class="chat-message-text">${renderChatText(streamedReply)}</div>${chatSearchSources(draft.chatReply?.search)}</div></article>` : ''}${card}`;
+    messagesEl.innerHTML = `${welcome}${messages}${streamedReply ? `<article class="life-chat-bubble assistant ${sending ? 'chat-streaming' : 'chat-incomplete'}" aria-label="${sending ? '正在回复' : '未完成的回复'}"><div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div><div class="chat-message-content"><div class="chat-message-text">${renderChatText(streamedReply)}</div></div></article>` : ''}${card}`;
     // 尾行保留操作区宽度，按钮在气泡内右对齐，不再单独占据气泡外的一行。
     messagesEl.querySelectorAll<HTMLElement>('.chat-message-actions').forEach(actions => {
       const content = actions.parentElement!.querySelector<HTMLElement>('.chat-message-content')!;
@@ -219,7 +218,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       slot.style.width = `${actions.querySelectorAll('button').length * 44 + (actions.querySelector('.chat-reply-time') ? 52 : 0) + 8}px`;
       let tail = text.lastElementChild as HTMLElement | null;
       while (tail?.matches('ul,ol,li') && tail.lastElementChild?.matches('ul,ol,li,p')) tail = tail.lastElementChild as HTMLElement;
-      if (content.querySelector('.life-chat-message-photos,.chat-web-search') || tail?.matches('pre,.chat-table-scroll,hr')) {
+      if (content.querySelector('.life-chat-message-photos') || tail?.matches('pre,.chat-table-scroll,hr')) {
         slot.classList.add('chat-action-slot-block');
         content.append(slot);
       } else if (actions.parentElement!.classList.contains('user')) text.append(slot);
@@ -401,7 +400,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       failedMessageIndex = task.running ? undefined : checkpoint?.messageIndex;
       failedRegenerate = checkpoint?.regenerate ?? false;
       if (!task.running && !checkpoint && task.ledgerReview) ledgerResults.set(draft.messages.length - 1, task.ledgerReview);
-      const text = task.running ? (checkpoint?.search?.status === 'searching' ? '正在联网搜索…' : streamedReply ? '正在回复…' : '拾光正在想…')
+      const text = task.running ? (streamedReply ? '正在回复…' : '拾光正在想…')
         : task.saveFailed ? '回复暂存在本次运行中，请勿关闭应用；可重新打开重试保存。'
           : checkpoint?.status === 'stopped' ? '已停止，已收到的内容仍保留在本机。'
             : checkpoint ? task.error instanceof Error ? task.error.message : '回复中断，可重试。' : '';

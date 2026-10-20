@@ -1,4 +1,4 @@
-"""实时语音搜索状态、来源和提示文案；合成原生桥与虚构搜索结果。"""
+"""实时语音保留搜索能力与数据，界面隐藏搜索信息；使用合成原生桥。"""
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
 from test_life_ai import URL, configure
@@ -33,38 +33,35 @@ def run(browser, width, height, theme, scale):
         assert '当前语音未提供联网搜索工具' not in call['instructions']
         messages = [{'id': 'u1', 'role': 'user', 'content': '北京今天的天气怎么样？'}, {'id': 'a1', 'role': 'assistant', 'content': '正在回应天气问题。', 'search': {'status': 'enabled', 'sources': []}}]
         emit(page, messages, 'speaking')
-        expect(page.locator('[data-chat-search="enabled"]')).to_be_visible()
-        expect(page.locator('[data-chat-search="searched"]')).to_have_count(0)
+        expect(page.locator('.assistant .chat-message-text')).to_have_text('正在回应天气问题。')
+        expect(page.locator('[data-chat-search],.chat-web-search,.chat-search-sources')).to_have_count(0)
         messages[1].update(content='根据本轮查询到的虚构预报，北京今天有雨。', complete=True, search={'status': 'searched', 'sources': [
             {'title': '虚构天气预报与出行提醒' * 4, 'url': 'https://weather.invalid/beijing'},
             {'title': '虚构天气预报与出行提醒' * 4, 'url': 'https://weather.invalid/beijing'},
             {'url': 'javascript:alert(1)'}, {'url': 'https://user:secret@unsafe.invalid/'}]})
         emit(page, messages)
         expect(page.locator('.assistant .chat-message-text')).to_have_count(1)
-        expect(page.locator('[data-chat-search="searched"]')).to_contain_text('已联网搜索')
-        page.locator('.chat-search-sources summary').click()
-        links = page.locator('.chat-search-sources a')
-        expect(links).to_have_count(1)
-        expect(links).to_have_attribute('href', 'https://weather.invalid/beijing')
-        expect(links).to_have_attribute('rel', 'noopener noreferrer')
+        expect(page.locator('.assistant .chat-message-text')).to_have_text(messages[1]['content'])
+        expect(page.locator('[data-chat-search],.chat-web-search,.chat-search-sources')).to_have_count(0)
+        assert 'weather.invalid' not in page.locator('#sp-life-chat').inner_text()
         assert not external, 'Search source links must not be prefetched'
         assert_inline(page); assert_usable(page, '#sp-life-chat')
         page.screenshot(path=str(OUT / f'searched-{width}-{theme}-{scale}.png'), animations='disabled')
-        for index, status in enumerate(['not-used', 'unknown', 'failed'], start=2):
-            messages += [{'id': f'u{index}', 'role': 'user', 'content': f'虚构问题{index}'}, {'id': f'a{index}', 'role': 'assistant', 'content': '这轮回复不推断搜索已经成功。', 'complete': True, 'search': {'status': status, 'sources': []}}]
+        for index, status in enumerate(['not-used', 'unknown', 'failed', 'searching', 'unsupported'], start=2):
+            messages += [{'id': f'u{index}', 'role': 'user', 'content': f'虚构问题{index}'}, {'id': f'a{index}', 'role': 'assistant', 'content': f'第{index}轮虚构回答。', 'complete': True, 'search': {'status': status, 'sources': []}}]
             emit(page, messages)
-            expect(page.locator(f'[data-chat-search="{status}"]')).to_have_count(1)
-            expect(page.locator('[data-chat-search="searched"]')).to_have_count(1)
-        expect(page.locator('[data-chat-search="unknown"]')).to_contain_text('本次搜索状态未返回')
+            expect(page.locator('.assistant .chat-message-text')).to_have_count(index)
+            expect(page.locator('[data-chat-search],.chat-web-search,.chat-search-sources')).to_have_count(0)
+        assert '本次搜索状态未返回' not in page.locator('#sp-life-chat').inner_text()
         # Wait for the latest debounced snapshot, not an earlier searched-only save.
-        wait_saved(page, lambda row: [message.get('search', {}).get('status') for message in row.get('messages', []) if message.get('role') == 'assistant'] == ['searched', 'not-used', 'unknown', 'failed'])
+        wait_saved(page, lambda row: [message.get('search', {}).get('status') for message in row.get('messages', []) if message.get('role') == 'assistant'] == ['searched', 'not-used', 'unknown', 'failed', 'searching', 'unsupported'] and len(row['messages'][1]['search']['sources']) == 1)
         page.locator('[data-voice-end]').click()
         page.reload(); page.locator('#fab').wait_for(); page.locator('[data-page="page-life"]').click(); page.locator('[data-life-chat]').click()
-        expect(page.locator('[data-chat-search="searched"]')).to_have_count(1)
-        expect(page.locator('[data-chat-search="unknown"]')).to_have_count(1)
+        expect(page.locator('.assistant .chat-message-text')).to_have_count(6)
+        expect(page.locator('[data-chat-search],.chat-web-search,.chat-search-sources')).to_have_count(0)
         expect(page.locator('.chat-voice-overlay')).to_have_count(0)
         assert not errors and not external, (errors, external)
-        print('PASS voice search facts, sources, copy and persistence', width, theme, scale, flush=True)
+        print('PASS voice search capability and persistence with hidden search metadata', width, theme, scale, flush=True)
     finally:
         context.close()
 

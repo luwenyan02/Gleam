@@ -99,8 +99,7 @@ def run(browser, width, height, theme, scale):
         expect(page.locator('.assistant blockquote')).to_contain_text('天气尚未核实')
         expect(page.locator('.assistant h2,.assistant h3,.assistant ul,.assistant table')).to_have_count(0)
         expect(page.locator('.assistant .chat-message-text')).to_have_count(1)
-        expect(page.locator('.assistant [data-chat-search="searched"]')).to_have_count(1)
-        expect(page.locator('.assistant .chat-search-sources a')).to_have_attribute('href', 'https://source.invalid/voice')
+        expect(page.locator('[data-chat-search],.chat-web-search,.chat-search-sources')).to_have_count(0)
         emit(page, [user, assistant, {'id': 'u2', 'role': 'user', 'content': '我再想一想'}])
         expect(page.locator('.assistant strong').first).to_have_text('周六')
         page.locator('[data-chat-copy]').click()
@@ -109,7 +108,7 @@ def run(browser, width, height, theme, scale):
         assert_inline(page); assert_usable(page, '#sp-life-chat')
         OUT.mkdir(parents=True, exist_ok=True)
         page.screenshot(path=str(OUT / f'markdown-{width}-{theme}-{scale}.png'), animations='disabled')
-        wait_saved(page, lambda row: any(m.get('content') == RAW and m.get('voiceDisplay') == DISPLAY for m in row.get('messages', [])))
+        wait_saved(page, lambda row: any(m.get('content') == RAW and m.get('voiceDisplay') == DISPLAY and m.get('search') == assistant['search'] for m in row.get('messages', [])))
 
         if width == 390:
             # A completed reply can finish layout after the microphone ends and a new voice call starts.
