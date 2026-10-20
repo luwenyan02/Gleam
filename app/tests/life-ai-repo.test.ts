@@ -130,7 +130,7 @@ describe('生活 AI 结构化多轮对话', () => {
       for (let i = 0; i < bytes.length; i += 3) controller.enqueue(bytes.slice(i, i + 3)); controller.close();
     } }), { headers: { 'Content-Type': 'text/event-stream' } })));
     const onDelta = vi.fn();
-    await expect(continueLifeChat({ body: '', messages: [{ role: 'user', content: '你好' }], onDelta })).resolves.toEqual({ reply: '你好，随便聊。', readyToSummarize: false });
+    await expect(continueLifeChat({ body: '', messages: [{ role: 'user', content: '你好' }], onDelta })).resolves.toEqual({ reply: '你好，随便聊。', readyToSummarize: false, search: { status: 'unsupported', sources: [] } });
     expect(onDelta.mock.calls.map(call => call[0])).toEqual(['你好', '你好，随便聊。']);
   });
   it('中断的流不能被当成已完成回复', async () => {
@@ -149,7 +149,7 @@ describe('生活 AI 结构化多轮对话', () => {
       body: '',
       messages: [{ role: 'user', content: '池塘边有一只橘猫。' }],
       expectedDestination: { baseUrl: 'https://example.invalid/v1', model: 'vision-model' },
-    })).resolves.toEqual({ reply: '还记得它当时在做什么吗？', readyToSummarize: true });
+    })).resolves.toEqual({ reply: '还记得它当时在做什么吗？', readyToSummarize: true, search: { status: 'unsupported', sources: [] } });
   });
 
   it('可安全降级的回复按普通文本展示且绝不猜测摘要就绪；畸形内容仍拒绝', async () => {
@@ -161,9 +161,9 @@ describe('生活 AI 结构化多轮对话', () => {
     vi.stubGlobal('fetch', fetchSpy);
     const input = { body: '', messages: [{ role: 'user' as const, content: '今天散步。' }] };
 
-    await expect(continueLifeChat(input)).resolves.toEqual({ reply: '愿意的话，再讲一个小细节。', readyToSummarize: false });
-    await expect(continueLifeChat(input)).resolves.toEqual({ reply: '我们可以先停在这里。', readyToSummarize: false });
-    await expect(continueLifeChat(input)).resolves.toEqual({ reply: '这是一段非 JSON 纯文本', readyToSummarize: false });
+    await expect(continueLifeChat(input)).resolves.toEqual({ reply: '愿意的话，再讲一个小细节。', readyToSummarize: false, search: { status: 'unsupported', sources: [] } });
+    await expect(continueLifeChat(input)).resolves.toEqual({ reply: '我们可以先停在这里。', readyToSummarize: false, search: { status: 'unsupported', sources: [] } });
+    await expect(continueLifeChat(input)).resolves.toEqual({ reply: '这是一段非 JSON 纯文本', readyToSummarize: false, search: { status: 'unsupported', sources: [] } });
     await expect(continueLifeChat(input)).rejects.toThrow('对话格式无效');
   });
 
@@ -178,7 +178,7 @@ describe('生活 AI 结构化多轮对话', () => {
       { role: 'user', content: '带照片的第一句', photos: [{ name: '已发送.png', dataUrl: 'data:image/png;base64,AQ==' }] },
       { role: 'assistant', content: '我看见了。' },
       { role: 'user', content: '这次只补一句文字。' },
-    ] })).resolves.toEqual({ reply: '这次只收到了文字。', readyToSummarize: false });
+    ] })).resolves.toEqual({ reply: '这次只收到了文字。', readyToSummarize: false, search: { status: 'unsupported', sources: [] } });
   });
 });
 

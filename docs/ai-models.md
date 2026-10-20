@@ -1,6 +1,6 @@
 # AI 模型预设维护
 
-核对日期：2026-09-07。当前近期窗口为 2026-06-07 至 2026-09-07；运行时按最近三个日历月筛选。仅收录适用于本应用 Chat Completions 调用的对话模型，不为凑满数量加入生图、语音或嵌入模型。
+核对日期：2026-09-07。当前近期窗口为 2026-06-07 至 2026-09-07；运行时按最近三个日历月筛选。仅收录适用于本应用的对话模型，基础调用采用 Chat Completions，聊天搜索的 Responses 适配见下文；不为凑满数量加入生图、语音或嵌入模型。
 
 ## 平台目录与来源
 
@@ -23,6 +23,14 @@
 - 目录不保证用户账号、地域或套餐拥有所有模型权限，需使用自己的 API Key 测试。
 
 ## 请求兼容与测试边界
+
+### 文字聊天联网搜索（2026-10-20）
+
+用户当前使用阿里百炼 `qwen3.8-max`。按[联网搜索](https://help.aliyun.com/zh/model-studio/web-search)及[Responses API](https://help.aliyun.com/zh/model-studio/compatibility-with-openai-responses-api)文档，普通聊天对已确认支持的百炼模型调用原地域／业务空间下的 `/compatible-mode/v1/responses`，携带 `tools: [{ type: 'web_search' }]`，由模型按问题判断是否搜索。该协议从 `web_search_call.action.sources` 返回来源，不能把 Chat Completions 的 `enable_search` 与仅 DashScope 原生协议支持的 `enable_source`／`enable_citation` 混用。
+
+分别记录可搜索、搜索中、实际已搜索、未使用搜索、当前配置未接入和未完成状态；只根据工具完成事件或实际用量确认执行，不根据模型正文猜测。来源仅采用已完成工具返回的 HTTP(S) 链接，去重、限长、过滤凭据和可执行协议，不预加载来源网页或站点图标；点开后在浏览器查看。API 不保证每次返回来源，已搜索而无可用链接时如实显示。搜索状态及来源随对应消息和未完成检查点存储，重新回答不继承旧来源。
+
+搜索请求使用本机显式构建的最近上下文，发送 `store: false`，不使用服务端 `previous_response_id`；服务商的数据规则仍适用。确认发送时告知服务商可处理搜索查询及可能收费。搜索失败不静默回退重发；账本分析、含财务分析的上下文、记账、整理和周刊不启用搜索。其他服务商或未知自定义代理继续原聊天协议，不推断其搜索能力。模拟响应／事件与多宽度浏览器回归不等于实际账号、地域和手机的百炼服务验收。
 
 - GPT-6 Astra 不发送不支持的 `temperature`；GPT-5.6 使用默认采样和低推理强度，见 [OpenAI 模型指导](https://developers.openai.com/api/docs/guides/latest-model)。
 - Kimi K3 使用低推理强度，不发送固定采样参数，见[平台重要限制](https://platform.kimi.com/docs/guide/kimi-k3-quickstart)。

@@ -21,6 +21,13 @@ import org.json.JSONObject;
 
 /** Native-only credential snapshots. One atomic encrypted record binds key, source and destination. */
 final class GleamSpeechCredentials implements GleamSpeechCandidateGate.Store {
+    private static GleamSpeechCredentials shared;
+    static GleamSpeechCredentials shared(Context context) {
+        synchronized (GleamCredentialLock.LOCK) {
+            if (shared == null) shared = new GleamSpeechCredentials(context);
+            return shared;
+        }
+    }
     static final String SECRET_NAME = "voice.bailian.apiKey";
     private static final String KEY_ALIAS = "gleam_voice_bailian_v1";
     private final Context context;

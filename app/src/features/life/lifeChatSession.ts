@@ -84,6 +84,12 @@ export function startChatReply(
         body: '', messages: structuredClone(draft.messages.slice(0, messageIndex + 1)),
         photos: options.photos, ledgerGrant: options.ledgerGrant, expectedDestination: options.expectedDestination,
         signal, noteId: draft.noteId, sourceUpdatedAt: draft.sourceUpdatedAt,
+        onSearch: search => {
+          if (signal.aborted || !reply.running) return;
+          draft.chatReply!.search = structuredClone(search);
+          if (timer == null) timer = setTimeout(flush, 350);
+          notify();
+        },
         onDelta: content => {
           if (signal.aborted || !reply.running || content.length > 12_000) return;
           draft.chatReply!.content = content;
@@ -97,11 +103,15 @@ export function startChatReply(
       if (regenerate) draft.messages.splice(messageIndex + 1);
       if (options.ledgerAnalysis) draft.messages[messageIndex].ledgerAnalysis = true;
       draft.messages.push({ role: 'assistant', content: turn.reply, repliedAt: Date.now(),
+        ...(turn.search ? { search: structuredClone(turn.search) } : {}),
         ...(options.ledgerAnalysis ? { ledgerAnalysis: true } : {}) });
       draft.chatReply = undefined;
     } catch (error) {
       reply.error = error;
       draft.chatReply!.status = signal.aborted ? 'stopped' : 'failed';
+      if (['enabled', 'searching'].includes(draft.chatReply!.search?.status ?? '')) {
+        draft.chatReply!.search = { status: 'failed', sources: [] };
+      }
     } finally {
       clearTimeout(timer);
       off();

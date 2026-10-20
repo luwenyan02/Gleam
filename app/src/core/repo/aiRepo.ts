@@ -9,13 +9,14 @@
  */
 import { db, now, stamp } from '../db';
 import { parseYuanToFen } from '../money';
-import type { Account, AiPendingItem, Attachment, Category, ImportBatch } from '../types';
+import type { Account, AiPendingItem, Attachment, Category, ChatWebSearch, ImportBatch } from '../types';
 import { getSetting, setSetting } from './settingsRepo';
 import { listCategories } from './categoryRepo';
 import { listAccounts } from './accountRepo';
 import { secretStore } from '../secretStore';
 import { assertImageModel, chatOptions } from '../aiChatOptions';
 import { collectUnreferencedAttachments } from './entryAttachmentRepo';
+import { requestWebSearchChat, searchInstructions, webSearchEndpoint } from '../chatWebSearch';
 
 /* ── 识别结果与错误 ─────────────────── */
 
@@ -88,6 +89,8 @@ async function loadConfig(): Promise<{ baseUrl: string; model: string; apiKey: s
 export interface AiChatRequest {
   messages: unknown[];
   onDelta?: (text: string) => void;
+  /** 只有普通聊天显式请求搜索；记账、整理和账本分析不启用。 */
+  onSearch?: (state: ChatWebSearch) => void;
   expectedDestination?: { baseUrl: string; model: string };
   signal?: AbortSignal;
   requireImageModel?: boolean;
@@ -103,7 +106,7 @@ function cancelledError(): Error {
  * OpenAI 兼容对话的共享出站边界。私密内容模式不读取或记录错误响应正文。
  */
 export async function requestAiChat({
-  messages, signal, requireImageModel = false, privateContent = false, expectedDestination, onDelta,
+  messages, signal, requireImageModel = false, privateContent = false, expectedDestination, onDelta, onSearch,
 }: AiChatRequest): Promise<string> {
   const { baseUrl, model, apiKey } = await loadConfig();
   if (expectedDestination && (baseUrl.trim() !== expectedDestination.baseUrl || model.trim() !== expectedDestination.model)) {
@@ -111,6 +114,12 @@ export async function requestAiChat({
   }
   if (requireImageModel) assertImageModel(baseUrl, model);
   if (signal?.aborted) throw cancelledError();
+  if (onSearch) {
+    const endpoint = webSearchEndpoint(baseUrl, model);
+    messages = searchInstructions(messages, !!endpoint);
+    if (endpoint) return requestWebSearchChat({ endpoint, model, apiKey, messages, signal, onDelta, onSearch });
+    onSearch({ status: 'unsupported', sources: [] });
+  }
   const ctrl = new AbortController();
   const abortFromCaller = () => ctrl.abort();
   signal?.addEventListener('abort', abortFromCaller, { once: true });

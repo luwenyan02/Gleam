@@ -59,7 +59,7 @@ public final class GleamSpeechPlugin extends Plugin {
         }
     }
     @Override public void load() {
-        credentials = new GleamSpeechCredentials(getContext());
+        credentials = GleamSpeechCredentials.shared(getContext());
         candidates = new GleamSpeechCandidateGate(credentials, GleamCredentialLock.LOCK);
         GleamCredentialLock.add(mainKeyChanged);
     }
@@ -140,6 +140,7 @@ public final class GleamSpeechPlugin extends Plugin {
                     if (!credentials.matchesConfig(config)) { reject(call, "SPEECH_CONFIG_INVALID"); return; }
                 }
                 if (!identity.reserve(session.id, session.revision, credentials.revision())) { candidates.cancel(session.id); reject(call, "SPEECH_SESSION_INVALID"); return; }
+                if (!connectionOnly && !GleamMicrophoneLease.acquire(session)) { identity.end(session.id); reject(call, "SPEECH_BUSY"); return; }
                 active = session;
                 session.authorization = new GleamSpeechAuthorization(GleamCredentialLock.LOCK,
                     () -> active == session && identity.mayContinue(session.id, credentials.revision(), foreground, destroyed));
@@ -287,6 +288,7 @@ public final class GleamSpeechPlugin extends Plugin {
         end(session); if (!session.resultDelivered) reject(session.call, code, phase, reasons);
     }
     private void end(Session session) {
+        GleamMicrophoneLease.release(session);
         candidates.cancel(session.id);
         if (session.commitDeadline != null) main.removeCallbacks(session.commitDeadline);
         if (session.permissionDeadline != null) main.removeCallbacks(session.permissionDeadline);

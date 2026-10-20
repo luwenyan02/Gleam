@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
         GleamBootGuard.installClosedInterceptor();
         registerPlugin(GleamSecretsPlugin.class);
         registerPlugin(GleamSpeechPlugin.class);
+        registerPlugin(GleamLiveVoicePlugin.class);
         registerPlugin(GleamWebDavPlugin.class);
         registerPlugin(GleamMailPlugin.class);
         registerPlugin(GleamUpdatePlugin.class);

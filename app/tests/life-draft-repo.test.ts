@@ -24,6 +24,16 @@ beforeEach(async () => {
 });
 
 describe('生活故事草稿仓库', () => {
+  it('保存语音排版同时保留原始转写，非法排版不能进入草稿', async () => {
+    const messages = [{ role: 'user', content: '虚构问题' }, { role: 'assistant', content: '第一项，散步；第二项，休息。', voiceDisplay: '## 计划\n\n- 散步\n- 休息' }];
+    await putLifeDraft(draft({ body: '', messages }));
+    const id = await saveLifeDraft('composer');
+    expect((await getLifeNote(id))?.conversation).toEqual(messages);
+    for (const value of ['', 42, '字'.repeat(12001)]) {
+      await expect(putLifeDraft(draft({ messages: [{ role: 'assistant', content: '原话', voiceDisplay: value }] }))).rejects.toThrow('语音排版');
+    }
+    await expect(putLifeDraft(draft({ messages: [{ role: 'user', content: '原话', voiceDisplay: '不能覆盖用户文字' }] }))).rejects.toThrow('语音排版');
+  });
   it('公开迁移把旧对话与整理稿分开，且重复迁移不丢数据', () => {
     const legacy = draft({
       title: '公园的一天',

@@ -23,6 +23,27 @@ function hold() {
 }
 const destination = { baseUrl: 'https://example.invalid', model: 'test' };
 
+it('搜索进度和来源随回复检查点保存，最终消息保留来源，重新回答不继承旧来源', async () => {
+  const pending = hold(), source = draft();
+  const search = { status: 'searched' as const, sources: [{ title: '虚构来源', url: 'https://source.example.invalid/' }] };
+  const reply = startChatReply(source, 0, false, { expectedDestination: destination });
+  await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
+  request.mock.calls[0][0].onSearch?.(search);
+  request.mock.calls[0][0].onDelta?.('已搜索的片段');
+  await persistChatDraft(source);
+  const checkpoint = (await getLifeDraft(source.key))?.chatReply?.search;
+  pending.resolve({ reply: '完整回复', readyToSummarize: false, search }); await reply.done;
+  expect(checkpoint).toEqual(search);
+  expect((await getLifeDraft(source.key))?.messages.at(-1)?.search).toEqual(search);
+  const again = hold();
+  const regenerated = startChatReply(source, 0, true, { expectedDestination: destination });
+  await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+  expect(source.chatReply?.search).toBeUndefined();
+  again.resolve({ reply: '未搜索的新回复', readyToSummarize: false, search: { status: 'not-used', sources: [] } });
+  await regenerated.done;
+  expect(source.messages.at(-1)?.search).toEqual({ status: 'not-used', sources: [] });
+});
+
 beforeEach(async () => {
   vi.restoreAllMocks();
   request.mockReset(); unsavedChatDrafts.clear();
