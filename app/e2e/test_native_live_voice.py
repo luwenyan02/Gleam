@@ -42,6 +42,7 @@ MOCK = MOCK_NATIVE + r''';(() => {
 
 
 def assert_inline(page):
+    page.wait_for_function("document.querySelector('.chat-voice-overlay').getAnimations().every(a=>a.playState==='finished')")
     assert page.locator('.chat-voice-overlay').evaluate(r'''el=>{
       const r=el.getBoundingClientRect(),p=el.parentElement.getBoundingClientRect();
       const messages=document.querySelector('#life-chat-messages');
@@ -51,6 +52,8 @@ def assert_inline(page):
         &&!el.hasAttribute('aria-modal')&&getComputedStyle(el).backdropFilter.includes('blur')&&alpha&&Number(alpha[1])<1;
     }''')
     assert_usable(page,'.chat-voice-overlay')
+    assert page.locator('.life-chat-page').evaluate('el=>el.scrollHeight<=el.clientHeight+1')
+    assert page.locator('#sp-life-chat .sub-head').bounding_box()['y']>=0
 
 
 def run(browser,width,height,theme,scale):
@@ -61,14 +64,15 @@ def run(browser,width,height,theme,scale):
         page.goto(URL);page.locator('#fab').wait_for();configure(page)
         page.locator('[data-page="page-life"]').click();page.locator('[data-life-chat]').click()
         page.evaluate('([theme,scale])=>{document.documentElement.dataset.theme=theme;document.documentElement.style.setProperty("--seed-type",scale)}',[theme,str(scale)])
-        page.locator('#life-chat-input').fill('保留的虚构文字草稿')
+        draft = '保留的虚构文字草稿\n' * 10 if width == 390 else '保留的虚构文字草稿'
+        page.locator('#life-chat-input').fill(draft)
         page.locator('[data-chat-voice]').click()
         # 语音层仅覆盖输入区，聊天记录保持可读且没有全页抽屉。
         expect(page.locator('.life-chat-input-wrap .chat-voice-overlay')).to_be_visible()
         expect(page.locator('#sheet.open,#scrim.show')).to_have_count(0)
         expect(page.locator('[data-voice-start]')).to_be_enabled()
         expect(page.locator('#voice-workspace,[data-voice-model],[data-voice-region]')).to_have_count(0)
-        assert page.locator('[data-voice-close]').evaluate('el=>{const r=el.getBoundingClientRect();return r.width===44&&r.height===44&&getComputedStyle(el).borderRadius==="50%"}')
+        assert page.locator('[data-voice-close]').evaluate('el=>{const face=el.querySelector(".voice-control-face"),r=face.getBoundingClientRect();return r.width>=44&&r.width===r.height&&getComputedStyle(face).borderRadius==="50%"}')
         assert not any(c['method']=='start' for c in page.evaluate('window.__liveCalls'))
         assert page.evaluate('window.__micCalls')==0
         assert_inline(page)
@@ -93,7 +97,12 @@ def run(browser,width,height,theme,scale):
         expect(page.locator('.assistant .chat-message-text')).to_have_count(1)
         expect(page.locator('[data-voice-transcript]')).to_have_count(0)
         expect(page.locator('.chat-voice-overlay')).to_have_attribute('data-voice-state','speaking')
-        assert page.locator('.voice-identity').evaluate('el=>el.getAnimations({subtree:true}).length') == (1 if width==390 else 0)
+        # 选中的语音条：圆形侧控、中央胶囊；动效遵从系统减少动态设置。
+        assert page.locator('[data-voice-mute]').evaluate('el=>{const r=el.querySelector(".voice-control-face").getBoundingClientRect();return r.width>=44&&Math.abs(r.width-r.height)<1}')
+        assert page.locator('[data-voice-interrupt]').evaluate('el=>{const r=el.querySelector(".voice-control-face").getBoundingClientRect();return r.width>r.height*1.7}')
+        assert page.locator('.voice-wave:visible').evaluate('el=>el.getAnimations({subtree:true}).length>0') == (width==390)
+        expect(page.locator('[data-voice-close]')).to_be_hidden()
+        expect(page.locator('[data-voice-interrupt]')).to_have_accessible_name('打断回复')
         assert_inline(page)
         expect(page.locator('[data-chat-start]')).to_be_disabled()
         expect(page.locator('[data-chat-regenerate]')).to_be_disabled()
@@ -113,7 +122,16 @@ def run(browser,width,height,theme,scale):
         page.evaluate("window.__liveEvent({state:'speaking',messages:[{role:'user',content:'你好'},{role:'assistant',content:'你好，有什么想聊的？'}]})")
         page.locator('[data-voice-mute]').click();expect(page.locator('[data-voice-mute]')).to_have_attribute('aria-pressed','true')
         expect(page.locator('.chat-voice-overlay')).to_have_attribute('data-voice-state','muted')
-        assert page.locator('.voice-identity').evaluate('el=>el.getAnimations({subtree:true}).length')==0
+        assert page.locator('.voice-wave:visible').evaluate('el=>el.getAnimations({subtree:true}).filter(a=>a instanceof CSSAnimation).length')==0
+        expect(page.locator('[data-voice-mic-off]')).to_be_visible()
+        # 静音期间即使收到回复状态也不伪装成正在采集；取消静音恢复原图标和动效。
+        page.evaluate("window.__liveEvent({state:'speaking'})")
+        assert page.locator('.voice-wave:visible').evaluate('el=>el.getAnimations({subtree:true}).filter(a=>a instanceof CSSAnimation).length')==0
+        page.locator('[data-voice-mute]').click()
+        expect(page.locator('[data-voice-mute]')).to_have_attribute('aria-pressed','false')
+        expect(page.locator('[data-voice-mic-on]')).to_be_visible()
+        expect(page.locator('[data-voice-mic-off]')).to_be_hidden()
+        page.locator('[data-voice-mute]').click()
         page.locator('[data-voice-interrupt]').click()
         assert any(c['method']=='interrupt' for c in page.evaluate('window.__liveCalls'))
         page.locator('[data-voice-end]').click();expect(page.locator('.chat-voice-overlay')).to_have_count(0)
@@ -131,14 +149,14 @@ def run(browser,width,height,theme,scale):
         page.evaluate('document.dispatchEvent(new Event("visibilitychange"))')
         assert len([c for c in page.evaluate('window.__liveCalls') if c['method']=='start'])==count
         page.locator('[data-voice-close]').click();expect(page.locator('.chat-voice-overlay')).to_have_count(0)
-        expect(page.locator('#life-chat-input')).to_have_value('保留的虚构文字草稿')
+        expect(page.locator('#life-chat-input')).to_have_value(draft)
         expect(page.locator('.assistant .chat-message-text')).to_contain_text('你好，有什么想聊的？')
         # 权限拒绝可以重试，不显示底层配置；连接准备中也可退出并隔离迟到完成。
         page.evaluate('window.__liveDeny=true');page.locator('[data-chat-voice]').click();page.locator('[data-voice-start]').click()
         expect(page.locator('[data-voice-status]')).to_contain_text('麦克风')
         page.locator('[data-voice-close]').click();page.evaluate('window.__liveDeny=false;window.__livePending=true')
         page.locator('[data-chat-voice]').click();page.locator('[data-voice-start]').click()
-        page.wait_for_function('!!window.__resolveLiveStart');page.locator('[data-voice-close]').click();page.evaluate('window.__resolveLiveStart()')
+        page.wait_for_function('!!window.__resolveLiveStart');expect(page.locator('[data-voice-end]')).to_have_accessible_name('取消连接');page.locator('[data-voice-end]').click();page.evaluate('window.__resolveLiveStart()')
         expect(page.locator('.chat-voice-overlay')).to_have_count(0)
         # 真正的页面隐藏也结束；返回前台不自动重新录音。
         page.evaluate('window.__livePending=false');page.locator('[data-chat-voice]').click();page.locator('[data-voice-start]').click()
@@ -172,7 +190,7 @@ def run(browser,width,height,theme,scale):
         else:raise AssertionError('Last voice transcript was not persisted')
         page.reload();page.locator('#fab').wait_for();page.locator('[data-page="page-life"]').click();page.locator('[data-life-chat]').click()
         expect(page.locator('#life-chat-messages')).to_contain_text('退出前的最后一句')
-        expect(page.locator('#life-chat-input')).to_have_value('保留的虚构文字草稿')
+        expect(page.locator('#life-chat-input')).to_have_value(draft)
         expect(page.locator('.chat-voice-overlay')).to_have_count(0)
         # 未验证配置只给设置入口，不出现重复配置表单或开始采集。
         page.evaluate('window.__liveReady=false');count=len([c for c in page.evaluate('window.__liveCalls') if c['method']=='start'])
