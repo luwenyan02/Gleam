@@ -47,6 +47,8 @@ Android 单元测试及无签名诊断 APK 继续由 `.github/workflows/ci.yml` 
 
 main与preview的CI先运行history_secrets，通过后才开始网页、浏览器或Android任务。checkout使用fetch-depth:0，并把远端heads、tags和PR head获取到独立refs/audit命名空间；当前PR测试合并提交也由Git refs一并覆盖。e2e与upgrade_cache固定ubuntu-24.04，避免ubuntu-latest的发行版迁移破坏当前Playwright支持范围。
 
+CI的e2e使用4片矩阵，向协调器传入`--shard-index 1..4 --shard-count 4`，将完整脚本列表稳定轮转分配，失败不取消其他片；截图artifact按片区分，演示截图仅片1生成。直接执行`npm run test:e2e`仍为全量顺序执行。分片参数无效或会产生空片时，在启动服务前报错；协调器单测检查完整覆盖、失败传播和服务清理。
+
 Linux x86_64可从仓库根目录运行：
 
 ```sh

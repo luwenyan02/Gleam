@@ -24,7 +24,7 @@
 .calendar-card .cal-head{font-size:var(--text-meta);color:var(--muted);letter-spacing:0}
 .calendar-card .cal-grid{grid-template-columns:repeat(7,minmax(0,1fr))}
 .calendar-card .cal-day{min-width:0;min-height:50px;font-size:calc(14px * var(--seed-type))}
-.calendar-card .cd-amt{max-width:100%;font-size:var(--text-small);line-height:1.4;white-space:normal;text-align:center;letter-spacing:-.05em}
+.calendar-card .cd-amt{max-width:100%;font-size:var(--text-small);line-height:1.4;white-space:normal;overflow-wrap:anywhere;text-align:center;letter-spacing:-.05em}
 .calendar-tip{margin-top:10px;font-size:var(--text-meta);line-height:1.6;color:var(--muted)}
 .cd-sum{flex-wrap:wrap;gap:8px 18px;font-size:var(--text-meta)}
 .cd-sum>span{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;min-width:0}

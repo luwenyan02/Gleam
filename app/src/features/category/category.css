@@ -39,4 +39,4 @@
 .cm-item>.chev,.cm-item>[data-addsub]{flex:none}
 
 .cm-item[data-drag-group="parents"]{gap:8px}
-.cm-item[data-drag-group="parents"]>[data-addsub]{padding-inline:8px}
+.cm-item[data-drag-group="parents"]>[data-addsub]{padding-inline:4px}

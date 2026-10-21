@@ -36,6 +36,19 @@ def count(page, category_id, expected):
     expect(page.locator(f'#cm-list [data-category-count="{category_id}"]')).to_have_text(f'{expected:,} 笔')
 
 
+def assert_parent_layout(page):
+    for row in page.locator('#cm-list .cm-item[data-drag-group="parents"]').all():
+        parent=row.locator('.cm-parent-copy')
+        badge=parent.locator('.cm-entry-count').bounding_box();children=parent.locator('.cm-subcount').bounding_box()
+        assert abs(badge['y']-children['y'])<1.1
+        assert badge['x']+badge['width']+6<=children['x']+1
+        name=parent.locator('.cm-category-name')
+        assert name.evaluate('e=>e.scrollWidth<=e.clientWidth+1'), name.inner_text()
+        assert parent.evaluate('e=>e.scrollWidth<=e.clientWidth+1')
+        button=row.locator('[data-addsub]').bounding_box()
+        assert button['width']>=44 and button['height']>=44, button
+
+
 def run(browser, width, theme, scale, extra):
     context=browser.new_context(viewport={'width':width,'height':890},device_scale_factor=3 if width==400 else 1,
                                locale='zh-CN',timezone_id='Asia/Shanghai',service_workers='block',reduced_motion='reduce')
@@ -50,12 +63,14 @@ def run(browser, width, theme, scale, extra):
         name=label.locator('.cm-category-name').bounding_box();badge=label.locator('.cm-entry-count').bounding_box()
         assert name['x']+name['width']+6<=badge['x']+1
         assert label.evaluate('e=>e.scrollWidth<=e.clientWidth+1')
-    for parent in page.locator('#cm-list .cm-parent-copy').all():
-        badge=parent.locator('.cm-entry-count').bounding_box();children=parent.locator('.cm-subcount').bounding_box()
-        assert abs(badge['y']-children['y'])<1.1
-        assert badge['x']+badge['width']+6<=children['x']+1
-        assert parent.locator('.cm-category-name').evaluate('e=>e.scrollWidth<=e.clientWidth+1')
-        assert parent.evaluate('e=>e.scrollWidth<=e.clientWidth+1')
+    assert_parent_layout(page)
+    if scale>1 and extra:
+        # Preserve the real font checks above, then exercise wider Linux glyphs.
+        wide_font=page.add_style_tag(content=":root{--font-body:'DejaVu Sans',sans-serif}")
+        try:
+            assert_parent_layout(page)
+        finally:
+            wide_font.evaluate('e=>e.remove()')
     assert page.locator('#sp-categories').evaluate('e=>e.scrollWidth<=e.clientWidth+1')
     label=f'{width}-{theme}-text{scale}'
     page.screenshot(path=str(OUT/f'expense-{label}.png'),animations='disabled')

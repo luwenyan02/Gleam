@@ -112,6 +112,10 @@ jobs:
   e2e:
     needs: history_secrets
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     defaults:
       run:
         working-directory: app
@@ -131,12 +135,12 @@ jobs:
       - run: python -m pip install -r e2e/requirements.txt
       - run: python -m playwright install --with-deps chromium
       - run: npm run build
-      - run: npm run test:e2e
+      - run: npm run test:e2e -- --shard-index ${{ matrix.shard }} --shard-count 4
       - name: Preserve synthetic browser screenshots
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
+          name: e2e-screenshots-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
           path: |
             .tmp/tests/**/*.png
             .tmp/tests/e2e/upgrade-cache/report.json

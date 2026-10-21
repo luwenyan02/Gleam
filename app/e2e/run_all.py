@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Run the complete browser regression suite against one preview server."""
 
+import argparse
 import os
 import subprocess
 import sys
@@ -65,7 +66,24 @@ def wait_for_server(process: subprocess.Popen[str], timeout: float = 20) -> None
     raise RuntimeError('预览服务未在 20 秒内就绪')
 
 
-def main() -> int:
+def select_tests(shard_index: int, shard_count: int) -> tuple[str, ...]:
+    if not 1 <= shard_count <= len(TESTS):
+        raise ValueError(f'shard-count must be between 1 and {len(TESTS)}')
+    if not 1 <= shard_index <= shard_count:
+        raise ValueError('shard-index must be between 1 and shard-count')
+    return TESTS[shard_index - 1::shard_count]
+
+
+def main(argv=()) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--shard-index', type=int, default=1)
+    parser.add_argument('--shard-count', type=int, default=1)
+    args = parser.parse_args(argv)
+    try:
+        tests = select_tests(args.shard_index, args.shard_count)
+    except ValueError as error:
+        parser.error(str(error))
+    print(f'E2E shard {args.shard_index}/{args.shard_count}: {len(tests)}/{len(TESTS)} scripts', flush=True)
     server = None
     env = os.environ.copy()
     screenshots = PROJECT_ROOT / '.tmp' / 'tests' / 'e2e' / 'screenshots'
@@ -91,7 +109,8 @@ def main() -> int:
             wait_for_server(server)
 
         failures = []
-        for test in TESTS:
+        for index, test in enumerate(tests, 1):
+            print(f'E2E [{index}/{len(tests)}] {test}', flush=True)
             result = subprocess.run(
                 [sys.executable, str(Path(__file__).parent / test)],
                 cwd=APP_ROOT,
@@ -102,6 +121,8 @@ def main() -> int:
         if failures:
             print(f"Browser acceptance failed: {failures}", file=sys.stderr, flush=True)
             return 1
+        if args.shard_index != 1:
+            return 0
         # Publishable previews use their own fresh, fictional browser contexts.
         # Keep this separate from the regression suites and leave outputs in .tmp.
         return subprocess.run(
@@ -119,4 +140,4 @@ def main() -> int:
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))
