@@ -1,4 +1,4 @@
-import type { VoiceTranscriptMessage, VoiceTextDestination } from '../../core/voiceTranscript';
+import type { VoiceTranscriptMessage, VoiceTextDestination, VoiceTranscriptMode } from '../../core/voiceTranscript';
 import { getLifeAiDestination } from '../../core/repo/lifeAiRepo';
 import { iconHtml } from '../../assets/icons';
 import { RealtimeVoice, type VoiceState } from '../../core/realtimeVoice';
@@ -9,17 +9,25 @@ import { openAiSettings } from '../settings/settings';
 import { chatIcon } from './chatIcons';
 
 /** Both transports share the small call UI; Android reads only the native tested configuration. */
-export function openLifeVoice(options: { container: HTMLElement; onTranscript: (messages: VoiceTranscriptMessage[], destination?: VoiceTextDestination) => void; onClose: () => void }): () => void {
+export function openLifeVoice(options: { container: HTMLElement; onTranscript: (messages: VoiceTranscriptMessage[], destination?: VoiceTextDestination, mode?: VoiceTranscriptMode) => void; onClose: () => void }): () => void {
   const native = nativeLiveVoiceSupported();
   let voice: NativeLiveVoice | RealtimeVoice | undefined;
-  let closed = false, starting = false, ready = false;
-  let startRevision = 0;
+  let closed = false, starting = false, ready = false, settling = false;
+  let transportDone = Promise.resolve();
+  let startRevision = 0, finalRevision = -1;
   let reset = () => {};
   let workspace = '', region = 'beijing';
   let conversation: VoiceTranscriptMessage[] = [];
   let textDestination: VoiceTextDestination | undefined;
   const configController = new AbortController();
-  const stop = () => { startRevision++; starting = false; const current = voice; voice = undefined; current?.close(); reset(); };
+  const stop = () => {
+    const revision = ++startRevision; starting = false;
+    const current = voice; voice = undefined;
+    if (current) transportDone = Promise.resolve(current.close());
+    settling = true; reset();
+    void transportDone.finally(() => { if (revision === startRevision) { settling = false; reset(); } });
+    return transportDone;
+  };
   const el = document.createElement('section');
   el.className = 'chat-voice-overlay'; el.setAttribute('role', 'group'); el.setAttribute('aria-label', '语音聊');
   el.dataset.voiceState = 'idle';
@@ -28,10 +36,12 @@ export function openLifeVoice(options: { container: HTMLElement; onTranscript: (
   let releaseOverlay = () => {};
   const close = () => {
     if (closed) return;
-    closed = true; configController.abort(); stop(); releaseOverlay(); el.remove();
+    finalRevision = startRevision; closed = true; configController.abort();
+    const done = stop(); releaseOverlay(); el.remove();
     fields.inert = previous.inert;
     if (previous.hidden == null) fields.removeAttribute('aria-hidden'); else fields.setAttribute('aria-hidden', previous.hidden);
-    options.onClose();
+    // Keep the parent composer blocked until the final native transcript is settled.
+    void done.then(options.onClose, options.onClose);
   };
   options.container.append(el);
   releaseOverlay = manageOverlay(el, close, { modal: false, opener: options.container.querySelector<HTMLElement>('[data-chat-voice]')! });
@@ -62,7 +72,7 @@ export function openLifeVoice(options: { container: HTMLElement; onTranscript: (
   const busy = (phase: 'connecting' | 'connected' | false) => {
     if (closed) return;
     el.dataset.voicePhase = phase || 'idle';
-    start.hidden = !!phase || !ready; start.disabled = !!phase || !ready;
+    start.hidden = !!phase || !ready; start.disabled = !!phase || !ready || settling;
     end.hidden = !phase; end.textContent = phase === 'connecting' ? '取消连接' : '结束语音';
     mute.hidden = phase !== 'connected';
     el.querySelector<HTMLElement>('[data-voice-interrupt]')!.hidden = phase !== 'connected';
@@ -73,7 +83,7 @@ export function openLifeVoice(options: { container: HTMLElement; onTranscript: (
   el.querySelector('[data-voice-close]')!.addEventListener('click', close);
   settings.onclick = () => { close(); openAiSettings(); };
   start.onclick = () => {
-    if (voice || starting || !ready || closed) return;
+    if (voice || starting || settling || !ready || closed) return;
     const revision = ++startRevision;
     starting = true; busy('connecting'); status('正在连接…');
     state('connecting');
@@ -89,11 +99,19 @@ export function openLifeVoice(options: { container: HTMLElement; onTranscript: (
             state(value);
             if (value === 'listening' || value === 'speaking' || value === 'muted') busy('connected');
           },
-          onTranscript(messages: VoiceTranscriptMessage[]) {
-            if (closed || revision !== startRevision) return;
-            conversation = [...previous, ...messages.map(message => ({ ...message, ...(message.id ? { id: `${revision}:${message.id}` } : {}) }))]; options.onTranscript(conversation, textDestination);
+          onTranscript(messages: VoiceTranscriptMessage[], mode?: VoiceTranscriptMode) {
+            if (closed ? revision !== finalRevision : revision !== startRevision) return;
+            const updates = messages.map(message => ({ ...message, ...(message.id ? { id: `${revision}:${message.id}` } : {}), ...(message.order != null ? { order: revision * 1_000_000 + message.order } : {}) }));
+            if (mode === 'upsert') { options.onTranscript(updates, textDestination, mode); return; }
+            conversation = [...previous, ...updates]; options.onTranscript(conversation, textDestination);
           },
-          onEnd() { if (revision === startRevision) { voice = undefined; busy(false); } },
+          onEnd() {
+            if (revision !== startRevision) return;
+            const current = voice; voice = undefined;
+            if (current) transportDone = Promise.resolve(current.close());
+            settling = true; busy(false);
+            void transportDone.finally(() => { if (revision === startRevision) { settling = false; busy(false); } });
+          },
         };
         const session = native ? new NativeLiveVoice(callbacks) : new RealtimeVoice({ ...callbacks, model: 'qwen3.8-omni-flash-realtime', region, workspace });
         voice = session;

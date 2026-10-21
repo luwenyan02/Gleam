@@ -1,12 +1,12 @@
 import type { LifeChatMessage } from './types';
 import { liveVoiceSearch, supportsVoiceSearch, voiceInstructions } from './liveVoiceSearch';
-import type { VoiceTranscriptMessage } from './voiceTranscript';
+import { MAX_VOICE_TURN_CHARS, type VoiceTranscriptMessage, type VoiceTranscriptMode } from './voiceTranscript';
 
 export type VoiceState = 'connecting' | 'listening' | 'speaking' | 'muted' | 'ended';
 export interface VoiceOptions {
   model: string; region: string; workspace: string;
   onStatus: (text: string) => void;
-  onTranscript: (messages: VoiceTranscriptMessage[]) => void;
+  onTranscript: (messages: VoiceTranscriptMessage[], mode?: VoiceTranscriptMode) => void;
   onEnd: () => void;
   onState?: (state: VoiceState) => void;
 }
@@ -31,7 +31,8 @@ export class RealtimeVoice {
   private seen = new Set<string>();
   private transcript = new Map<string, VoiceTranscriptMessage>();
   private responseItems = new Set<string>();
-  private order: string[] = [];
+  private dirty = new Map<string, VoiceTranscriptMessage>();
+  private nextOrder = 0;
   private leave = () => { this.options.onStatus('页面已离开，麦克风已关闭'); this.close(); };
   private visibility = () => { if (document.hidden) this.leave(); };
 
@@ -71,9 +72,10 @@ export class RealtimeVoice {
 
   private receive(raw: string, channel: RTCDataChannel): void {
     if (this.closed) return;
+    if (raw.length > 262_144) { this.close(); return; }
     let event: { type: string; event_id?: string; item_id?: string; response_id?: string; text?: string; stash?: string; delta?: string; content_index?: number; transcript?: string; session?: { enable_search?: unknown }; item?: { id?: string }; response?: { id?: string; status?: string } };
     try { event = JSON.parse(raw); } catch { return; }
-    if (event.event_id) { if (this.seen.has(event.event_id)) return; this.seen.add(event.event_id); }
+    if (event.event_id) { if (this.seen.has(event.event_id)) return; this.seen.add(event.event_id); if (this.seen.size > 512) this.seen.delete(this.seen.values().next().value!); }
     if (event.type === 'session.created') {
       this.channel = channel;
       channel.send(JSON.stringify({ type: 'session.update', session: {
@@ -88,6 +90,9 @@ export class RealtimeVoice {
       if (supportsVoiceSearch(this.options.model) && event.session?.enable_search === false) {
         this.options.onStatus('语音联网搜索未启用，请重新连接'); this.close(); return;
       }
+      if (!this.configured) this.duration = setTimeout(() => {
+        this.options.onStatus(this.options.model === 'qwen3.8-omni-flash-realtime' ? '本次通话已达 120 分钟，可重新开始' : '本次通话已达 5 分钟，可重新开始'); this.close();
+      }, this.options.model === 'qwen3.8-omni-flash-realtime' ? 7_200_000 : 300_000);
       this.configured = true; clearTimeout(this.deadline);
       this.stream?.getAudioTracks().forEach(track => { track.enabled = !this.muted; });
       void Promise.all(this.senders.map(({ sender, track }) => sender.replaceTrack(track))).then(() => {
@@ -95,7 +100,14 @@ export class RealtimeVoice {
       }).catch(() => { if (!this.closed) { this.options.onStatus('麦克风音轨无法启动，请重试'); this.close(); } });
     }
     const id = event.item_id ?? event.item?.id;
-    if (id && !this.order.includes(id)) this.order.push(id);
+    if (id && id.length <= 160 && !this.transcript.has(id)) {
+      if (this.transcript.size >= 32_768) { this.options.onStatus('本次语音已结束，可重新开始'); this.close(); return; }
+      const user = event.type.startsWith('input_audio_buffer.') || event.type.startsWith('conversation.item.input_audio_transcription.');
+      if (user || event.type.startsWith('response.')) {
+        const message: VoiceTranscriptMessage = { id, order: this.nextOrder++, role: user ? 'user' : 'assistant', content: '' };
+        this.transcript.set(id, message); this.dirty.set(id, message); this.publishTranscript();
+      }
+    }
     if (event.type === 'input_audio_buffer.speech_started') { this.interrupt(); this.options.onStatus('正在听你说…'); }
     if (event.type === 'response.created') { this.responseId = event.response?.id; this.responseItems.clear(); this.responding = true; this.audio.muted = false; this.options.onStatus('拾光正在回应…'); this.options.onState?.(this.muted ? 'muted' : 'speaking'); }
     if (event.type === 'response.done') {
@@ -107,6 +119,7 @@ export class RealtimeVoice {
           if (message?.role !== 'assistant') continue;
           message.search = supportsVoiceSearch(this.options.model) ? liveVoiceSearch(event.response) : { status: 'unsupported', sources: [] };
           if (event.response?.status === 'completed' && this.finalized.has(item)) message.complete = true;
+          this.dirty.set(item, message);
         }
         this.publishTranscript();
       }
@@ -123,18 +136,19 @@ export class RealtimeVoice {
 
   private updateTranscript(id: string, role: LifeChatMessage['role'], text: string | undefined, complete: boolean): void {
     if (this.finalized.has(id) || typeof text !== 'string') return;
-    if (id.length > 160 || this.order.length > 120 || text.length > 12_000) { this.options.onStatus('本次语音已结束，可重新开始'); this.close(); return; }
+    if (id.length > 160 || text.length > MAX_VOICE_TURN_CHARS) { this.options.onStatus('本次语音已结束，可重新开始'); this.close(); return; }
     const content = complete ? text.trim() : text;
     if (complete) this.finalized.add(id);
-    this.transcript.set(id, { role, content, id, ...(role === 'assistant' ? { search: { status: supportsVoiceSearch(this.options.model) ? 'enabled' : 'unsupported', sources: [] } as const } : {}) });
+    this.transcript.set(id, { role, content, id, order: this.transcript.get(id)?.order ?? this.nextOrder++, ...(role === 'assistant' ? { search: { status: supportsVoiceSearch(this.options.model) ? 'enabled' : 'unsupported', sources: [] } as const } : {}) });
+    this.dirty.set(id, this.transcript.get(id)!);
     if (role === 'assistant' && this.responseId) this.responseItems.add(id);
     this.publishTranscript();
   }
 
   private publishTranscript(): void {
-    const messages = this.order.flatMap(key => this.transcript.get(key)?.content.trim() ? [this.transcript.get(key)!] : []);
-    if (messages.reduce((sum, message) => sum + message.content.length, 0) > 24_000) { this.close(); return; }
-    this.options.onTranscript(messages.map(message => ({ ...message })));
+    if (!this.dirty.size) return;
+    const updates = [...this.dirty.values()].map(message => ({ ...message })); this.dirty.clear();
+    this.options.onTranscript(updates, 'upsert');
   }
 
   async start(): Promise<void> {
@@ -168,7 +182,6 @@ export class RealtimeVoice {
         if (!this.closed && ['failed', 'disconnected'].includes(pc.connectionState)) { this.options.onStatus('连接已断开，麦克风已关闭'); this.close(); }
       };
       this.deadline = setTimeout(() => { this.options.onStatus('连接超时，麦克风已关闭，请重试'); this.close(); }, 30_000);
-      this.duration = setTimeout(() => { this.options.onStatus('本次通话已达 5 分钟，可重新开始'); this.close(); }, 300_000);
       this.options.onStatus('正在连接阿里云百炼…');
       await pc.setLocalDescription(await pc.createOffer());
       await new Promise<void>((resolve, reject) => {

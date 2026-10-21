@@ -12,20 +12,23 @@ import okio.ByteString;
 final class GleamLiveVoiceSession {
     interface Audio {
         void start() throws Exception; default void start(Runnable ready) throws Exception { start(); ready.run(); }
-        void stop(); void play(byte[] bytes); void clear();
+        void stop(); void play(byte[] bytes); default Runnable preparePlay(byte[] bytes) { return ()->play(bytes); } void clear();
         void mute(boolean value); void finish(); boolean playing();
     }
-    interface Listener { void ready(); void state(String value); void transcript(List<Turn> turns); void ended(String reason); }
+    interface Listener { void ready(); void state(String value); void transcript(List<Turn> turns); void ended(String reason); default void flush() {} }
     static final class Turn {
-        final String id, role, text; final boolean complete; final JSONObject search;
-        Turn(String id,String role,String text,boolean complete,JSONObject search) { this.id=id;this.role=role;this.text=text;this.complete=complete;this.search=search; }
+        final String id, role, text; final long order; final boolean complete; final JSONObject search;
+        Turn(String id,String role,String text,boolean complete,JSONObject search,long order) { this.order=order;this.id=id;this.role=role;this.text=text;this.complete=complete;this.search=search; }
     }
     private final GleamSpeechSession.Transport transport;
     private final Audio audio;
     private final Listener listener;
     private final GleamSpeechSession.Clock clock;
     private final String instructions;
-    private final LinkedHashMap<String,Turn> turns=new LinkedHashMap<>();
+    private final LinkedHashMap<String,Turn> turns=new LinkedHashMap<>(), dirty=new LinkedHashMap<>();
+    private final LinkedHashMap<String,Long> orders=new LinkedHashMap<>();
+    private long nextOrder;
+    private static final int MAX_TURN_CHARS=128*1024, RECENT_TURNS=32;
     private final LinkedHashSet<String> blocked=new LinkedHashSet<>(), seen=new LinkedHashSet<>(), finalized=new LinkedHashSet<>();
     private final LinkedHashSet<String> responseItems=new LinkedHashSet<>();
     private GleamSpeechSession.Timer deadline, duration;
@@ -79,57 +82,71 @@ final class GleamLiveVoiceSession {
     }
     private void reserve(String id,String role) throws Exception {
         if(id==null||id.isEmpty()||id.length()>160)return;
-        if(!turns.containsKey(id))turns.put(id,new Turn(id,role,"",false,"assistant".equals(role)?GleamLiveVoiceSearch.state("enabled"):null));
-        if(turns.size()>120)end("LIVE_LIMIT");
+        if(!turns.containsKey(id)) {
+            Long order=orders.get(id);if(order==null){if(orders.size()>=32768){end("LIVE_PROTOCOL");return;}order=nextOrder++;orders.put(id,order);}
+            Turn turn=new Turn(id,role,"",false,"assistant".equals(role)?GleamLiveVoiceSearch.state("enabled"):null,order);
+            turns.put(id,turn);dirty.put(id,turn);publish(id);
+        }
     }
     private void transcript(String id,String role,String text,boolean complete) throws Exception {
         if(id==null||id.isEmpty()||id.length()>160||text==null||finalized.contains(id))return;
         reserve(id,role);if(closed)return;
-        if(text.length()>12000){end("LIVE_LIMIT");return;}
+        if(text.length()>MAX_TURN_CHARS){end("LIVE_LIMIT");return;}
         if(complete)finalized.add(id);
-        turns.put(id,new Turn(id,role,complete?text.trim():text,false,turns.get(id).search));
-        if("assistant".equals(role))responseItems.add(id);
-        publish();
+        turns.put(id,new Turn(id,role,complete?text.trim():text,false,turns.get(id).search,turns.get(id).order));
+        if("assistant".equals(role)){responseItems.add(id);if(responseItems.size()>32){end("LIVE_PROTOCOL");return;}}
+        dirty.put(id,turns.get(id));publish();
     }
-    private void publish() {
-        int count=0;List<Turn> result=new ArrayList<>();
-        for(Turn turn:turns.values()){count+=turn.text.length();if(!turn.text.trim().isEmpty())result.add(turn);}
-        if(count>24000){end("LIVE_LIMIT");return;}listener.transcript(result);
+    private void publish() {publish(null);}
+    private void publish(String protectedId) {
+        if(!dirty.isEmpty()){List<Turn> result=new ArrayList<>(dirty.values());dirty.clear();listener.transcript(result);}
+        // JS owns full history. Native retains only recent text and the current response awaiting metadata/drain.
+        java.util.Iterator<String> iterator=turns.keySet().iterator();
+        while(turns.size()>RECENT_TURNS&&iterator.hasNext()) {
+            String id=iterator.next();if(!id.equals(protectedId)&&!responseItems.contains(id))iterator.remove();
+        }
     }
-    synchronized void receive(String raw) {
-        if(closed||!begun)return;
-        if(raw==null||raw.length()>262144){end("LIVE_PROTOCOL");return;}
+    void receive(String raw) {
+        Runnable playback;
+        synchronized(this){playback=receiveLocked(raw);}
+        if(playback!=null)playback.run();
+    }
+    private Runnable receiveLocked(String raw) {
+        Runnable playback=null;
+        if(closed||!begun)return null;
+        if(raw==null||raw.length()>262144){end("LIVE_PROTOCOL");return null;}
         try {
             JSONObject event=new JSONObject(raw);String type=event.getString("type"),eventId=event.optString("event_id");
-            if(!eventId.isEmpty()){if(!seen.add(eventId))return;if(seen.size()>512)seen.remove(seen.iterator().next());}
+            if(!eventId.isEmpty()){if(!seen.add(eventId))return null;if(seen.size()>512)seen.remove(seen.iterator().next());}
             if("session.created".equals(type)) {
-                if(configuring||ready){end("LIVE_PROTOCOL");return;}
+                if(configuring||ready){end("LIVE_PROTOCOL");return null;}
                 JSONObject session=event.optJSONObject("session");
-                if(session!=null&&session.has("model")&&!GleamSpeechTransport.MODEL.equals(session.opt("model"))){end("LIVE_PROTOCOL");return;}
-                serverId=session==null?null:session.optString("id",null);configuring=true;send(update());return;
+                if(session!=null&&session.has("model")&&!GleamSpeechTransport.MODEL.equals(session.opt("model"))){end("LIVE_PROTOCOL");return null;}
+                serverId=session==null?null:session.optString("id",null);configuring=true;send(update());return null;
             }
             if("session.updated".equals(type)) {
-                if(!configuring||ready||!safeAck(event.optJSONObject("session"))){end("LIVE_PROTOCOL");return;}
+                if(!configuring||ready||!safeAck(event.optJSONObject("session"))){end("LIVE_PROTOCOL");return null;}
                 configuring=false;
                 deadline.cancel();
                 deadline=clock.after(35000,()->{synchronized(this){if(!ready)end("LIVE_AUDIO_ROUTE");}});
-                try{audio.start(this::audioReady);}catch(SecurityException ignored){end("LIVE_PERMISSION_DENIED");return;}
-                catch(Exception ignored){end("LIVE_AUDIO");return;}
-                return;
+                duration=clock.after(7200000,()->end("LIVE_SESSION_LIMIT"));
+                try{audio.start(this::audioReady);}catch(SecurityException ignored){end("LIVE_PERMISSION_DENIED");return null;}
+                catch(Exception ignored){end("LIVE_AUDIO");return null;}
+                return null;
             }
             if("error".equals(type)) {
                 JSONObject error=event.optJSONObject("error");String code=error==null?"":error.optString("code");
-                if(cancelPending&&"response_cancel_not_active".equals(code)){cancelPending=false;return;}
-                end("LIVE_PROVIDER");return;
+                if(cancelPending&&"response_cancel_not_active".equals(code)){cancelPending=false;return null;}
+                end("LIVE_PROVIDER");return null;
             }
-            if(!ready)return;
+            if(!ready)return null;
             String itemId=event.optString("item_id",null),replyId=event.optString("response_id",null);
             if("input_audio_buffer.speech_started".equals(type)){reserve(itemId,"user");interrupt();listener.state(muted?"muted":"listening");}
             if("input_audio_buffer.committed".equals(type))reserve(itemId,"user");
             if("response.created".equals(type)) {
-                JSONObject response=event.optJSONObject("response");if(response==null||response.optString("id").isEmpty()){end("LIVE_PROTOCOL");return;}
+                JSONObject response=event.optJSONObject("response");if(response==null||response.optString("id").isEmpty()){end("LIVE_PROTOCOL");return null;}
                 if(responseId!=null){blockResponse(responseId);audio.clear();}
-                responseId=response.getString("id");responding=true;responseFinished=false;responseSucceeded=false;completionPublished=false;responseItems.clear();
+                responseId=response.getString("id");responding=true;responseFinished=false;responseSucceeded=false;completionPublished=false;responseItems.clear();publish();
             }
             if("response.output_item.added".equals(type)) {
                 JSONObject item=event.optJSONObject("item");if(item!=null&&"assistant".equals(item.optString("role")))reserve(item.optString("id"),"assistant");
@@ -137,8 +154,8 @@ final class GleamLiveVoiceSession {
             boolean current=replyId!=null&&replyId.equals(responseId)&&!blocked.contains(replyId);
             if(("response.audio.delta".equals(type)||"response.output_audio.delta".equals(type))&&current) {
                 String encoded=event.getString("delta");ByteString bytes=encoded.length()<=180000?ByteString.decodeBase64(encoded):null;
-                if(bytes==null||bytes.size()==0||bytes.size()%2!=0){end("LIVE_PROTOCOL");return;}
-                audio.play(bytes.toByteArray());listener.state(muted?"muted":"speaking");
+                if(bytes==null||bytes.size()==0||bytes.size()%2!=0){end("LIVE_PROTOCOL");return null;}
+                playback=audio.preparePlay(bytes.toByteArray());listener.state(muted?"muted":"speaking");
             }
             if(event.optInt("content_index",0)==0) {
                 if("conversation.item.input_audio_transcription.delta".equals(type))transcript(itemId,"user",event.optString("text","")+event.optString("stash",""),false);
@@ -150,24 +167,25 @@ final class GleamLiveVoiceSession {
                 if(("response.audio_transcript.done".equals(type)||"response.output_audio_transcript.done".equals(type))&&current)transcript(itemId,"assistant",event.optString("transcript",null),true);
             }
             if("response.done".equals(type)) {
-                JSONObject response=event.optJSONObject("response");if(response==null)return;
-                if(!response.optString("id").equals(responseId)||blocked.contains(responseId))return;
+                JSONObject response=event.optJSONObject("response");if(response==null)return null;
+                if(!response.optString("id").equals(responseId)||blocked.contains(responseId))return null;
                 responding=false;responseFinished=true;
                 JSONObject search=GleamLiveVoiceSearch.result(response);
                 for(String id:responseItems) {
                     Turn turn=turns.get(id);
-                    if(turn!=null&&"assistant".equals(turn.role))turns.put(id,new Turn(id,turn.role,turn.text,turn.complete,search));
+                    if(turn!=null&&"assistant".equals(turn.role)){turns.put(id,new Turn(id,turn.role,turn.text,turn.complete,search,turn.order));dirty.put(id,turns.get(id));}
                 }
                 publish();
-                if("failed".equals(response.optString("status"))){end("LIVE_PROVIDER");return;}
+                if("failed".equals(response.optString("status"))){end("LIVE_PROVIDER");return null;}
                 responseSucceeded="completed".equals(response.optString("status"));
-                audio.finish();drained();
+                audio.finish();drained();listener.flush();
             }
-        } catch(Exception ignored){end("LIVE_PROTOCOL");}
+        } catch(Exception ignored){end("LIVE_PROTOCOL");return null;}
+        return playback;
     }
     private synchronized void audioReady() {
         if(closed||ready)return;
-        ready=true;deadline.cancel();duration=clock.after(300000,()->end("LIVE_LIMIT"));
+        ready=true;deadline.cancel();
         listener.ready();listener.state("listening");
     }
     synchronized void drained() {
@@ -176,9 +194,9 @@ final class GleamLiveVoiceSession {
             completionPublished=true;
             for(String id:responseItems) {
                 Turn turn=turns.get(id);
-                if(turn!=null&&"assistant".equals(turn.role)&&finalized.contains(id))turns.put(id,new Turn(id,turn.role,turn.text,true,turn.search));
+                if(turn!=null&&"assistant".equals(turn.role)&&finalized.contains(id)){turns.put(id,new Turn(id,turn.role,turn.text,true,turn.search,turn.order));dirty.put(id,turns.get(id));}
             }
-            publish();
+            publish();listener.flush();
         }
         listener.state(muted?"muted":"listening");
     }
@@ -190,11 +208,11 @@ final class GleamLiveVoiceSession {
         if(closed||!ready)return;audio.clear();
         if(responseId!=null)blockResponse(responseId);
         if(responding){cancelPending=true;send("{\"type\":\"response.cancel\"}");}
-        responding=false;responseFinished=false;listener.state(muted?"muted":"listening");
+        responding=false;responseFinished=false;listener.flush();listener.state(muted?"muted":"listening");
     }
     private void blockResponse(String id) { blocked.add(id);if(blocked.size()>128)blocked.remove(blocked.iterator().next()); }
     synchronized void end(String reason) {
-        if(closed)return;closed=true;if(deadline!=null)deadline.cancel();if(duration!=null)duration.cancel();
+        if(closed)return;listener.flush();closed=true;if(deadline!=null)deadline.cancel();if(duration!=null)duration.cancel();
         try{audio.stop();}catch(RuntimeException ignored){}
         try{transport.close();}catch(RuntimeException ignored){}
         listener.ended(reason);

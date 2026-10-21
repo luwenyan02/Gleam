@@ -19,7 +19,7 @@ export class VoiceReplyLayouts {
   constructor(private options: {
     format: (input: Input) => Promise<string>;
     isCurrent: (message: LifeChatMessage) => boolean;
-    onChange: () => void;
+    onChange: (message: LifeChatMessage) => void;
     onError: () => void;
   }) {}
   add(message: LifeChatMessage, expectedDestination: VoiceTextDestination): void {
@@ -48,7 +48,7 @@ export class VoiceReplyLayouts {
           const display = (await this.options.format({ transcript: job.transcript, expectedDestination: job.expectedDestination, signal: job.signal })).trim();
           if (!this.valid(job)) continue;
           if (!display || display.length > 12_000) throw new Error('语音排版无效');
-          if (display !== job.transcript.trim()) { job.message.voiceDisplay = display; this.options.onChange(); }
+          if (display !== job.transcript.trim()) { job.message.voiceDisplay = display; this.options.onChange(job.message); }
         } catch {
           if (this.valid(job) && !this.errorShown) { this.errorShown = true; this.options.onError(); }
         } finally { this.jobs.delete(job); }
