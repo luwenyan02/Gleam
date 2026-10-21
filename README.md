@@ -1,174 +1,118 @@
 # 拾光 Gleam
 
-> 记清每一笔钱，留住每一份日常。
-> 本地优先的记账与生活记录应用。
+**记账，也记生活。**
 
-[![Android](https://img.shields.io/badge/Android-Capacitor-3DDC84)](https://capacitorjs.com/)
-[![PWA](https://img.shields.io/badge/PWA-offline--ready-D66A2C)](https://developer.mozilla.org/docs/Web/Progressive_web_apps)
-[![最新版本](https://img.shields.io/github/v/release/luwenyan02/Gleam?label=release&color=orange)](https://github.com/luwenyan02/Gleam/releases/latest)
+买完午饭，长按说一句「午饭 32 元」，核对后记到账上。到了月底，看看钱花在了哪里，再问一句「这个月比上个月多花了多少？」。想记下的事，也可以写几句、放张照片，或者直接和拾光聊聊。
 
-一顿早餐、一趟出行、一段值得记住的时光。拾光把日常收支与生活片段放在一起：记一笔账，写一句随记，用照片留住当时的心情，再将选中的片段整理成拾光周刊。
+拾光把账本、生活记录和 AI 对话放在一个应用里。无需注册，账目和日记默认保存在自己的设备上。日常记账可以离线使用，AI 和云备份按需配置。
 
-从快速记账到账户管理、预算与报表，让每一笔钱有迹可循；从生活随记到和拾光聊聊，让平常的日子也值得回看。无需注册账号即可使用，核心数据默认留在设备内；云备份、AI 识别与生活 AI 按需配置。
+[![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84)](https://github.com/luwenyan02/Gleam/releases/latest) [![PWA](https://img.shields.io/badge/PWA-可安装网页应用-D66A2C)](#开始使用) [![最新版本](https://img.shields.io/github/v/release/luwenyan02/Gleam?label=release&color=orange)](https://github.com/luwenyan02/Gleam/releases/latest)
 
-## 宣传片 · 暖光生活篇
+**[下载 Android 安装包](https://github.com/luwenyan02/Gleam/releases/latest)** · [看看界面](#看看界面) · [数据与备份](docs/data-backup.md) · [本地运行](#本地运行)
 
-[![拾光宣传片《暖光生活篇》：点击观看，40 秒](docs/assets/promo/gleam-warm-life-cover.jpg)](docs/assets/promo/gleam-warm-life.mp4)
+这份介绍以已发布的 **[v1.11.32](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.32)** 为准。
 
-**[▶ 观看《暖光生活篇》](docs/assets/promo/gleam-warm-life.mp4)** · 40 秒 · 1080p
+## 看看界面
 
-跟随暖光中的日常片段，看看拾光如何把记账与生活记录连在一起。点击封面或上方链接进入视频文件页；也可[下载原片](https://github.com/luwenyan02/Gleam/raw/refs/heads/main/docs/assets/promo/gleam-warm-life.mp4)。
-
-## 下载与了解
-
-- **Android**：前往[最新正式发布页](https://github.com/luwenyan02/Gleam/releases/latest)下载 APK 与 SHA-256 校验文件；当前最新正式版为 **v1.11.15**。安装与升级限制见下方说明及对应版本发布记录。
-- **PWA**：支持安装为网页应用，核心功能可离线使用。
-- **隐私与数据**：查看[隐私说明](PRIVACY.md)与[数据备份指南](docs/data-backup.md)。
-
-## 为什么是拾光
-
-- **本地优先**：无需注册账号即可使用，核心数据保存在本机。
-- **完整记账口径**：支持支出、收入、转账、借贷、退款和报销。
-- **记账与生活相连**：一笔账可以关联生活记录，补充照片、感受和回访。
-- **数据可带走**：支持加密备份、Excel 导入导出、WebDAV 与 S3 兼容备份。
-- **多端形态**：提供 Android 应用，并可作为离线 PWA 使用。
-
-## 主要能力
-
-<details open>
-<summary><strong>记账与查账</strong></summary>
-
-- 支出、收入、转账与借贷，支持连续计算器、退款、报销、周期账和速记模板
-- 按历史与记账时段推荐分类、按分类推荐记账账户；手选优先
-- 日历查账、关键词与多条件筛选、批量整理；分类、账户、标签和商家明细下钻
-- 普通账单最多附 9 张图片凭证；支持微信、支付宝与挖财账单导入、回收站与恢复
-
-</details>
-
-<details>
-<summary><strong>账户与报表</strong></summary>
-
-- 资金账户与应收应付账户统一管理，支持对账、排序、隐藏和净资产范围设置；借贷本金按双账户划转
-- 信用卡账单、分次还款关联、信用额度与到期提醒
-- 月度与年度预算、历史预算、财务月起始日，以及周、月、年和自定义周期报表
-- 净资产与账户余额走势默认收起，可选择历史月份查看月末变化；账户明细展示逐笔余额
-- Android 快捷记账入口与月度记账小组件
-
-</details>
-
-<details>
-<summary><strong>拾光与 AI</strong></summary>
-
-- 快速记录、照片、习惯打卡、账单关联与生活回访
-- 和拾光聊聊：流式回复、会话历史、停止与重试、草稿恢复和 Markdown 展示
-- [可核对的账本分析](docs/AI_LEDGER_ANALYSIS.md)：本机单月分类、上月对比和近 6 月趋势，逐次预览确认，结果可查原账单，固定追问不会自动改账
-- 拾光周刊：选择素材、编辑预览并确认收藏；生活整理稿经用户确认后才保存
-- 可选的 OpenAI 兼容文本/图片账单识别；低置信度进入待确认收件箱，达到用户阈值且映射完整时可自动入账
-- [Android 百炼短语音记账](docs/SHORT_VOICE_ENTRY.md)：独立个人语音 Key，短句转写后核对文字，再生成单笔支出/收入草稿；语音草稿始终人工确认，录音不归档。真实服务/真机验收状态见文档
-- 实时语音仅支持配置了本机中转的开发网页版；Android 安装包与离线 PWA 暂不支持，详见[实时语音说明](docs/REALTIME_VOICE.md)
-
-</details>
-
-<details>
-<summary><strong>数据与备份</strong></summary>
-
-- 核心数据默认保存在本机，无需注册账号
-- 加密 `.skbak` 备份与恢复、Excel 导入导出、可选 WebDAV / S3 兼容备份
-- 完整备份包含生活记录、会话与附件；Excel 不替代完整备份
-- AI 与云服务的数据发送范围见[隐私说明](PRIVACY.md)
-
-</details>
-
-## 界面预览
-
-以下为 **v1.8.0 网页生产构建的真实浏览器截图**，于 2026-10-02 使用隔离环境中的虚构数据生成。聊天与周刊采用本地模拟回复，不调用真实外部模型，也不包含真实账目或个人信息。它们展示网页端界面，不代表 Android 真机验收已完成。
-
-浅灰背景、白色卡片、深色文字和橙红重点，配合固定的「报表｜账户｜记一笔／首页｜拾光｜我的」底部入口。下图可点击查看原尺寸。
+以下是 v1.11.32 网页生产构建的真实截图，使用虚构账目与本地模拟 AI 回复。点击可查看原图；[截图来源与复现方法](docs/assets/screenshots/README.md)单独记录。
 
 <!-- SCREENSHOTS_START -->
-| 首页 · 收支与预算 | 账户 · 余额与净资产 | 报表 · 分类与趋势 |
+| 首页 | 账户 | 报表 |
 | --- | --- | --- |
-| ![v1.8.0 首页：本月收支、预算剩余与日常流水，虚构数据](docs/assets/screenshots/home-demo.png) | ![v1.8.0 账户：资金账户、应收应付与净资产，虚构数据](docs/assets/screenshots/accounts-demo.png) | ![v1.8.0 报表：财务周期、分类占比与收支汇总，虚构数据](docs/assets/screenshots/report-demo.png) |
+| [![首页：收支、预算和日常流水](docs/assets/screenshots/home-demo.png)](docs/assets/screenshots/home-demo.png) | [![账户：余额、应收应付与净资产](docs/assets/screenshots/accounts-demo.png)](docs/assets/screenshots/accounts-demo.png) | [![报表：分类排行与收支统计](docs/assets/screenshots/report-demo.png)](docs/assets/screenshots/report-demo.png) |
 
-| 拾光 · 随记与习惯 | 和拾光聊聊 · AI 对话 | 拾光周刊 · 收藏片段 |
+| 生活记录 | 和拾光聊聊 | 拾光周刊 |
 | --- | --- | --- |
-| ![v1.8.0 拾光：快速记录、生活时间流与习惯打卡，虚构数据](docs/assets/screenshots/life-demo.png) | ![v1.8.0 AI 聊天：新聊天、设置、会话与整理入口，本地模拟回复](docs/assets/screenshots/chat-demo.png) | ![v1.8.0 拾光周刊：经确认收藏的每周生活片段，本地模拟内容](docs/assets/screenshots/weekly-demo.png) |
+| [![生活记录：随记、时间流与习惯打卡](docs/assets/screenshots/life-demo.png)](docs/assets/screenshots/life-demo.png) | [![聊天：文字回复、照片与语音聊入口](docs/assets/screenshots/chat-demo.png)](docs/assets/screenshots/chat-demo.png) | [![拾光周刊：选好记录，编辑后收藏](docs/assets/screenshots/weekly-demo.png)](docs/assets/screenshots/weekly-demo.png) |
 <!-- SCREENSHOTS_END -->
 
-[借贷双账户预览](docs/assets/screenshots/loan-demo.png)：资金账户与应收应付账户之间的本金划转。截图来源、演示数据与复现方式见[预览说明](docs/assets/screenshots/README.md)。
+[再看看借贷记账界面](docs/assets/screenshots/loan-demo.png)。
 
-## 安装与使用
+## 随手记一笔，复杂的账也能理清
 
-- Android 7.0 及以上：从 [最新正式发布页](https://github.com/luwenyan02/Gleam/releases/latest) 下载 APK 与 SHA-256 校验文件；安装前阅读对应版本的验证范围和升级提示。
-- 本轮复用原本地证书，不能直接覆盖云端签名的 v1.8.0／v1.8.1。使用这两个云端版本的用户，应先在“我的 → 数据与备份”导出加密备份并另存到应用之外，确认副本可读取，再考虑卸载、安装与恢复；卸载会删除应用内数据，没有可用外部备份时不要卸载。原本地签名系列不应仅因版本较旧而卸载；签名一致也不能代替真机覆盖更新与恢复验收。
-- 当前最新正式版为 v1.11.15；各版本的构建检查、CI 状态和手机验收范围以对应发布说明为准。
-- PWA 通过网页生产构建和预览使用；实时语音仅在配置了本机中转的开发服务中可用。
-- 自行构建的方法见[发布指南](docs/release.md)；本地 APK 与校验文件保存在被 Git 忽略的 `release/` 目录，不进入源码历史。
+常用的分类和账户会根据记账习惯推荐，金额框里可以直接计算。同类开销用模板，固定支出设周期账，付款截图可以附在账单上。
 
-## 开发环境
+- **说一句就能记**：Android 首页长按「+」说话，松开后生成草稿；想改文字就滑到编辑，金额、分类和账户核对后再保存。
+- **收支以外的事也有专门入口**：转账、借出借入、还款、退款和报销分别处理；借贷能查到资金账户和应收应付账户之间的往来。
+- **旧账不用重抄**：支持微信、支付宝、挖财账单导入，以及 Excel 导入导出。普通账单可附最多 9 张图片凭证。
+- **截图也能识别**：配置 AI 后，可从文字或图片提取账单。识别结果可在收件箱核对，达到阈值且分类、账户匹配完整时，可按设置自动入账；语音记账始终由你确认保存。
 
-Codex Cloud 的 Gleam 环境使用可重建工具链；从仓库根目录执行：
+## 想查一笔，或看清一个月
+
+记下来的账可以按日历翻，也可以用关键词、账户、分类、标签和商家组合筛选。打开一笔流水，还能查看相关明细。
+
+账户页可以看余额、逐笔余额变化和净资产走势，管理信用卡账单、额度与还款。报表支持周、月、年和自定义时段，预算也能按自己的财务月安排。
+
+想让 AI 帮忙分析时，可以问「最近 30 天花了多少」「这个月哪里花得多」，或看上月对比、近 6 个月趋势。先确认分析范围，拾光在本机算好汇总，再交给模型解释；结果可以回到原账单核对，聊天不会自动改账。
+
+## 打字聊，也可以直接开口
+
+「拾光」里可以记随笔、加照片、打卡习惯，也可以打开聊天，说说今天的事。聊完点击「整理」，修改成自己想留下的文字再保存；从首页记录还能回到原始对话。
+
+- **Android 语音聊**：点击开始，连接后直接说话，拾光会语音回答；可以打断、静音或结束。转写留在聊天记录里，文字与语音切换时，上方消息保持原位。
+- **图片和图表**：聊天图片可以打开、保存和分享；数据可以用折线图、柱状图或环形图查看，点选数值、展开数据表，也能导出 PNG。
+- **需要时查新信息**：支持已适配百炼模型的联网搜索，是否搜索由模型根据问题判断。
+- **选自己用的模型**：内置阿里百炼、OpenAI、DeepSeek、硅基流动、Moonshot Kimi、智谱六个平台预设，区分推荐、近期更新和兼容旧版，也支持自填模型。图片能力会单独标注，更新预设会保留当前配置。
+
+一周结束，还可以挑几条生活记录，整理成「拾光周刊」，预览、编辑后收藏。
+
+## 数据留在手里
+
+账单、生活记录、会话和附件默认保存在本机，不需要注册拾光账号。完整数据可以导出为加密 `.skbak` 备份，也可以备份到自己的 WebDAV、S3 兼容存储，或在 Android 上通过 QQ 邮箱发送加密备份。换设备时，用备份文件恢复。
+
+使用 AI 时，本次文字、图片或语音会发送给你配置的服务；使用云盘或邮件备份时，备份文件会发送到你指定的目的地。服务密钥不打包进数据备份，换设备后需要重新配置。具体范围见[隐私说明](PRIVACY.md)。
+
+卸载、清除应用数据或更换设备前，请把加密备份另存一份，并保管好口令。Excel 适合整理账目，完整迁移请使用 `.skbak`。
+
+## 开始使用
+
+**Android 7.0 及以上**：在 [Releases](https://github.com/luwenyan02/Gleam/releases/latest) 下载 APK，页面同时提供 SHA-256 校验文件。安装后即可手动记账；已有版本可从「我的 → 关于和帮助 → 关于拾光」检查新版，升级说明见对应 Release。
+
+**AI 功能**：在设置中选择平台、模型并填写自己的 API Key。图片识别需要支持图片的模型；Android 短语音和语音聊使用阿里百炼，需要完成语音配置与连接测试，服务可能按用量收费。[短语音记账](docs/SHORT_VOICE_ENTRY.md)和[语音聊](docs/REALTIME_VOICE.md)有具体说明。
+
+**PWA**：自行运行网页后可安装为网页应用，核心记账与记录功能可离线使用。开发网页版语音聊需要额外配置本机中转，离线 PWA 不包含该服务；Android 语音功能直接使用原生通道。
+
+<details>
+<summary>使用过早期 v1.8.0／v1.8.1 云端签名包？</summary>
+
+这两个云端版本与当前版本的签名不同，不能直接覆盖安装。请先导出加密备份，另存到应用之外并确认可读取，再安排卸载、安装与恢复。其他原签名版本无需仅因版本旧而卸载。细节见[发布指南](docs/release.md)。
+
+</details>
+
+## 本地运行
+
+项目使用 TypeScript、Vite、Dexie 和 Capacitor。网页端与 Android 共用应用代码，数据保存在设备端。
+
+需要 Node.js 22 和 npm 10；端到端测试另需 Python 3.11+ 与 Playwright。安装依赖：
 
 ```sh
-python3 scripts/cloud-env.py setup
-python3 scripts/cloud-env.py verify
+cd app
+npm ci
 ```
 
-固定 Node 22.23.3/npm 10.9.9、按锁文件安装依赖及 Playwright 1.59.0；首次安装需要联网，系统库前置条件和干净 checkout 验证见[云环境指南](docs/CLOUD_DEVELOPMENT.md)。Android 构建继续使用 GitHub CI。任务磁盘与缓存不作永久保留保证。
-
-以下为原有本地电脑预览流程：
-
-日常网页预览由 OrbStack 后台常驻提供，固定使用 <http://localhost:5173/>。在项目根目录运行：
+日常 OrbStack 预览在仓库根目录启动，地址为 `http://localhost:5173/`：
 
 ```sh
 sh scripts/preview-local.sh up
 ```
 
-源码修改自动更新，不必保留终端窗口。依赖或环境配置变化后重新执行该命令；状态、停止和排错见[本地预览说明](docs/LOCAL_PREVIEW.md)。OrbStack 必须处于运行状态。不要同时启动另一份占用 5173 的临时服务。
+未使用 OrbStack 常驻预览时，可在 `app/` 下运行：
 
-需要 Node.js 22、npm 10（精确云工具链版本见 `.node-version` 和 `app/package.json`）；运行端到端测试还需要 Python 3.11+ 和 Playwright。
-
-```bash
-cd app
-npm ci
-# 仅在未使用 OrbStack 常驻预览时手动启动：
-# npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
+```sh
+npm run dev -- \
+  --host 127.0.0.1 --port 5173 \
+  --strictPort
 ```
 
-提交前至少执行：
+两个入口选择一个，避免占用同一端口。云环境初始化与验证见[云环境指南](docs/CLOUD_DEVELOPMENT.md)；Android 构建、原证书签名和产物核验见[发布指南](docs/release.md)。
 
-```bash
-npm run check:secrets
-npm audit --audit-level=high
-npm run test:unit
-npm run build
-npm run test:e2e
-```
+[开发指南](docs/development.md) · [架构说明](docs/architecture.md) · [参与维护](CONTRIBUTING.md) · [项目状态](docs/PROJECT_STATUS.md) · [版本记录](https://github.com/luwenyan02/Gleam/releases)
 
-更多信息见[开发指南](docs/development.md)、[架构说明](docs/architecture.md)、[数据与备份](docs/data-backup.md)和[发布指南](docs/release.md)。
+<details>
+<summary>40 秒介绍短片《暖光生活篇》</summary>
 
-## 版本与验收
+[![点击观看《暖光生活篇》](docs/assets/promo/gleam-warm-life-cover.jpg)](docs/assets/promo/gleam-warm-life.mp4)
 
-当前最新正式版为 [v1.11.15](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.15)，各版验证范围见对应发布说明。以下为 v1.11.1 的历史验收记录。
+[观看短片](docs/assets/promo/gleam-warm-life.mp4) · 1080p。短片为早期制作，当前功能和界面以上方介绍为准。
 
-v1.11.1 正式提交 `e96e31b7de2a90adfcb5a8fd2b58e428956a8d39` 的[最终 CI](https://github.com/luwenyan02/Gleam/actions/runs/38195964629) 已通过，用户已验收手机覆盖安装。详细发布、升级限制和历史原生自动化范围见[正式发布说明](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.1)与[项目状态](docs/PROJECT_STATUS.md)。上面的 v1.8.0 截图仅为历史界面演示，不作为当前版本验收证据。
-
-完整功能变化和历史验证记录见[更新记录](CHANGELOG.md)。这些结果对应明确的发布提交，不能代替后续版本或真实设备的验收。
-
-## 参与维护
-
-请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。使用短分支开发，完成测试、构建、敏感信息扫描与必要的浏览器验收后合入 `main`。GitHub CI 用于验证提交；Android 安装包另行完成授权证书签名与产物核验后上传 Releases。所有 UI 变更需附真实浏览器截图和验证结果。
-
-## 常见问题
-
-**数据会自动上传吗？**
-
-核心数据默认留在本机。主动使用云备份、AI 记账或生活 AI 时，相关数据会发送到选定服务；开发网页版实时语音在单独同意后将麦克风声音发送给阿里云百炼。具体发送内容见[隐私说明](PRIVACY.md)。
-
-**换手机如何迁移？**
-
-在旧设备生成加密 `.skbak` 文件，在新设备选择恢复；恢复前请妥善保存原文件和口令。
-
-**为什么源码目录没有 APK？**
-
-APK 与校验文件通过 GitHub Releases 单独分发，不提交到源码历史。本地构建产物保存在被 Git 忽略的 `release/` 目录。
+</details>
