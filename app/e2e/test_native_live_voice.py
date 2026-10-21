@@ -274,6 +274,8 @@ def run_web_playback(browser):
     try:
         page.goto(URL);page.locator('#fab').wait_for();configure(page)
         page.locator('[data-page="page-life"]').click();page.locator('[data-life-chat]').click()
+        # Opening awaits stored drafts; a bounding box can still be offscreen before .open.
+        page.wait_for_function("()=>{const p=document.querySelector('#sp-life-chat');return p?.classList.contains('open') && getComputedStyle(p).transform==='none'}")
         before=page.locator('.life-chat-input-wrap').bounding_box()
         page.locator('[data-chat-voice]').click();page.locator('[data-voice-start]').click()
         expect(page.locator('[data-voice-mute]')).to_be_visible()
