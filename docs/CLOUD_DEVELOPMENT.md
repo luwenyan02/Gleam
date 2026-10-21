@@ -1,6 +1,6 @@
 # 可重建的云开发环境
 
-拾光的长期源码、规则和交接记录保存在私有 `luwenyan02/Gleam`。Codex Cloud 的任务目录、依赖缓存和浏览器安装都可丢弃；文件暂时存在不代表永久磁盘承诺，也不保证会话全文长期保留。此流程不自动修改保存环境配置、联网权限或系统安全设置。
+拾光的长期源码、规则和交接记录保存在 GitHub `luwenyan02/Gleam`。用户于2026-10-21临时设为公开，可见性以GitHub实际配置为准。Codex Cloud 的任务目录、依赖缓存和浏览器安装都可丢弃；文件暂时存在不代表永久磁盘承诺，也不保证会话全文长期保留。此流程不自动修改保存环境配置、联网权限或系统安全设置。
 
 ## 初始化
 
@@ -43,10 +43,27 @@ python3 scripts/cloud-env.py run npm audit --audit-level=high
 
 Android 单元测试及无签名诊断 APK 继续由 `.github/workflows/ci.yml` 执行。云网页任务不运行 `build:android`，不加载 `GLEAM_KEYSTORE_*` 或本地签名属性；Gradle 配置本身也可能尝试读取这些材料。原证书签名、正式发布和真机验收保持单独授权，不把网页全绿等同 Android 或发布全绿。
 
+## 完整历史敏感信息检查
+
+main与preview的CI先运行history_secrets，通过后才开始网页、浏览器或Android任务。checkout使用fetch-depth:0，并把远端heads、tags和PR head获取到独立refs/audit命名空间；当前PR测试合并提交也由Git refs一并覆盖。e2e与upgrade_cache固定ubuntu-24.04，避免ubuntu-latest的发行版迁移破坏当前Playwright支持范围。
+
+Linux x86_64可从仓库根目录运行：
+
+```sh
+python3 scripts/check-history-secrets.py
+python3 scripts/test-history-secrets.py
+```
+
+本地入口只扫描已有完整refs，不自动fetch，也不修改HEAD／分支；可用`--repo`指定完整镜像。Gitleaks固定8.30.1，下载归档和可执行文件均核验固定SHA-256，缓存于`.tmp/tools/`；不执行未经核验的缓存。工具、配置、报告或网络异常返回失败，浅克隆直接拒绝，不降级为只查当前文件。
+
+规则采用固定工具内置默认值，禁止仓库配置、环境变量或inline allow静默放宽；`.gitleaksignore`只接受两条已核实的历史APK SHA-256误报fingerprint，新增条目需要同步修改并审核工具策略。除历史文本变更（含merge和删除）外，也检查提交／注解tag说明及禁止提交的历史路径。真实临时Git测试运行时生成无效合成凭据，不调用服务或写入产品数据。
+
+诊断仅包含路径、规则、提交及行号；原始进程输出不回显，临时报告不上传Actions artifacts。该检查不验证凭据在线有效性，也不能识别任意自定义加密／隐写；历史二进制和公开发行附件仍需按实际内容另行审计。
+
 ## 后续任务交接
 
 1. 先读 `AGENTS.md`、`docs/PROJECT_STATUS.md`、本文件，再读相关功能与测试说明；用户本次授权优先于旧任务措辞。
-2. 核验私有仓库身份、远端 main 与当前 HEAD、分支、工作树及任务目标。平台可能把 main 内容检出到名为 `work` 的分支，不应把分支名等同提交来源。
+2. 核验仓库身份、实际可见性、远端 main 与当前 HEAD、分支、工作树及任务目标。平台可能把 main 内容检出到名为 `work` 的分支，不应把分支名等同提交来源。
 3. 云环境默认仍绑定 main。处理本地预览反馈或新增功能时，先 fetch `origin/preview/orbstack`，从其最新提交继续或建立短工作分支，保留待验收改动；该分支不视为正式基线，不改保存环境的默认绑定。main 前进时可整合到预览，实质冲突先询问用户。持续语音暂缓，不能借环境维护扩大范围。
 4. 用可重建流程准备依赖；提交前记录实际检查，不复用其他 SHA 的通过结论。草稿 PR 的普通 CI 需核对 head/测试合并提交及每个 job；无权限启动或读取时报告具体阻碍。
 5. 用户于 2026-10-12 持续授权：修改和新增功能通过相应检查与敏感信息扫描后，直接正常推送到 `preview/orbstack`，无需每次再请求批准；核对远端精确 SHA 和同一提交的 `Preview checks` CI。推送冲突或 CI 失败应继续诊断，不能强制覆盖或标记为成功。合入 main 和正式发布仍需单独批准。

@@ -12,7 +12,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  history_secrets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Fetch all branch, tag and pull request history
+        run: |
+          if ! git fetch --quiet --no-tags --no-recurse-submodules origin \
+            'refs/heads/*:refs/audit/heads/*' \
+            'refs/tags/*:refs/audit/tags/*' \
+            'refs/pull/*/head:refs/audit/pulls/*' >/dev/null 2>&1; then
+            echo '::error::Unable to fetch complete repository history'
+            exit 1
+          fi
+      - name: Scan complete Git history for secrets
+        run: python3 scripts/check-history-secrets.py
+      - name: Verify history scanner regression guards
+        run: python3 scripts/test-history-secrets.py
+
   preview:
+    needs: history_secrets
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -32,6 +54,7 @@ jobs:
         working-directory: app
 
   android:
+    needs: history_secrets
     runs-on: ubuntu-latest
     defaults:
       run:

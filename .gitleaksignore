@@ -1,0 +1,4 @@
+# These exact historical findings contain the public upgrade APK SHA-256 only.
+# Keep commit/path/rule/line specificity: new findings in this file must fail.
+0b09da8f1c05465d90108d3e0d83b33e9a51dda5:app/e2e/upgrade_fixtures.py:generic-api-key:13
+fa9ac2da649f836a96049dc9f01f96ef442832c1:app/e2e/upgrade_fixtures.py:generic-api-key:13
