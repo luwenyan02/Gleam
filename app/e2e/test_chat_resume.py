@@ -2,7 +2,7 @@
 from pathlib import Path
 from time import monotonic
 from playwright.sync_api import sync_playwright, expect
-from test_life_ai import configure, open_life, read_rows, screenshot
+from test_life_ai import configure, open_life, read_rows, screenshot, set_life_ai_enabled
 
 OUT = Path(__file__).parents[2] / '.tmp/tests/e2e/chat-resume'
 MOCK = r'''(() => {
@@ -38,8 +38,8 @@ def leave(page):
 def send(page, text, count):
     page.locator('#life-chat-input').fill(text)
     page.locator('[data-life-chat-send]').click()
-    page.locator('#dialog-scrim [data-act="ok"]').click()
     page.wait_for_function('count => window.__chatRequests.length === count', arg=count)
+    expect(page.locator('#dialog-scrim.show')).to_have_count(0)
 
 
 def delta(page, text):
@@ -129,8 +129,8 @@ def run(page, width, theme, scale):
     page.screenshot(path=str(OUT / f'interrupted-{width}-{theme}-{scale}.png'), animations='disabled')
     # 重试不重复插入用户消息；重进后“停止”仍控制原请求。
     page.locator('[data-life-chat-retry]').click()
-    page.locator('#dialog-scrim [data-act="ok"]').click()
     page.wait_for_function('window.__chatRequests.length === 1')
+    expect(page.locator('#dialog-scrim.show')).to_have_count(0)
     delta(page, '重试时收到的片段。')
     leave(page)
     enter(page)
@@ -140,8 +140,7 @@ def run(page, width, theme, scale):
     expect(page.locator('.chat-incomplete')).to_contain_text('重试时')
     assert page.evaluate('window.__chatRequests.at(-1).signal.aborted')
     page.locator('[data-life-chat-retry]').click()
-    # 重进页面不会继承发送授权；重试仍须确认本轮素材和目的地。
-    page.locator('#dialog-scrim [data-act="ok"]').click()
+    # 重进和重试沿用已启用设置，不再弹出逐轮内容确认。
     page.wait_for_function('window.__chatRequests.length === 2')
     delta(page, '重试后的完整安排。')
     finish(page)
@@ -170,9 +169,10 @@ def run(page, width, theme, scale):
     expect(page.locator('[data-life-chat-retry]')).to_be_visible()
     expect(page.locator('.chat-incomplete')).to_contain_text('最后一轮')
     assert page.evaluate('window.__chatRequests.length') == 4
-    # 新会话不会混入旧会话的回复；在同意发送前退出不应发出请求。
+    # 新会话不会混入旧会话；关闭AI后首次启用确认仍可以取消。
     page.locator('[data-chat-start]').click()
     expect(page.locator('.chat-welcome')).to_be_visible()
+    set_life_ai_enabled(page, False)
     page.locator('#life-chat-input').fill('另一段虚构会话')
     page.locator('[data-life-chat-send]').click()
     # 取消确认后退出，重开可找回未回复的消息并重试。

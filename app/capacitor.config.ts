@@ -13,6 +13,8 @@ const config: CapacitorConfig = {
   plugins: {
     // [R06] 云备份直连：原生端 fetch 经 CapacitorHttp 转发，绕开 WebView CORS 限制
     CapacitorHttp: { enabled: true },
+    // AI SSE 独立按需读流；测试网络隔离可显式关闭，不改变其它 HTTP 通道。
+    GleamAiStream: { enabled: true },
   },
 };
 

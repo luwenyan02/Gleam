@@ -30,6 +30,7 @@ public class BootBaselineFixtureActivity extends BridgeActivity {
         BootFixtureNetworkFence.installDocumentFence(view);
         registerPlugin(BootFixtureHttpPlugin.class);
         registerPlugin(BootFixtureWebDavPlugin.class);
+        registerPlugin(BootFixtureAiStreamPlugin.class);
         registerPlugin(BootFixtureSpeechPlugin.class);
         super.load();
     }

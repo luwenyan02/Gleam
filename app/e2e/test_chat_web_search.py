@@ -66,7 +66,7 @@ def run(browser, width, height, theme, scale):
         page.evaluate('scale=>document.documentElement.style.setProperty("--seed-type",scale)', str(scale))
         page.locator('[data-page="page-life"]').click(); page.locator('[data-life-chat]').click()
         page.locator('#life-chat-input').fill('今天贵阳天气怎么样？')
-        page.locator('[data-life-chat-send]').click(); page.locator('#dialog-scrim [data-act="ok"]').click()
+        page.locator('[data-life-chat-send]').click()
         page.wait_for_function('window.__searchRequests.length===1')
         payload = page.evaluate('window.__searchRequests[0]')
         assert payload['url'].endswith('/responses') and payload['body']['tools'] == [{'type': 'web_search'}]
@@ -107,7 +107,7 @@ def run(browser, width, height, theme, scale):
         assert_no_search_info(page)
         assert page.evaluate('window.__searchRequests.length') == 0
         # 同一句重新回答未调用搜索，不能继承旧来源或声称已搜索。
-        page.locator('[data-chat-regenerate]').click(); page.locator('#dialog-scrim [data-act="ok"]').click()
+        page.locator('[data-chat-regenerate]').click()
         page.wait_for_function('window.__searchRequests.length===1')
         finish(page, '本次没有执行搜索，实时天气尚未核实。', False)
         expect(page.locator('.assistant .chat-message-text')).to_have_text('本次没有执行搜索，实时天气尚未核实。')

@@ -2,11 +2,11 @@ import { esc } from '../../core/esc';
 import type { LifeChatMessage, LifeDraft, LifeNote } from '../../core/types';
 import { getAttachment, getLifeNote } from '../../core/repo/lifeRepo';
 import { claimLegacyLifeChatDraft, getLifeDraft, listLifeChatSessions, migrateLifeDraft, saveLifeDraft } from '../../core/repo/lifeDraftRepo';
-import { formatLifeVoiceReply, generateLifeSummary, getLifeAiDestination } from '../../core/repo/lifeAiRepo';
+import { formatLifeVoiceReply, generateLifeSummary } from '../../core/repo/lifeAiRepo';
 import { on } from '../../core/store';
 import { getSetting } from '../../core/repo/settingsRepo';
 import { prepareReceipt } from '../entry/receiptEditor';
-import { confirmLifeAi } from './lifeAiConsent';
+import { confirmLifeAi, getLifeChatDestination } from './lifeAiConsent';
 import { registerSubpage, openSubpage, closeSubpage, SUBPAGE_CLOSE_EVENT } from '../shell/router';
 import { closeSheet, openSheet } from '../shell/sheet';
 import { showToast } from '../shell/toast';
@@ -28,7 +28,6 @@ import { bindLifeLedgerResults, lifeLedgerResultHtml } from './lifeLedgerResult'
 const needsAiConfig = (error: unknown): boolean => error instanceof AiConfigError
   || (error instanceof Error && error.message === '请先在设置中配置 AI 接口和模型');
 
-type Destination = { baseUrl: string; model: string };
 interface Launch { draft: LifeDraft; existing?: LifeNote; sessionVersion: number; }
 let pendingLaunch: Launch | undefined;
 const chatSessionVersions = new Map<string, number>();
@@ -98,7 +97,6 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   const cancelledTurns = new Map<LifeChatMessage, { question: LifeChatMessage; regenerate: boolean; text: string }>();
   let controller: AbortController | undefined;
   let persistTimer: ReturnType<typeof setTimeout> | undefined;
-  let authorisedDestination: Destination | undefined;
   let streamedReply = '';
   let paintedReply = '';
   let replyPaint: number | undefined;
@@ -210,13 +208,13 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       const retryIndex = cancelled ? draft.messages.indexOf(cancelled.question) : failedMessageIndex;
       const retryRegenerate = cancelled?.regenerate ?? failedRegenerate;
       const failure = (cancelled || failedMessageIndex === index) && retryIndex != null && retryIndex >= 0
-        ? `<div class="life-chat-failed" ${cancelled ? 'data-chat-cancelled' : ''}><span>${esc(cancelled?.text ?? '未完成')}</span><button class="chip" data-life-chat-retry="${retryIndex}" data-retry-regenerate="${retryRegenerate}">重试</button></div>` : '';
+        ? `<div class="life-chat-failed" data-chat-message-index="${index}" ${cancelled ? 'data-chat-cancelled' : ''}><span>${esc(cancelled?.text ?? '未完成')}</span><button class="chip" data-life-chat-retry="${retryIndex}" data-retry-regenerate="${retryRegenerate}">重试</button></div>` : '';
       const actions = message.role === 'assistant' ? `<div class="chat-message-actions"><button data-chat-copy="${index}" aria-label="复制第 ${index + 1} 条消息" title="复制">${chatIcon('copy')}</button>${index === draft.messages.length - 1 ? `<button data-chat-regenerate aria-label="重新回答" title="重新回答">${chatIcon('retry')}</button>` : ''}${replyTime ? `<time class="chat-reply-time" datetime="${new Date(message.repliedAt!).toISOString()}" title="${esc(new Date(message.repliedAt!).toLocaleString())}" aria-label="回复时间 ${replyTime}">${replyTime}</time>` : ''}</div>` : '';
-      return `<article class="life-chat-bubble ${message.role}">${message.role === 'assistant' ? `<div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div>` : ''}<div class="chat-message-content"><div class="chat-message-text">${message.role === 'user' ? esc(message.content) : renderChatText(message.voiceDisplay ?? message.content)}</div>${sources.length ? `<div class="life-chat-message-photos">${sources.map((src, photoIndex) => `<img src="${src}" alt="本轮照片 ${photoIndex + 1}">`).join('')}</div>` : ''}</div>${ledgerResults.has(index) ? lifeLedgerResultHtml(ledgerResults.get(index)!, index, sending) : ''}${actions}${failure}</article>`;
+      return `<article class="life-chat-bubble ${message.role}">${message.role === 'assistant' ? `<div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div>` : ''}<div class="chat-message-content"><div class="chat-message-text">${message.role === 'user' ? esc(message.content) : renderChatText(message.voiceDisplay ?? message.content)}</div>${sources.length ? `<div class="life-chat-message-photos">${sources.map((src, photoIndex) => `<img src="${src}" alt="本轮照片 ${photoIndex + 1}">`).join('')}</div>` : ''}</div>${ledgerResults.has(index) ? lifeLedgerResultHtml(ledgerResults.get(index)!, index, sending) : ''}${actions}</article>${failure}`;
     }).join('');
     const proposalStale = !!draft.summaryProposal && (draft.summaryProposal.sourceMessageCount < draft.messages.length || draft.photos.length > 0);
     const card = !summaryCardHidden && (readyToSummarize || draft.summaryProposal) ? `<section class="life-summary-card"><strong>${proposalStale ? '已有建议稿，对话已有新内容' : draft.summaryProposal ? '已有一版建议稿' : '已经有一个值得留下的片段了'}</strong><p>${proposalStale ? '建议稿不会自动覆盖你的修改；需要时可手动重新整理。' : '想把这段话整理成一条记录吗？'}</p><div><button class="btn primary" data-life-chat-summary>${draft.summaryProposal ? '查看建议稿' : '生成记录'}</button><button class="btn ghost" data-life-chat-continue>再聊聊</button></div></section>` : '';
-    messagesEl.innerHTML = `${welcome}${messages}${streamedReply ? `<article class="life-chat-bubble assistant ${sending ? 'chat-streaming' : 'chat-incomplete'}" aria-label="${sending ? '正在回复' : '未完成的回复'}"><div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div><div class="chat-message-content"><div class="chat-message-text">${renderChatText(streamedReply)}</div></div></article>` : ''}${card}`;
+    messagesEl.innerHTML = `${welcome}${messages}${streamedReply ? `<article class="life-chat-bubble assistant ${sending ? 'chat-streaming' : 'chat-incomplete'}" aria-label="${sending ? '正在回复' : '未完成的回复'}"><div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div><div class="chat-message-content"><div class="chat-message-text">${renderChatText(streamedReply)}</div></div>${!sending ? `<div class="chat-message-actions"><button data-chat-copy="incomplete" aria-label="复制未完成的回复" title="复制">${chatIcon('copy')}</button></div>` : ''}</article>` : ''}${card}`;
     streamBubble = messagesEl.querySelector<HTMLElement>('.chat-streaming,.chat-incomplete') ?? undefined;
     paintedReply = streamedReply;
     // 尾行保留操作区宽度，按钮在气泡内右对齐，不再单独占据气泡外的一行。
@@ -239,7 +237,9 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     messagesEl.querySelectorAll<HTMLButtonElement>('[data-chat-prompt]').forEach(button => button.onclick = () => { input.value = button.dataset.chatPrompt!; input.dispatchEvent(new Event('input')); input.focus(); });
     messagesEl.querySelectorAll<HTMLButtonElement>('[data-chat-copy]').forEach(button => button.onclick = () => {
       const message = draft.messages[Number(button.dataset.chatCopy)];
-      void navigator.clipboard.writeText(message.voiceDisplay ?? message.content).then(() => {
+      const text = button.dataset.chatCopy === 'incomplete' ? streamedReply : message?.voiceDisplay ?? message?.content;
+      if (text == null) return;
+      void navigator.clipboard.writeText(text).then(() => {
         button.innerHTML = chatIcon('check'); button.title = '已复制'; showToast('已复制');
         setTimeout(() => { if (button.isConnected) { button.innerHTML = chatIcon('copy'); button.title = '复制'; } }, 1600);
       }).catch(() => showToast('复制失败，可长按选择文字'));
@@ -329,16 +329,6 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       if (hadProposal) status('已添加照片，旧建议稿已清除。');
     } catch (error) { status(error instanceof Error ? error.message : '照片添加失败'); }
   }
-  async function authorise(preview: string, photos: string[], signal: AbortSignal): Promise<Destination | false> {
-    const destination = await getLifeAiDestination();
-    const unchanged = authorisedDestination?.baseUrl === destination.baseUrl && authorisedDestination.model === destination.model;
-    if (unchanged && !photos.length && !draft.messages.some(message => message.ledgerAnalysis)) return destination;
-    const accepted = await confirmLifeAi(preview, signal);
-    if (accepted) {
-      authorisedDestination = accepted;
-    }
-    return accepted;
-  }
   function sourcePreview(photos: string[]): string {
     return [
       ...(draft.messages.some(message => message.ledgerAnalysis) ? ['本次会发送以下会话文字，其中含先前的账本分析；不会重新读取账本。'] : []),
@@ -388,7 +378,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       const ledger = ledgerRequest ? await confirmLifeLedgerAi(draft.messages[messageIndex].content, signal, {
         scope: ledgerScopes.get(messageIndex), onScopeChange: scope => ledgerScopes.set(messageIndex, scope),
       }) : undefined;
-      const expectedDestination = ledgerRequest ? (ledger ? ledger.expectedDestination : false) : await authorise(sourcePreview(photos), photos, signal);
+      const expectedDestination = ledgerRequest ? (ledger ? ledger.expectedDestination : false) : await getLifeChatDestination(signal);
       if (disposed || !isCurrentSession()) return;
       if (!expectedDestination || signal.aborted) {
         const question = draft.messages[messageIndex];
@@ -421,7 +411,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
           for (const key of ledgerResults.keys()) if (key > messageIndex) ledgerResults.delete(key);
           for (const key of ledgerScopes.keys()) if (key > messageIndex) ledgerScopes.delete(key);
         }
-        if (ledger) { ledgerResults.set(draft.messages.length - 1, ledger.review); authorisedDestination = undefined; }
+        if (ledger) ledgerResults.set(draft.messages.length - 1, ledger.review);
         readyToSummarize = false;
         renderPhotos(); render();
       }
@@ -563,7 +553,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     const signal = controller.signal;
     setBusy(true);
     try {
-      const expectedDestination = await authorise(sourcePreview([]), [], signal);
+      const expectedDestination = await confirmLifeAi(sourcePreview([]), signal);
       if (!expectedDestination || disposed) return;
       status('正在整理成一条记录…');
       draft.summaryProposal = await generateLifeSummary({ body: '', messages: structuredClone(draft.messages), signal, noteId: draft.noteId, sourceUpdatedAt: draft.sourceUpdatedAt, expectedDestination });

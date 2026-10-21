@@ -2,7 +2,7 @@
 import time
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
-from test_life_ai import configure, open_life, read_rows
+from test_life_ai import configure, open_life, read_rows, set_life_ai_enabled
 from test_chat_resume import MOCK, enter, leave
 from test_chat_web_search import BRIDGE, emit, finish
 from test_native_live_voice import MOCK as NATIVE
@@ -68,10 +68,10 @@ def history_intact(page):
     }''')
 
 
-def send(page, text, count, confirm=False):
+def send(page, text, count):
     page.locator('#life-chat-input').fill(text); page.locator('[data-life-chat-send]').click()
-    if confirm: page.locator('#dialog-scrim [data-act="ok"]').click()
     page.wait_for_function('count => window.__chatRequests.length===count', arg=count)
+    expect(page.locator('#dialog-scrim.show')).to_have_count(0)
 
 
 def streaming(browser, width):
@@ -80,7 +80,7 @@ def streaming(browser, width):
     page=context.new_page(); page.add_init_script(MOCK); page.add_init_script(RAF_CONTROL)
     errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
     open_life(page); configure(page); seed(page); enter(page)
-    send(page,'虚构追问：继续聊聊。',1,True);observe(page)
+    send(page,'虚构追问：继续聊聊。',1);observe(page)
     page.evaluate('''async () => {
       window.__holdChatFrames=true;
       for(let i=0;i<80;i++)window.__chatRequests.at(-1).delta('片段'+i+'。');
@@ -138,7 +138,7 @@ def search_only(browser):
     page=context.new_page();page.add_init_script(BRIDGE);page.add_init_script(RAF_CONTROL)
     open_life(page);configure(page);seed(page)
     page.evaluate('''async()=>{const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)});const tx=db.transaction('settings','readwrite');for(const [key,value] of [['ai.baseUrl','https://dashscope.aliyuncs.com/compatible-mode/v1'],['ai.model','qwen3.8-max']])tx.objectStore('settings').put({key,value});await new Promise(r=>tx.oncomplete=r);db.close();}''')
-    enter(page);page.locator('#life-chat-input').fill('虚构问题：现在天气怎么样？');page.locator('[data-life-chat-send]').click();page.locator('#dialog-scrim [data-act="ok"]').click()
+    enter(page);page.locator('#life-chat-input').fill('虚构问题：现在天气怎么样？');page.locator('[data-life-chat-send]').click()
     page.wait_for_function('window.__searchRequests.length===1');observe(page)
     emit(page,[{'type':'response.web_search_call.searching'}])
     deadline=time.monotonic()+6
@@ -160,7 +160,7 @@ def retry_cleanup(browser):
     context=browser.new_context(viewport={'width':390,'height':844},reduced_motion='reduce',service_workers='block')
     context.route('https://**/*',lambda r:r.abort())
     page=context.new_page();page.add_init_script(MOCK)
-    open_life(page);configure(page);enter(page)
+    open_life(page);configure(page);set_life_ai_enabled(page,False);enter(page)
     page.locator('#life-chat-input').fill('虚构取消后重试。');page.locator('[data-life-chat-send]').click()
     page.locator('#dialog-scrim [data-act="cancel"]').click()
     expect(page.locator('[data-chat-cancelled]')).to_have_count(1)
@@ -211,25 +211,25 @@ def foreground_priority(browser, kind):
     else:
         page.locator('#life-chat-input').fill('分析我这个月的消费。' if kind=='ledger' else '再说一个周末建议。')
         page.locator('[data-life-chat-send]').click()
-    cancel='[data-ledger-cancel]' if kind=='ledger' else '#dialog-scrim [data-act="cancel"]'
-    approve='[data-ledger-approve]:enabled' if kind=='ledger' else '#dialog-scrim [data-act="ok"]'
-    page.locator(cancel).wait_for()
-    assert not page.evaluate('window.__layoutRequests[0].signal.aborted'), '打开确认框不能中止排版'
-    page.locator(cancel).click()
-    expect(page.locator('[data-life-chat-stop]')).to_be_hidden()
-    assert not page.evaluate('window.__layoutRequests[0].signal.aborted'), '取消发送不能中止排版'
-    if kind=='regenerate':page.locator('[data-chat-regenerate]').click()
-    else:page.locator('[data-life-chat-retry]').click()
-    page.locator(approve).click()
+    if kind=='ledger':
+        page.locator('[data-ledger-cancel]').wait_for()
+        assert not page.evaluate('window.__layoutRequests[0].signal.aborted'), '打开账本确认框不能中止排版'
+        page.locator('[data-ledger-cancel]').click()
+        expect(page.locator('[data-life-chat-stop]')).to_be_hidden()
+        assert not page.evaluate('window.__layoutRequests[0].signal.aborted'), '取消账本发送不能中止排版'
+        page.locator('[data-life-chat-retry]').click()
+        page.locator('[data-ledger-approve]:enabled').click()
+    else:
+        expect(page.locator('#dialog-scrim.show')).to_have_count(0)
     page.wait_for_function('window.__foregroundRequests.length===1')
-    assert page.evaluate('window.__layoutRequests[0].signal.aborted'), '授权后的前台文字请求必须取消后台排版'
+    assert page.evaluate('window.__layoutRequests[0].signal.aborted'), '实际发送的前台文字请求必须取消后台排版'
     expect(page.locator('[data-life-chat-stop]')).to_be_hidden()
     if kind!='regenerate':expect(page.locator('#life-chat-messages')).to_contain_text(RAW)
     page.evaluate('window.__layoutRequests[0].finish()')
     expect(page.locator('#life-chat-messages')).not_to_contain_text('不应采用的迟到排版')
     assert page.evaluate('window.__micCalls')==0
     assert not errors,errors
-    context.close();print('PASS foreground cancels layout only after approval',kind,flush=True)
+    context.close();print('PASS foreground send cancels layout with ledger approval retained',kind,flush=True)
 
 
 if __name__=='__main__':

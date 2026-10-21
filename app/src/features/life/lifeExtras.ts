@@ -13,7 +13,7 @@ export async function openLifeAiControls(): Promise<void> {
   const enabled = await getSetting('life.aiEnabled');
   openSheet({ ariaLabel: '生活 AI 与隐私', render(el) {
     el.innerHTML = `<div class="lf-sheet-head"><p class="sheet-title">AI 与隐私</p><button class="icon-btn" data-life-close aria-label="关闭">×</button></div><div class="sheet-scroll life-ai-controls">
-      <p class="le-hint">生活记录默认留在本机。只有主动使用 AI 并确认素材，才发送到你设置的服务。</p>
+      <p class="le-hint">生活记录默认留在本机。聊天点击发送即交给你设置的 AI 服务；整理记录、生成周刊和读取账本仍需确认素材。</p>
       <label class="lc-check"><input type="checkbox" id="life-ai-enabled" ${enabled ? 'checked' : ''}>启用生活 AI</label>
       <p class="le-hint">关闭后仍可记录与阅读已收藏周刊。单条记录可在“标题与更多”中排除；周刊可单独清理。</p>
       <button class="btn ghost" data-life-ai-config>查看 AI 接口设置</button><p class="le-hint">周刊不自动生成，不发送照片和账单；无需每天记录，也没有补写任务。</p></div>`;
@@ -22,7 +22,7 @@ export async function openLifeAiControls(): Promise<void> {
     el.querySelector<HTMLInputElement>('#life-ai-enabled')!.onchange = async event => {
       const checkbox = event.target as HTMLInputElement;
       checkbox.disabled = true;
-      try { await setSetting('life.aiEnabled', checkbox.checked); showToast(checkbox.checked ? '已启用，每次发送仍需确认' : '已关闭生活 AI'); }
+      try { await setSetting('life.aiEnabled', checkbox.checked); showToast(checkbox.checked ? '已启用生活 AI' : '已关闭生活 AI'); }
       catch { checkbox.checked = !checkbox.checked; showToast('设置未保存，请重试'); }
       finally { checkbox.disabled = false; }
     };

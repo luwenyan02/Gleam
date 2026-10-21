@@ -34,6 +34,11 @@ final class BootFixtureNetworkFence {
             config.getPluginConfiguration("CapacitorHttp"), com.getcapacitor.PluginConfig.class, "config");
         try { httpConfig.put("enabled", false); }
         catch (org.json.JSONException failure) { throw new AssertionError(failure); }
+        org.json.JSONObject streamConfig = (org.json.JSONObject) BootLifecycleFixtureActivity.field(
+            config.getPluginConfiguration("GleamAiStream"), com.getcapacitor.PluginConfig.class, "config");
+        try { streamConfig.put("enabled", false); }
+        catch (org.json.JSONException failure) { throw new AssertionError(failure); }
+        if (config.getPluginConfiguration("GleamAiStream").getBoolean("enabled", true)) throw new AssertionError("Fixture AI network fence unavailable");
         return config;
     }
     static void installDocumentFence(WebView view) {

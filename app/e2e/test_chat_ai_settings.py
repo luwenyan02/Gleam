@@ -46,6 +46,8 @@ def run(page, width):
     expect(page.locator('#sp-settings')).to_have_count(0)
     # 仅填地址和模型、缺少 Key 时也提供入口；补齐后可重试原消息。
     page.locator('[data-life-chat-retry]').click()
+    # 生活 AI 尚未启用时保留一次启用确认；之后的重试不再确认内容。
+    expect(page.locator('#dialog-scrim.show')).to_contain_text('开启生活 AI')
     page.locator('#dialog-scrim [data-act="ok"]').click()
     expect(page.locator('#life-chat-status')).to_contain_text('尚未配置 AI 接口')
     expect(page.locator('[data-chat-config-error]')).to_be_enabled()
@@ -59,6 +61,7 @@ def run(page, width):
         'choices': [{'message': {'content': '虚构回复：设置完成，可以继续了。'}}]}))
     page.locator('[data-life-chat-retry]').click()
     expect(page.locator('.assistant .chat-message-text')).to_contain_text('设置完成')
+    expect(page.locator('#dialog-scrim.show')).to_have_count(0)
     expect(page.locator('[data-chat-config-error]')).to_be_hidden()
     expect(page.locator('#life-chat-input')).to_have_value('尚未发送的虚构草稿')
     expect(page.locator('.user')).to_have_count(1)
