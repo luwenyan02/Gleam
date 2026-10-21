@@ -58,6 +58,8 @@ function decodePng(buffer: Buffer) {
 
   for (let y = 0; y < height; y += 1) {
     const filter = encoded[sourceOffset++];
+    // PNG stores one filter per scanline; validate it once, not once per byte.
+    expect([0, 1, 2, 3, 4]).toContain(filter);
     for (let x = 0; x < stride; x += 1) {
       const raw = encoded[sourceOffset++];
       const left = x >= channels ? pixels[y * stride + x - channels] : 0;
@@ -73,7 +75,7 @@ function decodePng(buffer: Buffer) {
         const pb = Math.abs(p - up);
         const pc = Math.abs(p - upperLeft);
         predictor = pa <= pb && pa <= pc ? left : pb <= pc ? up : upperLeft;
-      } else expect(filter).toBe(0);
+      }
       pixels[y * stride + x] = (raw + predictor) & 0xff;
     }
   }
