@@ -618,6 +618,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
         if (disposed || !isCurrentSession()) return;
         if (cancelledTurns.size && messages.some(message => message.role === 'assistant' && message.content.trim())) {
           cancelledTurns.clear(); status('');
+          messagesEl.querySelectorAll('[data-chat-cancelled]').forEach(notice => notice.remove());
         }
         let structureChanged = mode !== 'upsert';
         const current = messages.map((snapshot, index) => {
