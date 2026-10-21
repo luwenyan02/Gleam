@@ -33,12 +33,39 @@ it('百炼 qwen3.8-max 使用 Responses 搜索工具并只采用接口返回的�
   expect(url).toBe(base + '/responses');
   const body = JSON.parse(String(init.body));
   expect(body.tools).toEqual([{ type: 'web_search' }]);
+  expect(body.reasoning).toEqual({ effort: 'none' });
+  expect(body.enable_thinking).toBeUndefined();
   expect(body.store).toBe(false);
   expect(body.input.at(-1)).toEqual(messages[0]);
   expect(JSON.stringify(body.input)).not.toContain('没有联网工具');
   expect(JSON.stringify(body.input)).toContain('未执行搜索');
   expect(result.search).toEqual({ status: 'searched', sources: [source] });
   expect(onSearch.mock.calls.at(-1)?.[0]).toEqual(result.search);
+});
+
+it.each([
+  ['qwen3.8-max-0902', { effort: 'none' }, undefined],
+  ['qwen3.8-flash', { effort: 'none' }, undefined],
+  ['qwen3.7-plus', undefined, false],
+  ['qwen3.7-flash', undefined, false],
+  ['qwen3.7-max', undefined, false],
+  ['qwen3.7-max-preview', undefined, undefined],
+  ['qwen3.7-max-2026-05-17', undefined, undefined],
+  ['kimi-k3', undefined, undefined],
+  ['deepseek-v4-pro-0813', undefined, undefined],
+] as const)('搜索协议仅为已确认的 %s 设置兼容思考参数', async (model, reasoning, thinking) => {
+  await setSetting('ai.model', model);
+  const fetch = vi.fn(async () => json(output()));
+  vi.stubGlobal('fetch', fetch);
+  await continueLifeChat({ body: '', messages });
+  expect(fetch).toHaveBeenCalledOnce();
+  const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+  const body = JSON.parse(String(init.body));
+  expect(url).toBe(base + '/responses');
+  expect(body.tools).toEqual([{ type: 'web_search' }]);
+  expect(body.reasoning).toEqual(reasoning);
+  expect(body.enable_thinking).toBe(thinking);
+  expect(body.reasoning_effort).toBeUndefined();
 });
 
 it('搜索状态随 SSE 工具事件更新，分片文字和最终来源一起交接', async () => {

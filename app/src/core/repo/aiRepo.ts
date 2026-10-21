@@ -178,7 +178,11 @@ export async function requestAiChat({
         }
         if (!finished || !content.trim()) throw new Error('回复中断，请重试');
         return content;
-      } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+      } finally {
+        // 清理网络流不应阻塞已经确认的完成、失败或取消结果。
+        void reader.cancel().catch(() => {});
+        reader.releaseLock();
+      }
     }
     let data: { choices?: { message?: { content?: string } }[] };
     try {

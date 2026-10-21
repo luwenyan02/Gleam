@@ -68,6 +68,16 @@ interface SearchResponse {
   usage?: { x_tools?: { web_search?: { count?: number } } };
 }
 
+/** Responses 的思考参数不能直接套用 Chat Completions；其余模型保留已有行为。 */
+function searchModelOptions(model: string): Record<string, unknown> {
+  // 官方 Responses 参数表：Qwen3.8 Max/Flash 默认 xhigh，支持 none。
+  if (/^qwen3\.8-(?:max|flash)(?:[-\w.]*)?$/i.test(model)) return { reasoning: { effort: 'none' } };
+  // Qwen3.7 仍支持此开关；这两个 Max 版本只支持思考，不能强行关闭。
+  if (/^qwen3\.7-(?:max|plus|flash)(?:[-\w.]*)?$/i.test(model)
+    && !/^qwen3\.7-max-(?:preview|2026-05-17)$/i.test(model)) return { enable_thinking: false };
+  return {};
+}
+
 /** 独立请求边界：只有普通文字聊天调用；不自动回退重发，也不读取错误响应正文。 */
 export async function requestWebSearchChat(request: SearchRequest): Promise<string> {
   const { endpoint, model, apiKey, signal, onDelta, onSearch } = request;
@@ -117,7 +127,7 @@ export async function requestWebSearchChat(request: SearchRequest): Promise<stri
     });
     const response = await fetch(endpoint, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, input, tools: [{ type: 'web_search' }], store: false, ...(onDelta ? { stream: true } : {}) }),
+      body: JSON.stringify({ model, ...searchModelOptions(model), input, tools: [{ type: 'web_search' }], store: false, ...(onDelta ? { stream: true } : {}) }),
       signal: controller.signal,
     });
     if (signal?.aborted || controller.signal.aborted) throw new Error('已取消');
@@ -142,7 +152,8 @@ export async function requestWebSearchChat(request: SearchRequest): Promise<stri
         while ((match = /\r?\n\r?\n/.exec(buffer))) {
           const event = buffer.slice(0, match.index); buffer = buffer.slice(match.index + match[0].length);
           const data = event.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
-          if (!data || data === '[DONE]') continue;
+          if (!data) continue;
+          if (data === '[DONE]') throw new Error('回复中断，请重试');
           const parsed = JSON.parse(data);
           if (parsed.type === 'error' || parsed.type === 'response.failed' || parsed.type === 'response.incomplete') throw new Error('联网回复未完成，请重试');
           if (/^response\.web_search_call\.(?:in_progress|searching)$/.test(parsed.type)) update('searching');
@@ -158,7 +169,11 @@ export async function requestWebSearchChat(request: SearchRequest): Promise<stri
       }
       if (!finished) throw new Error('回复中断，请重试');
       return content;
-    } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+    } finally {
+      // 清理网络流不应阻塞已经确认的完成、失败或取消结果。
+      void reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
   } catch (error) {
     if (state.status === 'enabled' || state.status === 'searching') update('failed');
     if (signal?.aborted) throw new Error('AI 请求已取消');

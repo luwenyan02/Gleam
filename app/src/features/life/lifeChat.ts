@@ -100,6 +100,10 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   let persistTimer: ReturnType<typeof setTimeout> | undefined;
   let authorisedDestination: Destination | undefined;
   let streamedReply = '';
+  let paintedReply = '';
+  let replyPaint: number | undefined;
+  let streamBubble: HTMLElement | undefined;
+  let composerState = '';
   let stopVoice: (() => void) | undefined;
   let voiceOpen = false;
   let voicePaint: number | undefined;
@@ -165,10 +169,13 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   composerResize.observe(messagesEl);
   const input = host.querySelector<HTMLTextAreaElement>('#life-chat-input')!;
   input.value = draft.pendingReply ?? '';
+  let statusText: string | undefined;
+  let statusConfigure: boolean | undefined;
   const status = (text: string, configure = false) => {
     if (disposed) return;
-    host.querySelector<HTMLElement>('#life-chat-status')!.textContent = text;
-    host.querySelector<HTMLButtonElement>('[data-chat-config-error]')!.hidden = !configure;
+    if (text !== statusText) host.querySelector<HTMLElement>('#life-chat-status')!.textContent = text;
+    if (configure !== statusConfigure) host.querySelector<HTMLButtonElement>('[data-chat-config-error]')!.hidden = !configure;
+    statusText = text; statusConfigure = configure;
   };
 
   function dispose(): void {
@@ -177,6 +184,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     voiceLayouts.cancel();
     document.removeEventListener('visibilitychange', stopLayoutsInBackground);
     clearTimeout(persistTimer);
+    cancelReplyPaint();
     if (voicePaint != null) cancelAnimationFrame(voicePaint);
     controller?.abort();
     offReply?.();
@@ -191,6 +199,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   }
   function render(forceBottom = true): void {
     if (disposed) return;
+    cancelReplyPaint();
     const scrollTop = messagesEl.scrollTop;
     const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100;
     const welcome = !draft.messages.length ? `<section class="chat-welcome"><div class="chat-welcome-heading"><div class="chat-emblem" aria-hidden="true">${chatIcon('spark')}</div><div><div class="chat-eyebrow">一处随时能坐坐的地方</div><h3>你好，我是拾光</h3></div></div><p>今天有什么小事，或突然冒出的想法？<br>可以一起琢磨，也可以只是聊聊。</p><div class="chat-starters"><button data-chat-prompt="今天有件小事，想和你聊聊。"><i>${chatIcon('chat')}</i>聊聊今天</button><button data-chat-prompt="我有一个想法，想请你帮我一起想想。"><i>${chatIcon('idea')}</i>帮我想想</button><button data-chat-prompt="我有个问题，想请你解释一下："><i>${chatIcon('question')}</i>解答问题</button><button data-chat-prompt="帮我分析一下我这个月的消费情况。"><i>${chatIcon('ledger')}</i>分析消费</button></div></section>` : '';
@@ -208,6 +217,8 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     const proposalStale = !!draft.summaryProposal && (draft.summaryProposal.sourceMessageCount < draft.messages.length || draft.photos.length > 0);
     const card = !summaryCardHidden && (readyToSummarize || draft.summaryProposal) ? `<section class="life-summary-card"><strong>${proposalStale ? '已有建议稿，对话已有新内容' : draft.summaryProposal ? '已有一版建议稿' : '已经有一个值得留下的片段了'}</strong><p>${proposalStale ? '建议稿不会自动覆盖你的修改；需要时可手动重新整理。' : '想把这段话整理成一条记录吗？'}</p><div><button class="btn primary" data-life-chat-summary>${draft.summaryProposal ? '查看建议稿' : '生成记录'}</button><button class="btn ghost" data-life-chat-continue>再聊聊</button></div></section>` : '';
     messagesEl.innerHTML = `${welcome}${messages}${streamedReply ? `<article class="life-chat-bubble assistant ${sending ? 'chat-streaming' : 'chat-incomplete'}" aria-label="${sending ? '正在回复' : '未完成的回复'}"><div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div><div class="chat-message-content"><div class="chat-message-text">${renderChatText(streamedReply)}</div></div></article>` : ''}${card}`;
+    streamBubble = messagesEl.querySelector<HTMLElement>('.chat-streaming,.chat-incomplete') ?? undefined;
+    paintedReply = streamedReply;
     // 尾行保留操作区宽度，按钮在气泡内右对齐，不再单独占据气泡外的一行。
     messagesEl.querySelectorAll<HTMLElement>('.chat-message-actions').forEach(actions => {
       const content = actions.parentElement!.querySelector<HTMLElement>('.chat-message-content')!;
@@ -245,9 +256,38 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     });
     messagesEl.querySelector('[data-life-chat-summary]')?.addEventListener('click', () => { if (draft.summaryProposal) openSummary(); else void summarize(); });
     messagesEl.querySelector('[data-life-chat-continue]')?.addEventListener('click', () => { readyToSummarize = false; summaryCardHidden = true; render(); });
-    syncComposer();
+    syncComposer(true);
     messagesEl.scrollTop = forceBottom || nearBottom ? messagesEl.scrollHeight : scrollTop;
     host.querySelector<HTMLButtonElement>('[data-chat-jump]')!.hidden = forceBottom || nearBottom;
+  }
+  function cancelReplyPaint(): void {
+    if (replyPaint != null) cancelAnimationFrame(replyPaint);
+    replyPaint = undefined;
+  }
+  function paintStream(): void {
+    if (disposed || paintedReply === streamedReply) return;
+    const scrollTop = messagesEl.scrollTop;
+    const nearBottom = messagesEl.scrollHeight - scrollTop - messagesEl.clientHeight < 100;
+    if (!streamedReply) {
+      streamBubble?.remove();
+      streamBubble = undefined;
+    } else {
+      if (!streamBubble?.isConnected) {
+        streamBubble = document.createElement('article');
+        streamBubble.className = 'life-chat-bubble assistant chat-streaming';
+        streamBubble.setAttribute('aria-label', '正在回复');
+        streamBubble.innerHTML = `<div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div><div class="chat-message-content"><div class="chat-message-text"></div></div>`;
+        messagesEl.insertBefore(streamBubble, messagesEl.querySelector('.life-summary-card'));
+      }
+      streamBubble.querySelector('.chat-message-text')!.innerHTML = renderChatText(streamedReply);
+    }
+    paintedReply = streamedReply;
+    messagesEl.scrollTop = nearBottom ? messagesEl.scrollHeight : scrollTop;
+    host.querySelector<HTMLButtonElement>('[data-chat-jump]')!.hidden = nearBottom;
+  }
+  function scheduleReplyPaint(): void {
+    if (replyPaint != null || paintedReply === streamedReply) return;
+    replyPaint = requestAnimationFrame(() => { replyPaint = undefined; paintStream(); });
   }
   async function loadMessagePhotos(): Promise<void> {
     const refs = [...new Set(draft.messages.flatMap(message => message.photoRefs ?? []))];
@@ -269,6 +309,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     });
   }
   function setBusy(value: boolean): void {
+    if (sending === value) return;
     sending = value;
     if (disposed) return;
     host.querySelector<HTMLButtonElement>('[data-chat-config-error]')!.disabled = value;
@@ -361,6 +402,8 @@ function renderChat(host: HTMLElement, launch: Launch): void {
         status(''); render(); return;
       }
       status('拾光正在想…');
+      // 前台文字发送已确认后，让出低优先级的语音排版请求。
+      voiceLayouts.cancel();
       const task = startChatReply(draft, messageIndex, regenerate, {
         photos: ledger ? [] : photos, ledgerGrant: ledger ? ledger.ledgerGrant : undefined,
         expectedDestination, ledgerAnalysis: !!ledger, ledgerReview: ledger ? ledger.review : undefined,
@@ -369,6 +412,8 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       // 从这里起请求归会话持有；页面销毁只解除订阅，不中止已确认的发送。
       controller = undefined;
       watchReply(task);
+      // 新请求改变了取消/失败提示；只在开始时同步一次结构，后续 delta 局部绘制。
+      render(false);
       await task.done;
       if (disposed) return;
       if (!draft.chatReply) {
@@ -406,7 +451,11 @@ function renderChat(host: HTMLElement, launch: Launch): void {
             : checkpoint ? task.error instanceof Error ? task.error.message : '回复中断，可重试。' : '';
       status(text, !task.running && needsAiConfig(task.error));
       setBusy(task.running);
-      render(false);
+      if (task.running) {
+        if (streamBubble?.classList.replace('chat-incomplete', 'chat-streaming')) streamBubble.setAttribute('aria-label', '正在回复');
+        scheduleReplyPaint();
+      }
+      else render(false); // 完成、失败和停止不等待下一帧，保留最后一段文字。
     };
     offReply = task.subscribe(refresh);
     refresh();
@@ -445,10 +494,14 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     } catch { showToast('暂时无法读取历史会话'); }
   }
 
-  function syncComposer(): void {
+  function syncComposer(force = false): void {
     const blocked = sending || voiceOpen;
-    host.querySelector<HTMLButtonElement>('[data-chat-config-error]')!.disabled = blocked;
     const hasInput = !!input.value.trim() || draft.photos.length > 0;
+    const canOrganize = draft.messages.some(message => message.role === 'user');
+    const nextState = `${sending}:${voiceOpen}:${hasInput}:${canOrganize}:${!!draft.summaryProposal}`;
+    if (!force && composerState === nextState) return;
+    composerState = nextState;
+    host.querySelector<HTMLButtonElement>('[data-chat-config-error]')!.disabled = blocked;
     host.querySelector<HTMLButtonElement>('[data-life-chat-send]')!.hidden = sending;
     host.querySelector<HTMLButtonElement>('[data-life-chat-send]')!.disabled = blocked || !hasInput;
     input.disabled = blocked;
@@ -457,7 +510,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     header.querySelectorAll<HTMLButtonElement>('button:not([data-act="back"])').forEach(button => { button.disabled = blocked; });
     messagesEl.querySelectorAll<HTMLButtonElement>('[data-chat-prompt],[data-chat-regenerate],[data-life-chat-retry],[data-life-chat-summary],[data-life-chat-continue],[data-ledger-evidence],[data-ledger-followup]').forEach(button => { button.disabled = blocked; });
     const organize = host.querySelector<HTMLButtonElement>('[data-chat-organize]')!;
-    organize.disabled = blocked || !draft.messages.some(message => message.role === 'user');
+    organize.disabled = blocked || !canOrganize;
     organize.querySelector('span')!.textContent = draft.summaryProposal ? '草稿' : '整理';
     organize.title = draft.summaryProposal ? '查看记录草稿' : '整理成记录';
     organize.setAttribute('aria-label', organize.title);
