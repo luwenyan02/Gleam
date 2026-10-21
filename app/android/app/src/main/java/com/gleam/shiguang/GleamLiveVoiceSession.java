@@ -11,7 +11,8 @@ import okio.ByteString;
 /** Duplex VAD conversation. No Android APIs, credentials, files or existing chat history. */
 final class GleamLiveVoiceSession {
     interface Audio {
-        void start() throws Exception; void stop(); void play(byte[] bytes); void clear();
+        void start() throws Exception; default void start(Runnable ready) throws Exception { start(); ready.run(); }
+        void stop(); void play(byte[] bytes); void clear();
         void mute(boolean value); void finish(); boolean playing();
     }
     interface Listener { void ready(); void state(String value); void transcript(List<Turn> turns); void ended(String reason); }
@@ -110,10 +111,11 @@ final class GleamLiveVoiceSession {
             if("session.updated".equals(type)) {
                 if(!configuring||ready||!safeAck(event.optJSONObject("session"))){end("LIVE_PROTOCOL");return;}
                 configuring=false;
-                try{audio.start();}catch(SecurityException ignored){end("LIVE_PERMISSION_DENIED");return;}
+                deadline.cancel();
+                deadline=clock.after(35000,()->{synchronized(this){if(!ready)end("LIVE_AUDIO_ROUTE");}});
+                try{audio.start(this::audioReady);}catch(SecurityException ignored){end("LIVE_PERMISSION_DENIED");return;}
                 catch(Exception ignored){end("LIVE_AUDIO");return;}
-                ready=true;deadline.cancel();duration=clock.after(300000,()->end("LIVE_LIMIT"));
-                listener.ready();listener.state("listening");return;
+                return;
             }
             if("error".equals(type)) {
                 JSONObject error=event.optJSONObject("error");String code=error==null?"":error.optString("code");
@@ -162,6 +164,11 @@ final class GleamLiveVoiceSession {
                 audio.finish();drained();
             }
         } catch(Exception ignored){end("LIVE_PROTOCOL");}
+    }
+    private synchronized void audioReady() {
+        if(closed||ready)return;
+        ready=true;deadline.cancel();duration=clock.after(300000,()->end("LIVE_LIMIT"));
+        listener.ready();listener.state("listening");
     }
     synchronized void drained() {
         if(closed||!responseFinished||audio.playing())return;

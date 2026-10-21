@@ -13,11 +13,13 @@ public class GleamSpeechSessionTest {
         final List<String> previews = new ArrayList<>();
         int starts, stops, closes, results, errors, connections;
         String text, code;
-        boolean sendOk = true;
+        boolean sendOk = true, deferAudio;
+        Runnable audioReady;
         GleamSpeechSession session = new GleamSpeechSession(this, this, this, this);
         public boolean send(String message) { sent.add(message); return sendOk; }
         public void close() { closes++; }
         public void start() { starts++; }
+        public void start(Runnable callback) { start();if(deferAudio)audioReady=callback;else callback.run(); }
         public void stop() { stops++; }
         public void state(String value) { states.add(value); }
         public void complete(String value) { results++; text = value; }
@@ -32,6 +34,20 @@ public class GleamSpeechSessionTest {
         void pcm() { session.audio(new byte[3200], 3200); }
         void committed() { session.event("input_audio_buffer.committed", "item-fictional", null, -1); }
         void finalText(String value) { session.event("conversation.item.input_audio_transcription.completed", "item-fictional", value, 0); }
+    }
+    @Test public void listeningAndPcmWaitForAudioRouteAndCancellationRejectsLateReady() {
+        Fixture f=new Fixture();f.deferAudio=true;f.ready();
+        assertFalse(f.states.contains("listening"));int sent=f.sent.size();f.pcm();assertEquals(sent,f.sent.size());
+        f.audioReady.run();assertTrue(f.states.contains("listening"));f.pcm();assertTrue(f.sent.size()>sent);
+        int states=f.states.size();f.audioReady.run();assertEquals(states,f.states.size());
+        Fixture cancelled=new Fixture();cancelled.deferAudio=true;cancelled.ready();cancelled.session.stop();
+        cancelled.audioReady.run();assertFalse(cancelled.states.contains("listening"));assertEquals("SPEECH_CANCELLED",cancelled.code);
+    }
+    @Test public void audioRouteTimeoutStopsCaptureAndRejectsLateReady() {
+        Fixture f=new Fixture();f.deferAudio=true;f.ready();
+        f.scheduled.get(1).run();assertEquals("SPEECH_AUDIO_ROUTE",f.code);assertTrue(f.stops>0);
+        f.audioReady.run();assertFalse(f.states.contains("listening"));
+        int sent=f.sent.size();f.pcm();assertEquals(sent,f.sent.size());
     }
     @Test public void partialReplacesPreviewButCannotCompleteOrCrossItems() {
         Fixture f = new Fixture(); f.ready(); f.pcm();

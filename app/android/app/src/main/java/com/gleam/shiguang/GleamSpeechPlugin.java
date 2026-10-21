@@ -352,6 +352,7 @@ public final class GleamSpeechPlugin extends Plugin {
             case "SPEECH_TLS": return "百炼安全连接失败，请检查系统时间和网络";
             case "SPEECH_NETWORK": return "百炼语音连接中断，请检查网络后重试";
             case "SPEECH_AUDIO_UNAVAILABLE": return "麦克风暂不可用，请关闭占用麦克风的应用后重试";
+            case "SPEECH_AUDIO_ROUTE": return "耳机音频未就绪或连接已变化，请确认耳机连接后重新开始";
             case "SPEECH_INTERRUPTED": return "语音已中断，麦克风已关闭，请重新开始";
             case "SPEECH_CANCELLED": return "本次语音已取消";
             case "SPEECH_SESSION_INVALID": return "本次语音已失效，请重新开始";

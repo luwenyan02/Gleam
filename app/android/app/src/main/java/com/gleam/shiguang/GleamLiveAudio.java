@@ -17,6 +17,8 @@ final class GleamLiveAudio implements GleamLiveVoiceSession.Audio {
     private final AudioManager manager;
     private final GleamSpeechAuthorization authorization;
     private final Sink sink;
+    private final GleamAudioRoute route;
+    private final GleamPcmRates rates=new GleamPcmRates();
     private final Handler main=new Handler(Looper.getMainLooper());
     private final ArrayDeque<byte[]> queue=new ArrayDeque<>();
     private volatile boolean running,muted;
@@ -25,9 +27,13 @@ final class GleamLiveAudio implements GleamLiveVoiceSession.Audio {
     private AudioFocusRequest focusRequest;
     private AcousticEchoCanceler echo;
     private NoiseSuppressor noise;
-    private int generation,buffered,inFlight,previousMode;
+    private int generation,buffered,inFlight,inputRate=16000,outputRate=24000;
+    private boolean starting;
+    private Runnable readyCallback;
+    private long routeDeadline;
+    private final Runnable verifyRoute=this::verifyRoute;
     private long writtenFrames;
-    private boolean focusGranted,modeOwned,previousSpeaker,recordingCallbackRegistered,finished;
+    private boolean focusGranted,recordingCallbackRegistered,finished;
     private final AudioManager.OnAudioFocusChangeListener focus;
     private final AudioManager.AudioRecordingCallback recordingCallback=new AudioManager.AudioRecordingCallback(){
         @Override public void onRecordingConfigChanged(List<AudioRecordingConfiguration> configs){
@@ -41,12 +47,15 @@ final class GleamLiveAudio implements GleamLiveVoiceSession.Audio {
     };
     GleamLiveAudio(Context context,GleamSpeechAuthorization authorization,Sink sink) {
         manager=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);this.authorization=authorization;this.sink=sink;
+        route=new GleamAudioRoute(context,true,new GleamAudioRoute.Listener(){public void ready(){initialize();}public void failed(){routeFailure();}});
         focus=change->{if(change==AudioManager.AUDIOFOCUS_LOSS||change==AudioManager.AUDIOFOCUS_LOSS_TRANSIENT||change==AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK)sink.failure("LIVE_INTERRUPTED");};
     }
-    @Override public synchronized void start() throws Exception {
-        if(running)return;
+    @Override public void start() throws Exception { start(()->{}); }
+    @Override public synchronized void start(Runnable ready) throws Exception {
+        if(running||starting)return;
         if(!authorization.allowed()||manager==null||manager.getMode()==AudioManager.MODE_IN_CALL||manager.getMode()==AudioManager.MODE_IN_COMMUNICATION)throw new IllegalStateException("LIVE_INTERRUPTED");
         try {
+            starting=true;readyCallback=ready;
             AudioAttributes attributes=new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build();
             int granted;
             if(Build.VERSION.SDK_INT>=26){
@@ -54,43 +63,81 @@ final class GleamLiveAudio implements GleamLiveVoiceSession.Audio {
                 granted=manager.requestAudioFocus(focusRequest);
             }else granted=manager.requestAudioFocus(focus,AudioManager.STREAM_VOICE_CALL,AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE);
             if(granted!=AudioManager.AUDIOFOCUS_REQUEST_GRANTED)throw new IllegalStateException("LIVE_INTERRUPTED");focusGranted=true;
-            previousMode=manager.getMode();previousSpeaker=manager.isSpeakerphoneOn();manager.setMode(AudioManager.MODE_IN_COMMUNICATION);modeOwned=true;
-            boolean external=false;
-            for(AudioDeviceInfo device:manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)){
-                int type=device.getType();if(type==AudioDeviceInfo.TYPE_WIRED_HEADSET||type==AudioDeviceInfo.TYPE_WIRED_HEADPHONES||type==AudioDeviceInfo.TYPE_BLUETOOTH_SCO||type==AudioDeviceInfo.TYPE_BLUETOOTH_A2DP||type==AudioDeviceInfo.TYPE_USB_HEADSET||(Build.VERSION.SDK_INT>=31&&type==AudioDeviceInfo.TYPE_BLE_HEADSET))external=true;
-            }
-            manager.setSpeakerphoneOn(!external);
-            int inputMin=AudioRecord.getMinBufferSize(16000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT);
-            int outputMin=AudioTrack.getMinBufferSize(24000,AudioFormat.CHANNEL_OUT_MONO,AudioFormat.ENCODING_PCM_16BIT);
-            if(inputMin<=0||outputMin<=0)throw new IllegalStateException("LIVE_AUDIO");
-            recorder=new AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION,16000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,Math.max(inputMin,5120));
-            player=new AudioTrack.Builder().setAudioAttributes(attributes).setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(24000).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build()).setBufferSizeInBytes(Math.max(outputMin,9600)).setTransferMode(AudioTrack.MODE_STREAM).build();
-            if(recorder.getState()!=AudioRecord.STATE_INITIALIZED||player.getState()!=AudioTrack.STATE_INITIALIZED)throw new IllegalStateException("LIVE_AUDIO");
-            if(AcousticEchoCanceler.isAvailable()){echo=AcousticEchoCanceler.create(recorder.getAudioSessionId());if(echo!=null)echo.setEnabled(true);}
-            if(NoiseSuppressor.isAvailable()){noise=NoiseSuppressor.create(recorder.getAudioSessionId());if(noise!=null)noise.setEnabled(true);}
-            manager.registerAudioRecordingCallback(recordingCallback,main);recordingCallbackRegistered=true;
-            authorization.activate(()->{recorder.startRecording();player.play();});
-            if(recorder.getRecordingState()!=AudioRecord.RECORDSTATE_RECORDING)throw new IllegalStateException("LIVE_AUDIO");
-            running=true;AudioRecord current=recorder;
-            new Thread(()->capture(current),"gleam-live-capture").start();new Thread(this::playback,"gleam-live-playback").start();
-        }catch(SecurityException error){stop();throw error;}
-        catch(Exception error){stop();throw error;}
+            route.start();
+        }catch(Exception error){stop();throw error;}
     }
+    private void initialize(){
+        synchronized(this){
+            if(!starting)return;
+            try{
+                if(!authorization.allowed()||!route.active())throw new IllegalStateException();
+                inputRate=route.legacyBluetooth()?8000:16000;outputRate=route.legacyBluetooth()?8000:24000;
+                int inputMin=AudioRecord.getMinBufferSize(inputRate,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT);
+                int outputMin=AudioTrack.getMinBufferSize(outputRate,AudioFormat.CHANNEL_OUT_MONO,AudioFormat.ENCODING_PCM_16BIT);
+                if(inputMin<=0||outputMin<=0)throw new IllegalStateException();
+                recorder=new AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION,inputRate,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,Math.max(inputMin,inputRate/4));
+                AudioAttributes attributes=new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build();
+                player=new AudioTrack.Builder().setAudioAttributes(attributes).setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(outputRate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build()).setBufferSizeInBytes(Math.max(outputMin,outputRate*2/5)).setTransferMode(AudioTrack.MODE_STREAM).build();
+                AudioDeviceInfo input=route.inputDevice(),output=route.outputDevice();
+                if(input==null||output==null||recorder.getState()!=AudioRecord.STATE_INITIALIZED||player.getState()!=AudioTrack.STATE_INITIALIZED
+                    ||!recorder.setPreferredDevice(input)||!player.setPreferredDevice(output))throw new IllegalStateException();
+                if(AcousticEchoCanceler.isAvailable()){echo=AcousticEchoCanceler.create(recorder.getAudioSessionId());if(echo!=null)echo.setEnabled(true);}
+                if(NoiseSuppressor.isAvailable()){noise=NoiseSuppressor.create(recorder.getAudioSessionId());if(noise!=null)noise.setEnabled(true);}
+                manager.registerAudioRecordingCallback(recordingCallback,main);recordingCallbackRegistered=true;
+                authorization.activate(()->{recorder.startRecording();player.play();});
+                if(recorder.getRecordingState()!=AudioRecord.RECORDSTATE_RECORDING)throw new IllegalStateException();
+                // Silence activates the output so actual routing can be checked before any reply audio.
+                byte[] silence=new byte[outputRate/50*2];int primed=player.write(silence,0,silence.length,AudioTrack.WRITE_NON_BLOCKING);
+                if(primed<0)throw new IllegalStateException();writtenFrames=primed/2;
+                routeDeadline=android.os.SystemClock.elapsedRealtime()+5000;
+                main.post(verifyRoute);
+            }catch(Exception ignored){routeFailure();}
+        }
+    }
+    private void verifyRoute(){
+        Runnable ready;AudioRecord current;
+        synchronized(this){
+            if(!starting)return;
+            try{
+                if(!authorization.allowed()||!route.active())throw new IllegalStateException();
+                if(!route.inputMatches(recorder.getRoutedDevice())||!route.outputMatches(player.getRoutedDevice())){
+                    if(android.os.SystemClock.elapsedRealtime()>=routeDeadline)throw new IllegalStateException();
+                    if(player.getRoutedDevice()==null){
+                        byte[] silence=new byte[outputRate/50*2];int n=player.write(silence,0,silence.length,AudioTrack.WRITE_NON_BLOCKING);
+                        if(n<0)throw new IllegalStateException();writtenFrames+=n/2;
+                    }
+                    main.postDelayed(verifyRoute,25);return;
+                }
+                AudioRecord input=recorder;
+                if(!GleamAudioInputGate.discardPending(new GleamAudioInputGate.Input(){
+                    public boolean routed(){return authorization.allowed()&&route.active()&&route.inputMatches(input.getRoutedDevice());}
+                    public int discard(byte[] bytes){return input.read(bytes,0,bytes.length,AudioRecord.READ_NON_BLOCKING);}
+                },Math.max(inputRate*2/5,input.getBufferSizeInFrames()*2)))throw new IllegalStateException();
+                starting=false;running=true;ready=readyCallback;readyCallback=null;current=recorder;
+            }catch(RuntimeException ignored){routeFailure();return;}
+        }
+        ready.run();
+        new Thread(()->capture(current),"gleam-live-capture").start();new Thread(this::playback,"gleam-live-playback").start();
+    }
+    private void routeFailure(){stop();sink.failure("LIVE_AUDIO_ROUTE");}
     private void capture(AudioRecord current){
-        byte[] bytes=new byte[640];
+        byte[] bytes=new byte[inputRate/50*2];
         try {
             while(running){
-                if(!authorization.allowed()||manager.getMode()==AudioManager.MODE_IN_CALL){sink.failure("LIVE_INTERRUPTED");break;}
+                if(!authorization.allowed()){sink.failure("LIVE_INTERRUPTED");break;}
+                if(!route.active()||!route.inputMatches(current.getRoutedDevice())){sink.failure("LIVE_AUDIO_ROUTE");break;}
                 int n=current.read(bytes,0,bytes.length,AudioRecord.READ_BLOCKING);
                 if(!running)break;
                 if(n<=0||n%2!=0){sink.failure("LIVE_AUDIO");break;}
-                if(!muted&&authorization.allowed())sink.pcm(bytes,n);
+                if(!route.active()||!route.inputMatches(current.getRoutedDevice())){sink.failure("LIVE_AUDIO_ROUTE");break;}
+                if(!muted&&authorization.allowed()){byte[] packet=inputRate==8000?rates.input(bytes,n):bytes;sink.pcm(packet,inputRate==8000?packet.length:n);if(packet!=bytes)Arrays.fill(packet,(byte)0);}
                 Arrays.fill(bytes,(byte)0);
             }
         }catch(RuntimeException ignored){if(running)sink.failure("LIVE_AUDIO");}
         finally{Arrays.fill(bytes,(byte)0);stop();}
     }
     private void playback(){
+        byte[] silence=new byte[outputRate/50*2];
         while(running){
             byte[] frame=null;int epoch=0;
             try {
@@ -103,17 +150,25 @@ final class GleamLiveAudio implements GleamLiveVoiceSession.Audio {
                 }
                 if(drained)sink.drained();
                 if(frame==null)continue;
-                int offset=0;int[] written=new int[1];
+                int offset=0;int[] written=new int[1];GleamPlaybackRouteGate gate=new GleamPlaybackRouteGate();
                 while(running&&offset<frame.length){
-                    int n;
+                    int n;boolean priming;
                     synchronized(this){
-                        if(epoch!=generation||player==null||!authorization.allowed())break;
-                        byte[] currentFrame=frame;int position=offset;
-                        authorization.activate(()->written[0]=player.write(currentFrame,position,Math.min(960,currentFrame.length-position),AudioTrack.WRITE_NON_BLOCKING));
+                        if(!running||epoch!=generation||player==null||!authorization.allowed())break;
+                        AudioDeviceInfo actual=player.getRoutedDevice();
+                        GleamPlaybackRouteGate.Action action=gate.poll(route.active(),actual==null,route.outputMatches(actual),android.os.SystemClock.elapsedRealtime());
+                        if(action==GleamPlaybackRouteGate.Action.FAIL){sink.failure("LIVE_AUDIO_ROUTE");return;}
+                        priming=action==GleamPlaybackRouteGate.Action.PRIME;
+                        if(priming)authorization.activate(()->written[0]=player.write(silence,0,silence.length,AudioTrack.WRITE_NON_BLOCKING));
+                        else{
+                            byte[] currentFrame=frame;int position=offset;
+                            authorization.activate(()->written[0]=player.write(currentFrame,position,Math.min(960,currentFrame.length-position),AudioTrack.WRITE_NON_BLOCKING));
+                        }
                         n=written[0];
-                        if(n>0){writtenFrames+=n/2;inFlight-=n;}
+                        if(n>0){writtenFrames+=n/2;if(!priming)inFlight-=n;}
                     }
                     if(n<0){sink.failure("LIVE_AUDIO");return;}
+                    if(priming){Thread.sleep(25);continue;}
                     if(n==0)Thread.sleep(10);else offset+=n;
                 }
             }catch(InterruptedException ignored){Thread.currentThread().interrupt();return;}
@@ -123,11 +178,13 @@ final class GleamLiveAudio implements GleamLiveVoiceSession.Audio {
     }
     @Override public synchronized void play(byte[] bytes){
         if(!running){Arrays.fill(bytes,(byte)0);return;}
-        if(buffered+bytes.length>1440000){Arrays.fill(bytes,(byte)0);sink.failure("LIVE_LIMIT");return;}
+        if(outputRate==8000){byte[] original=bytes;bytes=rates.output(original);Arrays.fill(original,(byte)0);}
+        if(bytes.length==0)return;
+        if(buffered+bytes.length>outputRate*2*30){Arrays.fill(bytes,(byte)0);sink.failure("LIVE_LIMIT");return;}
         queue.addLast(bytes);buffered+=bytes.length;finished=false;notifyAll();
     }
     @Override public synchronized void clear(){
-        generation++;for(byte[] bytes:queue)Arrays.fill(bytes,(byte)0);queue.clear();buffered=0;inFlight=0;writtenFrames=0;finished=false;
+        generation++;rates.clear();for(byte[] bytes:queue)Arrays.fill(bytes,(byte)0);queue.clear();buffered=0;inFlight=0;writtenFrames=0;finished=false;
         if(player!=null)try{player.pause();player.flush();if(running)player.play();}catch(RuntimeException ignored){sink.failure("LIVE_AUDIO");}
         notifyAll();
     }
@@ -136,16 +193,16 @@ final class GleamLiveAudio implements GleamLiveVoiceSession.Audio {
         if(!queue.isEmpty()||inFlight>0)return true;
         return player!=null&&(player.getPlaybackHeadPosition()&0xffffffffL)<writtenFrames;
     }
-    @Override public synchronized void finish(){finished=true;notifyAll();}
+    @Override public synchronized void finish(){if(outputRate==8000){byte[] tail=rates.finishOutput();if(tail.length>0){queue.addLast(tail);buffered+=tail.length;}}finished=true;notifyAll();}
     @Override public synchronized void stop(){
-        running=false;generation++;notifyAll();for(byte[] bytes:queue)Arrays.fill(bytes,(byte)0);queue.clear();buffered=0;inFlight=0;writtenFrames=0;finished=false;
+        running=starting=false;readyCallback=null;main.removeCallbacks(verifyRoute);rates.clear();generation++;notifyAll();for(byte[] bytes:queue)Arrays.fill(bytes,(byte)0);queue.clear();buffered=0;inFlight=0;writtenFrames=0;finished=false;
         AudioRecord input=recorder;recorder=null;AudioTrack output=player;player=null;
         if(input!=null){try{input.stop();}catch(RuntimeException ignored){}try{input.release();}catch(RuntimeException ignored){}}
         if(output!=null){try{output.pause();output.flush();output.stop();}catch(RuntimeException ignored){}try{output.release();}catch(RuntimeException ignored){}}
         if(echo!=null){try{echo.release();}catch(RuntimeException ignored){}echo=null;}
         if(noise!=null){try{noise.release();}catch(RuntimeException ignored){}noise=null;}
         if(recordingCallbackRegistered){recordingCallbackRegistered=false;try{manager.unregisterAudioRecordingCallback(recordingCallback);}catch(RuntimeException ignored){}}
-        if(modeOwned){modeOwned=false;try{manager.setSpeakerphoneOn(previousSpeaker);manager.setMode(previousMode);}catch(RuntimeException ignored){}}
+        route.close();
         if(focusGranted){focusGranted=false;try{if(Build.VERSION.SDK_INT>=26)manager.abandonAudioFocusRequest(focusRequest);else manager.abandonAudioFocus(focus);}catch(RuntimeException ignored){}}
         focusRequest=null;
     }

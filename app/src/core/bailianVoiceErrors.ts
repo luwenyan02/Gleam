@@ -18,6 +18,7 @@ const SAFE_ERRORS: Record<string, string> = {
   SPEECH_TLS: '百炼安全连接失败，请检查手机系统时间与网络，不要绕过安全检查',
   SPEECH_NETWORK: '百炼语音网络连接中断，请检查网络后重试',
   SPEECH_AUDIO_UNAVAILABLE: '麦克风暂不可用，请关闭占用麦克风的应用后重试',
+  SPEECH_AUDIO_ROUTE: '耳机音频未就绪或连接已变化，请确认耳机连接后重新开始',
   SPEECH_INTERRUPTED: '语音已被后台或来电中断，请重新开始',
   SPEECH_CANCELLED: '语音已取消，文字未发送给记账 AI',
   SPEECH_SESSION_INVALID: '本次语音会话已失效，请重新核对后开始',

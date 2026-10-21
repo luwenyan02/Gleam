@@ -144,6 +144,7 @@ public final class GleamLiveVoicePlugin extends Plugin {
             case "LIVE_LIMIT":return "本次语音已结束，可重新开始";
             case "LIVE_TIMEOUT":return "连接超时，请检查网络后重试";
             case "LIVE_AUDIO":return "声音暂不可用，请关闭占用麦克风的应用后重试";
+            case "LIVE_AUDIO_ROUTE":return "耳机音频未就绪或连接已变化，语音已停止，请确认连接后重新开始";
             case "LIVE_INTERRUPTED":return "语音已中断，麦克风已关闭";
             default:return "语音未连接，请检查网络后重试";
         }
