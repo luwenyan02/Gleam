@@ -1,4 +1,5 @@
 """流式绘制、历史节点与终态刷新回归；合成 SSE，不调用真实服务。"""
+import time
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
 from test_life_ai import configure, open_life, read_rows
@@ -18,6 +19,7 @@ RAF_CONTROL = r'''(() => {
   };
   window.cancelAnimationFrame = id => { if (!held.delete(id)) cancel(id); };
   window.__pendingChatFrames = () => held.size;
+  window.__pendingChatFrameIds = () => [...held.keys()];
   window.__paintChatFrame = () => { const jobs = [...held.values()]; held.clear(); for (const callback of jobs) callback(performance.now()); };
 })();'''
 
@@ -116,10 +118,12 @@ def streaming(browser, width):
         page.evaluate('window.__holdChatFrames=false')
     send(page,'虚构离页检查',4)
     page.evaluate('''async()=>{window.__holdChatFrames=true;window.__chatRequests.at(-1).delta('离页仍保留。');await new Promise(r=>setTimeout(r,20));}''')
+    pending_chat_frames = set(page.evaluate('window.__pendingChatFrameIds()'))
+    assert pending_chat_frames
     leave(page)
-    assert page.evaluate('window.__pendingChatFrames()') == 0
+    assert pending_chat_frames.isdisjoint(page.evaluate('window.__pendingChatFrameIds()')), '离页须取消已有聊天帧；路由可另安排焦点恢复帧'
     assert not page.evaluate('window.__chatRequests.at(-1).signal.aborted')
-    page.evaluate('window.__holdChatFrames=false;window.__chatRequests.at(-1).finish()')
+    page.evaluate('window.__holdChatFrames=false;window.__paintChatFrame();window.__chatRequests.at(-1).finish()')
     page.wait_for_timeout(150);enter(page)
     expect(page.locator('.assistant').last).to_contain_text('离页仍保留。')
     expect(page.locator('[data-life-chat-stop]')).to_be_hidden()
@@ -137,7 +141,12 @@ def search_only(browser):
     enter(page);page.locator('#life-chat-input').fill('虚构问题：现在天气怎么样？');page.locator('[data-life-chat-send]').click();page.locator('#dialog-scrim [data-act="ok"]').click()
     page.wait_for_function('window.__searchRequests.length===1');observe(page)
     emit(page,[{'type':'response.web_search_call.searching'}])
-    page.wait_for_function('''async()=>{const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)});const draft=await new Promise(r=>{const q=db.transaction('lifeDrafts').objectStore('lifeDrafts').get('chat:performance');q.onsuccess=()=>r(q.result)});db.close();return draft?.chatReply?.search?.status==='searching';}''')
+    deadline=time.monotonic()+6
+    while time.monotonic()<deadline:
+        stored=next(d for d in read_rows(page,'lifeDrafts') if d['key']=='chat:performance')
+        if stored.get('chatReply',{}).get('search',{}).get('status')=='searching':break
+        page.wait_for_timeout(40)
+    else:raise AssertionError('搜索元数据须在检查点落盘')
     assert page.evaluate('window.__draws.root') == 0, '隐藏搜索元数据不能重绘正文'
     assert history_intact(page)
     stored=next(d for d in read_rows(page,'lifeDrafts') if d['key']=='chat:performance')

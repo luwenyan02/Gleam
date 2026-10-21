@@ -1,5 +1,6 @@
 """退出/重进、流式检查点与重试；虚构数据和可控本地 SSE，不调用真实 AI。"""
 from pathlib import Path
+from time import monotonic
 from playwright.sync_api import sync_playwright, expect
 from test_life_ai import configure, open_life, read_rows, screenshot
 
@@ -49,6 +50,17 @@ def finish(page):
     page.evaluate('window.__chatRequests.at(-1).finish()')
 
 
+def wait_for_draft(page, predicate, key=None):
+    deadline = monotonic() + 5
+    while monotonic() < deadline:
+        draft = next((row for row in read_rows(page, 'lifeDrafts')
+                      if key is None or row['key'] == key), None)
+        if draft is not None and predicate(draft):
+            return draft
+        page.wait_for_timeout(40)
+    raise AssertionError('聊天草稿未在5秒内保存到预期状态')
+
+
 def appearance(page, theme, scale):
     page.evaluate('([theme, scale]) => { document.documentElement.dataset.theme = theme; document.documentElement.style.setProperty("--seed-type", String(scale)); }', [theme, scale])
     assert page.evaluate('getComputedStyle(document.documentElement).getPropertyValue("--seed-type").trim()') == str(scale)
@@ -75,14 +87,8 @@ def run(page, width, theme, scale):
     expect(page.locator('.chat-streaming')).to_contain_text('第一天')
     leave(page)
     delta(page, '\n\n第二天，在贵阳慢慢逛。')
-    page.wait_for_function('''async () => {
-      const db = await new Promise(resolve => { const r = indexedDB.open('GleamDB'); r.onsuccess=()=>resolve(r.result); });
-      const rows = await new Promise(resolve => { const r=db.transaction('lifeDrafts').objectStore('lifeDrafts').getAll(); r.onsuccess=()=>resolve(r.result); }); db.close();
-      return rows[0]?.chatReply?.content.endsWith('贵阳慢慢逛。');
-    }''')
-    rows = read_rows(page, 'lifeDrafts')
-    assert rows[0]['chatReply']['content'].endswith('贵阳慢慢逛。')
-    assert len(rows[0]['messages']) == 1
+    stored = wait_for_draft(page, lambda draft: draft.get('chatReply', {}).get('content', '').endswith('贵阳慢慢逛。'))
+    assert len(stored['messages']) == 1
     enter(page)
     expect(page.locator('.chat-streaming')).to_contain_text('第二天')
     screenshot(page, 'chat-resume-streaming-' + theme, width, '#sp-life-chat')
@@ -91,11 +97,7 @@ def run(page, width, theme, scale):
     leave(page)
     delta(page, '\n\n第七天，返回北京。')
     finish(page)
-    page.wait_for_function('''async () => {
-      const db = await new Promise(resolve => { const r = indexedDB.open('GleamDB'); r.onsuccess=()=>resolve(r.result); });
-      const rows = await new Promise(resolve => { const r=db.transaction('lifeDrafts').objectStore('lifeDrafts').getAll(); r.onsuccess=()=>resolve(r.result); }); db.close();
-      return rows[0]?.messages.length === 2 && !rows[0].chatReply;
-    }''')
+    wait_for_draft(page, lambda draft: len(draft['messages']) == 2 and not draft.get('chatReply'))
     enter(page)
     expect(page.locator('.assistant')).to_have_count(1)
     expect(page.locator('.assistant')).to_contain_text('第七天')
