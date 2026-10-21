@@ -4,6 +4,7 @@ import { formatFenCny } from '../../core/money';
 import type { LifeNote } from '../../core/types';
 import { getAttachment, getLifeNote } from '../../core/repo/lifeRepo';
 import { openSheet, closeSheet } from '../shell/sheet';
+import { openLifeChat } from './lifeChat';
 import './lifeNotePreview.css';
 
 const KIND_LABEL: Record<LifeNote['kind'], string> = { diary: '日记', photo: '照片记录', habit: '习惯打卡' };
@@ -36,8 +37,16 @@ export function openLifeNotePreview(noteId: number, opener: HTMLElement): void {
         ${tags.length ? `<p class="life-preview-tags">${tags.map(tag => `<span class="chip tag">${esc(tag)}</span>`).join('')}</p>` : ''}
         ${note.body ? `<p class="life-preview-body">${esc(note.body)}</p>` : note.kind === 'habit' ? '<p class="life-preview-body">已完成打卡</p>' : ''}
         ${note.linkedAmount ? `<p class="sub">关联支出 ${formatFenCny(note.linkedAmount)}</p>` : ''}
-        ${note.originalBody && note.originalBody !== note.body ? `<details class="life-preview-original"><summary tabindex="0">原话</summary><p class="life-preview-body">${esc(note.originalBody)}</p></details>` : ''}
+        ${note.conversation?.length || note.originalBody ? `<div class="life-preview-original"><span>原始对话</span>${note.conversation?.length
+          ? `<button class="life-preview-chat" data-life-preview-chat aria-label="查看原始对话">查看对话 ${iconHtml('ic-right')}</button>`
+          : '<span class="sub">未保留原始对话</span>'}</div>` : ''}
         ${note.photoRefs?.length ? '<div class="life-preview-photos" data-life-preview-photos><p class="sub" role="status">正在读取照片…</p></div>' : ''}`;
+      content.querySelector('[data-life-preview-chat]')?.addEventListener('click', () => {
+        closeSheet();
+        // 子页返回仍回到原日志入口，不把已关闭抽屉中的按钮当作返回焦点。
+        opener.focus({ preventScroll: true });
+        void openLifeChat({ noteId: note.id });
+      });
       const photos = await Promise.allSettled((note.photoRefs ?? []).map(id => getAttachment(id)));
       if (disposed) return;
       const host = content.querySelector<HTMLElement>('[data-life-preview-photos]');
