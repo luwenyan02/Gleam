@@ -20,7 +20,8 @@ public class GleamLiveVoiceSessionTest {
     }
     static final String ACK = "{\"type\":\"session.updated\",\"session\":{\"id\":\"server-1\",\"model\":\"qwen3.8-omni-flash-realtime\",\"modalities\":[\"text\",\"audio\"],\"turn_detection\":{\"type\":\"server_vad\"},\"enable_search\":true,\"tools\":[],\"audio\":{\"input\":{\"format\":{\"type\":\"pcm\",\"sample_rate\":16000,\"channels\":1}},\"output\":{\"format\":{\"type\":\"pcm\",\"sample_rate\":24000}}}}}";
     static class Fixture implements GleamSpeechSession.Transport, GleamLiveVoiceSession.Audio, GleamLiveVoiceSession.Listener, GleamSpeechSession.Clock {
-        int starts, stops, clears, plays, ready, closes; boolean muted, playing, failStart, failStop, denyStart;
+        int starts, stops, clears, plays, ready, closes; boolean muted, playing, failStart, failStop, denyStart, deferAudio;
+        Runnable audioReady;
         String ended; List<GleamLiveVoiceSession.Turn> turns = new ArrayList<>();
         final List<String> sent = new ArrayList<>(), states = new ArrayList<>();
         final List<Runnable> timers = new ArrayList<>();
@@ -28,6 +29,7 @@ public class GleamLiveVoiceSessionTest {
         public boolean send(String text) { sent.add(text); return true; }
         public void close() { closes++; }
         public void start() { starts++;if(denyStart)throw new SecurityException("permission revoked");if(failStart)throw new IllegalStateException("audio unavailable"); }
+        public void start(Runnable callback) { start();if(deferAudio)audioReady=callback;else callback.run(); }
         public void stop() { stops++;if(failStop)throw new IllegalStateException("release failed"); }
         public void play(byte[] bytes) { plays++; playing=true; }
         public void clear() { clears++; playing=false; }
@@ -44,6 +46,21 @@ public class GleamLiveVoiceSessionTest {
         }
         void response() { engine.receive("{\"type\":\"response.created\",\"response\":{\"id\":\"reply-1\"}}"); }
         void audio(String id) { engine.receive("{\"type\":\"response.audio.delta\",\"response_id\":\""+id+"\",\"delta\":\"AQIDBA==\"}"); }
+    }
+    @Test public void listeningWaitsForAudioRouteAndLateRouteCannotRestartCancelledCall() {
+        Fixture f=new Fixture();f.deferAudio=true;f.connected();
+        assertEquals(0,f.ready);assertFalse(f.states.contains("listening"));
+        int sent=f.sent.size();f.engine.pcm(new byte[320],320);assertEquals(sent,f.sent.size());
+        f.audioReady.run();assertEquals(1,f.ready);assertTrue(f.states.contains("listening"));
+        f.audioReady.run();assertEquals(1,f.ready);
+        Fixture cancelled=new Fixture();cancelled.deferAudio=true;cancelled.connected();cancelled.engine.end("ended");
+        cancelled.audioReady.run();assertEquals(0,cancelled.ready);assertFalse(cancelled.states.contains("listening"));
+    }
+    @Test public void routeDeadlineClosesCaptureAndRejectsLateReady() {
+        Fixture f=new Fixture();f.deferAudio=true;f.connected();
+        f.timers.get(1).run();assertEquals("LIVE_AUDIO_ROUTE",f.ended);assertTrue(f.stops>0);
+        f.audioReady.run();assertEquals(0,f.ready);assertFalse(f.states.contains("listening"));
+        int sent=f.sent.size();f.engine.pcm(new byte[320],320);assertEquals(sent,f.sent.size());
     }
     @Test public void microphoneWaitsForMatchingAudioAcknowledgement() throws Exception {
         Fixture f=new Fixture();f.engine.begin();assertEquals(0,f.starts);

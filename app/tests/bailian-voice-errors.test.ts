@@ -1,5 +1,15 @@
 import { expect, it } from 'vitest';
 import { shortVoiceError } from '../src/core/bailianVoiceSession';
+
+it('耳机路由失败提示重新连接，不误导用户更换Key或回显底层设备信息', () => {
+  const message = shortVoiceError({ code: 'SPEECH_AUDIO_ROUTE', message: 'PRIVATE_DEVICE_ADDRESS',
+    data: { phase: 'microphone', device: 'PRIVATE_HEADSET_NAME' } });
+  expect(message).toContain('耳机');
+  expect(message).toContain('重新开始');
+  expect(message).toContain('SPEECH_AUDIO_ROUTE');
+  expect(message).not.toContain('PRIVATE');
+  expect(message).not.toContain('Key');
+});
 const codes = ['SPEECH_UNSUPPORTED','SPEECH_CONSENT_REQUIRED','SPEECH_KEY_REQUIRED','SPEECH_KEY_CHANGED','SPEECH_KEY_STORAGE','SPEECH_PERMISSION_DENIED','SPEECH_PERMISSION_CANCELLED','SPEECH_BUSY','SPEECH_CONFIG_INVALID','SPEECH_AUTH','SPEECH_RATE_LIMIT','SPEECH_LIMIT','SPEECH_TRANSCRIPT_LIMIT','SPEECH_AUDIO_EMPTY','SPEECH_TIMEOUT','SPEECH_TLS','SPEECH_NETWORK','SPEECH_AUDIO_UNAVAILABLE','SPEECH_INTERRUPTED','SPEECH_CANCELLED','SPEECH_SESSION_INVALID','SPEECH_TRANSCRIPTION_FAILED','SPEECH_PROTOCOL','SPEECH_PROVIDER'];
 it.each(codes)('%s uses fixed safe text, code and an allowlisted phase', code => {
  const message=shortVoiceError({code,message:'PRIVATE_UPSTREAM_KEY',data:{phase:'connecting',response:'PRIVATE_BODY'}});

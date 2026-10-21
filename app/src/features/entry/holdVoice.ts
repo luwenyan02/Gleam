@@ -110,7 +110,8 @@ export function openHoldVoice(options: Options, initial?: Pointer): void {
       if (closed) return;
       if (message.includes('SPEECH_AUDIO_EMPTY') && !partial.trim() && intent === 'send') { close(); return; }
       editor(partial, message.includes('SPEECH_LIMIT') ? '录音已达30秒，请重新录音或编辑文字' :
-        message.includes('SPEECH_PERMISSION') ? '请允许麦克风权限后重新录音' : '语音未完成，请重新录音或输入文字');
+        message.includes('SPEECH_PERMISSION') ? '请允许麦克风权限后重新录音' :
+        message.includes('SPEECH_AUDIO_ROUTE') ? '耳机音频未就绪或连接已变化，请确认耳机连接后重新开始' : '语音未完成，请重新录音或输入文字');
     },
   });
   function close(): void {

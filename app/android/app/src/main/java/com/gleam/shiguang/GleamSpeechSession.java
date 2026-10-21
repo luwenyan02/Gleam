@@ -17,7 +17,7 @@ final class GleamSpeechSession {
     static final int MAX_EVENT_CHARS = 65536;
     static final String SESSION_UPDATE = "{\"type\":\"session.update\",\"session\":{\"modalities\":[\"text\"],\"turn_detection\":null,\"input_audio_transcription\":{\"model\":\"qwen3-asr-flash-realtime\"},\"enable_search\":false,\"tools\":[],\"audio\":{\"input\":{\"format\":{\"type\":\"pcm\",\"sample_rate\":16000,\"sample_format\":\"s16le\",\"channels\":1,\"packing\":\"interleaved\",\"channel_layout\":\"mono\"}}}}}";
     interface Transport { boolean send(String message); void close(); }
-    interface Audio { void start() throws Exception; void stop(); }
+    interface Audio { void start() throws Exception; default void start(Runnable ready) throws Exception { start(); ready.run(); } void stop(); }
     interface Listener { void state(String value); void complete(String text); void fail(String code); default void connected() {} default void partial(String text) {} }
     interface Timer { void cancel(); }
     interface Clock { Timer after(long ms, Runnable work); }
@@ -26,7 +26,7 @@ final class GleamSpeechSession {
         final String value;
         Phase(String value) { this.value = value; }
     }
-    private enum State { NEW, CONNECTING, CONFIGURING, LISTENING, TRANSCRIBING, CLOSED }
+    private enum State { NEW, CONNECTING, CONFIGURING, ROUTING, LISTENING, TRANSCRIBING, CLOSED }
     private final Transport transport;
     private final Audio audio;
     private final boolean connectionOnly;
@@ -96,10 +96,14 @@ final class GleamSpeechSession {
         }
         clearDeadline();
         if (connectionOnly) { finish(); listener.connected(); return; }
-        state = State.LISTENING; phase = Phase.MICROPHONE;
-        try { audioStarted = true; audio.start(); }
+        state = State.ROUTING; phase = Phase.MICROPHONE;
+        try { audioStarted = true; audio.start(this::audioReady); }
         catch (Exception ignored) { cancel("SPEECH_AUDIO_UNAVAILABLE"); return; }
-        if (state != State.LISTENING) return;
+        if (state == State.ROUTING) armDeadline(35000, "SPEECH_AUDIO_ROUTE");
+    }
+    private synchronized void audioReady() {
+        if (state != State.ROUTING) return;
+        state = State.LISTENING;
         listener.state("listening");
         armDeadline(30000, "SPEECH_LIMIT");
     }
