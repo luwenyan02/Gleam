@@ -6,8 +6,14 @@ import { on } from '../../core/store';
 import type { LifeLedgerReview } from '../../core/repo/lifeLedgerContextRepo';
 
 export const unsavedChatDrafts = new Map<string, LifeDraft>();
-const writes = new Map<string, Promise<void>>();
+interface DraftWrite {
+  copy: LifeDraft;
+  waiters: Array<{ resolve(): void; reject(error: unknown): void }>;
+}
+interface DraftWrites { pending?: DraftWrite; }
+const writes = new Map<string, DraftWrites>();
 const active = new Map<string, ChatReply>();
+const CHECKPOINT_INTERVAL = 1000;
 
 export function stageChatDraft(draft: LifeDraft): LifeDraft {
   draft.chatUpdatedAt = Date.now();
@@ -16,15 +22,38 @@ export function stageChatDraft(draft: LifeDraft): LifeDraft {
   return copy;
 }
 
-/** 页面和离页请求共用一条写队列，较早的进度不能覆盖完成后的消息。 */
+async function writeChatDrafts(key: string, queue: DraftWrites): Promise<void> {
+  try {
+    while (queue.pending) {
+      const batch = queue.pending;
+      queue.pending = undefined;
+      try {
+        await putLifeDraft(batch.copy);
+        if (unsavedChatDrafts.get(key) === batch.copy) unsavedChatDrafts.delete(key);
+        for (const waiter of batch.waiters) waiter.resolve();
+      } catch (error) {
+        for (const waiter of batch.waiters) waiter.reject(error);
+      }
+    }
+  } finally {
+    if (writes.get(key) === queue) writes.delete(key);
+  }
+}
+
+/** 在途写入不取消；后续调用合并为最新快照，落盘后才结算对应调用。 */
 export function persistChatDraft(draft: LifeDraft): Promise<void> {
   const copy = stageChatDraft(draft);
-  const current = (writes.get(draft.key) ?? Promise.resolve()).catch(() => {}).then(async () => {
-    await putLifeDraft(copy);
-    if (unsavedChatDrafts.get(draft.key) === copy) unsavedChatDrafts.delete(draft.key);
+  const key = copy.key;
+  const queue = writes.get(key) ?? {};
+  const start = !writes.has(key);
+  if (start) writes.set(key, queue);
+  const current = new Promise<void>((resolve, reject) => {
+    if (queue.pending) {
+      queue.pending.copy = copy;
+      queue.pending.waiters.push({ resolve, reject });
+    } else queue.pending = { copy, waiters: [{ resolve, reject }] };
   });
-  writes.set(draft.key, current);
-  void current.finally(() => { if (writes.get(draft.key) === current) writes.delete(draft.key); }).catch(() => {});
+  if (start) void Promise.resolve().then(() => writeChatDrafts(key, queue));
   return current;
 }
 
@@ -54,7 +83,12 @@ export function startChatReply(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const reply: ChatReply = {
     draft, running: true, saveFailed: false, ledgerReview: options.ledgerReview, done: Promise.resolve(),
-    stop: () => controller.abort(),
+    stop: () => {
+      if (!reply.running || signal.aborted) return;
+      controller.abort();
+      if (draft.chatReply) draft.chatReply.status = 'stopped';
+      flush();
+    },
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
   };
   const notify = () => { for (const listener of listeners) listener(); };
@@ -63,6 +97,7 @@ export function startChatReply(
     catch { reply.saveFailed = true; }
   };
   const flush = () => { clearTimeout(timer); timer = undefined; void persist(); };
+  const scheduleSave = () => { if (timer == null) timer = setTimeout(flush, CHECKPOINT_INTERVAL); };
   const onHidden = () => { if (document.visibilityState === 'hidden') flush(); };
   // 浏览器/系统可能终止进程；尽量提前落盘，重启只恢复检查点，不自动调用付费接口。
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onHidden);
@@ -87,7 +122,7 @@ export function startChatReply(
         onSearch: search => {
           if (signal.aborted || !reply.running) return;
           draft.chatReply!.search = structuredClone(search);
-          if (timer == null) timer = setTimeout(flush, 350);
+          scheduleSave();
           notify();
         },
         onDelta: content => {
@@ -95,7 +130,7 @@ export function startChatReply(
           draft.chatReply!.content = content;
           draft.chatReply!.status = 'streaming';
           // 固定间隔而非防抖，连续长回复也会定期保存。
-          if (timer == null) timer = setTimeout(flush, 350);
+          scheduleSave();
           notify();
         },
       });
