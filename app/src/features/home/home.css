@@ -102,3 +102,5 @@
 .rhythm-chart:before{content:'';position:absolute;left:0;right:0;top:26px;height:1px;background:var(--border)}
 .rhythm-bar{position:absolute;width:16px;left:calc(50% - 8px);bottom:28px;height:var(--rhythm-bar-height);background:var(--expense);border-radius:3px 3px 0 0}
 .rhythm-day.is-negative .rhythm-bar{top:27px;bottom:auto;background:var(--income);border-radius:0 0 3px 3px}
+
+#hm-days [data-home-life-note]{cursor:pointer}
