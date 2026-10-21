@@ -6,7 +6,7 @@
 
 main与预览workflow新增独立history_secrets前置检查，完整checkout并获取全部远端分支、标签和PR head引用，再执行固定版本及双SHA校验的Gitleaks。扫描全部本地refs的历史文本变更（含merge与删除）、提交／注解tag说明及历史敏感路径；浅克隆、配置异常、工具／网络失败均阻断构建。只允许两条已审核公开APK完整性哈希的历史fingerprint，拒绝新增豁免、仓库配置及inline allow绕过；只输出位置，不公开原始匹配或扫描报告。
 
-18项真实临时Git回归已通过，覆盖删除凭据、合并提交、消息与嵌套tag、额外豁免、浅克隆、历史二进制签名路径、工具完整性与诊断脱敏；全新官方下载、双SHA及缓存复用实际验证通过。旧current-only扫描在文件删除后确会放行，新扫描须阻断。版本仍1.11.29，本轮按授权同步preview/orbstack，以草稿PR验证完整CI；不生成新版安装包。最终精确提交和实际CI结果见交付。修改前735文件恢复快照：`.tmp/backups/ci-history/tracked-before.tar`。
+18项真实临时Git回归已通过，覆盖删除凭据、合并提交、消息与嵌套tag、额外豁免、浅克隆、历史二进制签名路径、工具完整性与诊断脱敏；全新官方下载、双SHA及缓存复用实际验证通过。旧current-only扫描在文件删除后确会放行，新扫描须阻断。原有工作流签名隔离断言改为识别GitHub表达式中的secrets上下文，避免误判扫描脚本文件名；新增点号、括号及toJSON形式的防漏检回归。版本仍1.11.29，本轮按授权同步preview/orbstack，以草稿PR验证完整CI；不生成新版安装包。最终精确提交和实际CI结果见交付。修改前735文件恢复快照：`.tmp/backups/ci-history/tracked-before.tar`。
 
 ## v1.11.29 长语音中断修复（2026-10-21）
 
