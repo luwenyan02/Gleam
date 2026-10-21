@@ -18,7 +18,7 @@ TESTS = (
     'test_runner_unit.py',
     'test_web_pwa_registration.py',
     'test_spending_rhythm.py', 'test_chat_ledger_recent.py',
-    'test_home_monthly_timeline.py', 'test_home_life_preview.py', 'test_chat_artifacts.py',
+    'test_home_monthly_timeline.py', 'test_home_life_preview.py', 'test_chat_artifacts.py', 'test_chat_chart_layout.py',
     'test_page_open_performance.py',
     'test_ui_consistency.py',
     'test_overview_art.py',

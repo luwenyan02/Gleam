@@ -1,15 +1,16 @@
-.chat-chart{min-width:0;max-width:100%;margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:var(--r-s);background:var(--surface);color:var(--fg);font-size:var(--text-meta);overflow:hidden}
-.chat-chart .chat-chart-title{margin:0 0 6px;font-size:var(--text-body);line-height:1.5;overflow-wrap:anywhere}
-.chat-chart .chat-chart-unit,.chat-chart .chat-chart-hint{margin:6px 0;color:var(--muted);font-size:var(--text-small);line-height:1.5}
-.chat-chart .chat-chart-plot{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;border-radius:6px;background:#fff;color:#202124}
+.chat-chart{min-width:0;max-width:100%;margin:0;padding:0;color:var(--fg);font-size:var(--text-meta);overflow:hidden}
+.chat-chart .chat-chart-heading{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:2px 12px}
+.chat-chart .chat-chart-title{margin:0;font-size:var(--text-body);line-height:1.5;overflow-wrap:anywhere}
+.chat-chart .chat-chart-unit,.chat-chart .chat-chart-hint{margin:4px 0;color:var(--muted);font-size:var(--text-small);line-height:1.5}
+.chat-chart .chat-chart-plot{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;border-radius:6px;background:transparent;color:var(--fg);scrollbar-width:thin}
 .chat-chart .chat-chart-plot svg{display:block;width:100%;height:auto;font-family:var(--font-body)}
-.chat-chart .chat-chart-legend{display:flex;flex-wrap:wrap;gap:8px 14px;padding:0;margin:10px 0;list-style:none}
+.chat-chart .chat-chart-legend{display:flex;flex-wrap:wrap;gap:8px 14px;padding:0;margin:8px 0 0;list-style:none}
 .chat-chart .chat-chart-legend li{display:flex;align-items:baseline;gap:6px;min-width:0;max-width:100%;overflow-wrap:anywhere;line-height:1.6}
-.chat-chart .chat-chart-legend li>span{width:10px;height:10px;flex:none;border-radius:2px}
-.chat-chart .chat-chart-picker{display:flex;gap:6px;max-width:100%;overflow-x:auto;padding:4px 2px 7px;overscroll-behavior-x:contain}
-.chat-chart .chat-chart-picker button{min-width:88px;min-height:44px;max-width:160px;flex:0 0 auto;padding:8px 12px;border:1px solid var(--border);border-radius:var(--r-s);background:var(--bg);color:var(--fg);font:inherit;line-height:1.5;white-space:normal;overflow-wrap:anywhere}
+.chat-chart .chat-chart-legend li>span{width:10px;height:10px;flex:none;border-radius:50%}
+.chat-chart .chat-chart-picker{display:flex;gap:4px;max-width:100%;overflow-x:auto;padding:4px 2px;overscroll-behavior-x:contain}
+.chat-chart .chat-chart-picker button{min-width:44px;min-height:44px;max-width:160px;flex:1 0 auto;padding:6px;border:1px solid transparent;border-radius:999px;background:transparent;color:var(--fg);font:inherit;line-height:1.5;white-space:normal;overflow-wrap:anywhere}
 .chat-chart .chat-chart-picker button[aria-pressed=true]{background:var(--accent-soft);border-color:var(--primary);color:var(--primary)}
-.chat-chart .chat-chart-value{min-height:3em;margin:8px 0;line-height:1.6;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.chat-chart .chat-chart-value{margin:8px 0 4px;padding:9px 10px;border-radius:10px;background:var(--bg);line-height:1.6;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
 .chat-chart .chat-chart-data summary{display:flex;align-items:center;min-height:44px;cursor:pointer;color:var(--primary);font-weight:600}
 .chat-chart .chat-chart-data summary::before{content:'▸';margin-right:8px}
 .chat-chart .chat-chart-data[open] summary::before{content:'▾'}

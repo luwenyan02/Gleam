@@ -27,8 +27,9 @@
 .chat-image-link{display:block;min-width:44px;min-height:44px;max-width:100%;padding:0;border:0;border-radius:var(--r-s);background:var(--bg);color:var(--muted);overflow:hidden;cursor:pointer}
 .chat-image-link span{display:block;padding:12px}
 .chat-image-link:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.chat-message-text:not(:empty)+[data-chat-chart]{margin-top:12px}
 .chat-chart-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
-.chat-chart-actions button{min-height:44px}
+.chat-chart-actions button{min-height:44px;background:transparent;border-color:transparent;color:var(--muted);border-radius:999px}
 .chat-chart-source{margin:4px 0 8px}
 .user .chat-message-text{white-space:pre-wrap;line-height:1.55}
 .chat-message-text p{margin:0 0 .5em}
