@@ -10,7 +10,7 @@ import { esc } from '../../core/esc';
 import { on } from '../../core/store';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
 import { testAiConnection, listAiModels } from '../../core/repo/aiRepo';
-import { AI_PROVIDERS, buildModelChoices, matchProviderId, modelPreset, recentModels } from './providers';
+import { AI_PROVIDERS, buildModelChoices, matchProviderId, modelPreset } from './providers';
 import { ensurePermission } from '../../core/notify';
 import { registerSubpage, openSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
@@ -300,7 +300,7 @@ export function initSettings(): void {
           btn.disabled = true;
           btn.textContent = '获取中…';
           const currentBase = el.querySelector<HTMLInputElement>('#ai-base')?.value ?? '';
-          void listAiModels(recentModels(matchProviderId(currentBase)).map(model => model.id))
+          void listAiModels(buildModelChoices(currentBase, '', null).map(model => model.value))
            .then((ms) => showToast(ms.length ? `已获取 ${ms.length} 个模型，请点击「选择模型」查看` : '该平台未返回可用模型，请手动填写模型名'))
             .catch((err) => showToast(err instanceof Error ? err.message : String(err)))
             .finally(() => void refresh());

@@ -1,5 +1,6 @@
 """用户四项反馈的回归；所有账目、账户与对象均为虚构数据。"""
 import os
+from datetime import datetime, timezone
 from playwright.sync_api import sync_playwright, expect
 from test_acceptance_fixes import seed, SHOTS
 
@@ -58,6 +59,7 @@ def swap(page, width):
     assert row['fromAccountId']==2 and row['toAccountId']==1 and row['amount']==800
 
 def models(page, width):
+    page.clock.set_fixed_time(datetime(2026,10,22,12,tzinfo=timezone.utc))
     calls=[]
     page.route('https://**/*',lambda route:route.abort()) # 本测试禁止真实 AI 请求
     def chat(route):
@@ -105,12 +107,57 @@ def models(page, width):
     page.locator('[data-act="ai-models"]').click()
     page.wait_for_function('document.querySelector("[data-act=ai-models]").textContent==="获取模型列表"')
     page.locator('#ai-model-pick').click();page.locator('.picker-panel.open').wait_for();page.wait_for_timeout(250)
-    assert page.locator('.picker-item').count()<=11
+    assert page.locator('.picker-item').count()>20, '接口返回候选不应截断到10项'
     assert page.locator('#ai-model').input_value()=='gpt-6-astra'
+    page.get_by_role('textbox',name='搜索选项').fill('api-extra-19')
+    expect(page.locator('.picker-item[data-value="api-extra-19"]')).to_be_visible()
+    page.locator('.picker-item[data-value="api-extra-19"]').click();page.locator('.picker-mask').wait_for(state='detached')
+    expect(page.locator('#ai-model')).to_have_value('api-extra-19')
+    page.locator('#ai-model-pick').click();page.locator('.picker-item[data-value="gpt-6-astra"]').click();page.locator('.picker-mask').wait_for(state='detached')
+    page.locator('#ai-model-pick').click();page.locator('.picker-panel.open').wait_for()
     page.keyboard.press('Escape');page.locator('.picker-mask').wait_for(state='detached')
     page.locator('#ai-provider').click();page.locator('.picker-item[data-value="dashscope"]').click();page.locator('.picker-mask').wait_for(state='detached')
     page.locator('#ai-model-pick').click();page.locator('.picker-panel.open').wait_for()
     assert not any('api-extra-' in label for label in page.locator('.picker-item-label').all_inner_texts()), '拉取缓存不能串平台'
+    page.keyboard.press('Escape');page.locator('.picker-mask').wait_for(state='detached')
+    catalog_models(page, width, calls)
+
+def catalog_models(page, width, calls):
+    cases=[('openai','gpt-6.1-sol','图片、文字'),
+           ('deepseek','deepseek-flash','图片、文字'),
+           ('siliconflow','deepseek-ai/DeepSeek-V4.1-Flash','图片、文字'),
+           ('moonshot','kimi-k3','图片、文字'),
+           ('zhipu','glm-5.3-flashx','图片、文字'),
+           ('zhipu','glm-5.3','文字'),
+           ('moonshot','kimi-k2.7-code','图片、文字'),
+           ('moonshot','kimi-k2.7-code-highspeed','图片、文字'),
+           ('deepseek','deepseek-v4-flash','图片、文字')]
+    for provider,model,capability in cases:
+        saved=page.locator('#ai-model').input_value()
+        page.locator('#ai-provider').click();page.locator(f'.picker-item[data-value="{provider}"]').click();page.locator('.picker-mask').wait_for(state='detached')
+        expect(page.locator('#ai-model')).to_have_value(saved)
+        page.locator('#ai-model-pick').click();page.locator('.picker-panel.open').wait_for()
+        groups=page.locator('.picker-group-title').all_inner_texts()
+        assert '推荐模型' in groups and '兼容旧版' in groups, (provider,groups)
+        assert page.locator('.picker-item-label').evaluate_all('els=>els.every(e=>e.scrollWidth<=e.clientWidth+1)')
+        assert page.locator('.picker-item').evaluate_all('els=>els.every(e=>e.getBoundingClientRect().right<=innerWidth+1)')
+        if width==390:
+            page.locator('#toast.show').wait_for(state='hidden')
+            page.wait_for_timeout(250)
+            page.screenshot(path=str(SHOTS/f'model-catalog-{provider}-{model.split("/")[-1]}.png'))
+        page.get_by_role('textbox',name='搜索选项').fill(model)
+        page.locator(f'.picker-item[data-value="{model}"]').click();page.locator('.picker-mask').wait_for(state='detached')
+        expect(page.locator('#ai-model')).to_have_value(model)
+        expect(page.locator('#ai-model-capability')).to_have_text(capability)
+        page.locator('[data-act="ai-test"]').click();page.wait_for_function('document.querySelector("[data-act=ai-test]").textContent==="测试连接"')
+        payload=calls[-1]
+        assert payload['model']==model, payload
+        if provider in ('openai','moonshot','zhipu'):
+            assert 'temperature' not in payload, payload
+        if provider=='deepseek':
+            assert payload['thinking']=={'type':'disabled'}, payload
+        if provider=='zhipu':
+            assert payload.get('thinking',{}).get('type')!='disabled', payload
 
 if __name__=='__main__':
     failed=[]

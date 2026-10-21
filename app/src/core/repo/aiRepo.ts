@@ -230,12 +230,10 @@ export async function testAiConnection(): Promise<void> {
 const MODEL_EXCLUDE_RE = /embed|rerank|tts|asr|audio|realtime|image|video|cogview|whisper|speech/i;
 /** 视觉能力关键词：命中者优先排在候选前列（识别请求带 image_url，需支持图片） */
 const MODEL_VISION_RE = /vl|vision|omni|4o|v-/i;
-/** 拉取后保留的模型数上限 */
-const MODELS_LIMIT = 10;
 
 /**
  * 拉取平台 /models 模型列表：GET + Bearer Key，30s 超时；
- * 过滤非视觉/对话模型后按「静态预设命中 → 视觉关键词 → 其余」排序，去重截取 10 个，
+ * 过滤非视觉/对话模型后按「静态预设命中 → 视觉关键词 → 其余」排序，去重保留完整候选，
  * 结果存入带接口来源的 'ai.modelCatalogCache'，不合并其他平台或旧版无来源缓存。
  * @param preferred 静态预设清单（UI 传入，命中者排序最前）；aiRepo 不反向依赖 features 层
  * @throws 未配置地址/Key、Key 无效（401/403）、平台不支持拉取或网络失败的引导文案
@@ -274,12 +272,11 @@ export async function listAiModels(preferred: string[] = []): Promise<string[]> 
     if (MODEL_VISION_RE.test(id)) return preferred.length;
     return preferred.length + 1;
   };
-  const top = [...new Set(ids.filter((id) => !MODEL_EXCLUDE_RE.test(id)))]
-    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
-    .slice(0, MODELS_LIMIT);
+  const candidates = [...new Set(ids.filter((id) => !MODEL_EXCLUDE_RE.test(id)))]
+    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 
-  await setSetting('ai.modelCatalogCache', { baseUrl, ids: top });
-  return top;
+  await setSetting('ai.modelCatalogCache', { baseUrl, ids: candidates });
+  return candidates;
 }
 
 /* ── Prompt 工程 ─────────────────────── */

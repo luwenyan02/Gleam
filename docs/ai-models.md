@@ -1,26 +1,26 @@
 # AI 模型预设维护
 
-最近增量核对日期：2026-10-22，本次仅按用户指定调整阿里百炼三项预设；其他平台预设沿用2026-09-07版本。运行时按最近三个日历月筛选。仅收录适用于本应用的对话模型，基础调用采用 Chat Completions，聊天搜索的 Responses 适配见下文；不为凑满数量加入生图、语音或嵌入模型。
+核对日期：2026-10-22。按用户确认更新六个平台的对话模型目录；百炼仅采用用户指定的替换和移除，不额外扩充。基础调用采用 Chat Completions，聊天搜索的 Responses 适配见下文。推荐代表已核验接口与模态的常用候选，不代表已用真实账号比较准确率或费用。
 
 ## 平台目录与来源
 
-| 平台 | 预设模型 | 官方日期依据 |
+| 平台 | 推荐与近期型号 | 兼容版本及官方依据 |
 | --- | --- | --- |
-| 阿里百炼 | deepseek-v4.1-flash-1017、qwen3.8-max-0902、qwen3.8-flash、kimi-k3、qwen3.7-flash | 分别于 10-17、09-02、08-26、08-19、07-21 上架，见[上下架记录](https://help.aliyun.com/zh/model-studio/newly-released-models) |
-| OpenAI | gpt-6-astra、gpt-5.6-sol、gpt-5.6-terra、gpt-5.6-luna | Astra 09-03 发布，5.6 系列 07-09 发布，见[API Changelog](https://developers.openai.com/api/docs/changelog) |
-| DeepSeek | deepseek-v4-flash-vision-exp、deepseek-v4-pro、deepseek-v4-flash | 08-21 视觉实验版、08-13 Pro 正式版、07-31 Flash 正式版，见[更新日志](https://api-docs.deepseek.com/zh-cn/updates/)。官方调用 ID 不套用百炼的快照后缀 |
-| 硅基流动 | zai-org/GLM-5.3、deepseek-ai/DeepSeek-V4-Flash、meituan-longcat/LongCat-2.0、zai-org/GLM-5.2、moonshotai/Kimi-K2.7-Code | [模型中心](https://siliconflow.cn/models)提供平台 ID 和日期；Flash 采用页面明确描述的 0731 正式版本，其他日期为 08-14、06-30、06-17、06-12 |
-| Moonshot Kimi | kimi-k3 | 07-16 发布，见[技术博客](https://www.kimi.ai/blog/kimi-k3)与[平台接入文档](https://platform.kimi.com/docs/guide/kimi-k3-quickstart) |
-| 智谱 GLM | glm-5.2 | 06-16 发布，见[新品发布](https://docs.bigmodel.cn/cn/update/new-releases)。不把其他供应商的 ID 或未核验的平台版本直接搬入 |
-
-2026-10-22 按用户最新要求，用 `deepseek-v4.1-flash-1017` 替换百炼 `deepseek-v4-flash-0731`，并移除 `deepseek-v4-pro-0813` 和 `qwen3.7-plus` 的内置预设。新版 Flash 支持图片与文本，兼容 Chat Completions，见[DeepSeek API](https://help.aliyun.com/zh/model-studio/deepseek-api)。移除预设不删除用户已保存的模型，也不屏蔽用户主动获取的接口返回项；原有三个月筛选、数量限制与其他平台保持不变。
+| 阿里百炼 | 推荐 deepseek-v4.1-flash-1017、qwen3.8-flash；保留 qwen3.8-max-0902、kimi-k3 | 保留 qwen3.7-flash。分别于10-17、08-26、09-02、08-19、07-21上架；见[上下架记录](https://help.aliyun.com/zh/model-studio/newly-released-models)。按用户要求移除 deepseek-v4-flash-0731、deepseek-v4-pro-0813、qwen3.7-plus 预设，不删除已保存值或屏蔽接口返回项 |
+| OpenAI | 推荐 gpt-6.1-sol（09-29）、gpt-6-luna（09-22）；近期 gpt-6-sol（09-22）、gpt-6-astra（09-03） | GPT-5.6 Sol／Terra／Luna（07-09）转入兼容分组。均支持图片输入，见[API Changelog](https://developers.openai.com/api/docs/changelog)与[GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol) |
+| DeepSeek | 推荐 deepseek-flash：V4.1 Flash于09-10发布、10-17更新；保留文本模型 deepseek-v4-pro（08-13） | deepseek-v4-flash、deepseek-v4-flash-vision-exp 是兼容旧名，服务已转向 V4.1 Flash，均标为图片／文本并说明转向，不再按旧Flash阻止图片。见[更新日志](https://api-docs.deepseek.com/zh-cn/updates/)与[当前模型／价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing)；不套用百炼的调用名 |
+| 硅基流动 | 推荐 deepseek-ai/DeepSeek-V4.1-Flash（09-10，页面注明已更新至1017版）、zai-org/GLM-5.3-Flash（08-26）；近期 Qwen/Qwen3.8-27B、zai-org/GLM-5.3（均08-14） | 保留原 V4-Flash、LongCat-2.0、GLM-5.2、Kimi-K2.7-Code 兼容项。日期来自[模型中心](https://siliconflow.cn/models)的“发布时间”，不冒充平台部署日期；V4-Flash沿用页面明确的0731正式版本日期。前三款新模型支持图片，GLM-5.3仅文本 |
+| Moonshot Kimi | 推荐 kimi-k3（07-16），不因超过三个月消失 | K2系列兼容项为 kimi-k2.7-code、kimi-k2.7-code-highspeed、kimi-k2.6，均支持图片。见[模型列表](https://platform.kimi.com/docs/models)与[K3指南](https://platform.kimi.com/docs/guide/kimi-k3-quickstart)。不加入已下线的K2.5／moonshot-v1；本轮未核实K2系列各版本的确切发布日期，不填造日期 |
+| 智谱 GLM | 推荐 glm-5.3-flash（08-26）、glm-5.3-flashx；近期 glm-5.3（08-19） | 保留 glm-5.2（06-16）为兼容项。Flash／FlashX支持图片，5.3／5.2仅文本；见[发布记录](https://docs.bigmodel.cn/cn/update/new-releases)及[Flash／FlashX文档](https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash)。FlashX调用名和能力已核验，确切上架日期未核实，不借用百炼上架日期 |
 
 ## 展示与兼容约定
 
-- 候选去重、最多 10 个（不含“自定义输入”操作），标明日期与“图片／文本”或“仅文本”。不自动覆盖已保存的模型。
-- “获取模型列表”仅在用户点击后请求当前接口，缓存按接口地址隔离。API 列表不保证包含真实发布日期或视觉能力，明确标为未核验。
-- 这是离线维护目录，不自动联网更新。后续需再次核对官方日期、平台调用 ID、模态与参数，不能把网页更新时间当作模型发布时间。
-- 目录不保证用户账号、地域或套餐拥有所有模型权限，需使用自己的 API Key 测试。
+- 当前配置置顶且去重，不因换平台、刷新目录或更新应用而自动换模型；已知型号保留核验后的能力，未知型号明确标为未核验。
+- 分为“推荐模型／近期更新／兼容旧版”。推荐独立于日期，长期保留；其他预设根据明确的发布或版本更新日期判断最近三个日历月，较旧型号仍可在兼容分组选择。兼容不代表停服，转向别名单独说明。
+- 首次发布／上架与版本更新分别保存。日期未知时不标假日期，也不将核对日期作为发布日期。
+- “获取模型列表”仅在用户点击时请求当前接口，仍过滤生图、语音、嵌入等非本功能候选；缓存和选择器均不再截取前10个。完整候选可搜索，按接口地址隔离且去重；只在名称上命中视觉关键词的接口项仍标为能力未核验。
+- 模型名称与能力说明在设置列表中分行显示，长平台前缀、转向说明和放大字体可完整阅读。
+- 目录不自动联网更新；网页核查不等于账号、地域和套餐实际有权调用，真实服务测试由用户执行。
 
 ## 请求兼容与测试边界
 
@@ -38,7 +38,9 @@ Android 流式补充：全局 CapacitorHttp 会先读完 POST 正文，并按行
 
 - GPT-6 Astra 不发送不支持的 `temperature`；GPT-5.6 使用默认采样和低推理强度，见 [OpenAI 模型指导](https://developers.openai.com/api/docs/guides/latest-model)。
 - Kimi K3 使用低推理强度，不发送固定采样参数，见[平台重要限制](https://platform.kimi.com/docs/guide/kimi-k3-quickstart)。
-- Kimi K2.7 Code 同样不发送固定采样参数，见[官方参数限制](https://platform.kimi.com/docs/guide/kimi-k2-7-code-quickstart)；DeepSeek、GLM 等其余模型保留原有 `temperature: 0`。
+- Moonshot K2.7 Code／Highspeed不能关闭思考，也不能传入固定`temperature: 0`，因此沿用服务默认参数；K2.6支持关闭思考，使用`thinking: { type: 'disabled' }`且不固定温度。见[Code参数限制](https://platform.kimi.com/docs/guide/kimi-k2-7-code-quickstart)与[K2.6参数限制](https://platform.kimi.com/docs/guide/kimi-k2-6-quickstart)。硅基K2.7 Code继续省略固定采样参数。
+- DeepSeek官方当前Flash、Pro及两个兼容旧名显式使用`thinking: { type: 'disabled' }`和`temperature: 0`，使普通同步任务的低随机性设置实际生效；思考模式下温度会被服务忽略。见[思考模式](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode)。不将这个原厂字段搬到百炼或硅基接口。
+- 智谱GLM-5.3／Flash／FlashX使用服务默认参数，避免继承统一固定温度；Flash／FlashX仅支持开启思考，不发送关闭指令，依据上述官方模型文档。硅基其他模型保留其兼容接口已有参数，不因模型同名就套用原厂字段，见[硅基Chat Completions](https://docs.siliconflow.cn/cn/api-reference/chat-completions/chat-completions)。
 - 百炼 Qwen3.7/3.8 记账请求显式关闭思考，降低同步等待，见[深度思考文档](https://help.aliyun.com/zh/model-studio/deep-thinking)。
 - 已知仅文本模型在发送截图前给出明确提示；不凭自定义模型名称猜测能力。
-- 自动测试拦截模拟 AI 响应，只验证选择、持久化和请求参数。本轮未读取真实 Key、调用付费模型或验证所有供应商实际连通性。
+- 自动测试拦截模拟 AI 响应，验证分组、当前值保留、完整列表搜索、能力提示与真实出站请求参数。本轮未读取真实 Key、调用付费模型或验证所有供应商实际连通性。
