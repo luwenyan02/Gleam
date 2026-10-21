@@ -1,4 +1,5 @@
 import { esc } from '../../core/esc';
+import { VoiceDraftCheckpoint } from '../../core/voiceTranscript';
 import type { LifeChatMessage, LifeDraft, LifeNote } from '../../core/types';
 import { getAttachment, getLifeNote } from '../../core/repo/lifeRepo';
 import { claimLegacyLifeChatDraft, getLifeDraft, listLifeChatSessions, migrateLifeDraft, saveLifeDraft } from '../../core/repo/lifeDraftRepo';
@@ -105,6 +106,12 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   let stopVoice: (() => void) | undefined;
   let voiceOpen = false;
   let voicePaint: number | undefined;
+  const voiceNodes = new WeakMap<LifeChatMessage, HTMLElement>();
+  const voiceDirty = new Set<LifeChatMessage>();
+  const voiceIndices = new WeakMap<LifeChatMessage, number>();
+  const voiceEpochs = new WeakMap<LifeChatMessage, number>();
+  let nextVoiceEpoch = 0;
+  let voiceStructureChanged = false;
   const messagePhotoUrls = new Map<number, string>();
   const ledgerResults = new Map<number, LifeLedgerReview>();
   const ledgerScopes = new Map<number, LifeLedgerScope>();
@@ -112,7 +119,10 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   const voiceLayouts = new VoiceReplyLayouts({
     format: input => formatLifeVoiceReply({ ...input, noteId: draft.noteId, sourceUpdatedAt: draft.sourceUpdatedAt }),
     isCurrent: message => !disposed && !saved && !document.hidden && isCurrentSession() && !draft.aiExcluded && !existing?.aiExcluded && draft.messages.includes(message),
-    onChange: () => { persistQuiet(); render(false); },
+    onChange: message => {
+      if (voiceNodes.get(message)?.isConnected && draft.messages.includes(message)) { voiceDirty.add(message); scheduleVoicePaint(); voiceCheckpoint.changed(); if (!voiceOpen) voiceCheckpoint.flush(); }
+      else { persistQuiet(); render(false); }
+    },
     onError: () => showToast('文字排版暂不可用，已保留原文'),
   });
   const stopLayoutsInBackground = () => { if (document.hidden) voiceLayouts.cancel(); };
@@ -134,6 +144,13 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       showToast('草稿暂存在当前页面，请勿刷新；可重新打开重试保存');
     }); }, 220);
   };
+  const voiceCheckpoint = new VoiceDraftCheckpoint(() => persist().catch(() => {
+    showToast('草稿暂存在当前页面，请勿刷新；可重新打开重试保存');
+  }));
+  const flushVoice = () => voiceCheckpoint.flush();
+  const hiddenVoice = () => { if (document.hidden) flushVoice(); };
+  document.addEventListener('visibilitychange', hiddenVoice);
+  window.addEventListener('pagehide', flushVoice);
   const observer = new MutationObserver(() => { if (!host.isConnected && !disposed) dispose(); });
   observer.observe(document.body, { childList: true, subtree: true });
   const subpage = host.closest('.subpage');
@@ -182,6 +199,9 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     voiceLayouts.cancel();
     document.removeEventListener('visibilitychange', stopLayoutsInBackground);
     clearTimeout(persistTimer);
+    voiceCheckpoint.flush();
+    document.removeEventListener('visibilitychange', hiddenVoice);
+    window.removeEventListener('pagehide', flushVoice);
     cancelReplyPaint();
     if (voicePaint != null) cancelAnimationFrame(voicePaint);
     controller?.abort();
@@ -256,9 +276,79 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     });
     messagesEl.querySelector('[data-life-chat-summary]')?.addEventListener('click', () => { if (draft.summaryProposal) openSummary(); else void summarize(); });
     messagesEl.querySelector('[data-life-chat-continue]')?.addEventListener('click', () => { readyToSummarize = false; summaryCardHidden = true; render(); });
+    bindVoiceNodes();
     syncComposer(true);
     messagesEl.scrollTop = forceBottom || nearBottom ? messagesEl.scrollHeight : scrollTop;
     host.querySelector<HTMLButtonElement>('[data-chat-jump]')!.hidden = forceBottom || nearBottom;
+  }
+  function bindVoiceNodes(): void {
+    messagesEl.querySelectorAll<HTMLElement>('.life-chat-bubble').forEach((node, index) => {
+      const message = draft.messages[index];
+      if (message) { voiceNodes.set(message, node); voiceIndices.set(message, index); }
+    });
+  }
+  function voiceActionSlot(bubble: HTMLElement): void {
+    bubble.querySelectorAll('.chat-action-slot').forEach(slot => slot.remove());
+    const actions = bubble.querySelector('.chat-message-actions'); if (!actions) return;
+    const content = bubble.querySelector('.chat-message-content')!, text = content.querySelector('.chat-message-text')!;
+    const slot = document.createElement('span'); slot.className = 'chat-action-slot'; slot.setAttribute('aria-hidden', 'true');
+    slot.style.width = `${actions.querySelectorAll('button').length * 44 + (actions.querySelector('.chat-reply-time') ? 52 : 0) + 8}px`;
+    let tail = text.lastElementChild;
+    while (tail?.matches('ul,ol,li') && tail.lastElementChild?.matches('ul,ol,li,p')) tail = tail.lastElementChild;
+    if (content.querySelector('.life-chat-message-photos') || tail?.matches('pre,.chat-table-scroll,hr')) { slot.classList.add('chat-action-slot-block'); content.append(slot); }
+    else (tail ?? text).append(slot);
+  }
+  function scheduleVoicePaint(): void {
+    if (voicePaint == null) voicePaint = requestAnimationFrame(() => { voicePaint = undefined; paintVoice(); });
+  }
+  function paintVoice(): void {
+    if (disposed) return;
+    const scrollTop = messagesEl.scrollTop;
+    const nearBottom = messagesEl.scrollHeight - scrollTop - messagesEl.clientHeight < 100;
+    messagesEl.querySelector('.chat-welcome')?.remove();
+    for (const message of voiceDirty) {
+      const index = voiceIndices.get(message) ?? -1;
+      let bubble = voiceNodes.get(message);
+      if (index < 0) { bubble?.remove(); continue; }
+      if (!bubble?.isConnected) {
+        bubble = document.createElement('article'); bubble.className = `life-chat-bubble ${message.role}`;
+        bubble.innerHTML = `${message.role === 'assistant' ? `<div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div>` : ''}<div class="chat-message-content"><div class="chat-message-text"></div></div>`;
+        voiceNodes.set(message, bubble);
+      }
+      const text = bubble.querySelector<HTMLElement>('.chat-message-text')!;
+      const tableScroll = Array.from(text.querySelectorAll('.chat-table-scroll'), el => el.scrollLeft);
+      text.innerHTML = message.role === 'user' ? esc(message.content) : renderChatText(message.voiceDisplay ?? message.content);
+      text.querySelectorAll('.chat-table-scroll').forEach((el, i) => { el.scrollLeft = tableScroll[i] ?? 0; });
+      if (message.role === 'assistant' && !bubble.querySelector('.chat-message-actions')) {
+        const actions = document.createElement('div'); actions.className = 'chat-message-actions';
+        const copy = document.createElement('button'); copy.innerHTML = chatIcon('copy'); copy.title = '复制';
+        copy.onclick = () => { void navigator.clipboard.writeText(message.voiceDisplay ?? message.content).then(() => showToast('已复制')).catch(() => showToast('复制失败，可长按选择文字')); };
+        actions.append(copy); bubble.querySelector('.chat-message-content')!.append(actions);
+      }
+      voiceActionSlot(bubble);
+      if (!bubble.isConnected) {
+        const following = draft.messages.slice(index + 1).map(item => voiceNodes.get(item)).find(node => node?.isConnected);
+        messagesEl.insertBefore(bubble, following ?? messagesEl.querySelector('.life-summary-card'));
+      }
+    }
+    voiceDirty.clear();
+    // Structural updates are per new turn; fragments only touch their own body.
+    if (voiceStructureChanged) draft.messages.forEach((message, index) => {
+      const bubble = voiceNodes.get(message); if (!bubble) return;
+      const copy = bubble.querySelector<HTMLButtonElement>('.chat-message-actions button');
+      if (copy) { copy.dataset.chatCopy = String(index); copy.setAttribute('aria-label', `复制第 ${index + 1} 条消息`); }
+    });
+    if (voiceStructureChanged) {
+      messagesEl.querySelectorAll('[data-chat-regenerate]').forEach(button => { const bubble = button.closest<HTMLElement>('.life-chat-bubble'); button.remove(); if (bubble) voiceActionSlot(bubble); });
+      const last = draft.messages.at(-1), actions = last && voiceNodes.get(last)?.querySelector('.chat-message-actions');
+      if (last?.role === 'assistant' && actions) {
+        const retry = document.createElement('button'); retry.disabled = sending || voiceOpen; retry.dataset.chatRegenerate = ''; retry.title = '重新回答'; retry.setAttribute('aria-label', '重新回答'); retry.innerHTML = chatIcon('retry');
+        retry.onclick = () => { void requestTurn(draft.messages.indexOf(last) - 1, true); }; actions.append(retry); voiceActionSlot(actions.closest<HTMLElement>('.life-chat-bubble')!);
+      }
+      voiceStructureChanged = false;
+    }
+    syncComposer(); messagesEl.scrollTop = nearBottom ? messagesEl.scrollHeight : scrollTop;
+    host.querySelector<HTMLButtonElement>('[data-chat-jump]')!.hidden = nearBottom;
   }
   function cancelReplyPaint(): void {
     if (replyPaint != null) cancelAnimationFrame(replyPaint);
@@ -516,32 +606,68 @@ function renderChat(host: HTMLElement, launch: Launch): void {
   host.querySelector('[data-chat-voice]')!.addEventListener('click', () => {
     if (sending || voiceOpen || draft.aiExcluded || existing?.aiExcluded) return;
     // Keep message identities: a completed reply may finish layout after voice is ended.
-    const prefix = [...draft.messages];
+    const prefix = new Set(draft.messages);
+    const voiceEpoch = ++nextVoiceEpoch;
+    const ownedMessages = new Set<LifeChatMessage>();
     const voiceMessages = new Map<string, LifeChatMessage>();
+    const voiceOrder = new Map<string, number>();
+    bindVoiceNodes();
     voiceOpen = true; syncComposer();
     stopVoice = openLifeVoice({ container: host.querySelector('.life-chat-input-wrap')!,
-      onTranscript: (messages, destination) => {
+      onTranscript: (messages, destination, mode) => {
         if (disposed || !isCurrentSession()) return;
         if (cancelledTurns.size && messages.some(message => message.role === 'assistant' && message.content.trim())) {
           cancelledTurns.clear(); status('');
         }
+        let structureChanged = mode !== 'upsert';
         const current = messages.map((snapshot, index) => {
           const id = snapshot.id ?? `legacy:${index}`;
           let message = voiceMessages.get(id);
-          if (!message || message.role !== snapshot.role) { message = { role: snapshot.role, content: snapshot.content }; voiceMessages.set(id, message); }
-          if (message.content !== snapshot.content) { message.content = snapshot.content; delete message.voiceDisplay; }
+          if (!message || message.role !== snapshot.role) {
+            message = { role: snapshot.role, content: '' }; voiceMessages.set(id, message);
+            ownedMessages.add(message); voiceEpochs.set(message, voiceEpoch);
+          }
+          voiceOrder.set(id, snapshot.order ?? index);
+          if (!!message.content.trim() !== !!snapshot.content.trim()) structureChanged = true;
+          if (message.content !== snapshot.content) { message.content = snapshot.content; delete message.voiceDisplay; voiceDirty.add(message); }
           if (snapshot.role === 'assistant' && snapshot.search) message.search = structuredClone(snapshot.search);
           return message;
         });
-        draft.messages = [...prefix, ...current];
+        if (structureChanged) {
+          const previousMessages = draft.messages;
+          const ordered = mode === 'upsert'
+            ? [...voiceMessages.entries()].sort(([a], [b]) => voiceOrder.get(a)! - voiceOrder.get(b)!).map(([, message]) => message)
+            : current;
+          // A final native flush can arrive after this overlay closes. Merge only its own block
+          // into the current draft so later text replies and another voice session survive.
+          let anchor = 0;
+          let foundOwned = false;
+          const remaining: LifeChatMessage[] = [];
+          for (const message of previousMessages) {
+            if (ownedMessages.has(message)) {
+              if (!foundOwned) { anchor = remaining.length; foundOwned = true; }
+            } else {
+              remaining.push(message);
+              if (!foundOwned && (prefix.has(message) || (voiceEpochs.get(message) ?? Infinity) < voiceEpoch)) anchor = remaining.length;
+            }
+          }
+          remaining.splice(anchor, 0, ...ordered.filter(message => message.content.trim()));
+          draft.messages = remaining;
+          const included = new Set(draft.messages);
+          for (const message of previousMessages) if (!included.has(message)) { voiceDirty.add(message); voiceIndices.delete(message); }
+          draft.messages.forEach((message, index) => voiceIndices.set(message, index));
+          voiceStructureChanged = true;
+        }
         if (destination) messages.forEach((snapshot, index) => { if (snapshot.id && snapshot.complete === true) voiceLayouts.add(current[index], destination); });
-        if (voicePaint == null) voicePaint = requestAnimationFrame(() => { voicePaint = undefined; persistQuiet(); render(false); });
+        voiceCheckpoint.changed();
+        if (!voiceOpen || document.hidden || messages.some(message => message.complete === true)) voiceCheckpoint.flush();
+        scheduleVoicePaint();
       },
       onClose() {
         voiceOpen = false; stopVoice = undefined;
         if (!disposed) {
-          if (voicePaint != null) { cancelAnimationFrame(voicePaint); voicePaint = undefined; persistQuiet(); render(false); }
-          else syncComposer();
+          if (voicePaint != null) { cancelAnimationFrame(voicePaint); voicePaint = undefined; paintVoice(); }
+          voiceCheckpoint.flush(); syncComposer();
         }
       },
     });

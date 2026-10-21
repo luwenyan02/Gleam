@@ -7,33 +7,40 @@ import android.media.audiofx.NoiseSuppressor;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import java.util.ArrayDeque;
+import java.io.File;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
-/** 16k mono capture / 24k mono playback. PCM stays in bounded memory and is never written to files. */
+/** 16k capture stays in memory. Received 24k replies use a private, temporary encrypted spool. */
 final class GleamLiveAudio implements GleamLiveVoiceSession.Audio {
-    interface Sink { void pcm(byte[] bytes,int length); void failure(String code); void drained(); }
+    interface Sink {
+        void pcm(byte[] bytes,int length); void failure(String code); void drained();
+        default void failure(String code,BooleanSupplier valid){if(valid.getAsBoolean())failure(code);}
+    }
     private final AudioManager manager;
     private final GleamSpeechAuthorization authorization;
     private final Sink sink;
     private final GleamAudioRoute route;
     private final GleamPcmRates rates=new GleamPcmRates();
+    private final GleamReplyPlaybackGate playbackGate=new GleamReplyPlaybackGate();
     private final Handler main=new Handler(Looper.getMainLooper());
-    private final ArrayDeque<byte[]> queue=new ArrayDeque<>();
+    private final GleamReplyAudioBuffer replies;
     private volatile boolean running,muted;
     private AudioRecord recorder;
     private AudioTrack player;
     private AudioFocusRequest focusRequest;
     private AcousticEchoCanceler echo;
     private NoiseSuppressor noise;
-    private int generation,buffered,inFlight,inputRate=16000,outputRate=24000;
+    private long generation;
+    private int inFlight,inputRate=16000,outputRate=24000;
     private boolean starting;
     private Runnable readyCallback;
     private long routeDeadline;
     private final Runnable verifyRoute=this::verifyRoute;
     private long writtenFrames;
-    private boolean focusGranted,recordingCallbackRegistered,finished;
+    private boolean focusGranted,recordingCallbackRegistered;
     private final AudioManager.OnAudioFocusChangeListener focus;
     private final AudioManager.AudioRecordingCallback recordingCallback=new AudioManager.AudioRecordingCallback(){
         @Override public void onRecordingConfigChanged(List<AudioRecordingConfiguration> configs){
@@ -47,6 +54,7 @@ final class GleamLiveAudio implements GleamLiveVoiceSession.Audio {
     };
     GleamLiveAudio(Context context,GleamSpeechAuthorization authorization,Sink sink) {
         manager=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);this.authorization=authorization;this.sink=sink;
+        replies=new GleamReplyAudioBuffer(new File(context.getCacheDir(),"gleam-reply-audio"));
         route=new GleamAudioRoute(context,true,new GleamAudioRoute.Listener(){public void ready(){initialize();}public void failed(){routeFailure();}});
         focus=change->{if(change==AudioManager.AUDIOFOCUS_LOSS||change==AudioManager.AUDIOFOCUS_LOSS_TRANSIENT||change==AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK)sink.failure("LIVE_INTERRUPTED");};
     }
@@ -139,14 +147,21 @@ final class GleamLiveAudio implements GleamLiveVoiceSession.Audio {
     private void playback(){
         byte[] silence=new byte[outputRate/50*2];
         while(running){
-            byte[] frame=null;int epoch=0;
+            byte[] frame=null;long epoch=0;GleamReplyAudioBuffer.Frame received=null;
             try {
+                synchronized(this){if(playbackGate.failed(generation)){wait(15);continue;}}
+                // Storage and decryption never hold the Audio or Session monitor.
+                received=replies.read();
                 boolean drained=false;
                 synchronized(this){
                     if(!authorization.allowed()){sink.failure("LIVE_INTERRUPTED");return;}
-                    if(!queue.isEmpty()){frame=queue.removeFirst();buffered-=frame.length;inFlight=frame.length;epoch=generation;}
-                    else if(finished&&!playing()){finished=false;drained=true;}
-                    else wait(15);
+                    if(received!=null&&received.generation==generation){
+                        frame=outputRate==8000?rates.output(received.bytes):received.bytes;inFlight=frame.length;epoch=generation;
+                    }else if(playbackGate.finished()&&replies.drained()){
+                        if(playbackGate.tailPending(outputRate)){frame=rates.finishOutput();playbackGate.tailFlushed();inFlight=frame.length;epoch=generation;}
+                        if((frame==null||frame.length==0)&&!playing()){playbackGate.drained();drained=true;}
+                    }
+                    if(frame==null&&!drained)wait(15);
                 }
                 if(drained)sink.drained();
                 if(frame==null)continue;
@@ -172,30 +187,48 @@ final class GleamLiveAudio implements GleamLiveVoiceSession.Audio {
                     if(n==0)Thread.sleep(10);else offset+=n;
                 }
             }catch(InterruptedException ignored){Thread.currentThread().interrupt();return;}
+            catch(GleamReplyAudioBuffer.Failure error){bufferFailure(error.generation);}
+            catch(IOException ignored){bufferFailure(generation);}
             catch(RuntimeException ignored){if(running)sink.failure("LIVE_AUDIO");return;}
-            finally{if(frame!=null){Arrays.fill(frame,(byte)0);synchronized(this){if(epoch==generation)inFlight=0;}}}
+            finally{
+                if(frame!=null)Arrays.fill(frame,(byte)0);
+                if(received!=null)replies.release(received);
+                synchronized(this){if(epoch==generation)inFlight=0;}
+            }
         }
     }
-    @Override public synchronized void play(byte[] bytes){
-        if(!running){Arrays.fill(bytes,(byte)0);return;}
-        if(outputRate==8000){byte[] original=bytes;bytes=rates.output(original);Arrays.fill(original,(byte)0);}
-        if(bytes.length==0)return;
-        if(buffered+bytes.length>outputRate*2*30){Arrays.fill(bytes,(byte)0);sink.failure("LIVE_LIMIT");return;}
-        queue.addLast(bytes);buffered+=bytes.length;finished=false;notifyAll();
+    @Override public void play(byte[] bytes){preparePlay(bytes).run();}
+    public synchronized Runnable preparePlay(byte[] bytes){
+        if(!running){Arrays.fill(bytes,(byte)0);return ()->{};}
+        long epoch=generation;
+        try{
+            GleamReplyAudioBuffer.Write write=replies.reserve(bytes);playbackGate.prepare();
+            return ()->{
+                try{write.append();synchronized(GleamLiveAudio.this){notifyAll();}}
+                catch(IOException ignored){bufferFailure(epoch);}
+            };
+        }catch(IOException ignored){return ()->bufferFailure(epoch);}
+    }
+    private synchronized void bufferFailure(long epoch){
+        if(!running||epoch!=generation||!authorization.allowed())return;
+        if(playbackGate.fail(epoch))sink.failure("LIVE_AUDIO_BUFFER",()->bufferFailureCurrent(epoch));
+    }
+    private synchronized boolean bufferFailureCurrent(long epoch){
+        return running&&epoch==generation&&authorization.allowed();
     }
     @Override public synchronized void clear(){
-        generation++;rates.clear();for(byte[] bytes:queue)Arrays.fill(bytes,(byte)0);queue.clear();buffered=0;inFlight=0;writtenFrames=0;finished=false;
+        replies.clear();generation=replies.generation();rates.clear();inFlight=0;writtenFrames=0;playbackGate.clear();
         if(player!=null)try{player.pause();player.flush();if(running)player.play();}catch(RuntimeException ignored){sink.failure("LIVE_AUDIO");}
         notifyAll();
     }
     @Override public void mute(boolean value){muted=value;}
     @Override public synchronized boolean playing(){
-        if(!queue.isEmpty()||inFlight>0)return true;
+        if(playbackGate.tailPending(outputRate)||replies.playing()||inFlight>0)return true;
         return player!=null&&(player.getPlaybackHeadPosition()&0xffffffffL)<writtenFrames;
     }
-    @Override public synchronized void finish(){if(outputRate==8000){byte[] tail=rates.finishOutput();if(tail.length>0){queue.addLast(tail);buffered+=tail.length;}}finished=true;notifyAll();}
+    @Override public synchronized void finish(){replies.finish();playbackGate.finish();notifyAll();}
     @Override public synchronized void stop(){
-        running=starting=false;readyCallback=null;main.removeCallbacks(verifyRoute);rates.clear();generation++;notifyAll();for(byte[] bytes:queue)Arrays.fill(bytes,(byte)0);queue.clear();buffered=0;inFlight=0;writtenFrames=0;finished=false;
+        running=starting=false;readyCallback=null;main.removeCallbacks(verifyRoute);rates.clear();generation++;replies.close();notifyAll();inFlight=0;writtenFrames=0;playbackGate.clear();
         AudioRecord input=recorder;recorder=null;AudioTrack output=player;player=null;
         if(input!=null){try{input.stop();}catch(RuntimeException ignored){}try{input.release();}catch(RuntimeException ignored){}}
         if(output!=null){try{output.pause();output.flush();output.stop();}catch(RuntimeException ignored){}try{output.release();}catch(RuntimeException ignored){}}

@@ -1,6 +1,6 @@
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 import { sanitizeVoiceSearch, voiceInstructions } from './liveVoiceSearch';
-import type { VoiceTranscriptMessage } from './voiceTranscript';
+import { MAX_VOICE_TURN_CHARS, type VoiceTranscriptMessage, type VoiceTranscriptMode } from './voiceTranscript';
 import type { VoiceState } from './realtimeVoice';
 
 export interface LiveVoiceReadiness { ready: boolean; credentialRevision: string; }
@@ -10,6 +10,8 @@ interface LiveState {
   reason?: string;
   message?: string;
   messages?: VoiceTranscriptMessage[];
+  transcriptMode?: VoiceTranscriptMode;
+  finalTranscript?: boolean;
 }
 interface LivePlugin {
   configuration(): Promise<LiveVoiceReadiness>;
@@ -23,7 +25,7 @@ export const liveVoicePlugin = registerPlugin<LivePlugin>('GleamLiveVoice');
 export const nativeLiveVoiceSupported = () => Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 interface Options {
   onStatus: (text: string) => void;
-  onTranscript: (messages: VoiceTranscriptMessage[]) => void;
+  onTranscript: (messages: VoiceTranscriptMessage[], mode?: VoiceTranscriptMode) => void;
   onEnd: () => void;
   onState?: (state: VoiceState) => void;
 }
@@ -32,6 +34,8 @@ interface Options {
 export class NativeLiveVoice {
   private readonly id = crypto.randomUUID();
   private closed = false;
+  private acceptingFinalTranscript = false;
+  private closeDone?: Promise<void>;
   private begun = false;
   private muted = false;
   private connected = false;
@@ -45,18 +49,23 @@ export class NativeLiveVoice {
     this.options.onState?.('connecting');
     try {
       const listener = await liveVoicePlugin.addListener('state', event => {
-        if (this.closed || event.sessionId !== this.id) return;
+        if (this.closed && !(this.acceptingFinalTranscript && event.finalTranscript === true) || event.sessionId !== this.id) return;
         if (event.messages) {
-          if (!Array.isArray(event.messages) || event.messages.length > 120
-            || event.messages.some(m => !m || !['user', 'assistant'].includes(m.role) || typeof m.content !== 'string' || m.content.length > 12_000)) return;
-          this.options.onTranscript(event.messages.map(({ role, content, id, complete, search }) => {
+          const upsert = event.transcriptMode === 'upsert';
+          if (!Array.isArray(event.messages) || event.messages.length > (upsert ? 32 : 120)
+            || event.messages.some(m => !m || !['user', 'assistant'].includes(m.role) || typeof m.content !== 'string' || m.content.length > (upsert ? MAX_VOICE_TURN_CHARS : 12_000)
+              || upsert && (typeof m.id !== 'string' || !m.id || m.id.length > 160 || !Number.isSafeInteger(m.order) || m.order! < 0))) return;
+          if (upsert && event.messages.reduce((sum, message) => sum + message.content.length, 0) > 262_144) return;
+          const messages = event.messages.map(({ role, content, id, complete, search, order }) => {
             const state = role === 'assistant' ? sanitizeVoiceSearch(search) : undefined;
-            return { role, content,
+            return { role, content, ...(upsert ? { order } : {}),
               ...(typeof id === 'string' && id.length > 0 && id.length <= 160 ? { id, ...(typeof complete === 'boolean' ? { complete } : {}) } : {}),
               ...(state ? { search: state } : {}),
             };
-          }));
+          });
+          if (upsert) this.options.onTranscript(messages, 'upsert'); else this.options.onTranscript(messages);
         }
+        if (this.closed) return;
         if (event.state === 'ended') {
           this.options.onStatus(event.message || '语音已结束'); this.close(); return;
         }
@@ -88,12 +97,25 @@ export class NativeLiveVoice {
     return this.muted;
   }
   interrupt(): void { if (!this.closed) void liveVoicePlugin.interrupt({ sessionId: this.id }).catch(() => {}); }
-  close(): void {
-    if (this.closed) return; this.closed = true;
+  close(): Promise<void> {
+    if (this.closed) return this.closeDone ?? Promise.resolve();
+    this.closed = true;
+    let complete!: () => void;
+    this.closeDone = new Promise<void>(resolve => { complete = resolve; });
     window.removeEventListener('pagehide', this.leave); document.removeEventListener('visibilitychange', this.visibility);
-    void liveVoicePlugin.end({ sessionId: this.id }).catch(() => {});
-    void this.listener?.remove().catch(() => {}); this.listener = undefined;
+    this.acceptingFinalTranscript = true;
+    const release = () => {
+      clearTimeout(expiry);
+      this.acceptingFinalTranscript = false;
+      const listener = this.listener; this.listener = undefined;
+      void listener?.remove().catch(() => {});
+      complete();
+    };
+    // Keep the final native flush briefly; a lost bridge reply must not retain a listener forever.
+    const expiry = setTimeout(release, 1000);
+    void liveVoicePlugin.end({ sessionId: this.id }).catch(() => {}).finally(release);
     this.options.onState?.('ended');
     this.options.onEnd();
+    return this.closeDone;
   }
 }

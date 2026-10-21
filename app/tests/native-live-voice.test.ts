@@ -72,7 +72,7 @@ it('只接受本会话的合法文字和状态，结束后隔离迟到结果且�
   s.event({ state: 'ended', reason: 'background' }); s.voice.close();
   s.event({ state: 'speaking', messages: [{ role: 'assistant', content: '迟到' }] });
   expect(s.callbacks.onTranscript).toHaveBeenCalledOnce(); expect(bridge.end).toHaveBeenCalledOnce();
-  expect(s.remove).toHaveBeenCalledOnce(); expect(s.callbacks.onEnd).toHaveBeenCalledOnce();
+  await vi.waitFor(() => expect(s.remove).toHaveBeenCalledOnce()); expect(s.callbacks.onEnd).toHaveBeenCalledOnce();
 });
 
 it('透传原生稳定消息标识与完整回复标记，旧插件仍可只转写', async () => {
@@ -135,4 +135,48 @@ it('未验证配置或权限拒绝时结束会话并给出可恢复反馈', asyn
   await s.voice.start(); expect(bridge.start).not.toHaveBeenCalled(); expect(s.callbacks.onStatus).toHaveBeenLastCalledWith('请先在 AI 设置中完成语音配置');
   const next = setup(); bridge.start.mockRejectedValueOnce(new Error('请允许使用麦克风后重试'));
   await next.voice.start(); expect(next.callbacks.onStatus).toHaveBeenLastCalledWith('请允许使用麦克风后重试'); expect(next.callbacks.onEnd).toHaveBeenCalledOnce();
+});
+
+it('有界upsert携带空占位与顺序，累计超过120条及24k文字不会丢弃新批次', async () => {
+  const s = setup(); await s.voice.start();
+  for (let i = 0; i < 130; i++) s.event({ state: 'listening', transcriptMode: 'upsert', messages: [{ id: `u${i}`, order: i, role: 'user', content: '文'.repeat(200) }] });
+  expect(s.callbacks.onTranscript).toHaveBeenCalledTimes(130);
+  expect(s.callbacks.onTranscript).toHaveBeenLastCalledWith([{ id: 'u129', order: 129, role: 'user', content: '文'.repeat(200) }], 'upsert');
+  s.event({ state: 'speaking', transcriptMode: 'upsert', messages: [{ id: 'reserved', order: 130, role: 'assistant', content: '' }, { id: 'long', order: 131, role: 'assistant', content: '长'.repeat(13_000) }] });
+  expect(s.callbacks.onTranscript.mock.calls.at(-1)![0][1].content).toHaveLength(13_000);
+  expect(s.callbacks.onTranscript.mock.calls.at(-1)![0][0]).toMatchObject({ id: 'reserved', order: 130, content: '' });
+  s.voice.close();
+});
+
+it('关闭立即停止但保留监听至end完成，仅接收原生明确标记的最终flush', async () => {
+  const s = setup(), end = deferred<void>(); await s.voice.start(); bridge.end.mockReturnValue(end.promise);
+  s.voice.close(); expect(s.callbacks.onEnd).toHaveBeenCalledOnce(); expect(s.remove).not.toHaveBeenCalled();
+  s.event({ state: 'listening', transcriptMode: 'upsert', messages: [{ id: 'last', order: 0, role: 'user', content: '忽略普通迟到事件' }] });
+  expect(s.callbacks.onTranscript).not.toHaveBeenCalled();
+  s.event({ state: 'ended', finalTranscript: true, transcriptMode: 'upsert', messages: [{ id: 'last', order: 0, role: 'user', content: '保存末尾' }] });
+  expect(s.callbacks.onTranscript).toHaveBeenCalledOnce();
+  end.resolve(); await vi.waitFor(() => expect(s.remove).toHaveBeenCalledOnce());
+  s.event({ state: 'ended', finalTranscript: true, transcriptMode: 'upsert', messages: [{ id: 'last', order: 0, role: 'user', content: '结束后不回写' }] });
+  expect(s.callbacks.onTranscript).toHaveBeenCalledOnce();
+});
+
+it('结束桥不返回时最多等待一秒最终flush，过期移除监听且迟到resolve不会重复释放', async () => {
+  vi.useFakeTimers();
+  try {
+    const s = setup(), end = deferred<void>(); await s.voice.start(); bridge.end.mockReturnValue(end.promise);
+    const done = s.voice.close(), finished = vi.fn(); void done.then(finished);
+    expect(s.voice.close()).toBe(done);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(finished).not.toHaveBeenCalled();
+    expect(s.remove).not.toHaveBeenCalled();
+    s.event({ state: 'ended', finalTranscript: true, transcriptMode: 'upsert', messages: [{ id: 'last', order: 0, role: 'user', content: '期限内保存' }] });
+    expect(s.callbacks.onTranscript).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(finished).toHaveBeenCalledOnce();
+    expect(s.remove).toHaveBeenCalledOnce();
+    s.event({ state: 'ended', finalTranscript: true, transcriptMode: 'upsert', messages: [{ id: 'last', order: 0, role: 'user', content: '过期不保存' }] });
+    expect(s.callbacks.onTranscript).toHaveBeenCalledOnce();
+    end.resolve(); await vi.advanceTimersByTimeAsync(0);
+    expect(s.remove).toHaveBeenCalledOnce(); expect(s.callbacks.onEnd).toHaveBeenCalledOnce();
+  } finally { vi.useRealTimers(); }
 });

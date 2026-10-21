@@ -36,6 +36,7 @@ import { accountingMonthRange, getAccountingMonth, getAccountingMonthStartDay } 
 import { accountingMonthForTimestamp, shiftMonthKey } from '../../core/period';
 import { homeMonthSummaries, homeTimelineWindow, visibleHomeMonth, type HomeMonthSummary } from './homeTimeline';
 import { openLedgerSearch } from '../search/search';
+import { openLifeNotePreview } from '../life/lifeNotePreview';
 
 import { bindSpendingRhythm, refreshSpendingRhythm, spendingRhythmHtml } from './spendingRhythm';
 
@@ -157,6 +158,8 @@ function renderSkeleton(el: HTMLElement): void {
   el.querySelector('#hm-days')!.addEventListener('click', (e) => {
     const emptyAction = (e.target as HTMLElement).closest<HTMLElement>('[data-empty-entry]');
     if (emptyAction) { void openEntrySheet(); return; }
+    const note = (e.target as HTMLElement).closest<HTMLElement>('[data-home-life-note]');
+    if (note) { openLifeNotePreview(Number(note.dataset.homeLifeNote), note); return; }
     const action = (e.target as HTMLElement).closest<HTMLElement>('[data-entry-action]');
     const swipeRow = (e.target as HTMLElement).closest<HTMLElement>('[data-entry-row]');
     if (swipeRow?.dataset.swipeSuppress === 'true') return;
@@ -169,6 +172,14 @@ function renderSkeleton(el: HTMLElement): void {
     }
     const item = (e.target as HTMLElement).closest<HTMLElement>('[data-entry]');
     if (item) openEntryDetail(Number(item.dataset.entry));
+  });
+  el.querySelector('#hm-days')!.addEventListener('keydown', (event) => {
+    const key = event as KeyboardEvent;
+    if (key.key !== 'Enter' && key.key !== ' ') return;
+    const note = (key.target as HTMLElement).closest<HTMLElement>('[data-home-life-note]');
+    if (!note) return;
+    key.preventDefault();
+    note.click();
   });
   bindEntrySwipeActions(el.querySelector<HTMLElement>('#hm-days')!);
 
@@ -546,7 +557,7 @@ function lifeHtml(note: LifeNote): string {
   const title = note.title || meta.label;
   const body = note.body ? ` <span class="e-sub">· ${esc(snippet(note.body))}</span>` : '';
   const extra = note.mood ? ` · 心情 ${esc(note.mood)}` : note.linkedAmount ? ` · 关联支出 ${formatFenCny(note.linkedAmount)}` : '';
-  return `<article class="entry">
+  return `<article class="entry" data-home-life-note="${note.id}" role="button" tabindex="0" aria-label="预览${esc(title)}">
     <span class="e-ic life">${iconHtml(meta.icon)}</span>
     <div class="e-main"><p class="e-title">${esc(title)}${body}</p><p class="e-meta">生活记录${extra}</p></div></article>`;
 }

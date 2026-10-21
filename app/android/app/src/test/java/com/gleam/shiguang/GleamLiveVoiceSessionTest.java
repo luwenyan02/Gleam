@@ -3,6 +3,9 @@ package com.gleam.shiguang;
 import static org.junit.Assert.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.json.JSONObject;
 import org.junit.Test;
 
@@ -18,6 +21,57 @@ public class GleamLiveVoiceSessionTest {
         f.engine.interrupt();f.engine.receive("{\"type\":\"response.done\",\"response\":{\"id\":\"reply-1\",\"status\":\"completed\"}}");
         f.engine.drained();assertFalse(f.turns.get(0).complete);
     }
+    @Test public void longSessionUsesTwoHourDeadlineAndDoesNotStopForHistoricalText() {
+        Fixture f=new Fixture();f.connected();
+        assertEquals(Long.valueOf(7200000),f.delays.get(f.delays.size()-1));
+        for(int i=0;i<140;i++) {
+            f.engine.receive("{\"type\":\"conversation.item.input_audio_transcription.completed\",\"item_id\":\"u"+i+"\",\"transcript\":\""+new String(new char[200]).replace('\0','文')+"\"}");
+        }
+        assertFalse(f.engine.closed());
+        f.timers.get(f.timers.size()-1).run();assertEquals("LIVE_SESSION_LIMIT",f.ended);
+    }
+    @Test public void historicalTurnCountDoesNotCloseTheCallAndNativeBodiesStayBounded() throws Exception {
+        Fixture f=new Fixture();f.connected();
+        for(int i=0;i<140;i++)f.engine.receive("{\"type\":\"conversation.item.input_audio_transcription.completed\",\"item_id\":\"count"+i+"\",\"transcript\":\"字\"}");
+        assertFalse(f.engine.closed());assertEquals(140,f.turns.size());
+        java.lang.reflect.Field field=f.engine.getClass().getDeclaredField("turns");field.setAccessible(true);
+        assertTrue(((java.util.Map<?,?>)field.get(f.engine)).size()<=32);
+    }
+    @Test public void historicalTextOver24kDoesNotCloseTheCall() {
+        Fixture f=new Fixture();f.connected();
+        for(int i=0;i<3;i++)f.engine.receive("{\"type\":\"conversation.item.input_audio_transcription.completed\",\"item_id\":\"text"+i+"\",\"transcript\":\""+new String(new char[9000]).replace('\0','字')+"\"}");
+        assertFalse(f.engine.closed());assertEquals(3,f.turns.size());assertEquals(9000,f.turns.get(0).text.length());
+    }
+    @Test public void longSingleTranscriptAndReservedOrderRemainAvailableInUpdates() {
+        Fixture f=new Fixture();f.connected();
+        f.engine.receive("{\"type\":\"input_audio_buffer.speech_started\",\"item_id\":\"user\"}");
+        f.response();
+        f.engine.receive("{\"type\":\"response.audio_transcript.done\",\"response_id\":\"reply-1\",\"item_id\":\"bot\",\"transcript\":\""+new String(new char[13000]).replace('\0','长')+"\"}");
+        assertFalse(f.engine.closed());assertEquals(13000,f.turns.get(f.turns.size()-1).text.length());
+    }
+    @Test public void blockedPlaybackAppendDoesNotHoldSessionLockForPcmInterruptOrEnd() throws Exception {
+        CountDownLatch writing=new CountDownLatch(1),release=new CountDownLatch(1),controls=new CountDownLatch(1);
+        Fixture f=new Fixture(){
+            public Runnable preparePlay(byte[] bytes) {
+                assertTrue(Thread.holdsLock(engine));
+                return ()->{assertFalse(Thread.holdsLock(engine));writing.countDown();try{release.await(5,TimeUnit.SECONDS);}catch(InterruptedException error){Thread.currentThread().interrupt();}};
+            }
+        };
+        f.connected();f.response();
+        Thread receiver=new Thread(()->f.audio("reply-1"));receiver.start();assertTrue(writing.await(2,TimeUnit.SECONDS));
+        Thread controller=new Thread(()->{f.engine.pcm(new byte[320],320);f.engine.interrupt();f.engine.end("ended");controls.countDown();});
+        controller.start();
+        try{assertTrue("append must not block microphone/cancel/end",controls.await(1,TimeUnit.SECONDS));}
+        finally{release.countDown();receiver.join(2000);controller.join(2000);}
+        assertTrue(f.engine.closed());
+    }
+    @Test public void finishKeepsCompletionPendingUntilResamplerTailIsDrained() {
+        Fixture f=new Fixture(){public void finish(){playing=true;}};f.connected();f.response();
+        f.engine.receive("{\"type\":\"response.audio_transcript.done\",\"response_id\":\"reply-1\",\"item_id\":\"tail\",\"transcript\":\"完整尾音\"}");
+        f.engine.receive("{\"type\":\"response.done\",\"response\":{\"id\":\"reply-1\",\"status\":\"completed\"}}");
+        assertFalse(f.turns.get(0).complete);f.engine.drained();assertFalse(f.turns.get(0).complete);
+        f.playing=false;f.engine.drained();assertTrue(f.turns.get(0).complete);
+    }
     static final String ACK = "{\"type\":\"session.updated\",\"session\":{\"id\":\"server-1\",\"model\":\"qwen3.8-omni-flash-realtime\",\"modalities\":[\"text\",\"audio\"],\"turn_detection\":{\"type\":\"server_vad\"},\"enable_search\":true,\"tools\":[],\"audio\":{\"input\":{\"format\":{\"type\":\"pcm\",\"sample_rate\":16000,\"channels\":1}},\"output\":{\"format\":{\"type\":\"pcm\",\"sample_rate\":24000}}}}}";
     static class Fixture implements GleamSpeechSession.Transport, GleamLiveVoiceSession.Audio, GleamLiveVoiceSession.Listener, GleamSpeechSession.Clock {
         int starts, stops, clears, plays, ready, closes; boolean muted, playing, failStart, failStop, denyStart, deferAudio;
@@ -25,6 +79,7 @@ public class GleamLiveVoiceSessionTest {
         String ended; List<GleamLiveVoiceSession.Turn> turns = new ArrayList<>();
         final List<String> sent = new ArrayList<>(), states = new ArrayList<>();
         final List<Runnable> timers = new ArrayList<>();
+        final List<Long> delays = new ArrayList<>();
         final GleamLiveVoiceSession engine = new GleamLiveVoiceSession(this,this,this,this,"自然中文，不携带历史");
         public boolean send(String text) { sent.add(text); return true; }
         public void close() { closes++; }
@@ -38,9 +93,17 @@ public class GleamLiveVoiceSessionTest {
         public boolean playing() { return playing; }
         public void state(String value) { states.add(value); }
         public void ready() { ready++; }
-        public void transcript(List<GleamLiveVoiceSession.Turn> value) { turns=value; }
+        public void transcript(List<GleamLiveVoiceSession.Turn> value) {
+            LinkedHashMap<String,GleamLiveVoiceSession.Turn> all=new LinkedHashMap<>();
+            for(GleamLiveVoiceSession.Turn turn:turns)all.put(turn.id,turn);
+            for(GleamLiveVoiceSession.Turn turn:value)all.put(turn.id,turn);
+            turns=new ArrayList<>(all.values());turns.removeIf(turn->turn.text.trim().isEmpty());turns.sort((a,b)->Long.compare(order(a),order(b)));
+        }
+        private long order(GleamLiveVoiceSession.Turn turn) {
+            try{return turn.getClass().getDeclaredField("order").getLong(turn);}catch(Exception ignored){return 0;}
+        }
         public void ended(String reason) { ended=reason; }
-        public GleamSpeechSession.Timer after(long ms,Runnable task) { timers.add(task);return ()->{}; }
+        public GleamSpeechSession.Timer after(long ms,Runnable task) { timers.add(task);delays.add(ms);return ()->{}; }
         void connected() {
             engine.begin();engine.receive("{\"type\":\"session.created\",\"session\":{\"id\":\"server-1\",\"model\":\"qwen3.8-omni-flash-realtime\"}}");engine.receive(ACK);
         }

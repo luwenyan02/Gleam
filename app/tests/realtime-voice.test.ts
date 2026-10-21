@@ -1,15 +1,23 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { RealtimeVoice } from '../src/core/realtimeVoice';
+import type { VoiceTranscriptMessage, VoiceTranscriptMode } from '../src/core/voiceTranscript';
 
 afterEach(() => vi.unstubAllGlobals());
 
 function setup() {
   vi.stubGlobal('Audio', class { autoplay = false; srcObject = null; pause() {} });
+  const history = new Map<string, VoiceTranscriptMessage>();
+  const onUpdate = vi.fn();
   const onTranscript = vi.fn(), onEnd = vi.fn(), onStatus = vi.fn();
-  const voice = new RealtimeVoice({ model: 'qwen3.8-omni-flash-realtime', region: 'beijing', workspace: '', onTranscript, onEnd, onStatus });
+  const voice = new RealtimeVoice({ model: 'qwen3.8-omni-flash-realtime', region: 'beijing', workspace: '', onTranscript: (updates: VoiceTranscriptMessage[], mode?: VoiceTranscriptMode) => {
+    onUpdate(updates, mode);
+    for (const update of updates) history.set(update.id!, update);
+    if (updates.every(update => !update.content.trim())) return;
+    onTranscript([...history.values()].sort((a, b) => a.order! - b.order!).filter(message => message.content.trim()).map(({ order: _order, ...message }) => message));
+  }, onEnd, onStatus });
   const channel = { readyState: 'open', send: vi.fn() } as unknown as RTCDataChannel;
   const event = (data: unknown) => voice['receive'](JSON.stringify(data), channel);
-  return { voice, event, onTranscript, onEnd, channel };
+  return { voice, event, onTranscript, onUpdate, onEnd, channel };
 }
 it('先按事件顺序定位，转录异步到达也不会把用户与 AI 颠倒；去重重复事件', () => {
   const { event, onTranscript } = setup();
@@ -141,4 +149,31 @@ it('服务端明确关闭搜索时结束连接，不把未启用冒充可联网'
   const { event, onEnd } = setup();
   event({ type: 'session.updated', session: { enable_search: false } });
   expect(onEnd).toHaveBeenCalledOnce();
+});
+
+it('两小时新模型不会因120条或24k历史结束，每个片段只发布变化项', () => {
+  const { voice, event, onUpdate, onEnd } = setup();
+  for (let i = 0; i < 140; i++) event({ type: 'conversation.item.input_audio_transcription.completed', item_id: `u${i}`, transcript: '文'.repeat(200) });
+  event({ type: 'response.created', response: { id: 'long' } });
+  event({ type: 'response.audio_transcript.done', response_id: 'long', item_id: 'long-item', transcript: '长'.repeat(13_000) });
+  expect(onEnd).not.toHaveBeenCalled();
+  expect(onUpdate.mock.calls.every(([batch, mode]) => batch.length === 1 && mode === 'upsert')).toBe(true);
+  expect(onUpdate.mock.calls.at(-1)![0][0]).toMatchObject({ id: 'long-item', order: 140 });
+  voice.close();
+});
+
+it('时限从ACK只设置一次，5分钟仍连接、120分钟结束；旧型号保留5分钟', async () => {
+  vi.useFakeTimers();
+  try {
+    const { voice, event, onEnd } = setup();
+    event({ type: 'session.updated' });
+    await vi.advanceTimersByTimeAsync(300_001); expect(onEnd).not.toHaveBeenCalled();
+    event({ type: 'session.updated' });
+    await vi.advanceTimersByTimeAsync(7_200_000 - 300_001); expect(onEnd).toHaveBeenCalledOnce();
+    const ended = vi.fn();
+    const old = new RealtimeVoice({ model: 'qwen-audio-turbo-realtime', region: 'beijing', workspace: '', onStatus: vi.fn(), onTranscript: vi.fn(), onEnd: ended });
+    old['receive'](JSON.stringify({ type: 'session.updated' }), {} as RTCDataChannel);
+    await vi.advanceTimersByTimeAsync(300_000); expect(ended).toHaveBeenCalledOnce();
+    voice.close();
+  } finally { vi.useRealTimers(); }
 });
