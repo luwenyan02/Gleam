@@ -203,8 +203,95 @@ def run(browser,width,height,theme,scale):
     finally:context.close()
 
 
+def run_geometry(browser, width, height, theme, scale):
+    context=browser.new_context(viewport={'width':width,'height':height},service_workers='block',reduced_motion='reduce')
+    page=context.new_page();page.add_init_script(MOCK);errors=[]
+    page.on('pageerror',lambda e:errors.append(str(e)))
+    page.route('https://**/*',lambda r:r.abort())
+    try:
+        page.goto(URL);page.locator('#fab').wait_for();configure(page)
+        page.locator('[data-page="page-life"]').click();page.locator('[data-life-chat]').click()
+        page.evaluate('([theme,scale])=>{document.documentElement.dataset.theme=theme;document.documentElement.style.setProperty("--seed-type",scale)}',[theme,str(scale)])
+        page.locator('[data-chat-voice]').click();page.locator('[data-voice-start]').click()
+        expect(page.locator('[data-voice-mute]')).to_be_visible()
+        page.evaluate("window.__liveEvent({state:'listening',messages:Array.from({length:24},(_,i)=>({role:i%2?'assistant':'user',content:'虚构历史 '+i+'。'+ '保留阅读位置。'.repeat(12)}))})")
+        expect(page.locator('.life-chat-bubble')).to_have_count(24)
+        page.locator('[data-voice-end]').click();expect(page.locator('[data-chat-voice]')).to_be_enabled()
+        def layout():
+            return page.evaluate("""()=>{const m=document.querySelector('#life-chat-messages'),c=document.querySelector('.life-chat-input-wrap');return {top:m.getBoundingClientRect().top,bottom:m.getBoundingClientRect().bottom,scroll:m.scrollTop,composer:c.getBoundingClientRect().height,first:m.querySelector('.life-chat-bubble').getBoundingClientRect().top}}""")
+        for draft in ['', '保留多行草稿\n'*10]:
+            page.locator('#life-chat-input').fill(draft)
+            page.locator('#life-chat-messages').evaluate('el=>el.scrollTop=240')
+            baseline=layout()
+            OUT.mkdir(parents=True,exist_ok=True)
+            if not draft:page.screenshot(path=str(OUT/f'compact-before-{width}-{theme}-{scale}.png'),animations='disabled')
+            def unchanged(state):
+                actual=layout()
+                assert all(abs(actual[k]-v)<1 for k,v in baseline.items()),(state,baseline,actual)
+                if page.locator('.chat-voice-overlay').count():
+                    assert_inline(page)
+                    assert page.locator('.chat-voice-overlay').evaluate("el=>[...el.querySelectorAll('button')].filter(b=>b.getClientRects().length).every(b=>{const a=el.getBoundingClientRect(),r=b.getBoundingClientRect();return r.top>=a.top&&r.bottom<=a.bottom+1})")
+            page.evaluate('window.__livePending=true;window.__resolveLiveStart=null')
+            page.locator('[data-chat-voice]').click();expect(page.locator('[data-voice-start]')).to_be_enabled();unchanged('idle')
+            expect(page.locator('.voice-consent')).to_have_count(0)
+            if not draft:page.screenshot(path=str(OUT/f'compact-idle-{width}-{theme}-{scale}.png'),animations='disabled')
+            page.locator('[data-voice-start]').click();page.wait_for_function('!!window.__resolveLiveStart');unchanged('connecting')
+            page.evaluate('window.__resolveLiveStart()');expect(page.locator('[data-voice-mute]')).to_be_visible();unchanged('listening')
+            page.evaluate("window.__liveEvent({state:'speaking'})");unchanged('speaking')
+            page.mouse.move(0,0);OUT.mkdir(parents=True,exist_ok=True)
+            page.screenshot(path=str(OUT/f'compact-{width}-{theme}-{scale}-{"draft" if draft else "empty"}.png'),animations='disabled')
+            page.locator('[data-voice-mute]').click();unchanged('muted')
+            page.locator('[data-voice-interrupt]').click();unchanged('interrupted')
+            page.evaluate("window.__liveEvent({state:'ended',message:'耳机音频未就绪或连接已变化，语音已停止，请确认连接后重新开始'})")
+            expect(page.locator('[data-voice-start]')).to_be_enabled();unchanged('error')
+            if not draft:page.screenshot(path=str(OUT/f'compact-error-{width}-{theme}-{scale}.png'),animations='disabled')
+            page.locator('[data-voice-close]').click();expect(page.locator('[data-chat-voice]')).to_be_enabled();unchanged('closed')
+            expect(page.locator('#life-chat-input')).to_have_value(draft)
+        assert not errors,errors
+        print('PASS voice dock fixed composer geometry and scroll',width,theme,scale,flush=True)
+    finally:context.close()
+
+
+def run_web_playback(browser):
+    context=browser.new_context(viewport={'width':360,'height':760},service_workers='block',reduced_motion='reduce')
+    page=context.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+    page.add_init_script("""(()=>{
+      const track={enabled:false,stop(){}};
+      navigator.mediaDevices.getUserMedia=async()=>({getTracks:()=>[track],getAudioTracks:()=>[track]});
+      HTMLMediaElement.prototype.play=async()=>{if(!window.__allowPlayback)throw new Error('synthetic autoplay block')};
+      window.RTCPeerConnection=class extends EventTarget{
+        constructor(){super();window.__pc=this;this.iceGatheringState='complete';this.channel={readyState:'open',send(){}}}
+        addTrack(){return {replaceTrack:async()=>{}}} createDataChannel(){return this.channel}
+        async createOffer(){return {type:'offer',sdp:'synthetic-offer'}}
+        async setLocalDescription(value){this.localDescription=value}
+        async setRemoteDescription(){for(const type of ['session.created','session.updated'])this.channel.onmessage({data:JSON.stringify({type})})}
+        close(){}
+      };
+    })()""")
+    page.route('https://**/*',lambda r:r.abort())
+    page.route('**/__gleam/voice/config',lambda r:r.fulfill(json={'configured':True,'workspace':'synthetic-workspace'}))
+    page.route('**/__gleam/voice/session',lambda r:r.fulfill(json={'sdp':'synthetic-answer'}))
+    try:
+        page.goto(URL);page.locator('#fab').wait_for();configure(page)
+        page.locator('[data-page="page-life"]').click();page.locator('[data-life-chat]').click()
+        before=page.locator('.life-chat-input-wrap').bounding_box()
+        page.locator('[data-chat-voice]').click();page.locator('[data-voice-start]').click()
+        expect(page.locator('[data-voice-mute]')).to_be_visible()
+        page.evaluate('window.__pc.ontrack({streams:[new MediaStream()]})')
+        expect(page.locator('[data-voice-play]')).to_be_visible();expect(page.locator('[data-voice-interrupt]')).to_be_hidden()
+        assert_inline(page);assert page.locator('.life-chat-input-wrap').bounding_box()==before
+        page.evaluate('window.__allowPlayback=true');page.locator('[data-voice-play]').click()
+        expect(page.locator('[data-voice-play]')).to_be_hidden();expect(page.locator('[data-voice-interrupt]')).to_be_visible()
+        page.locator('[data-voice-end]').click();expect(page.locator('[data-chat-voice]')).to_be_enabled()
+        assert not errors,errors
+        print('PASS compact web playback recovery without resizing',flush=True)
+    finally:context.close()
+
+
 if __name__=='__main__':
     with sync_playwright() as p:
         browser=p.chromium.launch()
-        for profile in [(360,760,'light',1),(390,844,'light',1),(430,932,'dark',1),(360,560,'light',1.3),(400,810,'dark',1.3),(1280,900,'light',1)]:run(browser,*profile)
+        for profile in [(360,760,'light',1),(390,844,'light',1),(430,932,'dark',1),(360,560,'light',1.3),(400,810,'dark',1.3),(1280,900,'light',1)]:
+            run(browser,*profile);run_geometry(browser,*profile)
+        run_web_playback(browser)
         browser.close()

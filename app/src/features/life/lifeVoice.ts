@@ -53,7 +53,7 @@ export function openLifeVoice(options: { container: HTMLElement; onTranscript: (
   fields.inert = true; fields.setAttribute('aria-hidden', 'true');
   // Reuse the home short-voice bars as a decorative state indicator, not a volume meter.
   const wave = `<span class="voice-wave" aria-hidden="true">${'<i></i>'.repeat(11)}</span>`;
-  el.innerHTML = `<p class="voice-state" data-voice-status role="status">正在准备…</p>
+  el.innerHTML = `<p class="voice-state" data-voice-status role="status" tabindex="0">正在准备…</p>
     <div class="voice-inline-actions">
       <button class="voice-control voice-main" data-voice-start disabled><span class="voice-control-face">${wave}</span><span>开始语音</span></button>
       <button class="voice-control" data-voice-mute aria-label="麦克风静音" aria-pressed="false" hidden><span class="voice-control-face"><span data-voice-mic-on>${iconHtml('ic-mic')}</span><span data-voice-mic-off hidden>${voiceIcons.micOff}</span></span><span data-voice-mute-label>静音</span></button>
@@ -61,15 +61,18 @@ export function openLifeVoice(options: { container: HTMLElement; onTranscript: (
       <div class="voice-control voice-main voice-connecting" hidden aria-hidden="true"><span class="voice-control-face">${wave}</span><span>连接中</span></div>
       <button class="voice-control voice-end" data-voice-end aria-label="结束语音" hidden><span class="voice-control-face">${voiceIcons.hangup}</span><span data-voice-end-label>结束</span></button>
       <button class="voice-control voice-close" data-voice-close aria-label="关闭语音聊"><span class="voice-control-face">${iconHtml('ic-close')}</span><span>关闭</span></button>
-    </div>
-    <p class="voice-consent">声音发送至百炼</p>
-    <button class="btn ghost voice-extra" data-voice-settings hidden>前往 AI 设置</button>
-    <button class="btn ghost voice-extra" data-voice-play hidden>播放声音</button>`;
+      <button class="btn ghost voice-extra" data-voice-settings hidden>前往 AI 设置</button>
+      <button class="btn ghost voice-extra" data-voice-play hidden>播放声音</button>
+    </div>`;
   const start = el.querySelector<HTMLButtonElement>('[data-voice-start]')!;
   const end = el.querySelector<HTMLButtonElement>('[data-voice-end]')!;
   const mute = el.querySelector<HTMLButtonElement>('[data-voice-mute]')!;
   const settings = el.querySelector<HTMLButtonElement>('[data-voice-settings]')!;
   const play = el.querySelector<HTMLButtonElement>('[data-voice-play]')!;
+  const syncMainAction = () => {
+    el.querySelector<HTMLElement>('[data-voice-interrupt]')!.hidden = el.dataset.voicePhase !== 'connected' || !play.hidden;
+    el.querySelector<HTMLElement>('.voice-connecting')!.hidden = el.dataset.voicePhase !== 'connecting' || !play.hidden;
+  };
   const showMuted = (muted: boolean) => {
     mute.setAttribute('aria-pressed', String(muted));
     mute.setAttribute('aria-label', muted ? '开启麦克风' : '麦克风静音');
@@ -83,6 +86,7 @@ export function openLifeVoice(options: { container: HTMLElement; onTranscript: (
     if (closed) return;
     el.querySelector('[data-voice-status]')!.textContent = text;
     play.hidden = native || !text.includes('播放声音');
+    syncMainAction();
   };
   const busy = (phase: 'connecting' | 'connected' | false) => {
     if (closed) return;
@@ -93,10 +97,8 @@ export function openLifeVoice(options: { container: HTMLElement; onTranscript: (
     end.setAttribute('aria-label', phase === 'connecting' ? '取消连接' : '结束语音');
     el.querySelector('[data-voice-end-label]')!.textContent = phase === 'connecting' ? '取消连接' : '结束';
     el.querySelector<HTMLElement>('[data-voice-close]')!.hidden = !!phase;
-    el.querySelector<HTMLElement>('.voice-connecting')!.hidden = phase !== 'connecting';
+    syncMainAction();
     mute.hidden = phase !== 'connected';
-    el.querySelector<HTMLElement>('[data-voice-interrupt]')!.hidden = phase !== 'connected';
-    el.querySelector<HTMLElement>('.voice-consent')!.hidden = !!phase;
     settings.hidden = !native || !!phase || ready;
     // Keep keyboard focus usable when the action that had focus disappears.
     if (focused instanceof HTMLElement && el.contains(focused) && focused.closest('[hidden]')) {
@@ -154,12 +156,11 @@ export function openLifeVoice(options: { container: HTMLElement; onTranscript: (
     finally { mute.disabled = false; }
   };
   el.querySelector<HTMLButtonElement>('[data-voice-interrupt]')!.onclick = () => voice?.interrupt();
-  play.onclick = () => { if (voice instanceof RealtimeVoice) void voice.resumeAudio().then(() => { play.hidden = true; }).catch(() => status('点击「播放声音」继续')); };
+  play.onclick = () => { if (voice instanceof RealtimeVoice) void voice.resumeAudio().then(() => { play.hidden = true; syncMainAction(); }).catch(() => status('点击「播放声音」继续')); };
   void (async () => {
     try {
       textDestination = await getLifeAiDestination().catch(() => undefined);
       if (closed) return;
-      if (textDestination) el.querySelector('.voice-consent')!.textContent = '声音发送至百炼，长回复会通过模型加工排版';
       if (native) {
         const config = await liveVoicePlugin.configuration();
         if (closed) return;

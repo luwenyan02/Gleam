@@ -21,7 +21,7 @@ def run(browser, width, height, theme, scale):
         page.evaluate('([theme,scale])=>{document.documentElement.dataset.theme=theme;document.documentElement.style.setProperty("--seed-type",scale)}', [theme, str(scale)])
         page.locator('[data-chat-voice]').click()
         expect(page.locator('[data-voice-start]')).to_be_enabled()
-        expect(page.locator('.voice-consent')).to_have_text('声音发送至百炼，长回复会通过模型加工排版')
+        expect(page.locator('.voice-consent')).to_have_count(0)
         assert 'dashscope.aliyuncs.com' not in page.locator('.chat-voice-overlay').inner_text()
         assert '可能产生费用' not in page.locator('.chat-voice-overlay').inner_text()
         OUT.mkdir(parents=True, exist_ok=True)
