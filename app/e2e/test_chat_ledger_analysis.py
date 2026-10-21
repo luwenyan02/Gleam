@@ -202,8 +202,8 @@ def run(page, width):
     # 普通会话和照片都存在时，分析仍只发送本次问题及已预览的聚合数据。
     page.locator('#life-chat-input').fill(PRIVATE_CHAT + ' 这是虚构的普通聊天。')
     page.locator('[data-life-chat-send]').click()
-    page.locator('#dialog-scrim [data-act="ok"]').click()
     idle(page)
+    expect(page.locator('#dialog-scrim.show')).to_have_count(0)
     expect(page.locator('[data-ledger-result]')).to_have_count(0)
     page.locator('[data-life-chat-photo]').click()
     page.locator('#lchat-file').set_input_files(image(page, 'PRIVATE_LEDGER_PHOTO.png', '#607d8b'))

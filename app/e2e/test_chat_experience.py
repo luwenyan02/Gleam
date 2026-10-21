@@ -47,7 +47,6 @@ def run(page, width):
     answer = '**试试看**\n\n先从一段不用赶时间的散步开始。\n\n## 三个点子\n\n1. 去公园，走一条没走过的小路。\n2. 逛旧街，看看街边的小店。\n3. 换一条回家的路。\n\n> 不用专门找故事，想走就走。\n\n## 如果想顺手留一点\n\n- 拍下一处让你停下来的地方。\n- 也可以什么都不记。\n\n' + '\n\n'.join(['这是用于检查长回答排版的虚构段落。内容需要保持易读，滚动时输入框仍然可用。'] * 5) + '\n\n```text\n' + 'long-code-' * 30 + '\n```'
     page.route('https://life-ai.invalid/**', lambda route: route.fulfill(status=200, content_type='text/event-stream', body='data: '+json.dumps({'choices':[{'delta':{'content':answer}}]}, ensure_ascii=False)+'\n\ndata: [DONE]\n\n'))
     page.locator('[data-life-chat-send]').click()
-    page.locator('#dialog-scrim [data-act="ok"]').click()
     page.locator('.chat-message-text strong').first.wait_for()
     page.locator('[data-life-chat-stop]').wait_for(state='hidden')
     assert page.locator('[data-chat-copy]').first.inner_text() == ''
@@ -132,7 +131,6 @@ def run(page, width):
     page.route('https://life-ai.invalid/**', lambda route: held.append(route))
     page.locator('#life-chat-input').fill('虚构问题：帮我安排一个轻松的周末。')
     page.locator('[data-life-chat-send]').click()
-    page.locator('#dialog-scrim [data-act="ok"]').click()
     page.wait_for_function("document.querySelector('#life-chat-status').textContent.includes('正在想')")
     assert page.locator('[data-chat-voice]').is_disabled()
     assert page.locator('[data-life-chat-photo]').is_disabled()

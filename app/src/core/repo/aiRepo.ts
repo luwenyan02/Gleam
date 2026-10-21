@@ -17,6 +17,7 @@ import { secretStore } from '../secretStore';
 import { assertImageModel, chatOptions } from '../aiChatOptions';
 import { collectUnreferencedAttachments } from './entryAttachmentRepo';
 import { requestWebSearchChat, searchInstructions, webSearchEndpoint } from '../chatWebSearch';
+import { fetchAiStream } from '../aiStreamTransport';
 
 /* ── 识别结果与错误 ─────────────────── */
 
@@ -125,7 +126,7 @@ export async function requestAiChat({
   signal?.addEventListener('abort', abortFromCaller, { once: true });
   const timer = globalThis.setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT);
   try {
-    const res = await fetch(chatEndpoint(baseUrl), {
+    const res = await (onDelta ? fetchAiStream : fetch)(chatEndpoint(baseUrl), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ model, ...chatOptions(baseUrl, model), messages, ...(onDelta ? { stream: true } : {}) }),
@@ -158,6 +159,8 @@ export async function requestAiChat({
           if (signal?.aborted) throw cancelledError();
           buffer += decoder.decode(chunk.value, { stream: !chunk.done }).replace(/\r/g, '');
           if (buffer.length > 100_000) throw new Error('AI 返回内容过长');
+          // 原生 HTTP 桥可能移除末尾换行；EOF 补分帧，不替代 finish_reason / DONE。
+          if (chunk.done && buffer.trim()) buffer += '\n\n';
           let end: number;
           while ((end = buffer.indexOf('\n\n')) >= 0) {
             const event = buffer.slice(0, end); buffer = buffer.slice(end + 2);

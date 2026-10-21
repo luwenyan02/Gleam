@@ -38,6 +38,7 @@ public class BootInstallReplaceBaselineActivity extends BridgeActivity {
         registerPlugin(GleamEntryPlugin.class);
         registerPlugin(BootFixtureHttpPlugin.class);
         registerPlugin(BootFixtureWebDavPlugin.class);
+        registerPlugin(BootFixtureAiStreamPlugin.class);
         registerPlugin(BootFixtureSpeechPlugin.class);
         super.onCreate(saved);
         latest = this;

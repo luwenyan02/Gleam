@@ -56,10 +56,12 @@ def run(page, width):
     page.locator('[data-life-chat]').click()
     page.locator('#life-chat-input').fill('我最近一个月消费很多，有点担心')
     page.locator('[data-life-chat-send]').click()
-    expect(page.locator('#dialog-scrim.show')).to_be_visible()
+    expect(page.locator('.assistant .chat-message-text')).to_contain_text('近30天已记账净支出')
+    page.locator('[data-life-chat-stop]').wait_for(state='hidden')
+    expect(page.locator('#dialog-scrim.show')).to_have_count(0)
     assert page.locator('[data-ledger-preview]').count() == 0
-    assert not payloads
-    page.locator('#dialog-scrim [data-act="cancel"]').click()
+    assert len(payloads) == 1
+    payloads.clear()
     page.locator('[data-chat-start]').click()
     page.locator('.chat-welcome').wait_for()
     expect(page.locator('#life-chat-input')).to_have_value('')

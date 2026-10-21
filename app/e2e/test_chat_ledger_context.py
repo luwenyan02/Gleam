@@ -72,10 +72,12 @@ def run(page, width):
     # 谈到收入的普通聊天不能被误判为查询账本，更不能被空账本拦住。
     page.locator('#life-chat-input').fill('我今天没收入，有点难过')
     page.locator('[data-life-chat-send]').click()
-    expect(page.locator('#dialog-scrim.show')).to_contain_text('我今天没收入，有点难过')
+    expect(page.locator('.assistant .chat-message-text')).to_contain_text('虚构账本分析')
+    page.locator('[data-life-chat-stop]').wait_for(state='hidden')
+    expect(page.locator('#dialog-scrim.show')).to_have_count(0)
     assert page.locator('[data-ledger-preview]').count() == 0
-    assert not payloads
-    page.locator('#dialog-scrim [data-act="cancel"]').click()
+    assert len(payloads) == 1
+    payloads.clear()
     page.locator('[data-chat-start]').click()
     page.locator('.chat-welcome').wait_for()
     page.get_by_role('button', name='分析消费', exact=True).click()
@@ -137,15 +139,13 @@ def run(page, width):
     page.locator('[data-life-chat-stop]').wait_for(state='hidden')
     assert len(payloads) == 2 and page.locator('.assistant').count() == 1
 
-    # History may contain financial analysis: every subsequent transmission asks again.
+    # 普通续聊直接发送现有上下文，不重新读取账本或弹出逐轮内容确认。
     page.locator('#life-chat-input').fill('给我一个简短建议。')
     page.locator('[data-life-chat-send]').click()
-    expect(page.locator('#dialog-scrim.show')).to_contain_text('先前的账本分析')
-    assert len(payloads) == 2
-    page.locator('#dialog-scrim [data-act="cancel"]').click()
-    page.locator('[data-life-chat-retry]').click()
-    page.locator('#dialog-scrim [data-act="ok"]').click()
+    expect(page.locator('.assistant')).to_have_count(2)
     page.locator('[data-life-chat-stop]').wait_for(state='hidden')
+    expect(page.locator('#dialog-scrim.show')).to_have_count(0)
+    expect(page.locator('#sheet.open [data-ledger-preview]')).to_have_count(0)
     assert len(payloads) == 3
     page.reload()
     page.locator('#fab').wait_for()
@@ -153,9 +153,11 @@ def run(page, width):
     page.locator('[data-life-chat]').click()
     page.locator('#life-chat-input').fill('再简短一点。')
     page.locator('[data-life-chat-send]').click()
-    expect(page.locator('#dialog-scrim.show')).to_contain_text('先前的账本分析')
-    page.locator('#dialog-scrim [data-act="cancel"]').click()
-    assert len(payloads) == 3
+    expect(page.locator('.assistant')).to_have_count(3)
+    page.locator('[data-life-chat-stop]').wait_for(state='hidden')
+    expect(page.locator('#dialog-scrim.show')).to_have_count(0)
+    expect(page.locator('#sheet.open [data-ledger-preview]')).to_have_count(0)
+    assert len(payloads) == 4
 
     # Failure and stop do not reuse a grant; an empty month is answered locally.
     page.locator('[data-chat-start]').click()
@@ -166,10 +168,10 @@ def run(page, width):
     page.locator('[data-life-chat-send]').click()
     page.locator('[data-ledger-approve]:enabled').click()
     expect(page.locator('#life-chat-status')).to_contain_text('暂时不可用')
-    assert len(payloads) == 4
+    assert len(payloads) == 5
     page.locator('[data-life-chat-retry]').click()
     page.locator('[data-ledger-approve]:enabled').wait_for()
-    assert len(payloads) == 4
+    assert len(payloads) == 5
     hold[0] = True
     page.locator('[data-ledger-approve]').click()
     expect(page.locator('#life-chat-status')).to_contain_text('正在想')

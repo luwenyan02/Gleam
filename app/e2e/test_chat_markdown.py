@@ -40,7 +40,6 @@ def run(page, width):
     page.locator('[data-life-chat]').click()
     page.locator('#life-chat-input').fill('虚构测试：展示一份表格和嵌套列表。')
     page.locator('[data-life-chat-send]').click()
-    page.locator('#dialog-scrim [data-act="ok"]').click()
     expect(page.locator('[data-life-chat-stop]')).to_be_hidden()
     expect(page.locator('.assistant table')).to_have_count(2)
     expect(page.locator('.assistant hr')).to_have_count(1)

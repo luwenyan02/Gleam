@@ -18,6 +18,16 @@ def read_rows(page, table):
     })''', table)
 
 
+def set_life_ai_enabled(page, enabled):
+    page.evaluate('''enabled => new Promise(resolve => {
+      const request = indexedDB.open('GleamDB'); request.onsuccess = () => {
+        const db = request.result, tx = db.transaction('settings', 'readwrite');
+        tx.objectStore('settings').put({key:'life.aiEnabled',value:enabled});
+        tx.oncomplete = () => { db.close(); resolve(); };
+      };
+    })''', enabled)
+
+
 def configure(page):
     page.evaluate('''async () => {
       sessionStorage.setItem('gleam-secret:ai.apiKey', 'synthetic-test-key');
@@ -98,13 +108,15 @@ def run(page, width):
             route.fulfill(json={'choices': [{'message': {'content': json.dumps(turns.pop(0), ensure_ascii=False)}}]})
 
     page.route('https://life-ai.invalid/**', mock)
+    set_life_ai_enabled(page, False)
     page.locator('[data-life-chat]').click()
     page.locator('#sp-life-chat').wait_for()
     assert '今天有什么小事' in page.locator('#life-chat-messages').inner_text()
     page.locator('#life-chat-input').fill('阳台有一小块阳光。')
     page.locator('[data-life-chat-send]').click()
     page.locator('#dialog-scrim.show').wait_for()
-    assert '阳台有一小块阳光' in page.locator('#dialog-scrim').inner_text()
+    expect(page.locator('#dialog-scrim.show')).to_contain_text('开启生活 AI')
+    assert not payloads, '首次启用确认前不能发送聊天'
     page.locator('#dialog-scrim [data-act="cancel"]').click()
     page.locator('.life-chat-failed').wait_for()
     assert not payloads
@@ -115,32 +127,30 @@ def run(page, width):
     assert len(payloads) == 1
     assert 'image_url' not in json.dumps(payloads[-1])
 
-    # 同页新增照片和目标变化必须重新授权，且照片只随本轮发送。
+    # 已启用聊天直接发送当前设置与本轮照片，不重复弹出内容确认。
     same_photo = image(page, '虚构聊天首图.png', '#cfa66e')
     page.locator('[data-life-chat-photo]').click()
     page.locator('#lchat-file').set_input_files(same_photo)
     page.evaluate('''async () => { const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)}); const tx=db.transaction('settings','readwrite');tx.objectStore('settings').put({key:'ai.model',value:'test-model-2'});await new Promise(r=>tx.oncomplete=r);db.close(); }''')
     page.locator('#life-chat-input').fill('还有一杯热茶。')
     page.locator('[data-life-chat-send]').click()
-    page.locator('#dialog-scrim.show').wait_for()
-    assert 'test-model-2' in page.locator('#dialog-scrim').inner_text()
-    assert '照片：1 张' in page.locator('#dialog-scrim').inner_text()
-    page.locator('#dialog-scrim [data-act="ok"]').click()
     page.get_by_text('热茶让这段时间慢了下来。').wait_for()
+    expect(page.locator('#dialog-scrim.show')).to_have_count(0)
+    assert payloads[-1]['model'] == 'test-model-2'
     assert 'image_url' in json.dumps(payloads[-1])
     page.locator('[data-life-chat-photo]').click()
     page.locator('#lchat-file').set_input_files(same_photo)
     page.locator('#life-chat-input').fill('我又选了同一张照片。')
     page.locator('[data-life-chat-send]').click()
-    page.locator('#dialog-scrim.show').wait_for()
-    assert '照片：1 张' in page.locator('#dialog-scrim').inner_text()
-    page.locator('#dialog-scrim [data-act="ok"]').click()
     page.get_by_text('同一张照片再次选择，也留在这一轮。').wait_for()
+    expect(page.locator('#dialog-scrim.show')).to_have_count(0)
+    assert 'image_url' in json.dumps(payloads[-1])
     assert page.get_by_text('已经有一个值得留下的片段了').count() == 0
     screenshot(page, 'chat-ready', width, '#sp-life-chat')
 
     # 使用已形成的会话进入 A1；摘要可以编辑，保存会把完整对话留在本机。
     page.locator('[data-chat-organize]').click()
+    page.locator('#dialog-scrim [data-act="ok"]').click()
     page.locator('#sheet.open [data-life-summary-save]').wait_for()
     page.locator('#life-summary-title').fill('我改过的阳台片段')
     page.locator('#life-summary-body').fill('我改过的正文。')
@@ -185,16 +195,13 @@ def run(page, width):
     page.locator('#lchat-file').set_input_files(image(page, '虚构聊天照片.png', '#cfa66e'))
     page.locator('#life-chat-input').fill('失败也要留在草稿里。')
     page.locator('[data-life-chat-send]').click()
-    page.locator('#dialog-scrim.show').wait_for()
-    assert '照片：1 张' in page.locator('#dialog-scrim').inner_text()
-    page.locator('#dialog-scrim [data-act="ok"]').click()
     page.locator('.life-chat-failed').wait_for()
+    expect(page.locator('#dialog-scrim.show')).to_have_count(0)
     assert 'provider private body' not in page.locator('#sp-life-chat').inner_text()
     screenshot(page, 'chat-failed', width, '#sp-life-chat')
     page.locator('[data-life-chat-retry]').click()
-    page.locator('#dialog-scrim.show').wait_for()
-    page.locator('#dialog-scrim [data-act="ok"]').click()
     page.get_by_text('这句话也留在这里了。').wait_for()
+    expect(page.locator('#dialog-scrim.show')).to_have_count(0)
     page.locator('[data-act="back"]').click()
     page.locator('#sp-life-chat').wait_for(state='detached')
     page.locator(f'[data-note="{saved["id"]}"]').click()
@@ -216,9 +223,8 @@ def run(page, width):
     page.locator('#life-chat-input').fill('这条请求先停一下。')
     hold[0] = True
     page.locator('[data-life-chat-send]').click()
-    page.locator('#dialog-scrim.show').wait_for()
-    page.locator('#dialog-scrim [data-act="ok"]').click()
     page.locator('[data-life-chat-stop]').wait_for(state='visible')
+    expect(page.locator('#dialog-scrim.show')).to_have_count(0)
     page.locator('[data-life-chat-stop]').click()
     page.wait_for_function("document.querySelector('#life-chat-status').textContent.includes('已停止')")
     for pending_route in held:

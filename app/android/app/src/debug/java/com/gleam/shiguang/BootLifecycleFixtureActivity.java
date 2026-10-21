@@ -41,6 +41,7 @@ public class BootLifecycleFixtureActivity extends MainActivity {
         BootFixtureNetworkFence.installDocumentFence(findViewById(com.getcapacitor.android.R.id.webview));
         registerPlugin(BootFixtureHttpPlugin.class);
         registerPlugin(BootFixtureWebDavPlugin.class);
+        registerPlugin(BootFixtureAiStreamPlugin.class);
         registerPlugin(BootFixtureSpeechPlugin.class);
         super.load();
     }

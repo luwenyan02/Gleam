@@ -1,4 +1,5 @@
 import type { ChatWebSearch } from './types';
+import { fetchAiStream } from './aiStreamTransport';
 
 const STATES = ['enabled', 'searching', 'searched', 'not-used', 'unsupported', 'failed', 'unknown'];
 const SEARCH_TIMEOUT = 120_000;
@@ -125,7 +126,7 @@ export async function requestWebSearchChat(request: SearchRequest): Promise<stri
         ? { type: 'input_image', image_url: part.image_url.url }
         : { type: 'input_text', text: part.text }) : message.content };
     });
-    const response = await fetch(endpoint, {
+    const response = await (onDelta ? fetchAiStream : fetch)(endpoint, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ model, ...searchModelOptions(model), input, tools: [{ type: 'web_search' }], store: false, ...(onDelta ? { stream: true } : {}) }),
       signal: controller.signal,
@@ -142,12 +143,34 @@ export async function requestWebSearchChat(request: SearchRequest): Promise<stri
     if (!reader) throw new Error('回复中断，请重试');
     const decoder = new TextDecoder();
     let buffer = '', finished = false;
+    const parts = new Map<number, Map<number, string>>();
+    const refreshContent = () => {
+      content = [...parts.entries()].sort(([a], [b]) => a - b)
+        .flatMap(([, values]) => [...values.entries()].sort(([a], [b]) => a - b).map(([, text]) => text)).join('');
+      if (content.length > MAX_REPLY) throw new Error('AI 返回内容过长');
+    };
+    const partIndex = (value: unknown): number => {
+      if (value === undefined) return 0;
+      if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Error('联网回复内容索引无效');
+      return value;
+    };
+    const textPart = (outputIndex: unknown, contentIndex: unknown, text: string, append = false) => {
+      const output = partIndex(outputIndex), index = partIndex(contentIndex);
+      const values = parts.get(output) ?? new Map<number, string>();
+      const value = (append ? values.get(index) ?? '' : '') + text;
+      if (value) values.set(index, value); else values.delete(index);
+      // 仅保留非空块，块数量受 MAX_REPLY 限制；稀疏索引也不扩张数组。
+      if (values.size) parts.set(output, values); else parts.delete(output);
+      refreshContent();
+    };
     try {
       while (!finished) {
         const chunk = await reader.read();
         if (signal?.aborted || controller.signal.aborted) throw new Error('已取消');
         buffer += decoder.decode(chunk.value, { stream: !chunk.done });
         if (buffer.length > 1_000_000) throw new Error('联网返回内容过长');
+        // CapacitorHttp 会丢掉最后一个换行；EOF 只补分帧，成功仍须明确的 completed。
+        if (chunk.done && buffer.trim()) buffer += '\n\n';
         let match: RegExpExecArray | null;
         while ((match = /\r?\n\r?\n/.exec(buffer))) {
           const event = buffer.slice(0, match.index); buffer = buffer.slice(match.index + match[0].length);
@@ -155,15 +178,33 @@ export async function requestWebSearchChat(request: SearchRequest): Promise<stri
           if (!data) continue;
           if (data === '[DONE]') throw new Error('回复中断，请重试');
           const parsed = JSON.parse(data);
-          if (parsed.type === 'error' || parsed.type === 'response.failed' || parsed.type === 'response.incomplete') throw new Error('联网回复未完成，请重试');
-          if (/^response\.web_search_call\.(?:in_progress|searching)$/.test(parsed.type)) update('searching');
-          if (parsed.type === 'response.output_item.done' && parsed.item) item(parsed.item);
-          if (parsed.type === 'response.output_text.delta' && typeof parsed.delta === 'string') {
-            content += parsed.delta;
-            if (content.length > MAX_REPLY) throw new Error('AI 返回内容过长');
+          const type = typeof parsed.type === 'string' ? parsed.type
+            : event.split(/\r?\n/).find(line => line.startsWith('event:'))?.slice(6).trim();
+          if (type === 'error' || type === 'response.failed' || type === 'response.incomplete') throw new Error('联网回复未完成，请重试');
+          if (/^response\.web_search_call\.(?:in_progress|searching)$/.test(type)) update('searching');
+          if (type === 'response.output_item.done' && parsed.item) {
+            item(parsed.item);
+            if (parsed.item.type === 'message' && Array.isArray(parsed.item.content)) {
+              const values = new Map<number, string>();
+              parsed.item.content.forEach((part: { type?: string; text?: string }, index: number) => {
+                if (part.type === 'output_text' && typeof part.text === 'string' && part.text) values.set(index, part.text);
+              });
+              const output = partIndex(parsed.output_index);
+              if (values.size) parts.set(output, values); else parts.delete(output);
+              refreshContent();
+            }
+          }
+          if (type === 'response.output_text.done' && typeof parsed.text === 'string') {
+            textPart(parsed.output_index, parsed.content_index, parsed.text);
+          }
+          if (type === 'response.content_part.done' && parsed.part?.type === 'output_text' && typeof parsed.part.text === 'string') {
+            textPart(parsed.output_index, parsed.content_index, parsed.part.text);
+          }
+          if (type === 'response.output_text.delta' && typeof parsed.delta === 'string') {
+            textPart(parsed.output_index, parsed.content_index, parsed.delta, true);
             onDelta(content);
           }
-          if (parsed.type === 'response.completed') { completed(parsed.response); finished = true; break; }
+          if (type === 'response.completed') { completed(parsed.response); finished = true; break; }
         }
         if (chunk.done) break;
       }

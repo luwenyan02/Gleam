@@ -13,6 +13,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(GleamSpeechPlugin.class);
         registerPlugin(GleamLiveVoicePlugin.class);
         registerPlugin(GleamWebDavPlugin.class);
+        registerPlugin(GleamAiStreamPlugin.class);
         registerPlugin(GleamMailPlugin.class);
         registerPlugin(GleamUpdatePlugin.class);
         registerPlugin(GleamEntryPlugin.class);

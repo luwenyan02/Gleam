@@ -6,6 +6,7 @@ from playwright.sync_api import sync_playwright, expect
 from test_life_ai import URL, configure, read_rows
 from test_short_voice import MOCK_NATIVE
 from test_browser_usability import assert_usable
+from native_ai_stream_mock import MOCK as AI_STREAM_MOCK
 
 OUT = Path(__file__).parents[2] / '.tmp/tests/e2e/inline-live-voice'
 MOCK = MOCK_NATIVE + r''';(() => {
@@ -37,7 +38,7 @@ MOCK = MOCK_NATIVE + r''';(() => {
   if(!window.__liveListeners.size)throw new Error('No live listener');
   for(const fn of window.__liveListeners.values())fn({sessionId:window.__liveSession,...data});
  };
-})();'''
+})();''' + AI_STREAM_MOCK
 
 
 def assert_inline(page):
