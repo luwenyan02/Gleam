@@ -12,6 +12,7 @@ import type JSZipType from 'jszip';
 import { countDump, TABLE_NAMES, type TableDump } from '../../core/repo/backupRepo';
 import type { Attachment, LifeDraft, LifeEdition } from '../../core/types';
 import { validateLifeDraft } from '../../core/repo/lifeDraftRepo';
+import { validateChatChart } from '../../core/chatChart';
 import { validateLifeEdition } from '../../core/repo/lifeEditionRepo';
 
 /** 按需加载 JSZip（仅备份/恢复时才需要） */
@@ -269,6 +270,16 @@ export async function parseSkbak(
     relationIds.add(relation.id as number);
   }
   const draftKeys = new Set<string>();
+  for (const note of dump.lifeNotes) {
+    if (!isRecord(note) || !Array.isArray(note.conversation)) continue;
+    for (const message of note.conversation) {
+      if (!isRecord(message) || message.chart == null) continue;
+      try {
+        if (message.role !== 'assistant') throw new Error('非助手图表');
+        validateChatChart(message.chart);
+      } catch { throw new Error('备份包对话图表损坏'); }
+    }
+  }
   for (const row of dump.lifeDrafts) {
     try {
       const draft = row as LifeDraft;

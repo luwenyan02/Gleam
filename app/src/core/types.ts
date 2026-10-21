@@ -5,6 +5,8 @@
  * 账单与生活记录软删除（deletedAt 非空即回收站，30 天后物理清除）。
  */
 
+import type { ChatChart } from './chatChart';
+
 /* ── 枚举常量 ─────────────────────── */
 
 /** 账单类型 */
@@ -316,6 +318,8 @@ export interface ChatWebSearch {
 export interface LifeChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** 有限数据图表；原文保留，绘制与PNG导出均在本机完成。 */
+  chart?: ChatChart;
   /** 语音回复的可选 Markdown 展示稿；content 始终保留原始转写作为后续上下文。 */
   voiceDisplay?: string;
   /** 含已确认账本分析；后续携带此会话文字时必须再次展示并确认。不是授权凭据。 */

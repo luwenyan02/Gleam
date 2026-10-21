@@ -15,7 +15,9 @@ export async function collectUnreferencedAttachments(ids: number[]): Promise<voi
   const queue = (await db.settings.get('ai.pendingItems'))?.value as AiPendingItem[] | undefined;
   const protectedIds = new Set([
     ...life.flatMap(note => note.photoRefs ?? []),
+    ...life.flatMap(note => (note.conversation ?? []).flatMap(message => message.photoRefs ?? [])),
     ...drafts.flatMap(draft => draft.existingPhotoRefs),
+    ...drafts.flatMap(draft => (draft.messages ?? []).flatMap(message => message.photoRefs ?? [])),
     ...editions.flatMap(edition => edition.coverAttachmentId == null ? [] : [edition.coverAttachmentId]),
     ...(queue ?? []).flatMap(item => item.attachmentId == null ? [] : [item.attachmentId]),
   ]);

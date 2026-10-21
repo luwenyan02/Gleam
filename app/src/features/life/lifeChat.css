@@ -24,6 +24,12 @@
 .life-chat-bubble.user{max-width:88%;padding:0;border-radius:0;background:transparent}
 .life-chat-bubble.user .chat-message-content{padding:13px 16px;border-radius:20px 5px 20px 20px;background:var(--accent-soft);color:var(--fg)}
 .chat-message-text{white-space:normal;line-height:1.55;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text;-webkit-touch-callout:default}
+.chat-image-link{display:block;min-width:44px;min-height:44px;max-width:100%;padding:0;border:0;border-radius:var(--r-s);background:var(--bg);color:var(--muted);overflow:hidden;cursor:pointer}
+.chat-image-link span{display:block;padding:12px}
+.chat-image-link:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.chat-chart-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.chat-chart-actions button{min-height:44px}
+.chat-chart-source{margin:4px 0 8px}
 .user .chat-message-text{white-space:pre-wrap;line-height:1.55}
 .chat-message-text p{margin:0 0 .5em}
 .chat-message-text h2,.chat-message-text h3,.chat-message-text h4{font-size:1.06em;font-weight:650;line-height:1.5;margin:1.25em 0 .65em}

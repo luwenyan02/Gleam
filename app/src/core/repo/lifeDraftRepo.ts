@@ -3,6 +3,7 @@ import type { Attachment, LifeChatMessage, LifeDraft, LifeDraftPhoto, LifeNote }
 import { emitAfterCommit as emit } from './transactionEvents';
 import { collectUnreferencedAttachments, MAX_ENTRY_ATTACHMENTS, MAX_RECEIPT_BYTES } from './entryAttachmentRepo';
 import { validChatWebSearch } from '../chatWebSearch';
+import { validateChatChart } from '../chatChart';
 
 const DATA_URL_RE = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]*={0,2})$/;
 
@@ -158,6 +159,10 @@ export function validateLifeDraft(input: unknown): asserts input is LifeDraft {
       throw new Error('对话草稿结构无效');
     }
     if (message.ledgerAnalysis != null && typeof message.ledgerAnalysis !== 'boolean') throw new Error('账本分析标记无效');
+    if (message.chart != null) {
+      if (message.role !== 'assistant') throw new Error('仅助手消息支持图表');
+      validateChatChart(message.chart);
+    }
     if (message.voiceDisplay != null && (message.role !== 'assistant' || typeof message.voiceDisplay !== 'string'
       || !message.voiceDisplay.trim() || message.voiceDisplay.length > 12_000)) throw new Error('语音排版内容无效');
     if (message.search != null && (message.role !== 'assistant' || !validChatWebSearch(message.search))) throw new Error('对话搜索信息无效');
@@ -329,6 +334,7 @@ export async function saveLifeDraft(key: string): Promise<number> {
         role: message.role,
         content: message.content,
         ...(message.voiceDisplay ? { voiceDisplay: message.voiceDisplay } : {}),
+        ...(message.chart ? { chart: structuredClone(message.chart) } : {}),
         ...(message.repliedAt != null ? { repliedAt: message.repliedAt } : {}),
         ...(message.search ? { search: structuredClone(message.search) } : {}),
         ...(message.ledgerAnalysis ? { ledgerAnalysis: true } : {}),
