@@ -38,6 +38,8 @@ it('图表仅使用确认的本机金额快照，保留整数分和收入范围'
   expect(ledgerChatChart({ ...review, question: '帮我分析收支' })).toBeUndefined();
   delete current.analysis; delete current.income; current.scope.includeIncome = false;
   expect(ledgerChatChart(review)?.series).toEqual([{ name: '净支出', values: [12345] }]);
+  current.scope.period = 'recent'; current.scope.endDate = '2026-10-21'; review.question = '画近30天收支图';
+  expect(ledgerChatChart(review)?.labels).toEqual(['近30天']);
 });
 
 it('负分类或全零时不伪造环形比例，分类超限聚合且金额不丢失', () => {

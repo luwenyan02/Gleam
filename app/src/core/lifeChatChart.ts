@@ -18,7 +18,7 @@ function ledgerChart(review: LifeLedgerReview): ChatChart {
   let labels: string[];
   let series: ChatChart['series'];
   if (trend) {
-    labels = periods.map(period => period.scope.month);
+    labels = periods.map(period => period.scope.period === 'recent' ? '近30天' : period.scope.month);
     series = [{ name: '净支出', values: periods.map(period => period.totals.expenseFen) }];
     if (periods.every(period => period.income)) series.push({ name: '收入', values: periods.map(period => period.income!.incomeFen) });
   } else {
