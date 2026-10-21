@@ -5,6 +5,7 @@ import type { LifeDraft } from '../src/core/types';
 import type { LifeAiInput, LifeChatTurnResult } from '../src/core/repo/lifeAiRepo';
 import { getLifeDraft, migrateLifeDraft, validateLifeDraft } from '../src/core/repo/lifeDraftRepo';
 import { emit } from '../src/core/store';
+import type { LifeLedgerReview } from '../src/core/repo/lifeLedgerContextRepo';
 
 const request = vi.hoisted(() => vi.fn<(input: LifeAiInput) => Promise<LifeChatTurnResult>>());
 vi.mock('../src/core/repo/lifeAiRepo', () => ({ continueLifeChat: request }));
@@ -22,6 +23,55 @@ function hold() {
   return { resolve, reject };
 }
 const destination = { baseUrl: 'https://example.invalid', model: 'test' };
+
+it('明确流式完成后才采用图表，重新回答不会残留旧图', async () => {
+  const pending = hold(), source = draft();
+  const chart = { version: 1, type: 'bar', title: '虚构图表', labels: ['一', '二'], series: [{ name: '数值', values: [1, 2] }] };
+  const content = `虚构说明\n\n\`\`\`gleam-chart\n${JSON.stringify(chart)}\n\`\`\``;
+  const reply = startChatReply(source, 0, false, { expectedDestination: destination });
+  await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
+  request.mock.calls[0][0].onDelta?.(content);
+  expect(source.messages).toHaveLength(1);
+  pending.resolve({ reply: content, readyToSummarize: false }); await reply.done;
+  expect((await getLifeDraft(source.key))?.messages[1]).toMatchObject({ chart, content });
+  const next = hold();
+  const again = startChatReply(source, 0, true, { expectedDestination: destination });
+  await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+  next.resolve({ reply: '纯文字新回答', readyToSummarize: false }); await again.done;
+  expect(source.messages).toHaveLength(2);
+  expect(source.messages[1].chart).toBeUndefined();
+});
+
+it('账本图表忽略模型提供的数字，以已确认本机快照替代且可恢复', async () => {
+  const source = draft(), pending = hold();
+  const review: LifeLedgerReview = { question: '把我的本月支出画成柱状图', summary: {
+    scope: { month: '2026-10', period: 'calendar', includeIncome: false }, range: { from: 1, to: 2, label: '虚构范围' },
+    currency: 'CNY', unit: 'fen', reimbursementMode: 'offset',
+    totals: { expenseFen: 12345, grossExpenseFen: 12345, refundFen: 0, reimbursementOffsetFen: 0, expenseCount: 1, refundCount: 0 },
+    categories: [{ name: '本机分类', expenseFen: 12345, count: 1 }],
+  } };
+  const forged = { version: 1, type: 'bar', title: '模型伪造', labels: ['模型分类'], series: [{ name: '数值', values: [999999] }] };
+  const reply = startChatReply(source, 0, false, { expectedDestination: destination, ledgerAnalysis: true, ledgerReview: review });
+  await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
+  pending.resolve({ reply: `请看图表。\n\`\`\`gleam-chart\n${JSON.stringify(forged)}\n\`\`\``, readyToSummarize: false });
+  await reply.done;
+  const saved = (await getLifeDraft(source.key))!.messages[1];
+  expect(saved.chart).toMatchObject({ labels: ['本机分类'], series: [{ name: '净支出', values: [12345] }], valueDivisor: 100 });
+  expect(saved.ledgerAnalysis).toBe(true);
+  expect(saved.content).not.toContain('999999');
+  expect(source.chatReply).toBeUndefined();
+  review.summary.categories[0].expenseFen = NaN;
+  const next = hold();
+  const again = startChatReply(source, 0, true, { expectedDestination: destination, ledgerAnalysis: true, ledgerReview: review });
+  await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+  next.resolve({ reply: '文字回复已完成', readyToSummarize: false }); await again.done;
+  const fallback = (await getLifeDraft(source.key))!.messages[1];
+  expect(fallback.chart).toBeUndefined();
+  expect(fallback.content).toContain('文字回复已完成');
+  expect(fallback.content).toContain('图表暂时无法绘制');
+  expect(source.chatReply).toBeUndefined();
+  expect(again.error).toBeUndefined();
+});
 
 it('搜索进度和来源随回复检查点保存，最终消息保留来源，重新回答不继承旧来源', async () => {
   const pending = hold(), source = draft();

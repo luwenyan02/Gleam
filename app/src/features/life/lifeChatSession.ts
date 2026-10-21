@@ -4,6 +4,8 @@ import { putLifeDraft } from '../../core/repo/lifeDraftRepo';
 import { getSetting } from '../../core/repo/settingsRepo';
 import { on } from '../../core/store';
 import type { LifeLedgerReview } from '../../core/repo/lifeLedgerContextRepo';
+import { parseChatChartResponse } from '../../core/chatChart';
+import { isChatChartQuestion, ledgerChatChart } from '../../core/lifeChatChart';
 
 export const unsavedChatDrafts = new Map<string, LifeDraft>();
 interface DraftWrite {
@@ -137,7 +139,12 @@ export function startChatReply(
       if (signal.aborted) throw new Error('已停止');
       if (regenerate) draft.messages.splice(messageIndex + 1);
       if (options.ledgerAnalysis) draft.messages[messageIndex].ledgerAnalysis = true;
-      draft.messages.push({ role: 'assistant', content: turn.reply, repliedAt: Date.now(),
+      const parsed = parseChatChartResponse(turn.reply);
+      const chart = options.ledgerAnalysis ? options.ledgerReview && ledgerChatChart(options.ledgerReview) : parsed.chart;
+      const chartUnavailable = options.ledgerReview && isChatChartQuestion(options.ledgerReview.question) && !chart;
+      const text = options.ledgerAnalysis && parsed.chart ? parsed.text.trim() || '图表来自本次确认的本机汇总。' : turn.reply;
+      draft.messages.push({ role: 'assistant', content: text + (chartUnavailable ? '\n\n图表暂时无法绘制，已保留文字回复。' : ''), repliedAt: Date.now(),
+        ...(chart ? { chart } : {}),
         ...(turn.search ? { search: structuredClone(turn.search) } : {}),
         ...(options.ledgerAnalysis ? { ledgerAnalysis: true } : {}) });
       draft.chatReply = undefined;

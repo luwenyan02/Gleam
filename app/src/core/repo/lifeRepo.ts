@@ -53,7 +53,7 @@ export async function purgeLifeNote(id: number): Promise<void> {
     if (!note) return;
     if (!note.deletedAt) throw new Error('仅回收站中的记录可彻底删除');
     await db.lifeNotes.delete(id);
-    await collectUnreferencedAttachments(note.photoRefs ?? []);
+    await collectUnreferencedAttachments([...(note.photoRefs ?? []), ...(note.conversation ?? []).flatMap(message => message.photoRefs ?? [])]);
   });
   emit('life-changed', { id });
 }

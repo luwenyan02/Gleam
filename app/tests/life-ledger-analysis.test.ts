@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../src/core/db';
 import type { Entry } from '../src/core/types';
 import { setSetting } from '../src/core/repo/settingsRepo';
+import { ledgerChatChart } from '../src/core/lifeChatChart';
 import {
   approveLifeLedgerReview, consumeLifeLedgerGrant, getLifeLedgerEvidence, getLifeLedgerFollowUps,
   getLifeLedgerReview, isLifeLedgerQuestion, lifeLedgerCategoryShares, lifeLedgerPeriods,
@@ -167,6 +168,7 @@ describe('local category shares and evidence integrity', () => {
     await db.entries.bulkPut(Array.from({ length: 14 }, (_, i) => entry(i + 1, { categoryId: i + 1, amount: i < 12 ? 100 : i === 12 ? 2 : 1, refundFlag: i === 13 })));
     const review = await getLifeLedgerReview(question, scope);
     expect(review.summary.categories.at(-1)?.expenseFen).toBe(1); expect(lifeLedgerCategoryShares(review.summary)).toEqual(Array(13).fill(null));
+    expect(ledgerChatChart({ ...review, question: '画我的本月支出环形图' })?.type).toBe('bar');
   });
   it('resolves duplicate names, parent/child identities, unknowns and collapsed other by category index', async () => {
     await db.categories.bulkPut([category(1, '同名'), category(2, '同名'), { ...category(3, '子类'), parentId: 1 }, ...Array.from({ length: 12 }, (_, i) => category(i + 4))]);

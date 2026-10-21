@@ -25,6 +25,11 @@ import { isLifeLedgerQuestion, type LifeLedgerReview, type LifeLedgerScope } fro
 import { confirmLifeLedgerAi } from './lifeLedgerConsent';
 import { getActiveChatReply, persistChatDraft, stageChatDraft, startChatReply, unsavedChatDrafts, type ChatReply } from './lifeChatSession';
 import { bindLifeLedgerResults, lifeLedgerResultHtml } from './lifeLedgerResult';
+import { parseChatChartResponse, validateChatChart, type ChatChart } from '../../core/chatChart';
+import { chatChartHtml, bindChatCharts, chatChartPng } from './chatChart';
+import { openChatImagePreview } from './chatImagePreview';
+import { saveImageFile, shareImageFile } from '../../shared/imageExport';
+import './chatChart.css';
 
 const needsAiConfig = (error: unknown): boolean => error instanceof AiConfigError
   || (error instanceof Error && error.message === '请先在设置中配置 AI 接口和模型');
@@ -59,6 +64,32 @@ function newDraft(key: string, existing?: LifeNote): LifeDraft {
     aiExcluded: existing?.aiExcluded ?? false,
     review: existing?.review ? structuredClone(existing.review) : undefined,
   };
+}
+
+function messageChart(message: LifeChatMessage): ChatChart | undefined {
+  try { return message.role === 'assistant' && message.chart ? validateChatChart(message.chart) : undefined; }
+  catch { return undefined; } // 损坏的旧附件不阻断原对话。
+}
+
+function replyText(message: LifeChatMessage): string {
+  const text = message.voiceDisplay ?? message.content;
+  return messageChart(message) ? parseChatChartResponse(text).text.trim() : text;
+}
+
+/** 绘图数据留给本机组件；流式正文照常显示，失败时仍能查看原始片段。 */
+function streamingReplyText(text: string): string {
+  const parsed = parseChatChartResponse(text);
+  if (parsed.chart) return parsed.text;
+  const start = text.search(/^[ \t]*```gleam-chart[ \t]*\r?\n/m);
+  return start < 0 ? text : text.slice(0, start);
+}
+
+const validPhotoData = (url: string) => /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]*={0,2}$/.test(url);
+
+function photoBlob(dataUrl: string): Blob {
+  if (!validPhotoData(dataUrl)) throw new Error('图片格式不可用');
+  const [header, body] = dataUrl.split(',');
+  return new Blob([Uint8Array.from(atob(body), char => char.charCodeAt(0))], { type: header.slice(5).split(';')[0] });
 }
 
 /** 注册独立全屏聊天子页。 */
@@ -222,7 +253,8 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100;
     const welcome = !draft.messages.length ? `<section class="chat-welcome"><div class="chat-welcome-heading"><div class="chat-emblem" aria-hidden="true">${chatIcon('spark')}</div><div><div class="chat-eyebrow">一处随时能坐坐的地方</div><h3>你好，我是拾光</h3></div></div><p>今天有什么小事，或突然冒出的想法？<br>可以一起琢磨，也可以只是聊聊。</p><div class="chat-starters"><button data-chat-prompt="今天有件小事，想和你聊聊。"><i>${chatIcon('chat')}</i>聊聊今天</button><button data-chat-prompt="我有一个想法，想请你帮我一起想想。"><i>${chatIcon('idea')}</i>帮我想想</button><button data-chat-prompt="我有个问题，想请你解释一下："><i>${chatIcon('question')}</i>解答问题</button><button data-chat-prompt="帮我分析一下我这个月的消费情况。"><i>${chatIcon('ledger')}</i>分析消费</button></div></section>` : '';
     const messages = draft.messages.map((message, index) => {
-      const sources = [...(message.photos ?? []).map(photo => photo.dataUrl), ...(message.photoRefs ?? []).map(ref => messagePhotoUrls.get(ref)).filter((url): url is string => !!url)];
+      const sources = [...(message.photos ?? []).map(photo => validPhotoData(photo.dataUrl) ? photo.dataUrl : undefined), ...(message.photoRefs ?? []).map(ref => messagePhotoUrls.get(ref))];
+      const chart = messageChart(message);
       const replyTime = formatChatReplyTime(message.repliedAt);
       const cancelled = cancelledTurns.get(message);
       const retryIndex = cancelled ? draft.messages.indexOf(cancelled.question) : failedMessageIndex;
@@ -230,11 +262,11 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       const failure = (cancelled || failedMessageIndex === index) && retryIndex != null && retryIndex >= 0
         ? `<div class="life-chat-failed" data-chat-message-index="${index}" ${cancelled ? 'data-chat-cancelled' : ''}><span>${esc(cancelled?.text ?? '未完成')}</span><button class="chip" data-life-chat-retry="${retryIndex}" data-retry-regenerate="${retryRegenerate}">重试</button></div>` : '';
       const actions = message.role === 'assistant' ? `<div class="chat-message-actions"><button data-chat-copy="${index}" aria-label="复制第 ${index + 1} 条消息" title="复制">${chatIcon('copy')}</button>${index === draft.messages.length - 1 ? `<button data-chat-regenerate aria-label="重新回答" title="重新回答">${chatIcon('retry')}</button>` : ''}${replyTime ? `<time class="chat-reply-time" datetime="${new Date(message.repliedAt!).toISOString()}" title="${esc(new Date(message.repliedAt!).toLocaleString())}" aria-label="回复时间 ${replyTime}">${replyTime}</time>` : ''}</div>` : '';
-      return `<article class="life-chat-bubble ${message.role}">${message.role === 'assistant' ? `<div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div>` : ''}<div class="chat-message-content"><div class="chat-message-text">${message.role === 'user' ? esc(message.content) : renderChatText(message.voiceDisplay ?? message.content)}</div>${sources.length ? `<div class="life-chat-message-photos">${sources.map((src, photoIndex) => `<img src="${src}" alt="本轮照片 ${photoIndex + 1}">`).join('')}</div>` : ''}</div>${ledgerResults.has(index) ? lifeLedgerResultHtml(ledgerResults.get(index)!, index, sending) : ''}${actions}</article>${failure}`;
+      return `<article class="life-chat-bubble ${message.role}">${message.role === 'assistant' ? `<div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div>` : ''}<div class="chat-message-content"><div class="chat-message-text">${message.role === 'user' ? esc(message.content) : renderChatText(replyText(message))}</div>${chart ? `<div data-chat-chart>${chatChartHtml(chart)}<p class="sub chat-chart-source">${message.ledgerAnalysis ? '本机账本快照 · 本次确认范围' : '对话图表'}</p><div class="chat-chart-actions"><button class="chip" data-chat-chart-save="${index}">保存 PNG</button><button class="chip" data-chat-chart-share="${index}">分享图表</button></div></div>` : ''}${sources.length ? `<div class="life-chat-message-photos">${sources.map((src, photoIndex) => `<button class="chat-image-link" data-chat-image="${index}:${photoIndex}" aria-label="查看第 ${photoIndex + 1} 张图片">${src ? `<img src="${esc(src)}" alt="本轮照片 ${photoIndex + 1}">` : '<span>图片不可用</span>'}</button>`).join('')}</div>` : ''}</div>${ledgerResults.has(index) ? lifeLedgerResultHtml(ledgerResults.get(index)!, index, sending) : ''}${actions}</article>${failure}`;
     }).join('');
     const proposalStale = !!draft.summaryProposal && (draft.summaryProposal.sourceMessageCount < draft.messages.length || draft.photos.length > 0);
     const card = !summaryCardHidden && (readyToSummarize || draft.summaryProposal) ? `<section class="life-summary-card"><strong>${proposalStale ? '已有建议稿，对话已有新内容' : draft.summaryProposal ? '已有一版建议稿' : '已经有一个值得留下的片段了'}</strong><p>${proposalStale ? '建议稿不会自动覆盖你的修改；需要时可手动重新整理。' : '想把这段话整理成一条记录吗？'}</p><div><button class="btn primary" data-life-chat-summary>${draft.summaryProposal ? '查看建议稿' : '生成记录'}</button><button class="btn ghost" data-life-chat-continue>再聊聊</button></div></section>` : '';
-    messagesEl.innerHTML = `${welcome}${messages}${streamedReply ? `<article class="life-chat-bubble assistant ${sending ? 'chat-streaming' : 'chat-incomplete'}" aria-label="${sending ? '正在回复' : '未完成的回复'}"><div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div><div class="chat-message-content"><div class="chat-message-text">${renderChatText(streamedReply)}</div></div>${!sending ? `<div class="chat-message-actions"><button data-chat-copy="incomplete" aria-label="复制未完成的回复" title="复制">${chatIcon('copy')}</button></div>` : ''}</article>` : ''}${card}`;
+    messagesEl.innerHTML = `${welcome}${messages}${streamedReply ? `<article class="life-chat-bubble assistant ${sending ? 'chat-streaming' : 'chat-incomplete'}" aria-label="${sending ? '正在回复' : '未完成的回复'}"><div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div><div class="chat-message-content"><div class="chat-message-text">${renderChatText(sending ? streamingReplyText(streamedReply) : streamedReply)}</div></div>${!sending ? `<div class="chat-message-actions"><button data-chat-copy="incomplete" aria-label="复制未完成的回复" title="复制">${chatIcon('copy')}</button></div>` : ''}</article>` : ''}${card}`;
     streamBubble = messagesEl.querySelector<HTMLElement>('.chat-streaming,.chat-incomplete') ?? undefined;
     paintedReply = streamedReply;
     // 尾行保留操作区宽度，按钮在气泡内右对齐，不再单独占据气泡外的一行。
@@ -247,8 +279,10 @@ function renderChat(host: HTMLElement, launch: Launch): void {
       slot.style.width = `${actions.querySelectorAll('button').length * 44 + (actions.querySelector('.chat-reply-time') ? 52 : 0) + 8}px`;
       let tail = text.lastElementChild as HTMLElement | null;
       while (tail?.matches('ul,ol,li') && tail.lastElementChild?.matches('ul,ol,li,p')) tail = tail.lastElementChild as HTMLElement;
-      if (content.querySelector('.life-chat-message-photos') || tail?.matches('pre,.chat-table-scroll,hr')) {
+      if (content.querySelector('.life-chat-message-photos,[data-chat-chart]') || tail?.matches('pre,.chat-table-scroll,hr')) {
         slot.classList.add('chat-action-slot-block');
+        // 导出入口下方为回复操作保留完整触控行，避免命中区域互相覆盖。
+        if (content.querySelector('[data-chat-chart]')) slot.style.height = '44px';
         content.append(slot);
       } else if (actions.parentElement!.classList.contains('user')) text.append(slot);
       else (tail ?? text).append(slot);
@@ -257,13 +291,15 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     messagesEl.querySelectorAll<HTMLButtonElement>('[data-chat-prompt]').forEach(button => button.onclick = () => { input.value = button.dataset.chatPrompt!; input.dispatchEvent(new Event('input')); input.focus(); });
     messagesEl.querySelectorAll<HTMLButtonElement>('[data-chat-copy]').forEach(button => button.onclick = () => {
       const message = draft.messages[Number(button.dataset.chatCopy)];
-      const text = button.dataset.chatCopy === 'incomplete' ? streamedReply : message?.voiceDisplay ?? message?.content;
+      const text = button.dataset.chatCopy === 'incomplete' ? streamedReply : message ? replyText(message) || `图表：${message.chart?.title ?? ''}` : undefined;
       if (text == null) return;
       void navigator.clipboard.writeText(text).then(() => {
         button.innerHTML = chatIcon('check'); button.title = '已复制'; showToast('已复制');
         setTimeout(() => { if (button.isConnected) { button.innerHTML = chatIcon('copy'); button.title = '复制'; } }, 1600);
       }).catch(() => showToast('复制失败，可长按选择文字'));
     });
+    bindChatCharts(messagesEl);
+    bindArtifacts();
     bindLifeLedgerResults(messagesEl, ledgerResults, {
       isActive: () => !disposed && !sending,
       onError: message => status(message),
@@ -280,6 +316,32 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     syncComposer(true);
     messagesEl.scrollTop = forceBottom || nearBottom ? messagesEl.scrollHeight : scrollTop;
     host.querySelector<HTMLButtonElement>('[data-chat-jump]')!.hidden = forceBottom || nearBottom;
+  }
+  function bindArtifacts(): void {
+    messagesEl.querySelectorAll<HTMLButtonElement>('[data-chat-image]').forEach(button => button.onclick = () => {
+      const [messageIndex, photoIndex] = button.dataset.chatImage!.split(':').map(Number);
+      const message = draft.messages[messageIndex];
+      if (!message || disposed) return;
+      const photo = message.photos?.[photoIndex];
+      const ref = message.photoRefs?.[photoIndex - (message.photos?.length ?? 0)];
+      openChatImagePreview({ name: photo?.name || `拾光图片-${messageIndex + 1}-${photoIndex + 1}.png`, opener: button,
+        load: async () => photo ? photoBlob(photo.dataUrl) : ref == null ? undefined : (await getAttachment(ref))?.blob });
+    });
+    messagesEl.querySelectorAll<HTMLButtonElement>('[data-chat-chart-save],[data-chat-chart-share]').forEach(button => button.onclick = async () => {
+      if (button.disabled || disposed) return;
+      const index = Number(button.dataset.chatChartSave ?? button.dataset.chatChartShare);
+      const chart = draft.messages[index] && messageChart(draft.messages[index]);
+      if (!chart) return;
+      button.disabled = true;
+      try {
+        const blob = await chatChartPng(chart);
+        if (disposed) return;
+        const feedback = button.hasAttribute('data-chat-chart-share')
+          ? await shareImageFile(blob, `${chart.title}.png`) : await saveImageFile(blob, `${chart.title}.png`);
+        if (!disposed) showToast(feedback);
+      } catch (error) { if (!disposed) showToast(error instanceof Error ? error.message : '图表图片暂时无法导出'); }
+      finally { if (button.isConnected) button.disabled = false; }
+    });
   }
   function bindVoiceNodes(): void {
     messagesEl.querySelectorAll<HTMLElement>('.life-chat-bubble').forEach((node, index) => {
@@ -369,7 +431,7 @@ function renderChat(host: HTMLElement, launch: Launch): void {
         streamBubble.innerHTML = `<div class="chat-speaker"><i aria-hidden="true">${chatIcon('spark')}</i>拾光 AI</div><div class="chat-message-content"><div class="chat-message-text"></div></div>`;
         messagesEl.insertBefore(streamBubble, messagesEl.querySelector('.life-summary-card'));
       }
-      streamBubble.querySelector('.chat-message-text')!.innerHTML = renderChatText(streamedReply);
+      streamBubble.querySelector('.chat-message-text')!.innerHTML = renderChatText(sending ? streamingReplyText(streamedReply) : streamedReply);
     }
     paintedReply = streamedReply;
     messagesEl.scrollTop = nearBottom ? messagesEl.scrollHeight : scrollTop;

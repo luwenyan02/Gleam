@@ -10,12 +10,13 @@ URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4602/')
 OUT = Path(__file__).parents[2] / '.tmp/tests/e2e/home-life-preview'
 TITLE = '虚构晚风里的完整日记 <不是标签>'
 ORIGINAL = '虚构用户原话第一行。\n第二行完整保留 <b>原样文字</b>。'
+ANSWER = '虚构拾光原始回复：记住这一刻。'
 BODY = ('第一行：沿着河边慢慢走。\n第二行：换行应当保留。\n'
         '<img src=x onerror="window.__lifePreviewExecuted=1">\n'
         '<script>window.__lifePreviewExecuted=2</script>\n'
         + '虚构的长内容，让阅读完整延续到屏幕之外。' * 75
         + '\n最后一行：日记正文没有被截断。')
-SEED = r'''async ({title,body,originalBody}) => {
+SEED = r'''async ({title,body,originalBody,answer}) => {
  const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('GleamDB');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
  const photos=[];
  for(const [id,w,h] of [[1,900,500],[2,500,900]]) {
@@ -32,16 +33,17 @@ SEED = r'''async ({title,body,originalBody}) => {
  tx.objectStore('categories').put({...stamp,id:1,name:'虚构餐饮',kind:'expense',icon:'ic-bowl',sortOrder:1});
  tx.objectStore('entries').put({...stamp,id:101,type:'expense',amount:1234,occurredAt:when-1000,accountId:1,categoryId:1,note:'虚构同ID账单',deletedAt:0,reimburseStatus:'none'});
  const notes=[
-   {id:101,kind:'diary',title,body,originalBody,mood:'平静 <安全>',tags:['散步','虚构标签 <b>原文</b>']},
-   {id:102,kind:'photo',title:'虚构横竖照片记录',body:'两张完整照片，四角均可见。',photoRefs:[1,2,999]},
+   {id:101,kind:'diary',title,body,originalBody,conversation:[{role:'user',content:originalBody},{role:'assistant',content:answer}],mood:'平静 <安全>',tags:['散步','虚构标签 <b>原文</b>']},
+   {id:102,kind:'photo',title:'虚构横竖照片记录',body:'两张完整照片，四角均可见。',photoRefs:[1,2,999],conversation:[{role:'user',content:'虚构照片问题',photoRefs:[1,2]},{role:'assistant',content:answer}]},
    {id:103,kind:'habit',title:'虚构已删除习惯的历史打卡',body:'历史打卡仍可阅读。',habitId:404},
    {id:104,kind:'diary',title:'虚构稍后删除的记录',body:'打开前删除时应当给出明确提示。'},
-   {id:105,kind:'photo',title:'虚构全部照片缺失',photoRefs:[998]},
+   {id:105,kind:'photo',title:'虚构全部照片缺失',photoRefs:[998],originalBody:'虚构旧版原话，不应在预览展示'},
    {id:106,kind:'diary',title:'虚构稍后移除的记录',body:'不存在时也有明确反馈。'},
  ];
  notes.forEach((n,i)=>tx.objectStore('lifeNotes').put({...stamp,...n,occurredAt:when+i*1000,deletedAt:0}));
  for(let i=0;i<20;i++)tx.objectStore('lifeNotes').put({...stamp,id:200+i,kind:'diary',title:`虚构列表占位 ${i}`,body:'用于验证滚动位置保留。',occurredAt:when+60000+i*1000,deletedAt:0});
  tx.objectStore('lifeDrafts').put({...stamp,key:'new',kind:'diary',title:'虚构未保存草稿',body:'已有草稿必须原样保留。',photoRefs:[],tags:[],occurredAt:when});
+ tx.objectStore('lifeDrafts').put({key:'chat:new',title:'',body:'',occurredAt:when,existingPhotoRefs:[],photos:[],messages:[{role:'user',content:'虚构其他会话'},{role:'assistant',content:'其他回复'}],pendingReply:'虚构未发出的聊天草稿',aiExcluded:false});
  photos.forEach(({id,blob})=>tx.objectStore('attachments').put({...stamp,id,blob,mime:'image/png',size:blob.size,name:`fictional-${id}.png`}));
  tx.objectStore('settings').put({key:'accounting.monthStartDay',value:1});
  tx.objectStore('settings').put({key:'life.aiEnabled',value:false});
@@ -151,7 +153,7 @@ def run(browser, width, height, scale, theme, red=False):
     page.on('pageerror',lambda error:errors.append(str(error)))
     page.clock.set_fixed_time(datetime.fromisoformat('2026-10-18T12:00:00+08:00'))
     page.goto(URL);page.locator('#fab').wait_for()
-    page.evaluate(SEED,{'title':TITLE,'body':BODY,'originalBody':ORIGINAL});page.reload();page.locator('#fab').wait_for()
+    page.evaluate(SEED,{'title':TITLE,'body':BODY,'originalBody':ORIGINAL,'answer':ANSWER});page.reload();page.locator('#fab').wait_for()
     page.evaluate('([theme,scale])=>{document.documentElement.dataset.theme=theme;document.documentElement.style.setProperty("--seed-type",String(scale))}',[theme,scale])
     expect(page.locator('#hm-days')).to_contain_text(TITLE)
     page.evaluate('document.fonts.ready')
@@ -176,8 +178,6 @@ def run(browser, width, height, scale, theme, red=False):
     except AssertionError:
         page.screenshot(path=str(OUT/f'red-{width}.png'),animations='disabled')
         raise
-    if red:
-        raise AssertionError('RED mode unexpectedly opened the life preview')
     row = page.locator('#hm-days [data-home-life-note="101"]')
     scroll = page.locator('#page-home').evaluate('e=>e.scrollTop')
     content = sheet.locator('[data-life-preview-content]')
@@ -202,14 +202,14 @@ def run(browser, width, height, scale, theme, red=False):
     page.screenshot(path=str(OUT/f'diary-{label}.png'),animations='disabled')
     sheet.locator('[data-life-preview-close]').focus()
     page.keyboard.press('Tab')
-    summary=sheet.locator('summary',has_text='原话')
-    expect(summary).to_be_focused()
-    summary.press('Enter')
-    expect(summary.locator('..')).to_have_attribute('open','')
-    assert ORIGINAL in summary.locator('..').inner_text()
-    expect(summary.locator('..').locator('b')).to_have_count(0)
-    summary.press('Space')
-    expect(summary.locator('..')).not_to_have_attribute('open','')
+    link=sheet.get_by_role('button',name='查看原始对话')
+    expect(link).to_be_focused()
+    expect(sheet).to_contain_text('原始对话')
+    expect(sheet.locator('details,summary')).to_have_count(0)
+    assert ORIGINAL not in content.text_content() and ANSWER not in content.text_content()
+    assert link.bounding_box()['height']>=44
+    link.scroll_into_view_if_needed()
+    page.screenshot(path=str(OUT/f'original-link-{label}.png'),animations='disabled')
     close_and_check(page,row,scroll)
     for action,close in [('Enter','Escape'),('Space','back')]:
         row,sheet=open_note(page,101,action)
@@ -227,6 +227,7 @@ def run(browser, width, height, scale, theme, red=False):
     for d in dimensions:
         assert d['fit']=='contain' or abs(d['box'][0]/d['box'][1]-d['natural'][0]/d['natural'][1])<0.02, d
     expect(sheet).to_contain_text('照片不可用')
+    expect(sheet.get_by_role('button',name='查看原始对话')).to_be_visible()
     page.wait_for_timeout(350)  # Let Chromium's native touch highlight finish.
     page.screenshot(path=str(OUT/f'photos-{label}.png'),animations='disabled')
     sheet.locator('[data-life-preview-content]').evaluate('e=>e.scrollTop=e.scrollHeight')
@@ -241,6 +242,10 @@ def run(browser, width, height, scale, theme, red=False):
     row,sheet=open_note(page,105)
     expect(sheet).to_contain_text('照片不可用')
     expect(sheet.locator('img')).to_have_count(0)
+    expect(sheet).to_contain_text('未保留原始对话')
+    expect(sheet.get_by_role('button',name='查看原始对话')).to_have_count(0)
+    assert '虚构旧版原话' not in sheet.inner_text()
+    page.screenshot(path=str(OUT/f'legacy-{label}.png'),animations='disabled')
     close_and_check(page,row,page.locator('#page-home').evaluate('e=>e.scrollTop'))
     # Identical numeric IDs in independent stores must keep their own routes.
     page.locator('#hm-days [data-entry="101"]').click()
@@ -253,6 +258,37 @@ def run(browser, width, height, scale, theme, red=False):
         delayed_read_and_urls(page)
     assert page.evaluate(READ)==before, 'Preview/close/entry view changed saved notes, drafts or ledger'
     assert page.evaluate('window.__lifePreviewWrites')==[], 'Preview must issue no writes'
+    # Navigate by the saved note ID, rather than resuming the unrelated latest chat.
+    row,sheet=open_note(page,101)
+    scroll=page.locator('#page-home').evaluate('e=>e.scrollTop')
+    link=sheet.get_by_role('button',name='查看原始对话')
+    link.focus();link.press('Enter' if width<600 else 'Space')
+    chat=page.locator('#sp-life-chat')
+    expect(chat).to_be_visible()
+    expect(page.locator('#sheet')).to_have_attribute('aria-hidden','true')
+    expect(chat.locator('.user .chat-message-text')).to_have_text(ORIGINAL)
+    expect(chat.locator('.assistant .chat-message-text')).to_have_text(ANSWER)
+    expect(chat.locator('#life-chat-input')).to_have_value('')
+    expect(chat).not_to_contain_text('虚构其他会话')
+    page.screenshot(path=str(OUT/f'original-chat-{label}.png'),animations='disabled')
+    if width==390 and scale==1:
+        page.evaluate("document.dispatchEvent(new CustomEvent('gleam:system-back'))")
+    elif width==430:
+        page.go_back()
+    else:
+        chat.locator('[data-act="back"]').click()
+    chat.wait_for(state='detached')
+    expect(row).to_be_focused()
+    assert abs(page.locator('#page-home').evaluate('e=>e.scrollTop')-scroll)<2
+    page.wait_for_function('''async()=>{
+      const db=await new Promise(resolve=>{const r=indexedDB.open('GleamDB');r.onsuccess=()=>resolve(r.result)});
+      const row=await new Promise(resolve=>{const r=db.transaction('lifeDrafts').objectStore('lifeDrafts').get('chat:note:101');r.onsuccess=()=>resolve(r.result)});
+      db.close();return row?.messages.length===2;
+    }''')
+    after=page.evaluate(READ)
+    for name in ['entries','accounts','lifeNotes']:
+        assert after[name]==before[name], f'Opening original chat changed {name}'
+    assert [d for d in after['lifeDrafts'] if d['key']!='chat:note:101']==before['lifeDrafts']
     # Keep the rendered rows stale while their records disappear from IndexedDB.
     page.evaluate('''async()=>{
       const db=await new Promise(resolve=>{const r=indexedDB.open('GleamDB');r.onsuccess=()=>resolve(r.result)});
@@ -268,6 +304,20 @@ def run(browser, width, height, scale, theme, red=False):
         close_and_check(page,row,page.locator('#page-home').evaluate('e=>e.scrollTop'))
     assert page.evaluate(READ)==deleted_before
     assert page.evaluate('window.__lifePreviewWrites')==[]
+    if width==390 and scale==1:
+        row,sheet=open_note(page,101)
+        page.evaluate('''async()=>{
+          const db=await new Promise(resolve=>{const r=indexedDB.open('GleamDB');r.onsuccess=()=>resolve(r.result)});
+          const tx=db.transaction('lifeNotes','readwrite');tx.objectStore('lifeNotes').delete(101);
+          await new Promise(resolve=>tx.oncomplete=resolve);db.close();window.__lifePreviewWrites=[];
+        }''')
+        stale_before=page.evaluate(READ)
+        sheet.get_by_role('button',name='查看原始对话').click()
+        expect(page.locator('#toast')).to_contain_text('这条记录已不在当前生活时间流中')
+        expect(page.locator('#sp-life-chat')).to_have_count(0)
+        expect(row).to_be_focused()
+        assert page.evaluate(READ)==stale_before
+        assert page.evaluate('window.__lifePreviewWrites')==[]
     assert not external,external
     assert not errors,errors
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
