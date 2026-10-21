@@ -80,11 +80,18 @@ def models(page, width):
     page.locator('#ai-model-pick').click();page.locator('.picker-panel.open').wait_for()
     page.wait_for_timeout(300) # 完成弹层入场再核对实际排版
     labels=page.locator('.picker-item-label').all_inner_texts()
-    assert len(labels)<=11 and 'qwen3.8-max-0902' in labels and 'qwen3.7-plus' in labels
+    assert len(labels)<=11 and 'qwen3.8-max-0902' in labels and 'deepseek-v4.1-flash-1017' in labels
+    assert not set(labels).intersection(['qwen3.7-plus','deepseek-v4-pro-0813','deepseek-v4-flash-0731'])
     assert 'wrong-platform-model' not in labels and 'wrong-unscoped-model' not in labels
     assert page.locator('.picker-item-label').evaluate_all('els=>els.every(e=>e.scrollWidth<=e.clientWidth+1)'), '完整展示模型名'
     assert page.locator('.picker-item').evaluate_all('els=>els.every(e=>e.getBoundingClientRect().right<=innerWidth+1)'), '模型选项不超出视口'
     page.screenshot(path=str(SHOTS/f'refined-models-{width}.png'))
+    page.locator('.picker-item[data-value="deepseek-v4.1-flash-1017"]').click();page.locator('.picker-mask').wait_for(state='detached')
+    expect(page.locator('#ai-model')).to_have_value('deepseek-v4.1-flash-1017')
+    expect(page.locator('#ai-model-capability')).to_have_text('图片、文字')
+    page.locator('[data-act="ai-test"]').click();page.wait_for_function('document.querySelector("[data-act=ai-test]").textContent==="测试连接"')
+    assert calls[-1]['model']=='deepseek-v4.1-flash-1017'
+    page.locator('#ai-model-pick').click();page.locator('.picker-panel.open').wait_for()
     page.locator('.picker-item[data-value="qwen3.8-flash"]').click();page.locator('.picker-mask').wait_for(state='detached')
     page.wait_for_function('document.querySelector("#ai-model").value==="qwen3.8-flash"')
     page.locator('[data-act="ai-test"]').click();page.wait_for_function('document.querySelector("[data-act=ai-test]").textContent==="测试连接"')

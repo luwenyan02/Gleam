@@ -1,19 +1,19 @@
 # AI 模型预设维护
 
-核对日期：2026-09-07。当前近期窗口为 2026-06-07 至 2026-09-07；运行时按最近三个日历月筛选。仅收录适用于本应用的对话模型，基础调用采用 Chat Completions，聊天搜索的 Responses 适配见下文；不为凑满数量加入生图、语音或嵌入模型。
+最近增量核对日期：2026-10-22，本次仅按用户指定调整阿里百炼三项预设；其他平台预设沿用2026-09-07版本。运行时按最近三个日历月筛选。仅收录适用于本应用的对话模型，基础调用采用 Chat Completions，聊天搜索的 Responses 适配见下文；不为凑满数量加入生图、语音或嵌入模型。
 
 ## 平台目录与来源
 
 | 平台 | 预设模型 | 官方日期依据 |
 | --- | --- | --- |
-| 阿里百炼 | qwen3.8-max-0902、qwen3.8-flash、kimi-k3、deepseek-v4-pro-0813、deepseek-v4-flash-0731、qwen3.7-flash | 分别于 09-02、08-26、08-19、08-14、08-01、07-21 上架，见[上下架记录](https://help.aliyun.com/zh/model-studio/newly-released-models) |
+| 阿里百炼 | deepseek-v4.1-flash-1017、qwen3.8-max-0902、qwen3.8-flash、kimi-k3、qwen3.7-flash | 分别于 10-17、09-02、08-26、08-19、07-21 上架，见[上下架记录](https://help.aliyun.com/zh/model-studio/newly-released-models) |
 | OpenAI | gpt-6-astra、gpt-5.6-sol、gpt-5.6-terra、gpt-5.6-luna | Astra 09-03 发布，5.6 系列 07-09 发布，见[API Changelog](https://developers.openai.com/api/docs/changelog) |
 | DeepSeek | deepseek-v4-flash-vision-exp、deepseek-v4-pro、deepseek-v4-flash | 08-21 视觉实验版、08-13 Pro 正式版、07-31 Flash 正式版，见[更新日志](https://api-docs.deepseek.com/zh-cn/updates/)。官方调用 ID 不套用百炼的快照后缀 |
 | 硅基流动 | zai-org/GLM-5.3、deepseek-ai/DeepSeek-V4-Flash、meituan-longcat/LongCat-2.0、zai-org/GLM-5.2、moonshotai/Kimi-K2.7-Code | [模型中心](https://siliconflow.cn/models)提供平台 ID 和日期；Flash 采用页面明确描述的 0731 正式版本，其他日期为 08-14、06-30、06-17、06-12 |
 | Moonshot Kimi | kimi-k3 | 07-16 发布，见[技术博客](https://www.kimi.ai/blog/kimi-k3)与[平台接入文档](https://platform.kimi.com/docs/guide/kimi-k3-quickstart) |
 | 智谱 GLM | glm-5.2 | 06-16 发布，见[新品发布](https://docs.bigmodel.cn/cn/update/new-releases)。不把其他供应商的 ID 或未核验的平台版本直接搬入 |
 
-用户指定的 `qwen3.7-plus` 在百炼于 06-01 上架，超出当前三个月窗口。仍保留可选项，但单列为“指定保留 · 非近期预设”，不伪造新发布日期；能力与快照见[模型页](https://help.aliyun.com/zh/model-studio/qwen3-7-plus)。
+2026-10-22 按用户最新要求，用 `deepseek-v4.1-flash-1017` 替换百炼 `deepseek-v4-flash-0731`，并移除 `deepseek-v4-pro-0813` 和 `qwen3.7-plus` 的内置预设。新版 Flash 支持图片与文本，兼容 Chat Completions，见[DeepSeek API](https://help.aliyun.com/zh/model-studio/deepseek-api)。移除预设不删除用户已保存的模型，也不屏蔽用户主动获取的接口返回项；原有三个月筛选、数量限制与其他平台保持不变。
 
 ## 展示与兼容约定
 

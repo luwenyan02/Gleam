@@ -17,10 +17,17 @@ describe('近期平台模型预设', () => {
     expect(recentModels('dashscope',today).map(m=>m.id)).not.toContain('qwen3.7-plus');
     expect(recentModels('openai',new Date(2027,0,1))).toHaveLength(0);
   });
-  it('点名旧模型明确单列保留，不伪装为近期发布', () => {
-    const options=buildModelChoices('https://dashscope.aliyuncs.com/compatible-mode/v1','',null,today);
-    expect(options.find(m=>m.value==='qwen3.7-plus')?.group).toContain('指定保留');
-    expect(options.map(m=>m.value)).toEqual(expect.arrayContaining(['qwen3.8-flash','deepseek-v4-pro-0813','kimi-k3']));
+  it('百炼替换Flash并移除指定旧预设，仍保留用户已保存的模型', () => {
+    const base='https://dashscope.aliyuncs.com/compatible-mode/v1';
+    const checkedOn=new Date(2026,9,22);
+    const options=buildModelChoices(base,'',null,checkedOn);
+    expect(options[0]).toMatchObject({value:'deepseek-v4.1-flash-1017',note:'2026-10-17 · 图片／文本'});
+    expect(options.map(m=>m.value)).toEqual(expect.arrayContaining(['qwen3.8-max-0902','qwen3.8-flash','kimi-k3']));
+    for (const id of ['qwen3.7-plus','deepseek-v4-pro-0813','deepseek-v4-flash-0731']) {
+      expect(AI_PROVIDERS.find(p=>p.id==='dashscope')!.models.some(m=>m.id===id)).toBe(false);
+      expect(buildModelChoices(base,id,null,checkedOn)[0]).toMatchObject({value:id,group:'当前配置'});
+    }
+    expect(()=>assertImageModel(base,'deepseek-v4.1-flash-1017')).not.toThrow();
   });
   it('保留当前自定义值，忽略另一平台缓存，去重并限制十个', () => {
     const base='https://api.openai.com';

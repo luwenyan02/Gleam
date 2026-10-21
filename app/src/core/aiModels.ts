@@ -1,5 +1,5 @@
 /** 经官方模型目录与发布记录核对的离线预设；来源见 docs/ai-models.md。 */
-export const MODEL_CATALOG_CHECKED_ON = '2026-09-07';
+export const MODEL_CATALOG_CHECKED_ON = '2026-10-22';
 export const MODEL_CHOICE_LIMIT = 10;
 
 export interface AiModelPreset {
@@ -17,13 +17,11 @@ export const AI_PROVIDERS: AiProvider[] = [
   {
     id: 'dashscope', name: '阿里百炼', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     models: [
+      { id: 'deepseek-v4.1-flash-1017', availableOn: '2026-10-17', vision: true },
       { id: 'qwen3.8-max-0902', availableOn: '2026-09-02', vision: true },
       { id: 'qwen3.8-flash', availableOn: '2026-08-26', vision: true },
       { id: 'kimi-k3', availableOn: '2026-08-19', vision: true },
-      { id: 'deepseek-v4-pro-0813', availableOn: '2026-08-14', vision: false },
-      { id: 'deepseek-v4-flash-0731', availableOn: '2026-08-01', vision: false },
       { id: 'qwen3.7-flash', availableOn: '2026-07-21', vision: true },
-      { id: 'qwen3.7-plus', availableOn: '2026-06-01', vision: true, pinned: true },
     ],
   },
   {
