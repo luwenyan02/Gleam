@@ -61,8 +61,8 @@ def run(page, width):
           const card = el.getBoundingClientRect(), actions = el.querySelector('.chat-message-actions').getBoundingClientRect();
           return actions.right <= card.right && actions.bottom <= card.bottom;
         }''')
-    assert page.locator('.assistant .chat-message-text').first.evaluate('el => parseFloat(getComputedStyle(el).fontSize) === 14')
-    assert page.locator('.assistant .chat-message-text').first.evaluate('el => parseFloat(getComputedStyle(el).lineHeight) < 23')
+    assert page.locator('.assistant .chat-message-text').first.evaluate('el => parseFloat(getComputedStyle(el).fontSize) === 15')
+    assert page.locator('.assistant .chat-message-text').first.evaluate('el => parseFloat(getComputedStyle(el).lineHeight) < 25')
     page.evaluate("() => { navigator.clipboard.writeText = async text => { window.__copied = text; }; }")
     page.locator('[data-chat-copy]').first.click()
     assert page.locator('[data-chat-copy]').first.get_attribute('title') == '已复制'

@@ -13,7 +13,7 @@
 .life-chat{position:relative;gap:0;padding:0;min-width:0}
 .life-chat-messages{padding:14px 16px 24px;gap:18px;scroll-behavior:auto;overscroll-behavior:contain;scrollbar-width:none;scroll-padding-bottom:24px;mask-image:linear-gradient(transparent,#000 10px,#000 calc(100% - 12px),transparent)}
 .life-chat-messages::-webkit-scrollbar{display:none}
-.life-chat-bubble{max-width:100%;min-width:0;font-size:calc(14px * var(--seed-type));white-space:normal;border:0;background:transparent;padding:0;border-radius:0;flex-shrink:0}
+.life-chat-bubble{max-width:100%;min-width:0;font-size:calc(15px * var(--seed-type));white-space:normal;border:0;background:transparent;padding:0;border-radius:0;flex-shrink:0}
 .chat-message-content{position:relative;min-height:58px}
 .life-chat-bubble .chat-message-content:has(.chat-message-actions){padding-bottom:27px}
 .life-chat-bubble.assistant{align-self:stretch}
