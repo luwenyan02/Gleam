@@ -14,9 +14,23 @@
 
 ## 看看界面
 
-以下是 v1.11.32 网页生产构建的真实截图，使用虚构账目与本地模拟 AI 回复。点击可查看原图；[截图来源与复现方法](docs/assets/screenshots/README.md)单独记录。
+以下是 v1.11.32 网页生产构建的真实截图，使用虚构账目与本地模拟 AI 回复；语音画面通过模拟原生通道展示，未实际收音。点击可查看原图；[截图来源与复现方法](docs/assets/screenshots/README.md)单独记录。
 
 <!-- SCREENSHOTS_START -->
+### 开口记账，顺手聊聊
+
+长按首页「+」说一笔开销，滑到「编辑文字」还能改好再发。语音聊则留在聊天页底部，听你说，也能随时打断。
+
+| 短语音记账 · 按住说话 | 转成文字 · 改好再发 |
+| --- | --- |
+| [![短语音记账：橙色声波、上滑取消或编辑、松开发送](docs/assets/screenshots/voice-recording-demo.png)](docs/assets/screenshots/voice-recording-demo.png) | [![短语音转写：编辑识别文字后再生成草稿](docs/assets/screenshots/voice-editing-demo.png)](docs/assets/screenshots/voice-editing-demo.png) |
+
+| 语音聊 · 正在听 | 语音聊 · 拾光在说话 |
+| --- | --- |
+| [![语音聊聆听：聊天记录与紧凑语音条同屏](docs/assets/screenshots/voice-listening-demo.png)](docs/assets/screenshots/voice-listening-demo.png) | [![语音聊回复：声波、静音、轻点打断与结束](docs/assets/screenshots/voice-speaking-demo.png)](docs/assets/screenshots/voice-speaking-demo.png) |
+
+### 账本和生活记录
+
 | 首页 | 账户 | 报表 |
 | --- | --- | --- |
 | [![首页：收支、预算和日常流水](docs/assets/screenshots/home-demo.png)](docs/assets/screenshots/home-demo.png) | [![账户：余额、应收应付与净资产](docs/assets/screenshots/accounts-demo.png)](docs/assets/screenshots/accounts-demo.png) | [![报表：分类排行与收支统计](docs/assets/screenshots/report-demo.png)](docs/assets/screenshots/report-demo.png) |
