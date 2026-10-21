@@ -64,15 +64,14 @@ def run(page,width,theme):
     home=page.locator('.mc-overview')
     expect(home).to_have_css('color','rgb(255, 255, 255)')
     assert 'home-overview.webp' in home.evaluate('e=>getComputedStyle(e).backgroundImage')
-    page.wait_for_function("document.querySelector('#m-income').textContent!=='0.00'")
-    page.wait_for_timeout(250)
-    amounts=page.locator('#m-spend,#m-income,#m-balance,#m-remain').all_text_contents()
+    amounts=['2,482.00','12,000.00','9,518.00','3,518.00']
+    values=page.locator('#m-spend,#m-income,#m-balance,#m-remain')
+    expect(values).to_have_text(amounts)
     before=page.evaluate('localStorage.getItem("gleam-theme")')
     home_contrast=contrast_card(page,'.mc-overview',['.mc-label','.mc-unit','#m-spend'])
     page.locator('#page-home').screenshot(path=str(OUT/f'home-{width}-{theme}.png'),animations='disabled')
     page.locator('.tab[data-page="page-acct"]').click()
-    page.locator('.asset-summary .big').wait_for()
-    page.wait_for_timeout(250)
+    expect(page.locator('.asset-summary .big')).to_be_visible()
     asset=page.locator('.asset-summary')
     assert 'account-overview.webp' in asset.evaluate('e=>getComputedStyle(e).backgroundImage')
     page.locator('#page-acct').screenshot(path=str(OUT/f'account-{width}-{theme}.png'),animations='disabled')
@@ -83,13 +82,12 @@ def run(page,width,theme):
     assert page.locator('.acct-hero').evaluate('e=>e.scrollWidth<=e.clientWidth+1')
     page.locator('#page-acct').screenshot(path=str(OUT/f'account-expanded-{width}-{theme}.png'),animations='disabled')
     page.locator('#tab-home').click()
-    assert page.locator('#m-spend,#m-income,#m-balance,#m-remain').all_text_contents()==amounts
+    expect(values).to_have_text(amounts)
     assert page.evaluate('localStorage.getItem("gleam-theme")')==before
     page.route('**/art/*.webp',lambda route:route.abort())
     page.reload()
     page.locator('#fab').wait_for()
-    page.wait_for_function("document.querySelector('#m-income').textContent!=='0.00'")
-    assert page.locator('#m-spend,#m-income,#m-balance,#m-remain').all_text_contents()==amounts
+    expect(values).to_have_text(amounts)
     assert page.locator('.mc-overview').evaluate('e=>getComputedStyle(e).backgroundColor')!='rgba(0, 0, 0, 0)'
     print(f'PASS overview art {width} {theme}; contrast {home_contrast}/{asset_contrast}; retained amounts and fallback',flush=True)
 

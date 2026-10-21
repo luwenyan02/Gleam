@@ -140,6 +140,16 @@ def main():
                 assert '¥123,456.78' in day2.get_attribute('aria-label')
                 assert day2.locator('.cd-amt').evaluate('e => parseFloat(getComputedStyle(e).fontSize) >= 12')
                 assert day3.locator('.cd-amt').evaluate('e => e.scrollWidth <= e.clientWidth + 1')
+                if text_scale > 1:
+                    amount = day3.locator('.cd-amt')
+                    previous_font = amount.evaluate("e => e.style.fontFamily")
+                    amount.evaluate("e => e.style.fontFamily = 'DejaVu Sans, sans-serif'")
+                    try:
+                        page.screenshot(path=str(OUT / f'calendar-wide-font-{label}-{theme}.png'), animations='disabled')
+                        assert amount.evaluate('e => e.scrollWidth <= e.clientWidth + 1'), 'wide-font calendar amount overflows'
+                        assert amount.evaluate('e => parseFloat(getComputedStyle(e).fontSize) >= 12')
+                    finally:
+                        amount.evaluate('(e, font) => e.style.fontFamily = font', previous_font)
                 day2.click()
                 page.wait_for_function("document.querySelector('#sp-calendar .cd-sum')?.textContent.includes('123,456.78')")
                 assert '-¥123,456.78' in page.locator('#sp-calendar .cd-sum').inner_text()

@@ -1,6 +1,6 @@
 """用户四项反馈的回归；所有账目、账户与对象均为虚构数据。"""
 import os
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 from test_acceptance_fixes import seed, SHOTS
 
 URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4601/')
@@ -18,8 +18,9 @@ def fixture(page):
 def home(page, width):
     fixture(page)
     card = page.locator('#hm-month')
+    expect(card).to_be_visible()
+    expect(page.locator('#m-balance')).to_have_text('-48,650.25')
     assert card.locator('.mc-unit').inner_text() == '单位：元'
-    assert page.locator('#m-balance').inner_text() == '-48,650.25'
     assert 'monospace' not in page.locator('#m-spend').evaluate('e=>getComputedStyle(e).fontFamily')
     values = page.locator('.mc-row > div').evaluate_all('els=>els.map(e=>e.getBoundingClientRect().width)')
     assert max(values)-min(values)<2
