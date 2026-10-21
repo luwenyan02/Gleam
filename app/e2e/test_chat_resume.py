@@ -75,7 +75,11 @@ def run(page, width, theme, scale):
     expect(page.locator('.chat-streaming')).to_contain_text('第一天')
     leave(page)
     delta(page, '\n\n第二天，在贵阳慢慢逛。')
-    page.wait_for_timeout(450)
+    page.wait_for_function('''async () => {
+      const db = await new Promise(resolve => { const r = indexedDB.open('GleamDB'); r.onsuccess=()=>resolve(r.result); });
+      const rows = await new Promise(resolve => { const r=db.transaction('lifeDrafts').objectStore('lifeDrafts').getAll(); r.onsuccess=()=>resolve(r.result); }); db.close();
+      return rows[0]?.chatReply?.content.endsWith('贵阳慢慢逛。');
+    }''')
     rows = read_rows(page, 'lifeDrafts')
     assert rows[0]['chatReply']['content'].endswith('贵阳慢慢逛。')
     assert len(rows[0]['messages']) == 1
