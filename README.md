@@ -10,7 +10,7 @@
 
 **[下载 Android 安装包](https://github.com/luwenyan02/Gleam/releases/latest)** · [看看界面](#看看界面) · [数据与备份](docs/data-backup.md) · [本地运行](#本地运行)
 
-这份介绍以已发布的 **[v1.11.32](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.32)** 为准。
+这份介绍以 **[v1.11.33](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.33)** 为准。
 
 ## 看看界面
 
