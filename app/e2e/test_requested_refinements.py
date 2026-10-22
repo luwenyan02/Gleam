@@ -115,10 +115,13 @@ def models(page, width):
     expect(page.locator('#ai-model')).to_have_value('api-extra-19')
     page.locator('#ai-model-pick').click();page.locator('.picker-item[data-value="gpt-6-astra"]').click();page.locator('.picker-mask').wait_for(state='detached')
     page.locator('#ai-model-pick').click();page.locator('.picker-panel.open').wait_for()
+    # The slide-in class precedes modal focus setup; Escape must target the ready picker.
+    expect(page.get_by_role('textbox',name='搜索选项')).to_be_focused()
     page.keyboard.press('Escape');page.locator('.picker-mask').wait_for(state='detached')
     page.locator('#ai-provider').click();page.locator('.picker-item[data-value="dashscope"]').click();page.locator('.picker-mask').wait_for(state='detached')
     page.locator('#ai-model-pick').click();page.locator('.picker-panel.open').wait_for()
     assert not any('api-extra-' in label for label in page.locator('.picker-item-label').all_inner_texts()), '拉取缓存不能串平台'
+    expect(page.get_by_role('textbox',name='搜索选项')).to_be_focused()
     page.keyboard.press('Escape');page.locator('.picker-mask').wait_for(state='detached')
     catalog_models(page, width, calls)
 
