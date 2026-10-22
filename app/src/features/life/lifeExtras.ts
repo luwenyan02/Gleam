@@ -1,4 +1,5 @@
 import { esc } from '../../core/esc';
+import { iconHtml } from '../../assets/icons';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
 import { listLifeNotes, updateLifeNote, linkEntryToLifeNote } from '../../core/repo/lifeRepo';
 import { getEntry } from '../../core/repo/entryRepo';
@@ -13,18 +14,29 @@ export async function openLifeAiControls(): Promise<void> {
   const enabled = await getSetting('life.aiEnabled');
   openSheet({ ariaLabel: '生活 AI 与隐私', render(el) {
     el.innerHTML = `<div class="lf-sheet-head"><p class="sheet-title">AI 与隐私</p><button class="icon-btn" data-life-close aria-label="关闭">×</button></div><div class="sheet-scroll life-ai-controls">
-      <p class="le-hint">生活记录默认留在本机。聊天点击发送即交给你设置的 AI 服务；整理记录、生成周刊和读取账本仍需确认素材。</p>
-      <label class="lc-check"><input type="checkbox" id="life-ai-enabled" ${enabled ? 'checked' : ''}>启用生活 AI</label>
-      <p class="le-hint">关闭后仍可记录与阅读已收藏周刊。单条记录可在“标题与更多”中排除；周刊可单独清理。</p>
-      <button class="btn ghost" data-life-ai-config>查看 AI 接口设置</button><p class="le-hint">周刊不自动生成，不发送照片和账单；无需每天记录，也没有补写任务。</p></div>`;
+      <label class="life-ai-toggle"><span>启用生活 AI</span><input type="checkbox" role="switch" id="life-ai-enabled" ${enabled ? 'checked' : ''}></label>
+      <div class="life-ai-privacy">
+        <div class="life-ai-privacy-copy">
+          <p>记录默认留在本机。关闭 AI 仍可记录、阅读已收藏周刊。</p>
+          <p>聊天与附件点击发送后、语音连接后，会传给你配置的 AI 服务。</p>
+          <p>整理、生成周刊和分析账本，需先确认内容。</p>
+        </div>
+        <details><summary>更多隐私说明</summary><p>单条记录可在「标题与更多」中排除。周刊可单独清理，不会自动生成，也不发送照片和账单。</p></details>
+      </div>
+      <button class="life-ai-settings" data-life-ai-config><span>AI 接口设置</span>${iconHtml('ic-right', 18)}</button></div>`;
     el.querySelector('[data-life-close]')!.addEventListener('click', closeSheet);
     el.querySelector('[data-life-ai-config]')!.addEventListener('click', () => { closeSheet(); openSubpage('sp-settings'); });
     el.querySelector<HTMLInputElement>('#life-ai-enabled')!.onchange = async event => {
       const checkbox = event.target as HTMLInputElement;
+      const hadFocus = document.activeElement === checkbox;
       checkbox.disabled = true;
       try { await setSetting('life.aiEnabled', checkbox.checked); showToast(checkbox.checked ? '已启用生活 AI' : '已关闭生活 AI'); }
       catch { checkbox.checked = !checkbox.checked; showToast('设置未保存，请重试'); }
-      finally { checkbox.disabled = false; }
+      finally {
+        checkbox.disabled = false;
+        if (hadFocus && checkbox.isConnected && !el.inert
+          && (document.activeElement === document.body || document.activeElement === el)) checkbox.focus({ preventScroll: true });
+      }
     };
   } });
 }
