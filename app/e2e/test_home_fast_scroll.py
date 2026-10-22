@@ -95,7 +95,8 @@ def run(browser, width, theme='light', scale=1):
         page.wait_for_timeout(900); expect(controls).to_be_visible()
         slider.press('Home'); page.wait_for_function('document.querySelector("#page-home").scrollTop<2')
         page.mouse.click(width / 2, 260)
-        page.wait_for_timeout(1000); expect(controls).to_be_hidden()
+        page.wait_for_timeout(1000); expect(controls).to_be_visible()
+        page.wait_for_timeout(650); expect(controls).to_be_hidden()
         # Continuous native touch scrolling must also reveal the capsule.
         if width == 390:
             cdp = context.new_cdp_session(page)
@@ -138,6 +139,69 @@ def run(browser, width, theme='light', scale=1):
         assert not errors, errors
         assert not external, external
         print(f'PASS home fast scroll {width}px {theme} text {scale}', flush=True)
+    finally: context.close()
+
+
+def feedback(browser):
+    context = browser.new_context(viewport={'width':390,'height':844}, service_workers='block', reduced_motion='no-preference')
+    context.route('**/*', lambda r: r.continue_() if urlsplit(r.request.url).netloc == urlsplit(URL).netloc else r.abort())
+    page = context.new_page()
+    try:
+        page.clock.set_fixed_time(datetime.fromisoformat('2026-10-18T12:00:00+08:00'))
+        page.goto(URL); page.locator('#fab').wait_for(); page.evaluate(SEED, 5); page.reload()
+        expect(page.locator('#hm-days [data-entry-row]')).to_have_count(60)
+        page.evaluate('()=>{window.pulses=[];navigator.vibrate=ms=>{pulses.push({ms,at:performance.now()});return true}}')
+        controls = page.locator('.hm-fast-scroll'); slider = controls.get_by_role('slider')
+        top = controls.get_by_role('button', name='回到顶部'); bottom = controls.get_by_role('button', name='直达底部')
+        reveal(page); track_reads(page)
+        page.wait_for_timeout(1000)
+        stayed_visible = controls.is_visible()
+        page.wait_for_timeout(650)
+        expect(controls).to_be_hidden()
+        reveal(page)
+        assert page.evaluate('pulses.length') == 0, 'ordinary scrolling must not vibrate'
+        bottom.click()
+        down = slider.locator('svg').evaluate('e=>e.getAnimations().map(a=>a.effect.getKeyframes().map(k=>k.transform))')
+        down_pulses = page.evaluate('pulses.length')
+        page.screenshot(path=str(OUT/'feedback-down.png'))
+        top.click()
+        up = slider.locator('svg').evaluate('e=>e.getAnimations().map(a=>a.effect.getKeyframes().map(k=>k.transform))')
+        up_pulses = page.evaluate('pulses.length')
+        page.screenshot(path=str(OUT/'feedback-up.png'))
+        assert stayed_visible, 'capsule should remain visible at 1s of idle'
+        assert down_pulses == 1 and up_pulses == 2, (down_pulses, up_pulses)
+        assert len(down) == len(up) == 1 and down != up, (down, up)
+        page.wait_for_timeout(450)
+        assert controls.locator('.hm-fast-grip svg').evaluate('e=>e.getAnimations().length') == 0
+        # Holding alone gives one tick; progress is throttled and clamped edges do not repeat.
+        box=slider.bounding_box(); x=box['x']+box['width']/2; y=box['y']+box['height']/2
+        page.mouse.move(x,y); page.mouse.down()
+        before=page.evaluate('pulses.length')
+        page.wait_for_timeout(1700); expect(controls).to_be_visible()
+        assert page.evaluate('pulses.length') == before
+        for i in range(1,9):
+            page.mouse.move(x,y+i*22); page.wait_for_timeout(125)
+        assert 1 <= page.evaluate('pulses.length')-before <= 4
+        page.mouse.move(x,y+520); page.wait_for_timeout(150)
+        at_end=page.evaluate('pulses.length')
+        for i in range(5):
+            page.mouse.move(x,y+525+i); page.wait_for_timeout(125)
+        assert page.evaluate('pulses.length') == at_end
+        page.mouse.up()
+        assert page.evaluate('ledgerReads') == 0, 'capsule gestures must not read ledger data'
+        top.click(); page.locator('#btn-search').click()
+        assert controls.locator('.hm-fast-grip svg').evaluate('e=>e.getAnimations().length') == 0
+        page.locator('#sp-search [data-act="back"]').click(); page.locator('#sp-search').wait_for(state='detached')
+        page.emulate_media(reduced_motion='reduce'); reveal(page)
+        # Opening search legitimately reads data; measure capsule operations separately.
+        page.evaluate('ledgerReads=0'); bottom.click()
+        assert slider.locator('svg').evaluate('e=>e.getAnimations().length') == 0
+        # Missing/rejected vibration must not affect navigation.
+        page.evaluate('()=>{navigator.vibrate=()=>{throw new Error("unavailable")}}'); top.click()
+        page.wait_for_function('document.querySelector("#page-home").scrollTop<2')
+        assert page.evaluate('ledgerReads') == 0
+        expect(page.locator('#hm-days [data-entry-row]')).to_have_count(60)
+        print('PASS idle 1.5s, directional finite animation, haptic ticks/throttle/edges/fallback, zero ledger reads', flush=True)
     finally: context.close()
 
 
@@ -206,6 +270,7 @@ if __name__ == '__main__':
     OUT.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
         browser=p.chromium.launch()
+        feedback(browser)
         for width,theme,scale in [(360,'light',1),(390,'light',1),(430,'dark',1.3),(1280,'light',1)]:
             run(browser,width,theme,scale)
         long_history(browser)

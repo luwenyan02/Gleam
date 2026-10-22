@@ -1,3 +1,5 @@
+import { entryKeyFeedback } from '../entry/entryKeyFeedback';
+
 /** Compact home-only navigation. The surrounding list retains native touch scrolling. */
 export function bindHomeFastScroll(page: HTMLElement) {
   const anchor = document.createElement('div');
@@ -14,10 +16,12 @@ export function bindHomeFastScroll(page: HTMLElement) {
   const top = control.querySelector<HTMLButtonElement>('[data-fast-top]')!;
   const bottom = control.querySelector<HTMLButtonElement>('[data-fast-bottom]')!;
   const grip = control.querySelector<HTMLElement>('[role="slider"]')!;
+  const gripIcon = grip.querySelector('svg')!;
+  let feedbackAnimation: Animation | undefined;
   let frame = 0, settling = 0, hideTimer = 0;
   let revealed = false, held = false, keyboardFocus = false, userScroll = false;
   let lastY = page.scrollTop, lastAt = 0, fastSince = 0, lastFastAt = 0;
-  let drag: { id: number; y: number; fraction: number; travel: number } | undefined;
+  let drag: { id: number; y: number; fraction: number; travel: number; tick: number; tickAt: number } | undefined;
   const range = () => Math.max(0, page.scrollHeight - page.clientHeight);
   const active = () => page.isConnected && !page.inert && page.classList.contains('is-active');
   const fraction = () => range() ? page.scrollTop / range() : 0;
@@ -29,7 +33,7 @@ export function bindHomeFastScroll(page: HTMLElement) {
       if (held || drag || (keyboardFocus && control.contains(document.activeElement))) return;
       revealed = false;
       update();
-    }, 800);
+    }, 1500);
   }
   function wake() {
     revealed = true;
@@ -49,6 +53,8 @@ export function bindHomeFastScroll(page: HTMLElement) {
   function cancel() {
     cancelAnimationFrame(settling);
     settling = 0;
+    feedbackAnimation?.cancel();
+    feedbackAnimation = undefined;
   }
   function move(value: number) {
     userScroll = false; fastSince = 0;
@@ -65,8 +71,25 @@ export function bindHomeFastScroll(page: HTMLElement) {
     control.classList.remove('is-dragging');
     wake();
   }
-  top.addEventListener('click', () => { cancel(); move(0); wake(); });
-  bottom.addEventListener('click', () => { cancel(); userScroll = false; wake(); end(); });
+  function jump(target: number) {
+    const before = page.scrollTop;
+    cancel();
+    if (target >= 1) end();
+    else move(target);
+    wake();
+    const direction = Math.sign(page.scrollTop - before);
+    if (!direction) return;
+    void entryKeyFeedback();
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // Animate only the grip, once; never interpolate or reload the long ledger list.
+    feedbackAnimation = gripIcon.animate([
+      { transform: 'translateY(0)', opacity: 1 },
+      { transform: `translateY(${direction * 5}px)`, opacity: .45, offset: .4 },
+      { transform: 'translateY(0)', opacity: 1 },
+    ], { duration: 360, easing: 'ease-out' });
+  }
+  top.addEventListener('click', () => jump(0));
+  bottom.addEventListener('click', () => jump(1));
   control.addEventListener('pointerdown', () => { held = true; keyboardFocus = false; });
   for (const event of ['pointerup', 'pointercancel']) window.addEventListener(event, () => {
     if (held) { held = false; hideLater(); }
@@ -77,21 +100,27 @@ export function bindHomeFastScroll(page: HTMLElement) {
     if (!event.isPrimary || event.button !== 0) return;
     event.preventDefault(); cancel();
     grip.focus({ preventScroll: true });
-    drag = { id: event.pointerId, y: event.clientY, fraction: fraction(), travel: Math.max(160, page.clientHeight * .6) };
+    drag = { id: event.pointerId, y: event.clientY, fraction: fraction(), travel: Math.max(160, page.clientHeight * .6), tick: fraction(), tickAt: performance.now() };
+    void entryKeyFeedback();
     grip.setPointerCapture(event.pointerId);
     control.classList.add('is-dragging'); wake();
   });
   grip.addEventListener('pointermove', event => {
     if (!drag || drag.id !== event.pointerId) return;
     move(drag.fraction + (event.clientY - drag.y) / drag.travel);
+    const position = fraction(), now = performance.now();
+    // One light tick per ~10% travel, at most every 120ms; no repeated edge buzz.
+    if (Math.abs(position - drag.tick) >= .1 && now - drag.tickAt >= 120) {
+      drag.tick = position; drag.tickAt = now;
+      void entryKeyFeedback();
+    }
   });
   for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) grip.addEventListener(event, finishDrag);
   grip.addEventListener('keydown', event => {
     const step = { ArrowUp: -.05, ArrowDown: .05, PageUp: -.2, PageDown: .2 }[event.key];
     if (step === undefined && !['Home', 'End'].includes(event.key)) return;
-    event.preventDefault(); event.stopPropagation(); keyboardFocus = true; cancel(); wake();
-    if (event.key === 'End') end();
-    else move(event.key === 'Home' ? 0 : fraction() + step!);
+    event.preventDefault(); event.stopPropagation(); keyboardFocus = true;
+    jump(event.key === 'End' ? 1 : event.key === 'Home' ? 0 : fraction() + step!);
   });
   // Cancel a pending jump as soon as the user resumes normal navigation.
   for (const event of ['pointerdown', 'touchstart', 'wheel', 'keydown']) {
