@@ -152,7 +152,8 @@ function renderSkeleton(el: HTMLElement): void {
     if (!btn) return;
     const act = btn.dataset.qa!;
     if (act === 'all') {
-      openPickList({ container: el, title: '全部功能', items: HOME_SERVICES.map(service => ({ value: service.key, label: service.name, icon: service.icon })), onPick: key => void openService(key as HomeService) });
+      const container = el.closest<HTMLElement>('.app') ?? el;
+      openPickList({ container, title: '全部功能', items: HOME_SERVICES.map(service => ({ value: service.key, label: service.name, icon: service.icon })), onPick: key => void openService(key as HomeService) });
     } else void openService(act as HomeService);
   });
 
