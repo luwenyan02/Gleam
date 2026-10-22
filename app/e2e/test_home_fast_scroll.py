@@ -17,10 +17,10 @@ def reveal(page):
     direction = home.evaluate('e=>e.scrollHeight-e.clientHeight-e.scrollTop<2600?-1:1')
     box = home.bounding_box()
     page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
-    for _ in range(19):
+    for _ in range(7):
         page.mouse.wheel(0, direction * 100)
         page.wait_for_timeout(70)
-    expect(page.locator('.hm-fast-scroll')).to_be_visible()
+    expect(page.locator('.hm-fast-scroll')).to_be_visible(timeout=500)
 
 
 def track_reads(page):
@@ -61,7 +61,7 @@ def run(browser, width, theme='light', scale=1):
         for _ in range(17):
             page.mouse.wheel(0, 5); page.wait_for_timeout(75)
         expect(controls).to_be_hidden()
-        for _ in range(5):
+        for _ in range(2):
             page.mouse.wheel(0, 100); page.wait_for_timeout(70)
         expect(controls).to_be_hidden()
         page.wait_for_timeout(900)

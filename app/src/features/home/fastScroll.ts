@@ -112,7 +112,7 @@ export function bindHomeFastScroll(page: HTMLElement) {
         // Brief lift/re-touch gaps are still one sustained browsing gesture.
         if (!fastSince || now - lastFastAt > 250) fastSince = lastAt;
         lastFastAt = now;
-        if (now - fastSince >= 1000) revealed = true;
+        if (now - fastSince >= 300) revealed = true;
       } else if (now - lastFastAt > 250) fastSince = 0;
       hideLater();
     }
