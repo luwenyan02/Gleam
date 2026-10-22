@@ -1,5 +1,13 @@
 # 拾光项目状态与交接
 
+## Vitest 开发测试依赖安全更新（2026-10-22）
+
+按用户要求，将Vitest最低版本从5.0.0提升至5.0.3，锁定Vitest、`@vitest/mocker`和`@vitest/spy`为5.0.3；随上游更新`why-is-node-running`至3.2.1，移除不再使用的siginfo与stackback。对应修复公告：[未认证手动mock注册](https://github.com/advisories/GHSA-qxg6-89mg-rqv8)、[Windows反斜杠路径穿越](https://github.com/advisories/GHSA-xp26-3454-mjgp)。运行时依赖、Vite、应用版本和功能源码均未改动。
+
+npm 10.9.9更新锁文件时遇到可选peer依赖解析崩溃；仅生成锁文件阶段临时使用legacy-peer-deps，保留无关包的原版本与平台元数据，未写入默认配置。随后标准`npm ci --ignore-scripts`与`npm ls --all`通过，无需额外安装参数。全依赖审计0项漏洞，122个文件／1502项单元测试、生产构建及敏感信息检查通过；32个生产网页文件与已发布1.11.33逐字节相同，因此沿用既有浏览器视觉验收。本轮仅同步preview/orbstack，精确提交与Preview checks结果见交付；不合入main或发布APK。
+
+修改前恢复快照：`.tmp/backups/vitest-security/tracked-before.tar`。
+
 ## v1.11.33 首页快滑与隐私面板发布（2026-10-22）
 
 用户已验收预览 `63c40746d3c67368a909ff46483824e34490acc4`，明确要求合入 main 并打包发布。版本1.11.33 / 11133，复用原F979证书，发布APK与SHA-256并设为正式latest，正常同步预览。包含首页右侧半透明快滑控件、拖动定位及首尾直达，调整静置可见度；生活「AI 与隐私」改为开关、带图标的三条精简说明、折叠补充说明与接口设置入口，并保留键盘切换焦点。数据发送与授权逻辑不变。
