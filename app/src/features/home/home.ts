@@ -12,10 +12,10 @@ import { on } from '../../core/store';
 import { type Category, type LifeNote } from '../../core/types';
 import type { LedgerItem } from '../../core/ledgerEvents';
 import { summarizeLedgerEntries } from '../../core/ledgerQuery';
-import { listEntries, getEntry, dayKey } from '../../core/repo/entryRepo';
+import { listEntries, getEntry, getEarliestEntryDate, dayKey } from '../../core/repo/entryRepo';
 import { listCategories, listExpenseTree } from '../../core/repo/categoryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
-import { listLifeNotes } from '../../core/repo/lifeRepo';
+import { listLifeNotes, getEarliestLifeNoteDate } from '../../core/repo/lifeRepo';
 import { listTemplates } from '../../core/repo/templateRepo';
 import { getSetting } from '../../core/repo/settingsRepo';
 import { monthSummary, budgetUsage, ledgerEntriesInRange } from '../../core/repo/statsRepo';
@@ -39,6 +39,7 @@ import { openLedgerSearch } from '../search/search';
 import { openLifeNotePreview } from '../life/lifeNotePreview';
 
 import { bindSpendingRhythm, refreshSpendingRhythm, spendingRhythmHtml } from './spendingRhythm';
+import { bindHomeFastScroll } from './fastScroll';
 
 let root: HTMLElement | null = null;
 let monthsShown = 3;
@@ -56,6 +57,8 @@ let paginationRequiresBottom = true;
 let dayTimer = 0;
 let needsRefresh = true;
 let refreshedDay = '';
+let jumpToEnd = false;
+let fastScroll: ReturnType<typeof bindHomeFastScroll> | undefined;
 
 function showHome(): void {
   if (needsRefresh || refreshedDay !== dayKey(Date.now())) scheduleRefresh();
@@ -190,6 +193,18 @@ function renderSkeleton(el: HTMLElement): void {
   });
   el.querySelector('#hm-more')!.addEventListener('click', () => loadMore(el, false));
   bindTimelineScroll(el);
+  fastScroll = bindHomeFastScroll(el, {
+    bottom() {
+      jumpToEnd = true;
+      paginationPending = false;
+      fastScroll?.refresh(exhausted, true);
+      void refresh();
+    },
+    cancel() {
+      jumpToEnd = false;
+      fastScroll?.refresh(exhausted);
+    },
+  });
 }
 
 async function openService(key: HomeService): Promise<void> {
@@ -251,6 +266,7 @@ function bindTimelineScroll(el: HTMLElement): void {
   }, { passive: true });
   let touch: { x: number; y: number; bottom: boolean; used: boolean } | undefined;
   el.addEventListener('touchstart', event => {
+    if ((event.target as HTMLElement).closest('.hm-fast-scroll')) { touch = undefined; return; }
     const point = event.touches.length === 1 ? event.touches[0] : undefined;
     touch = point ? { x: point.clientX, y: point.clientY, bottom: atTimelineBottom(el), used: false } : undefined;
   }, { passive: true });
@@ -302,6 +318,7 @@ async function refresh(): Promise<void> {
   if (loading) { refreshPending = true; return; }
   needsRefresh = true;
   loading = true;
+  const endRequested = jumpToEnd;
   try {
     const [mods, layout] = await Promise.all([getSetting('home.modules'), getHomeLayout()]);
     if (el.inert || currentPage() !== 'page-home') return;
@@ -333,8 +350,18 @@ async function refresh(): Promise<void> {
       for (const node of el.querySelectorAll<HTMLElement>(selectors[key])) node.style.order = String(index);
     }
     refreshVisibleMonth(el);
+    fastScroll?.refresh(exhausted);
+    if (endRequested && jumpToEnd) {
+      jumpToEnd = false;
+      fastScroll?.end();
+    }
     needsRefresh = false;
     refreshedDay = dayKey(Date.now());
+  } catch (error) {
+    jumpToEnd = false;
+    fastScroll?.refresh(exhausted);
+    showToast('流水加载失败，请稍后重试');
+    console.warn('[home] timeline refresh failed', error);
   } finally {
     loading = false;
     window.clearTimeout(dayTimer);
@@ -411,6 +438,16 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
     monthsShown = 3;
     timelineMonth = anchor;
     timelineStartDay = startDay;
+  }
+  if (jumpToEnd && showPast) {
+    const dates = await Promise.all([getEarliestEntryDate(), getEarliestLifeNoteDate()]);
+    if (el.inert || currentPage() !== 'page-home') return;
+    const earliest = Math.min(...dates.filter((date): date is number => date !== undefined));
+    if (jumpToEnd && Number.isFinite(earliest)) {
+      const [year, month] = anchor.split('-').map(Number);
+      const [oldYear, oldMonth] = accountingMonthForTimestamp(earliest, startDay).split('-').map(Number);
+      monthsShown = Math.max(monthsShown, (year - oldYear) * 12 + month - oldMonth + 1);
+    }
   }
   const window = homeTimelineWindow(anchor, startDay, monthsShown);
   const [cats, tree, accounts, countAsIncome, olderEntries, olderNotes] = await Promise.all([

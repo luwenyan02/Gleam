@@ -105,6 +105,13 @@ export async function listDeletedLifeNotes(): Promise<LifeNote[]> {
   return rows.sort((a, b) => b.deletedAt - a.deletedAt);
 }
 
+/** 首页直达底部只读取最早有效记录的索引，不扫描回收站。 */
+export async function getEarliestLifeNoteDate(): Promise<number | undefined> {
+  const note = await db.lifeNotes.where('[deletedAt+occurredAt]')
+    .between([0, 0], [0, Infinity], true, false).first();
+  return note?.occurredAt;
+}
+
 /* ── 照片附件 ─────────────────────── */
 
 /**
