@@ -105,16 +105,16 @@
 
 #hm-days [data-home-life-note]{cursor:pointer}
 
-/* 按需显示的 48px 胶囊，内收至页面留白；sticky 锚点不挤动流水。 */
-.hm-fast-anchor{position:sticky;top:calc(61% - 72px);height:0;width:48px;align-self:flex-end;order:-2;z-index:9;margin-right:0}
-.hm-fast-scroll{position:relative;display:flex;flex-direction:column;width:48px;height:144px;color:var(--muted);opacity:.78;transition:opacity .18s ease}
-.hm-fast-scroll::before{content:'';position:absolute;inset:0;border-radius:24px;background:color-mix(in srgb,var(--surface) 58%,transparent);border:1px solid color-mix(in srgb,var(--border) 50%,transparent);pointer-events:none}
-.hm-fast-scroll button,.hm-fast-grip{position:relative;display:grid;place-items:center;width:48px;min-width:48px;height:48px;min-height:48px;border-radius:24px}
+/* 按需显示的 52.8px 胶囊，内收至页面留白；sticky 锚点不挤动流水。 */
+.hm-fast-anchor{position:sticky;top:calc(61% - 72px);height:0;width:52.8px;align-self:flex-end;order:-2;z-index:9;margin-right:0}
+.hm-fast-scroll{position:relative;display:flex;flex-direction:column;width:52.8px;height:144px;color:var(--muted);opacity:.88;transition:opacity .18s ease}
+.hm-fast-scroll::before{content:'';position:absolute;inset:0;border-radius:24px;background:color-mix(in srgb,var(--surface) 72%,transparent);border:1px solid color-mix(in srgb,var(--border) 65%,transparent);pointer-events:none}
+.hm-fast-scroll button,.hm-fast-grip{position:relative;display:grid;place-items:center;width:52.8px;min-width:52.8px;height:48px;min-height:48px;border-radius:24px}
 .hm-fast-scroll svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .hm-fast-grip{touch-action:none;user-select:none;cursor:ns-resize}
 .hm-fast-grip svg{stroke-width:3}
 .hm-fast-scroll button:disabled{opacity:.28}
-.hm-fast-scroll.is-awake,.hm-fast-scroll:focus-within,.hm-fast-scroll:hover{opacity:.92}
+.hm-fast-scroll.is-awake,.hm-fast-scroll:focus-within,.hm-fast-scroll:hover{opacity:.96}
 .hm-fast-scroll.is-dragging{opacity:1;color:var(--primary)}
 #page-home[inert] .hm-fast-anchor,#page-home:not(.is-active) .hm-fast-anchor{visibility:hidden;pointer-events:none}
 @media(prefers-reduced-motion:reduce){.hm-fast-scroll{transition:none}}
