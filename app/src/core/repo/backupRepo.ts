@@ -65,7 +65,7 @@ export function sanitizeDumpForBackup(dump: TableDump): TableDump {
       return { ...r, value: { username: typeof cfg?.username === 'string' ? cfg.username : '', recipient: typeof cfg?.recipient === 'string' ? cfg.recipient : '' } };
     }
     if (r.key === 'ai.apiKey' || r.key === 'voice.bailian.apiKey') return { ...r, value: '' };
-    if (r.key === 'life.aiEnabled') return { ...r, value: false };
+    if (r.key === 'life.aiEnabled' || r.key === 'ai.noteDecision.enabled') return { ...r, value: false };
     if (r.key === 'cloud.webdav') return { ...r, value: { ...(r.value as Record<string, unknown>), password: '' } };
     if (r.key === 'cloud.s3') return { ...r, value: { ...(r.value as Record<string, unknown>), accessKey: '', secretKey: '' } };
     return row;
@@ -91,6 +91,7 @@ export async function restoreAll(dump: Partial<TableDump>): Promise<void> {
       if (rows?.length) await db.table(name).bulkAdd(rows as never[]);
     }
     await db.settings.put({ key: 'life.aiEnabled', value: false, updatedAt: now() });
+    await db.settings.put({ key: 'ai.noteDecision.enabled', value: false, updatedAt: now() });
     // 语音凭据只属于原生安全存储；不采用任何备份中夹带的明文 Key。
     await db.settings.delete('voice.bailian.apiKey');
   });

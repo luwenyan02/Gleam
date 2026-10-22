@@ -28,6 +28,7 @@ import { bailianVoiceSettingsHtml, handleVoiceSettingsChange, handleVoiceSetting
 
 import { getVoiceSettingsEpoch, invalidateVoiceConnectionTest, mountVoiceConnectionTest, syncVoiceConnectionTest } from './bailianVoiceTestSettings';
 import { aiKeyInputHtml, getAiKeySettingsEpoch, handleAiKeyChange, handleAiKeyInput, preserveAiKeyDraft } from './aiKeySettings';
+import { noteDecisionSettingsHtml, preserveNoteDecisionDraft, handleNoteDecisionInput, handleNoteDecisionChange, handleNoteDecisionClick } from './noteDecisionSettings';
 
 let body: HTMLElement | undefined;
 let sheetAbort: AbortController | undefined;
@@ -67,7 +68,7 @@ async function refresh(): Promise<void> {
     getSetting('accounting.monthStartDay'),
   ]);
   if (!el.isConnected) return;
-  const voiceSettings = await bailianVoiceSettingsHtml();
+  const [voiceSettings, noteDecisionSettings] = await Promise.all([bailianVoiceSettingsHtml(), noteDecisionSettingsHtml()]);
   if (!el.isConnected) return;
   const currentAccountingMonth = await getAccountingMonth();
   const currentAccountingRange = await accountingMonthRange(currentAccountingMonth);
@@ -99,6 +100,7 @@ async function refresh(): Promise<void> {
   if (voiceEpoch !== getVoiceSettingsEpoch()) { void refresh(); return; }
   if (aiKeyEpoch !== getAiKeySettingsEpoch()) { void refresh(); return; }
   const restoreAiKeyDraft = preserveAiKeyDraft(el);
+  const restoreNoteDecisionDraft = preserveNoteDecisionDraft(el);
   const voiceWorkspaceInput = el.querySelector<HTMLInputElement>('#voice-bailian-workspace');
   const voiceWorkspaceDraft = voiceWorkspaceInput?.dataset.voiceDirty ? voiceWorkspaceInput.value : undefined;
   const voiceKeyDraft = isVoiceKeyWritePending() ? '' : el.querySelector<HTMLInputElement>('#voice-bailian-key')?.value ?? '';
@@ -168,6 +170,7 @@ async function refresh(): Promise<void> {
           <button class="chip" data-act="ai-test">测试连接</button>
         </div>
       </div>
+      ${noteDecisionSettings}
     </section>
 
     ${voiceSettings}`;
@@ -179,6 +182,7 @@ async function refresh(): Promise<void> {
     if (section) el.appendChild(section);
   }
   restoreAiKeyDraft();
+  restoreNoteDecisionDraft();
   for (const detail of el.querySelectorAll<HTMLDetailsElement>('details[data-settings-detail]')) detail.open = expandedDetails.has(detail.dataset.settingsDetail);
   const voiceInput = el.querySelector<HTMLInputElement>('#voice-bailian-key');
   if (voiceInput && !voiceInput.disabled) voiceInput.value = voiceKeyDraft;
@@ -274,6 +278,7 @@ export function initSettings(): void {
       el.addEventListener('click', (e) => {
         const t = e.target as HTMLElement;
         if (handleVoiceSettingsClick(t, el)) return;
+        if (handleNoteDecisionClick(t, el)) return;
         const sw = t.closest<HTMLElement>('[data-sw]')?.dataset.sw;
         const themeMode = t.closest<HTMLElement>('[data-theme-mode]')?.dataset.themeMode as 'light' | 'dark' | 'system' | undefined;
         const act = t.closest<HTMLElement>('[data-act]')?.dataset.act;
@@ -414,6 +419,7 @@ export function initSettings(): void {
       el.addEventListener('change', (e) => {
         const t = e.target as HTMLInputElement;
         if (handleVoiceSettingsChange(t)) return;
+        if (handleNoteDecisionChange(t)) return;
         if (handleAiKeyChange(t)) return;
         if (t.id === 'ai-base') void setSetting('ai.baseUrl', t.value.trim());
         else if (t.id === 'ai-model') void setSetting('ai.model', t.value.trim());
@@ -427,6 +433,7 @@ export function initSettings(): void {
       el.addEventListener('input', (e) => {
         const t = e.target as HTMLInputElement;
         if (handleVoiceSettingsInput(t)) return;
+        if (handleNoteDecisionInput(t)) return;
         if (handleAiKeyInput(t)) {
           invalidateVoiceConnectionTest('主 API Key 输入已变化，请重新测试');
           return;
