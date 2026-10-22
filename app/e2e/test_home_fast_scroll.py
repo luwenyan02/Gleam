@@ -1,4 +1,4 @@
-"""Fast-scroll gestures, bounded long-history DOM, and interaction after jumping."""
+"""Fast-scroll gestures never query data; only an explicit list pull expands the loaded months."""
 import os
 import time
 from datetime import datetime
@@ -21,6 +21,20 @@ def reveal(page):
         page.mouse.wheel(0, direction * 100)
         page.wait_for_timeout(70)
     expect(page.locator('.hm-fast-scroll')).to_be_visible()
+
+
+def track_reads(page):
+    page.evaluate("""()=>{
+      window.ledgerReads=0;
+      for(const proto of [IDBObjectStore.prototype,IDBIndex.prototype])
+        for(const name of ['get','getKey','getAll','getAllKeys','getAllRecords','openCursor','openKeyCursor','count']) {
+          const original=proto[name]; if(!original)continue;
+          proto[name]=function(...args){
+            if(['entries','lifeNotes'].includes(this.objectStore?.name??this.name))window.ledgerReads++;
+            return original.apply(this,args);
+          };
+        }
+    }""")
 
 
 def run(browser, width, theme='light', scale=1):
@@ -59,6 +73,7 @@ def run(browser, width, theme='light', scale=1):
         assert .5 < (box['y'] + box['height']/2 - viewport['y']) / viewport['height'] < .75
         assert_usable(page, '.hm-fast-scroll')
         page.screenshot(path=str(OUT/f'flow-{width}-{theme}-{scale}.png'), animations='disabled')
+        track_reads(page)
         # Hide even if a prior pointer click focused a control; touching it keeps it alive.
         box = slider.bounding_box(); x = box['x'] + box['width']/2; y = box['y'] + box['height']/2
         before = home.evaluate('e=>e.scrollTop')
@@ -68,10 +83,10 @@ def run(browser, width, theme='light', scale=1):
         assert home.evaluate('e=>e.scrollTop') > before + 300
         expect(page.locator('#sheet.open')).to_have_count(0)
         bottom.click()
-        expect(page.locator('#hm-days [data-entry-row]')).to_have_count(140)
-        expect(page.locator('#hm-more')).to_have_text('已展示全部流水')
+        expect(page.locator('#hm-days [data-entry-row]')).to_have_count(60)
+        expect(page.locator('#hm-more')).to_have_text('再上拉加载2026年7月')
         page.wait_for_function('(()=>{const e=document.querySelector("#page-home");return e.scrollHeight-e.clientHeight-e.scrollTop<3})()')
-        expect(page.locator('[data-entry-row="121"]')).to_be_in_viewport()
+        expect(page.locator('[data-entry-row="41"]')).to_be_in_viewport()
         expect(bottom).to_be_disabled()
         top.click(); page.wait_for_function('document.querySelector("#page-home").scrollTop<2')
         expect(top).to_be_disabled()
@@ -104,6 +119,10 @@ def run(browser, width, theme='light', scale=1):
             cdp.send('Input.dispatchTouchEvent', {'type':'touchEnd','touchPoints':[]})
             assert home.evaluate('e=>e.scrollTop') > before+300
             assert not controls.evaluate('el=>el.classList.contains("is-dragging")')
+        slider.focus(); slider.press('End'); slider.press(' '); slider.press('PageDown')
+        page.wait_for_timeout(200)
+        assert page.evaluate('ledgerReads') == 0
+        expect(page.locator('#hm-days [data-entry-row]')).to_have_count(60)
         top.click(); page.locator('#btn-search').click(); expect(controls).to_be_hidden()
         page.locator('#sp-search [data-act="back"]').click()
         page.locator('#sp-search').wait_for(state='detached'); expect(controls).to_be_hidden()
@@ -138,48 +157,48 @@ def long_history(browser):
           notes.put({id:992,kind:'diary',title:'已删除的更早记录',body:'不应出现',occurredAt:new Date(2020,0,1).getTime(),deletedAt:1,createdAt:1,updatedAt:1});
           await new Promise(r=>tx.oncomplete=r);db.close();
         }''')
-        page.reload();expect(page.locator('#hm-days [data-entry-row]').first).to_be_visible()
+        page.reload();expect(page.locator('#hm-days [data-entry-row]')).to_have_count(750)
         controls=page.locator('.hm-fast-scroll');home=page.locator('#page-home')
         cdp=context.new_cdp_session(page);cdp.send('Emulation.setCPUThrottlingRate',{'rate':4})
-        reveal(page)
+        reveal(page); track_reads(page)
         start=time.monotonic();controls.get_by_role('button',name='直达底部').click()
-        expect(page.locator('[data-home-life-note="991"]')).to_be_in_viewport(timeout=20000)
-        expect(page.locator('#hm-more')).to_have_text('已展示全部流水')
-        expect(page.locator('[data-home-life-note="992"]')).to_have_count(0)
-        elapsed=time.monotonic()-start
         page.wait_for_function('(()=>{const e=document.querySelector("#page-home");return e.scrollHeight-e.clientHeight-e.scrollTop<3})()')
-        # All history is navigable without retaining 10,000 interactive rows.
-        assert page.locator('#hm-days [data-entry-row]').count() < 240
-        assert page.locator('#hm-days *').count() < 15000
-        reveal(page);controls.get_by_role('button',name='回到顶部').click()
+        elapsed=time.monotonic()-start
+        expect(page.locator('#hm-days [data-entry-row]')).to_have_count(750)
+        expect(page.locator('[data-entry-row="501"]')).to_be_in_viewport()
+        expect(page.locator('[data-home-life-note="991"]')).to_have_count(0)
+        expect(page.locator('#hm-more')).to_have_text('再上拉加载2026年7月')
+        slider=controls.get_by_role('slider')
+        slider.focus();slider.press('Home');slider.press('End');slider.press('PageDown');slider.press(' ')
+        page.wait_for_timeout(300)
+        box=slider.bounding_box();page.mouse.move(box['x']+24,box['y']+24)
+        page.mouse.wheel(0,120);page.wait_for_timeout(250)
+        assert page.evaluate('ledgerReads')==0
+        expect(page.locator('#hm-days [data-entry-row]')).to_have_count(750)
+        # A new upward pull on the list (outside the capsule) still loads exactly one month.
+        page.mouse.move(180,500);page.mouse.wheel(0,120)
+        expect(page.locator('#hm-days [data-entry-row]')).to_have_count(1000)
+        expect(page.locator('#hm-more')).to_have_text('再上拉加载2026年6月')
+        page.wait_for_timeout(500)
+        reveal(page);page.evaluate('ledgerReads=0')
+        controls.get_by_role('button',name='直达底部').click()
+        page.wait_for_function('(()=>{const e=document.querySelector("#page-home");return e.scrollHeight-e.clientHeight-e.scrollTop<3})()')
+        controls.get_by_role('button',name='回到顶部').click()
         page.wait_for_function('document.querySelector("#page-home").scrollTop<2')
         expect(page.locator('[data-entry-row="250"]')).to_be_visible()
+        expect(page.locator('#hm-days [data-entry-row]')).to_have_count(1000)
+        assert page.evaluate('ledgerReads')==0
+        start=time.monotonic()
         for _ in range(3):
             page.locator('[data-page="page-mine"]').click();expect(page.locator('#page-mine')).to_have_class('page is-active')
             page.locator('[data-page="page-home"]').click()
             expect(page.locator('[data-entry-row="250"]')).to_be_visible()
-        # Clicking an actual row still opens the correct detail after recycling.
+        tabs=(time.monotonic()-start)/3
         page.locator('[data-entry="250"]').click();expect(page.locator('#sp-entry-view .entry-view-hero')).to_contain_text('-12.00')
         page.locator('#sp-entry-view [data-act="back"]').click();expect(page.locator('#sp-entry-view')).to_have_count(0)
-        home.evaluate('e=>e.scrollTop=(e.scrollHeight-e.clientHeight)*.5')
-        page.wait_for_timeout(400)
-        assert 0 < page.locator('#hm-days [data-entry-row]').count() < 240
-        row=page.locator('#hm-days [data-entry]').first
-        assert 4000 < int(row.get_attribute('data-entry')) < 6500
-        home.evaluate('e=>e.scrollTop=0');page.wait_for_timeout(300)
-        frame_stats=page.evaluate('''async()=>{const h=document.querySelector('#page-home');let start=performance.now(),prev=start,max=0,n=0;return await new Promise(r=>{function tick(now){max=Math.max(max,now-prev);prev=now;h.scrollTop+=120;n++;if(now-start<2000)requestAnimationFrame(tick);else r({n,max})}requestAnimationFrame(tick)})}''')
-        assert page.locator('#hm-days [data-entry-row]').count() < 240
-        page.evaluate("""async()=>{
-          const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)});
-          const tx=db.transaction(['entries','lifeNotes'],'readwrite');tx.objectStore('entries').clear();const notes=tx.objectStore('lifeNotes');notes.clear();
-          for(let i=0;i<201;i++)notes.put({id:i+1,kind:'diary',title:'虚构生活记录'+i,body:'虚构内容',occurredAt:new Date(2026,9,10).getTime()+i,deletedAt:0,createdAt:1,updatedAt:1});
-          await new Promise(r=>tx.oncomplete=r);db.close();
-        }""")
-        page.reload();expect(page.locator('[data-home-life-note="201"]')).to_be_visible()
-        home.evaluate('e=>e.scrollTop=1000');page.wait_for_timeout(300)
-        expect(page.locator('#hm-month-overlay')).to_be_hidden()
+        expect(page.locator('#hm-days [data-entry-row]')).to_have_count(1000)
         assert not errors,errors
-        print(f'PASS 10000 rows, bounded DOM, repeated tab switching, row details; jump {elapsed:.2f}s, frames {frame_stats}',flush=True)
+        print(f'PASS 10000 stored rows: capsule zero reads, loaded 750 unchanged; explicit pull adds 250, capsule retains 1000; jump {elapsed:.2f}s, tab roundtrip {tabs:.2f}s',flush=True)
     finally:context.close()
 
 

@@ -1,5 +1,5 @@
 /** Compact home-only navigation. The surrounding list retains native touch scrolling. */
-export function bindHomeFastScroll(page: HTMLElement, actions: { bottom(): void; cancel(): void }) {
+export function bindHomeFastScroll(page: HTMLElement) {
   const anchor = document.createElement('div');
   anchor.className = 'hm-fast-anchor';
   anchor.innerHTML = `<div class="hm-fast-scroll" role="group" aria-label="快速浏览流水" hidden>
@@ -14,7 +14,7 @@ export function bindHomeFastScroll(page: HTMLElement, actions: { bottom(): void;
   const top = control.querySelector<HTMLButtonElement>('[data-fast-top]')!;
   const bottom = control.querySelector<HTMLButtonElement>('[data-fast-bottom]')!;
   const grip = control.querySelector<HTMLElement>('[role="slider"]')!;
-  let exhausted = false, busy = false, frame = 0, settling = 0, hideTimer = 0;
+  let frame = 0, settling = 0, hideTimer = 0;
   let revealed = false, held = false, keyboardFocus = false, userScroll = false;
   let lastY = page.scrollTop, lastAt = 0, fastSince = 0, lastFastAt = 0;
   let drag: { id: number; y: number; fraction: number; travel: number } | undefined;
@@ -26,7 +26,7 @@ export function bindHomeFastScroll(page: HTMLElement, actions: { bottom(): void;
     window.clearTimeout(hideTimer);
     hideTimer = window.setTimeout(() => {
       userScroll = false; fastSince = 0;
-      if (held || drag || busy || (keyboardFocus && control.contains(document.activeElement))) return;
+      if (held || drag || (keyboardFocus && control.contains(document.activeElement))) return;
       revealed = false;
       update();
     }, 800);
@@ -39,19 +39,16 @@ export function bindHomeFastScroll(page: HTMLElement, actions: { bottom(): void;
   function update() {
     frame = 0;
     const extent = range();
-    control.hidden = !revealed || !active() || (extent < page.clientHeight * .8 && exhausted);
+    control.hidden = !revealed || !active() || extent < page.clientHeight * .8;
     top.disabled = page.scrollTop < 2;
-    bottom.disabled = busy || (exhausted && range() - page.scrollTop < 3);
-    bottom.setAttribute('aria-busy', String(busy));
+    bottom.disabled = extent - page.scrollTop < 3;
     grip.setAttribute('aria-valuenow', String(Math.round(fraction() * 100)));
-    grip.setAttribute('aria-valuetext', `${Math.round(fraction() * 100)}%，当前已展开的流水`);
-    control.classList.toggle('is-loading', busy);
+    grip.setAttribute('aria-valuetext', `${Math.round(fraction() * 100)}%，当前已加载的流水`);
   }
   function schedule() { if (!frame) frame = requestAnimationFrame(update); }
   function cancel() {
     cancelAnimationFrame(settling);
     settling = 0;
-    actions.cancel();
   }
   function move(value: number) {
     userScroll = false; fastSince = 0;
@@ -69,7 +66,7 @@ export function bindHomeFastScroll(page: HTMLElement, actions: { bottom(): void;
     wake();
   }
   top.addEventListener('click', () => { cancel(); move(0); wake(); });
-  bottom.addEventListener('click', () => { cancel(); userScroll = false; wake(); actions.bottom(); });
+  bottom.addEventListener('click', () => { cancel(); userScroll = false; wake(); end(); });
   control.addEventListener('pointerdown', () => { held = true; keyboardFocus = false; });
   for (const event of ['pointerup', 'pointercancel']) window.addEventListener(event, () => {
     if (held) { held = false; hideLater(); }
@@ -93,7 +90,7 @@ export function bindHomeFastScroll(page: HTMLElement, actions: { bottom(): void;
     const step = { ArrowUp: -.05, ArrowDown: .05, PageUp: -.2, PageDown: .2 }[event.key];
     if (step === undefined && !['Home', 'End'].includes(event.key)) return;
     event.preventDefault(); event.stopPropagation(); keyboardFocus = true; cancel(); wake();
-    if (event.key === 'End') actions.bottom();
+    if (event.key === 'End') end();
     else move(event.key === 'Home' ? 0 : fraction() + step!);
   });
   // Cancel a pending jump as soon as the user resumes normal navigation.
@@ -128,21 +125,19 @@ export function bindHomeFastScroll(page: HTMLElement, actions: { bottom(): void;
     schedule();
   }).observe(page, { attributes: true, attributeFilter: ['class', 'inert'] });
   update();
-  return {
-    refresh(done: boolean, loading = false) { exhausted = done; if (busy && !loading) hideLater(); busy = loading; schedule(); },
-    end() {
-      userScroll = false; fastSince = 0;
-      // Deferred offscreen row layout can change scrollHeight when jumping to old records.
-      let previous = -1, stable = 0, frames = 0;
-      const settle = () => {
-        if (!active()) return;
-        const height = range();
-        page.scrollTop = height;
-        stable = Math.abs(height - previous) < 1 ? stable + 1 : 0;
-        previous = height; update();
-        if (stable < 3 && ++frames < 30) settling = requestAnimationFrame(settle);
-      };
-      cancelAnimationFrame(settling); settle();
-    },
-  };
+  function end() {
+    userScroll = false; fastSince = 0;
+    // Only settle layout within the loaded list; never query or expand its date range.
+    let previous = -1, stable = 0, frames = 0;
+    const settle = () => {
+      if (!active()) return;
+      const height = range();
+      page.scrollTop = height;
+      stable = Math.abs(height - previous) < 1 ? stable + 1 : 0;
+      previous = height; update();
+      if (stable < 3 && ++frames < 30) settling = requestAnimationFrame(settle);
+    };
+    cancelAnimationFrame(settling); settle();
+  }
+  return { refresh: schedule };
 }

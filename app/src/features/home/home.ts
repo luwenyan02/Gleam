@@ -12,10 +12,10 @@ import { on } from '../../core/store';
 import { type Category, type LifeNote } from '../../core/types';
 import type { LedgerItem } from '../../core/ledgerEvents';
 import { summarizeLedgerEntries } from '../../core/ledgerQuery';
-import { listEntries, getEntry, getEarliestEntryDate, dayKey } from '../../core/repo/entryRepo';
+import { listEntries, getEntry, dayKey } from '../../core/repo/entryRepo';
 import { listCategories, listExpenseTree } from '../../core/repo/categoryRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
-import { listLifeNotes, getEarliestLifeNoteDate } from '../../core/repo/lifeRepo';
+import { listLifeNotes } from '../../core/repo/lifeRepo';
 import { listTemplates } from '../../core/repo/templateRepo';
 import { getSetting } from '../../core/repo/settingsRepo';
 import { monthSummary, budgetUsage, ledgerEntriesInRange } from '../../core/repo/statsRepo';
@@ -40,7 +40,6 @@ import { openLifeNotePreview } from '../life/lifeNotePreview';
 
 import { bindSpendingRhythm, refreshSpendingRhythm, spendingRhythmHtml } from './spendingRhythm';
 import { bindHomeFastScroll } from './fastScroll';
-import { bindTimelineRows } from './timelineRows';
 
 let root: HTMLElement | null = null;
 let monthsShown = 3;
@@ -58,9 +57,7 @@ let paginationRequiresBottom = true;
 let dayTimer = 0;
 let needsRefresh = true;
 let refreshedDay = '';
-let jumpToEnd = false;
 let fastScroll: ReturnType<typeof bindHomeFastScroll> | undefined;
-let timelineRows: ReturnType<typeof bindTimelineRows> | undefined;
 
 function showHome(): void {
   if (needsRefresh || refreshedDay !== dayKey(Date.now())) scheduleRefresh();
@@ -194,20 +191,8 @@ function renderSkeleton(el: HTMLElement): void {
     if (summary) openLedgerSearch({ from: summary.from, to: summary.to }, `${monthTitle(summary.month)}明细`);
   });
   el.querySelector('#hm-more')!.addEventListener('click', () => loadMore(el, false));
-  timelineRows = bindTimelineRows(el);
   bindTimelineScroll(el);
-  fastScroll = bindHomeFastScroll(el, {
-    bottom() {
-      jumpToEnd = true;
-      paginationPending = false;
-      fastScroll?.refresh(exhausted, true);
-      void refresh();
-    },
-    cancel() {
-      jumpToEnd = false;
-      fastScroll?.refresh(exhausted);
-    },
-  });
+  fastScroll = bindHomeFastScroll(el);
 }
 
 async function openService(key: HomeService): Promise<void> {
@@ -261,6 +246,7 @@ function bindTimelineScroll(el: HTMLElement): void {
   }, { passive: true });
   let wheelActive = false, wheelTimer = 0;
   el.addEventListener('wheel', event => {
+    if ((event.target as HTMLElement | null)?.closest('.hm-fast-scroll')) return;
     const first = !wheelActive;
     wheelActive = true;
     window.clearTimeout(wheelTimer);
@@ -281,7 +267,7 @@ function bindTimelineScroll(el: HTMLElement): void {
   el.addEventListener('touchend', () => { touch = undefined; }, { passive: true });
   el.addEventListener('touchcancel', () => { touch = undefined; }, { passive: true });
   el.addEventListener('keydown', event => {
-    if (['PageDown', 'End', ' '].includes(event.key) && !(event.target as HTMLElement).closest('button,input,textarea,select')) loadMore(el);
+    if (['PageDown', 'End', ' '].includes(event.key) && !(event.target as HTMLElement).closest('.hm-fast-scroll,button,input,textarea,select')) loadMore(el);
   });
 }
 
@@ -303,8 +289,7 @@ function refreshVisibleMonth(el: HTMLElement): void {
   if (el.inert || !el.classList.contains('is-active')) return;
   const overlay = el.querySelector<HTMLElement>('#hm-month-overlay')!;
   const sections = [...el.querySelectorAll<HTMLElement>('[data-home-month]')];
-  const firstBlock = el.querySelector<HTMLElement>('#hm-days [data-home-rows][data-has-bill]');
-  const latest = sections.length ? (firstBlock?.querySelector<HTMLElement>('[data-entry-row]') ?? firstBlock ?? el.querySelector<HTMLElement>('#hm-days [data-entry-row]')) : null;
+  const latest = sections.length ? el.querySelector<HTMLElement>('#hm-days [data-entry-row]') : null;
   // 以滚动容器的裁剪边界判断，浮层不占高度，出现／消失不会推动流水或反复触发。
   overlay.hidden = !latest || el.scrollTop <= 0 || latest.getBoundingClientRect().bottom > el.getBoundingClientRect().top + el.clientTop;
   if (overlay.hidden) return;
@@ -322,7 +307,6 @@ async function refresh(): Promise<void> {
   if (loading) { refreshPending = true; return; }
   needsRefresh = true;
   loading = true;
-  const endRequested = jumpToEnd;
   try {
     const [mods, layout] = await Promise.all([getSetting('home.modules'), getHomeLayout()]);
     if (el.inert || currentPage() !== 'page-home') return;
@@ -354,16 +338,11 @@ async function refresh(): Promise<void> {
       for (const node of el.querySelectorAll<HTMLElement>(selectors[key])) node.style.order = String(index);
     }
     refreshVisibleMonth(el);
-    fastScroll?.refresh(exhausted);
-    if (endRequested && jumpToEnd) {
-      jumpToEnd = false;
-      fastScroll?.end();
-    }
+    fastScroll?.refresh();
     needsRefresh = false;
     refreshedDay = dayKey(Date.now());
   } catch (error) {
-    jumpToEnd = false;
-    fastScroll?.refresh(exhausted);
+    fastScroll?.refresh();
     showToast('流水加载失败，请稍后重试');
     console.warn('[home] timeline refresh failed', error);
   } finally {
@@ -443,16 +422,6 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
     timelineMonth = anchor;
     timelineStartDay = startDay;
   }
-  if (jumpToEnd && showPast) {
-    const dates = await Promise.all([getEarliestEntryDate(), getEarliestLifeNoteDate()]);
-    if (el.inert || currentPage() !== 'page-home') return;
-    const earliest = Math.min(...dates.filter((date): date is number => date !== undefined));
-    if (jumpToEnd && Number.isFinite(earliest)) {
-      const [year, month] = anchor.split('-').map(Number);
-      const [oldYear, oldMonth] = accountingMonthForTimestamp(earliest, startDay).split('-').map(Number);
-      monthsShown = Math.max(monthsShown, (year - oldYear) * 12 + month - oldMonth + 1);
-    }
-  }
   const window = homeTimelineWindow(anchor, startDay, monthsShown);
   const [cats, tree, accounts, countAsIncome, olderEntries, olderNotes] = await Promise.all([
     listCategories('income'), listExpenseTree(), listAccounts(true), getSetting('reimburse.countAsIncome'),
@@ -498,13 +467,12 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
 
   const days = [...groups.keys()].sort((a, b) => (a < b ? 1 : -1));
   const chunks = new Map<string, string[]>();
-  timelineRows!.reset();
-  const virtual = items.length > 200;
-  const rowHtml = (it: TimelineItem) => it.kind === 'entry' ? entryHtml(it.entry, catMap, acctNames) : lifeHtml(it.note);
+  let renderedRows = 0;
   days.forEach((key) => {
     const isToday = key === todayKey;
     if (isToday ? !showToday : !showPast) return;
     const list = groups.get(key)!;
+    renderedRows += list.length;
     const summary = summarizeLedgerEntries(
       list.filter((it): it is Extract<TimelineItem, { kind: 'entry' }> => it.kind === 'entry')
         .map((it) => it.entry),
@@ -514,15 +482,11 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
     const sums: string[] = [];
     if (expense) sums.push(`支出 ${formatFenCny(expense)}`);
     if (income) sums.push(`收入 ${formatFenCny(income)}`);
-    const parts: string[] = [];
-    if (virtual) {
-      for (let i = 0; i < list.length; i += 24) {
-        const rows = list.slice(i, i + 24);
-        parts.push(timelineRows!.slot(rows.length, () => rows.map(rowHtml).join(''), rows.some(it => it.kind === 'entry')));
-      }
-    }
     const body = list.length
-      ? `<div class="card list">${virtual ? parts.join('') : list.map(rowHtml).join('')}</div>`
+      ? `<div class="card list">${list.map((it) =>
+          it.kind === 'entry'
+            ? entryHtml(it.entry, catMap, acctNames)
+            : lifeHtml(it.note)).join('')}</div>`
       : `<div class="card list home-empty">
           <span class="e-ic">${iconHtml('ic-pen', 18)}</span>
           <div><p class="e-title">今天还没有记录</p><p class="e-meta">花了什么、赚了什么，随手记下就好</p></div>
@@ -537,12 +501,13 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
       </section>`);
     chunks.set(month, listHtml);
   });
+  // 短列表保留完整布局，只有长时间线延后绘制屏外行。
+  el.classList.toggle('hm-defer-rows', renderedRows > 200);
   const html = window.periods.map(period => chunks.get(period.month)?.join('') ?? '').join('');
   const scroll = el.scrollTop;
   el.querySelector('#hm-days')!.innerHTML =
     (showToday || showPast) ? html : '<p class="tiny" style="text-align:center;padding:20px 0">流水模块已隐藏 · 可在右上角自定义首页</p>';
   el.scrollTop = scroll;
-  timelineRows!.observe();
   const more = el.querySelector<HTMLButtonElement>('#hm-more')!;
   more.hidden = !showPast || (exhausted && !items.length);
   more.disabled = exhausted;

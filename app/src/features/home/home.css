@@ -47,9 +47,8 @@
 .home-empty>.chip{flex:none;padding:7px 11px;color:var(--primary);border-color:color-mix(in oklab,var(--seed-primary) 24%,var(--border))}
 
 /* 时间线加载提示 */
-/* 长列表只挂载视口附近行；占位保留滚动范围和日分组。 */
-.hm-row-block{overflow-anchor:none}
-.hm-row-block:not(:last-child)>.entry-swipe:last-child,.hm-row-block:not(:last-child)>.entry:last-child{border-bottom:1px solid var(--border)}
+/* 保留完整流水及左滑操作，屏外行由浏览器延后布局绘制；再次进入沿用实测高度。 */
+#page-home.hm-defer-rows #hm-days .entry-swipe{content-visibility:auto;contain-intrinsic-block-size:auto calc(44px * var(--seed-type) + 24px * var(--seed-density))}
 .hm-more{text-align:center;padding:6px 0 12px}
 .hm-more{min-height:48px;font-size:var(--text-meta);color:var(--primary)}
 .hm-more:disabled{color:var(--muted)}
@@ -117,6 +116,5 @@
 .hm-fast-scroll button:disabled{opacity:.28}
 .hm-fast-scroll.is-awake,.hm-fast-scroll:focus-within,.hm-fast-scroll:hover{opacity:.92}
 .hm-fast-scroll.is-dragging{opacity:1;color:var(--primary)}
-.hm-fast-scroll.is-loading [data-fast-bottom]{opacity:.5}
 #page-home[inert] .hm-fast-anchor,#page-home:not(.is-active) .hm-fast-anchor{visibility:hidden;pointer-events:none}
 @media(prefers-reduced-motion:reduce){.hm-fast-scroll{transition:none}}

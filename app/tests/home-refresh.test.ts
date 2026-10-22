@@ -4,7 +4,7 @@ import type { Entry } from '../src/core/types';
 const mocks = vi.hoisted(() => ({
   registerPage: vi.fn(), currentPage: vi.fn(), on: vi.fn(), listEntries: vi.fn(),
   ledgerEntriesInRange: vi.fn(), monthSummary: vi.fn(), refreshRhythm: vi.fn(),
-  bindFastScroll: vi.fn(), earliestEntry: vi.fn(), earliestNote: vi.fn(),
+  bindFastScroll: vi.fn(),
   modules: { month: true, quick: true, today: true, past: true },
 }));
 vi.mock('../src/features/home/spendingRhythm', () => ({
@@ -12,11 +12,10 @@ vi.mock('../src/features/home/spendingRhythm', () => ({
 }));
 // The actual DOM / pointer behavior is exercised by test_home_fast_scroll.py.
 vi.mock('../src/features/home/fastScroll', () => ({ bindHomeFastScroll: mocks.bindFastScroll }));
-vi.mock('../src/features/home/timelineRows', () => ({ bindTimelineRows: () => ({ reset() {}, observe() {} }) }));
 vi.mock('../src/assets/icons', () => ({ iconHtml: () => '' }));
 vi.mock('../src/core/store', () => ({ on: mocks.on }));
 vi.mock('../src/core/repo/entryRepo', () => ({
-  listEntries: mocks.listEntries, getEntry: vi.fn(), getEarliestEntryDate: mocks.earliestEntry,
+  listEntries: mocks.listEntries, getEntry: vi.fn(),
   dayKey: (at: number) => {
     const d = new Date(at);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -24,7 +23,7 @@ vi.mock('../src/core/repo/entryRepo', () => ({
 }));
 vi.mock('../src/core/repo/categoryRepo', () => ({ listCategories: async () => [], listExpenseTree: async () => [] }));
 vi.mock('../src/core/repo/accountRepo', () => ({ listAccounts: async () => [] }));
-vi.mock('../src/core/repo/lifeRepo', () => ({ listLifeNotes: async () => [], getEarliestLifeNoteDate: mocks.earliestNote }));
+vi.mock('../src/core/repo/lifeRepo', () => ({ listLifeNotes: async () => [] }));
 vi.mock('../src/core/repo/templateRepo', () => ({ listTemplates: async () => [] }));
 vi.mock('../src/core/repo/settingsRepo', () => ({ getSetting: async (key: string) => key === 'home.modules' ? mocks.modules : false }));
 vi.mock('../src/core/repo/statsRepo', () => ({
@@ -110,11 +109,7 @@ beforeEach(() => {
   mocks.modules = { month: true, quick: true, today: true, past: true };
   mocks.currentPage.mockReturnValue('page-home');
   entries = fixture();
-  mocks.earliestEntry.mockImplementation(async () => Math.min(...entries.map(entry => entry.occurredAt)));
-  mocks.earliestNote.mockResolvedValue(undefined);
-  mocks.bindFastScroll.mockImplementation((el: ElementStub) => ({
-    refresh() {}, end() { el.scrollTop = el.scrollHeight - el.clientHeight; },
-  }));
+  mocks.bindFastScroll.mockReturnValue({ refresh() {} });
   mocks.monthSummary.mockResolvedValue(summary);
   mocks.listEntries.mockImplementation(async ({ limit, to = Infinity }) =>
     entries.filter(entry => entry.occurredAt < to).slice(0, limit));
@@ -292,35 +287,22 @@ it('加载提示已可见时，屏外高度测量不应吞掉继续上拉', asyn
   expect(el.rowCount()).toBe(61);
 });
 
-it('刷新尚未结束时请求直达底部，补齐历史后才跳转', async () => {
-  const release = holdMonth();
+it('胶囊上的滚轮不触发分页，列表主动上拉仍只加载一个月', async () => {
   const el = await mount();
-  mocks.bindFastScroll.mock.calls[0][1].bottom();
+  el.scrollToBottom(false);
+  el.listeners.get('wheel')?.({ deltaY: 100, deltaX: 0, target: { closest: () => true } });
+  await flush();
   expect(el.rowCount()).toBe(60);
-  expect(el.scrollTop).toBe(0);
-  release(); await flush();
+  expect(mocks.ledgerEntriesInRange).toHaveBeenCalledTimes(1);
+  el.scrollToBottom(); await flush();
   expect(el.rowCount()).toBe(61);
-  expect(el.querySelector('#hm-more').textContent).toBe('已展示全部流水');
-  expect(el.scrollTop).toBe(el.scrollHeight - el.clientHeight);
 });
 
-it('请求底部后恢复普通浏览，迟到的刷新不会拉回底部', async () => {
+it.each(['End', 'PageDown', ' '])('胶囊上的 %s 键不触发分页', async key => {
   const el = await mount();
-  const release = holdMonth();
-  const actions = mocks.bindFastScroll.mock.calls[0][1];
-  actions.bottom(); await flush();
-  actions.cancel();
-  el.scrollTop = 100;
-  release(); await flush();
-  expect(el.scrollTop).toBe(100);
-});
-
-it('直达底部期间切到其他页面，不对隐藏首页执行跳转', async () => {
-  const el = await mount();
-  const release = holdMonth();
-  mocks.bindFastScroll.mock.calls[0][1].bottom(); await flush();
-  el.inert = true;
-  mocks.bindFastScroll.mock.calls[0][1].cancel();
-  release(); await flush();
-  expect(el.scrollTop).toBe(0);
+  el.scrollToBottom(false);
+  el.listeners.get('keydown')?.({ key, target: { closest: (selector: string) => selector.includes('.hm-fast-scroll') } });
+  await flush();
+  expect(el.rowCount()).toBe(60);
+  expect(mocks.ledgerEntriesInRange).toHaveBeenCalledTimes(1);
 });
