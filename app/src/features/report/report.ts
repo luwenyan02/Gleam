@@ -250,6 +250,7 @@ async function loadData(): Promise<ReportData> {
 
 /** 收支趋势柱状图（原型 renderTrend；柱宽按柱数自适应以容纳 12 个月） */
 function renderTrend(d: ReportData['trend']): void {
+  if (dimension !== 'trend') return;
   const box = root!.querySelector<HTMLElement>('#trend')!;
   const cap = root!.querySelector<HTMLElement>('#trend-cap')!;
   const values = [...d.expense, ...d.incomes];
@@ -274,18 +275,48 @@ function renderTrend(d: ReportData['trend']): void {
   for (const y of [...new Set([plotTop, zeroY, plotBottom])]) {
     s += `<line x1="0" y1="${y.toFixed(1)}" x2="${W}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-width="1"${y === zeroY ? '' : ' stroke-dasharray="3 4"'}/>`;
   }
+  const includeYear = new Date(d.ranges[0].from).getFullYear() !== new Date(d.ranges[n - 1].to - 1).getFullYear();
+  const dateLabel = (time: number): string => {
+    const date = new Date(time);
+    return `${includeYear ? `${date.getFullYear()}/` : ''}${date.getMonth() + 1}/${date.getDate()}`;
+  };
   d.labels.forEach((lb, i) => {
     const cx = slot * i + slot / 2;
     const expense = barBox(d.expense[i]);
     const income = barBox(d.incomes[i]);
     const range = d.ranges[i];
-    s += `<g class="trend-hit" role="button" tabindex="0" data-drill-from="${range.from}" data-drill-to="${range.to}" aria-label="${esc(lb)}，支出 ${formatFenCny(d.expense[i])}，收入 ${formatFenCny(d.incomes[i])}，查看明细">`;
+    const first = dateLabel(range.from), last = dateLabel(range.to - 1);
+    const fullLabel = period === 'custom' ? (first === last ? first : `${first}–${last}`) : lb;
+    s += `<g class="trend-hit" role="button" tabindex="0" data-drill-from="${range.from}" data-drill-to="${range.to}" aria-label="${esc(fullLabel)}，支出 ${formatFenCny(d.expense[i])}，收入 ${formatFenCny(d.incomes[i])}，查看明细"><title>${esc(fullLabel)}</title>`;
     s += `<rect data-series="expense" data-value="${d.expense[i]}" data-zero-y="${zeroY.toFixed(1)}" x="${(cx - dw - 1).toFixed(1)}" y="${expense.y.toFixed(1)}" width="${dw.toFixed(1)}" height="${expense.height.toFixed(1)}" rx="3" fill="var(--c1)"/>`;
     s += `<rect data-series="income" data-value="${d.incomes[i]}" data-zero-y="${zeroY.toFixed(1)}" x="${(cx + 1).toFixed(1)}" y="${income.y.toFixed(1)}" width="${dw.toFixed(1)}" height="${income.height.toFixed(1)}" rx="3" fill="var(--c4)"/>`;
     s += `<rect x="${Math.max(0, cx - slot / 2).toFixed(1)}" y="22" width="${slot.toFixed(1)}" height="${plotBottom - 20}" fill="transparent"/></g>`;
-    s += `<text x="${cx.toFixed(1)}" y="${plotBottom + 18}" text-anchor="middle" font-size="13" style="font-size:var(--text-meta)" fill="var(--muted)">${period === 'year' ? lb.replace('月', '') : lb}</text>`;
+    const tick = period === 'custom'
+      ? `<tspan x="${cx.toFixed(1)}">${first}</tspan>${first === last ? '' : `<tspan x="${cx.toFixed(1)}" dy="1.25em">–${last}</tspan>`}`
+      : esc(period === 'year' ? lb.replace('月', '') : lb);
+    s += `<text x="${cx.toFixed(1)}" y="${plotBottom + 18}" text-anchor="middle" font-size="13" style="font-size:var(--text-meta)" fill="var(--muted)">${tick}</text>`;
   });
   box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" aria-label="收支趋势柱状图，可选择柱形查看明细">${s}</svg>`;
+  // 按实际字体测量标签：保留首尾，省略放不下的中间文字，柱形与明细范围不变。
+  // 使用 SVG 坐标，随 viewBox 等比缩放，不需要滚动/resize 监听或重新读取数据。
+  const svg = box.querySelector('svg')!;
+  const ticks = [...svg.querySelectorAll('text')];
+  const bounds = ticks.map(tick => {
+    const rect = tick.getBBox();
+    const shift = Math.max(2 - rect.x, Math.min(0, W - 2 - rect.x - rect.width));
+    tick.setAttribute('transform', `translate(${shift},0)`);
+    return { left: rect.x + shift, right: rect.x + shift + rect.width, bottom: rect.y + rect.height };
+  });
+  const gap = period === 'year' ? 6 : 10;
+  let right = bounds[0].right;
+  for (let i = 1; i < ticks.length - 1; i++) {
+    if (bounds[i].left < right + gap || bounds[i].right > bounds[n - 1].left - gap) {
+      ticks[i].setAttribute('visibility', 'hidden');
+    } else {
+      right = bounds[i].right;
+    }
+  }
+  svg.setAttribute('viewBox', `0 0 ${W} ${Math.max(H, ...bounds.map(b => b.bottom + 8))}`);
   cap.textContent = '橙色支出 · 绿色收入 · 点柱形看明细';
 }
 
@@ -450,10 +481,10 @@ async function refresh(): Promise<void> {
   root.querySelector<HTMLElement>('#r-balance')!.textContent = formatFenCny(data.summary.balance);
   root.querySelector('.r-sum')!.classList.toggle('is-wide',
     [data.summary.income, data.summary.balance].some(value => formatFenCny(value).length > 11));
+  applyDimensionView();
   renderTrend(data.trend);
   renderDonut(data.cats);
   renderRank(data);
-  applyDimensionView();
   needsRefresh = false;
   refreshedDay = dayKey(Date.now());
   if (anim) animateIn(anim === 'rank' ? ['#rank'] : ['.r-sum', '#trend', '.donut-wrap', '#rank']);

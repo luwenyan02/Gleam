@@ -35,7 +35,7 @@ TESTS = (
     'test_save_atomic.py', 'test_recurring_safety.py', 'test_import_safety.py', 'test_wacai_replace.py',
     'test_stats_safety.py', 'test_backup_integrity.py', 'test_email_backup.py', 'test_backup_history.py', 'test_backup_settings_clarity.py', 'test_text_clarity.py', 'test_ui_refinements.py', 'test_recurring_types_ui.py',
     'test_home_configuration.py', 'test_home_all_functions.py', 'test_query_integrity.py', 'test_budget_periods.py', 'test_budget_category_details.py',
-    'test_calendar_daylist.py', 'test_report_composition.py', 'test_credit_statements.py',
+    'test_calendar_daylist.py', 'test_report_composition.py', 'test_report_trend_labels.py', 'test_credit_statements.py',
     'test_account_reconcile_credit_limit.py',
     'test_account_search_navigation.py', 'test_account_management_ui.py', 'test_account_active_months.py', 'test_account_footer_trend.py', 'test_net_worth_trend.py',
     'test_account_detail_performance.py', 'test_account_detail_upgrade.py', 'test_account_detail_pagination.py',
