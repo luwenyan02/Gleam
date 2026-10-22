@@ -18,7 +18,10 @@
 .life-ai-toggle input:disabled{opacity:.5}
 .life-ai-toggle:has(input:focus-visible){outline:2px solid var(--input-focus);outline-offset:2px;border-radius:var(--r-s)}
 .life-ai-privacy{padding:12px 14px 0;margin:4px 0 8px;background:var(--bg);border-radius:var(--r-s);font-size:calc(14px * var(--seed-type));line-height:1.65;color:var(--muted);overflow-wrap:anywhere}
-.life-ai-privacy-copy{display:grid;gap:8px}
+.life-ai-privacy-copy{display:grid;gap:8px;font-size:var(--text-meta)}
+.life-ai-privacy-copy p{display:grid;grid-template-columns:16px minmax(0,1fr);gap:8px;margin:0}
+.life-ai-privacy-copy .ic{margin-top:calc((1.65em - 16px)/2);color:var(--muted)}
+.life-ai-privacy-copy strong{font-weight:600;color:var(--fg)}
 .life-ai-privacy summary{display:flex;align-items:center;gap:6px;min-height:44px;cursor:pointer;font-size:var(--text-meta);list-style:none}
 .life-ai-privacy summary::before{content:'›';font-size:18px;transform:rotate(0deg)}
 .life-ai-privacy details[open] summary::before{transform:rotate(90deg)}

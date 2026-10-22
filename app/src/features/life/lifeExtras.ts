@@ -17,11 +17,11 @@ export async function openLifeAiControls(): Promise<void> {
       <label class="life-ai-toggle"><span>启用生活 AI</span><input type="checkbox" role="switch" id="life-ai-enabled" ${enabled ? 'checked' : ''}></label>
       <div class="life-ai-privacy">
         <div class="life-ai-privacy-copy">
-          <p>记录默认留在本机。关闭 AI 仍可记录、阅读已收藏周刊。</p>
-          <p>聊天与附件点击发送后、语音连接后，会传给你配置的 AI 服务。</p>
-          <p>整理、生成周刊和分析账本，需先确认内容。</p>
+          <p>${iconHtml('ic-lock', 16)}<span><strong>本机保存：</strong>记录默认留在本机。</span></p>
+          <p>${iconHtml('ic-cloud', 16)}<span><strong>按需发送：</strong>聊天与附件发送后、语音连接后，传给你配置的 AI 服务。</span></p>
+          <p>${iconHtml('ic-eye', 16)}<span><strong>先确认：</strong>整理记录、生成周刊、分析账本前，需确认内容。</span></p>
         </div>
-        <details><summary>更多隐私说明</summary><p>单条记录可在「标题与更多」中排除。周刊可单独清理，不会自动生成，也不发送照片和账单。</p></details>
+        <details><summary>更多隐私说明</summary><p>关闭 AI 仍可记录、阅读已收藏周刊。单条记录可在「标题与更多」中排除。周刊可单独清理，不会自动生成，也不发送照片和账单。</p></details>
       </div>
       <button class="life-ai-settings" data-life-ai-config><span>AI 接口设置</span>${iconHtml('ic-right', 18)}</button></div>`;
     el.querySelector('[data-life-close]')!.addEventListener('click', closeSheet);

@@ -6,7 +6,9 @@
 
 生产构建、1502项单测、隐私面板360／390／430／1280px与深色大字号短屏检查通过，实际检查收起／展开截图，验证开关保存与重开、接口设置入口、键盘切换与Esc焦点返回，未调用真实服务。首页四宽快滑与5000条历史回归通过，并检查静置状态可见度。仅同步preview/orbstack，版本仍为1.11.32，未合入main或发布新APK；精确提交与CI结果见本轮交付。
 
-修改前备份：`.tmp/backups/life-ai-privacy/tracked-before.tar`。效果图位于工作区`deliverables/life-ai-privacy/`。
+后续按用户反馈，将三条常显说明调整为16px线性图标、加粗短标题和13px正文，保留本机保存、发送时机和内容确认规则；关闭AI后仍可记录的补充说明移入折叠区。生产构建及五配置浏览器检查通过，已检查深浅色、短屏、放大字体下的收起与展开截图，并验证开关保存、重开及设置入口；未调用真实服务。此次仅调整文案与排版，继续同步预览。
+
+修改前备份：`.tmp/backups/life-ai-privacy/tracked-before.tar`；本次文字与图标微调备份：`.tmp/backups/life-ai-privacy-copy/tracked-before.tar`。最新效果图位于工作区`deliverables/life-ai-privacy-copy/`。
 
 ## 项目介绍合并与首页快速浏览（2026-10-22）
 
