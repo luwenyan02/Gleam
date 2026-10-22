@@ -516,9 +516,6 @@ export const SETTING_DEFAULTS = {
   /* ── [AI] 记账收件箱设置键 ── */
   /** OpenAI 兼容 API 根地址（如 https://api.openai.com 或 https://xx.com/v1） */
   'ai.baseUrl': '' as string,
-  'ai.noteDecision.enabled': false as boolean,
-  'ai.noteDecision.workspace': '',
-  'ai.noteDecision.region': 'beijing' as 'beijing' | 'singapore',
   /** 图片／文本模型名，必须与平台的调用 ID 一致。 */
   'ai.model': '' as string,
   /** 旧版迁移占位；正式 API Key 由 SecretStore 保存。 */

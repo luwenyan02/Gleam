@@ -146,8 +146,3 @@
 #sheet .pick-name{min-width:0;overflow-wrap:anywhere}#sheet .pick-card .amt{flex:none}
 
 .category-jump [data-cat-collapse]{min-width:44px;color:var(--primary)}
-
-/* Only successful automatic changes show feedback; uncertainty leaves the draft quiet. */
-.note-decision-result{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 8px;padding:4px 8px;border-radius:12px;background:var(--surface);font-size:13px;color:var(--muted)}
-.note-decision-result span{min-width:0}
-.note-decision-result .chip{min-width:44px;min-height:44px;flex-shrink:0}

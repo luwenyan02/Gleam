@@ -8,8 +8,6 @@
  */
 import { openEntryAccountPicker } from './entryAccountPicker';
 import { entryKeyFeedback } from './entryKeyFeedback';
-import { NoteDecisionSession } from './noteDecisionSession';
-import { noteDecisionSupported, requestNoteDecision } from './noteDecisionService';
 import { iconHtml } from '../../assets/icons';
 import { categoryIcon } from '../../core/categoryIcons';
 import { esc } from '../../core/esc';
@@ -23,7 +21,7 @@ import {
   getEntry, getEntryTagIds, dayKey, listEntries,
   type NewEntry,
 } from '../../core/repo/entryRepo';
-import { listExpenseTree, listCategories, getCategory } from '../../core/repo/categoryRepo';
+import { listExpenseTree, listCategories } from '../../core/repo/categoryRepo';
 import { getAccount, listAccounts } from '../../core/repo/accountRepo';
 import { listTemplates, rememberTemplate } from '../../core/repo/templateRepo';
 import { listTags, ensureTag } from '../../core/repo/tagRepo';
@@ -173,10 +171,6 @@ interface SheetCtx {
     categoryId?: number; locked: boolean; noteCategoryId?: number;
   }>>;
   disposeNoteCompletion?: () => void;
-  noteDecision?: NoteDecisionSession;
-  noteDecisionEnabled: boolean;
-  noteDecisionInitialSource?: 'copied' | 'model';
-  noteDecisionSourceId?: number;
   accountSelectionLocked: boolean;
   showAllCategories: boolean;
   advancedOpen: boolean;
@@ -205,11 +199,10 @@ export function initEntry(): void {
  */
 export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<void> {
   const openedAt = Date.now();
-  const [tree, incomeCats, accounts, templates, tags, merchants, loanAccounts, lastUsed, recentEntries, noteDecisionEnabled] = await Promise.all([
+  const [tree, incomeCats, accounts, templates, tags, merchants, loanAccounts, lastUsed, recentEntries] = await Promise.all([
     listExpenseTree(), listCategories('income'), listAccounts(false),
     listTemplates(), listTags(), listMerchants(), listLoanAccounts(false), getSetting('entry.lastUsed'),
     listEntries({ from: openedAt - 90 * 24 * 60 * 60 * 1000, to: openedAt + 1 }),
-    getSetting('ai.noteDecision.enabled'),
   ]);
   // 隐藏账户不进入默认列表，但显式入口与历史账单的已选账户必须可见还原。
   async function includeSelectedAccount(id: number | undefined): Promise<void> {
@@ -273,9 +266,6 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     expenseTree: tree, incomeCats, accounts, tags, merchants, loanAccounts, lastUsed,
     quickExpenseCats,
     quickIncomeCats,
-    noteDecisionEnabled,
-    noteDecisionInitialSource: options.repeatFromEntryId != null ? 'copied' : options.draft || options.voiceBill ? 'model' : undefined,
-    noteDecisionSourceId: options.entryId ?? options.repeatFromEntryId,
     recommendationHistory: recentEntries,
     recommendationNow: openedAt,
     categorySelectionLocked: false,
@@ -390,7 +380,6 @@ export async function openEntrySheet(options: EntrySheetOptions = {}): Promise<v
     },
     onClose() {
       c.disposeNoteCompletion?.();
-      c.noteDecision?.dispose();
       c.receipts?.dispose();
       sheetEl?.classList.remove('entry-workspace', 'note-editing', 'categories-expanded');
       ctx = null;
@@ -442,7 +431,6 @@ function renderSheet(el: HTMLElement, note: string): void {
         <input class="note" id="note" type="text" placeholder="写点备注（可选）" aria-label="备注">
         <button type="button" id="note-clear" aria-label="清空备注"${note ? '' : ' hidden'}>${iconHtml('ic-close', 16)}</button>
       </div>
-      <div class="note-decision-result" id="note-decision-result" role="status" aria-live="polite" hidden><span></span><button type="button" class="chip" id="note-decision-undo">撤销</button></div>
       <div class="meta-row primary-meta">
         <div class="entry-date-actions" role="group" aria-label="记账时间"><button class="chip" id="date-chip"><span id="date-txt"></span></button><span id="date-divider" aria-hidden="true" hidden>|</span><button class="chip" type="button" id="date-today" aria-label="日期改为今天" hidden><span>改为<br>今天</span></button></div>
         <button class="chip" id="acct-btn"><span id="acct-name"></span></button>
@@ -758,7 +746,6 @@ function switchEntryType(type: EntryType): void {
       categoryId: c.categoryId, locked: c.categorySelectionLocked, noteCategoryId: c.noteCategoryId,
     };
   }
-  c.noteDecision?.invalidate();
   c.type = type;
   c.showAllCategories = false;
   const previous = type === 'expense' || type === 'income' ? c.categorySelections[type] : undefined;
@@ -782,7 +769,7 @@ function bindEvents(el: HTMLElement): void {
 
   const noteInput = el.querySelector<HTMLInputElement>('#note')!;
   const noteClear = el.querySelector<HTMLButtonElement>('#note-clear')!;
-  noteInput.addEventListener('input', () => { noteClear.hidden = !noteInput.value; ctx?.noteDecision?.invalidate(); });
+  noteInput.addEventListener('input', () => { noteClear.hidden = !noteInput.value; });
   noteClear.addEventListener('pointerdown', event => event.preventDefault());
   noteClear.addEventListener('click', () => {
     if (saving) return;
@@ -792,61 +779,9 @@ function bindEvents(el: HTMLElement): void {
     noteInput.focus();
   });
   const boundContext = ctx!;
-  if (boundContext.noteDecisionEnabled && noteDecisionSupported()) {
-    const c = boundContext;
-    let historyAt = 0, history: Entry[] = [];
-    const resultEl = el.querySelector<HTMLElement>('#note-decision-result')!;
-    c.noteDecision = new NoteDecisionSession({
-      read: () => ({ note: noteInput.value, type: c.type, occurredAt: c.date, categoryId: c.categoryId, accountId: c.accountId }),
-      async request(draft, signal, sources) {
-        if (ctx !== c || saving || c.bx || c.tk || c.refundOfEntryId != null
-          || (draft.type !== 'expense' && draft.type !== 'income') || !await getSetting('ai.noteDecision.enabled')) return {};
-        const now = Date.now(), cutoff = Math.min(now, draft.occurredAt);
-        // Read once for this draft's date, never from home scrolling or per keystroke.
-        if (historyAt !== cutoff) {
-          const rows = await listEntries({ from: cutoff - 90 * 86400000, to: cutoff });
-          if (signal.aborted) return {};
-          history = rows; historyAt = cutoff;
-        }
-        if (signal.aborted || saving || ctx !== c) return {};
-        const result = await requestNoteDecision({
-          entryType: draft.type, note: draft.note, occurredAt: draft.occurredAt, now,
-          currentCategoryId: draft.categoryId, currentAccountId: draft.accountId,
-          categorySource: sources.category, accountSource: sources.account,
-          categories: [...c.expenseTree.flatMap(group => [group.parent, ...group.children]), ...c.incomeCats],
-          accounts: c.accounts, history, excludeEntryId: c.noteDecisionSourceId,
-        }, signal);
-        if (signal.aborted || saving || ctx !== c || c.bx || c.tk) return {};
-        // Candidates may have been hidden/deleted by another view while the model was working.
-        const [category, account] = await Promise.all([
-          result.category ? getCategory(result.category.id) : undefined,
-          result.account ? getAccount(result.account.id) : undefined,
-        ]);
-        if (signal.aborted || !await getSetting('ai.noteDecision.enabled')) return {};
-        if (!category || category.kind !== draft.type) delete result.category;
-        if (!account || account.hidden || account.group === 'receivable') delete result.account;
-        return result;
-      },
-      apply(patch) {
-        if (ctx !== c || saving) return;
-        if (Object.hasOwn(patch, 'categoryId')) { c.categoryId = patch.categoryId; c.categorySelectionLocked = true; c.noteCategoryId = undefined; }
-        if (Object.hasOwn(patch, 'accountId')) { c.accountId = patch.accountId; c.accountSelectionLocked = true; }
-        renderCats(); refreshMeta();
-      },
-      notify(fields) {
-        resultEl.hidden = !fields.length;
-        resultEl.querySelector('span')!.textContent = fields.length
-          ? `已按备注调整${fields.map(field => field === 'category' ? '分类' : '账户').join('、')}` : '';
-      },
-    }, {
-      category: c.noteDecisionInitialSource ?? (c.categorySelectionLocked ? 'manual' : 'default'),
-      account: c.noteDecisionInitialSource ?? (c.accountSelectionLocked ? 'manual' : 'default'),
-    });
-    el.querySelector('#note-decision-undo')!.addEventListener('click', () => { if (!saving) c.noteDecision?.undo(); });
-  }
   let noteSessionType = boundContext.type;
   let categoryPointerDown = false;
-  const categoryControls = '#cat-grid .cat, #seg [data-type], #acct-btn, #date-chip, #date-today, #note-decision-undo, #sheet-close, .save, .again';
+  const categoryControls = '#cat-grid .cat, #seg [data-type]';
   // 先让手选点击落到原按钮；备注失焦不能重绘并吞掉尚未派发的 click。
   const pointerDown = (event: PointerEvent) => {
     categoryPointerDown = !!(event.target as Element).closest(categoryControls);
@@ -857,7 +792,6 @@ function bindEvents(el: HTMLElement): void {
   el.addEventListener('pointercancel', pointerEnd, true);
   const disposeNoteCompletion = bindNoteCompletion(noteInput, note => {
     if (ctx !== boundContext || sheetEl !== el || boundContext.type !== noteSessionType || saving) return;
-    if (boundContext.noteDecision) { void boundContext.noteDecision.complete(); return; }
     if (applyNoteCategory(boundContext, note)) {
       renderCats();
       refreshMeta();
@@ -926,7 +860,6 @@ function bindEvents(el: HTMLElement): void {
     else {
       ctx.categoryId = Number(btn.dataset.id);
       ctx.categorySelectionLocked = true;
-      ctx.noteDecision?.manual('category');
       ctx.showAllCategories = false;
       refreshEntryRecommendations(ctx);
     }
@@ -973,7 +906,6 @@ function bindEvents(el: HTMLElement): void {
 
   el.querySelector('#date-today')!.addEventListener('click', () => {
     if (!ctx || saving) return;
-    ctx.noteDecision?.invalidate();
     ctx.date = Date.now();
     refreshEntryRecommendations(ctx);
     renderCats();
@@ -994,7 +926,6 @@ function bindEvents(el: HTMLElement): void {
       maxDate: { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() },
       onConfirm(r) {
         if (!ctx) return;
-        ctx.noteDecision?.invalidate();
         ctx.date = new Date(r.year, r.month - 1, r.day, r.hour ?? 0, r.minute ?? 0).getTime();
         refreshEntryRecommendations(ctx);
         renderCats();
@@ -1153,7 +1084,7 @@ async function pickAccount(field: 'accountId' | 'fromId' | 'toId', title: string
   if (field === 'fromId' && id === c.toId) { showToast('转出与转入账户不能相同'); return; }
   if (field === 'toId' && id === c.fromId) { showToast('转出与转入账户不能相同'); return; }
   c[field] = id;
-  if (field === 'accountId') { c.accountSelectionLocked = true; c.noteDecision?.manual('account'); }
+  if (field === 'accountId') c.accountSelectionLocked = true;
   renderCats();
   refreshMeta();
 }
@@ -1310,7 +1241,6 @@ async function rememberLastUsed(c: SheetCtx): Promise<void> {
 async function save(stay: boolean): Promise<void> {
   if (saving) return;
   saving = true;
-  ctx?.noteDecision?.invalidate();
   const saveBtn = sheetEl?.querySelector<HTMLButtonElement>('#keypad .save');
   const againBtn = sheetEl?.querySelector<HTMLButtonElement>('#keypad .again');
   const clearBtn = sheetEl?.querySelector<HTMLButtonElement>('#amount-clear');
@@ -1478,8 +1408,6 @@ async function doSave(stay: boolean): Promise<void> {
   c.tagIds = repeat.tagIds ?? [];
   c.merchantId = repeat.merchantId;
   noteInput.value = repeat.note;
-  c.noteDecisionSourceId = undefined;
-  c.noteDecision?.repeat();
   c.noteCategoryId = undefined;
   lifeToggle.classList.remove('on'); lifeToggle.setAttribute('aria-checked', 'false');
   refreshAmt();
