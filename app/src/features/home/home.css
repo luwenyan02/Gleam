@@ -115,6 +115,8 @@
 .hm-fast-grip svg{stroke-width:3}
 .hm-fast-scroll button:disabled{opacity:.28}
 .hm-fast-scroll.is-awake,.hm-fast-scroll:focus-within,.hm-fast-scroll:hover{opacity:.96}
-.hm-fast-scroll.is-dragging{opacity:1;color:var(--primary)}
+.hm-fast-scroll:focus-within,.hm-fast-scroll:active,.hm-fast-scroll.is-dragging{color:color-mix(in oklab,var(--c5) 75%,var(--fg))}
+.hm-fast-scroll button:focus-visible,.hm-fast-scroll .hm-fast-grip[tabindex]:focus-visible{outline-color:currentColor}
+.hm-fast-scroll.is-dragging{opacity:1}
 #page-home[inert] .hm-fast-anchor,#page-home:not(.is-active) .hm-fast-anchor{visibility:hidden;pointer-events:none}
 @media(prefers-reduced-motion:reduce){.hm-fast-scroll{transition:none}}
