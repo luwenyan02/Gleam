@@ -140,13 +140,14 @@ def run(browser, width, theme):
         if attempt == 0:
             page.screenshot(path=str(OUT / f'home-{width}-{theme}.png'), animations='disabled')
     # A real continued scroll must load older records even while offscreen row heights settle.
-    previous_count = page.locator('#hm-days [data-entry-row]').count()
+    previous_month = page.locator('#hm-days [data-home-month]').evaluate_all('els=>els.map(e=>e.dataset.homeMonth).sort()[0]')
     page.locator('#hm-more').scroll_into_view_if_needed()
     expect(page.locator('#hm-more')).to_be_in_viewport(ratio=1)
     page.locator('#page-home').hover()
     page.mouse.wheel(0, 400)
-    page.wait_for_function('count=>document.querySelectorAll("#hm-days [data-entry-row]").length>count', arg=previous_count)
-    expect(page.locator('#hm-days [data-entry="1"]')).to_have_count(1)
+    page.wait_for_function('month=>[...document.querySelectorAll("#hm-days [data-home-month]")].some(e=>e.dataset.homeMonth<month)', arg=previous_month)
+    page.locator('#page-home').evaluate('e=>e.scrollTop=0')
+    expect(page.locator('#hm-days [data-entry="1"]')).to_be_visible()
     assert not errors, errors
     assert not external, external
     (OUT / f'metrics-{width}-{theme}.json').write_text(json.dumps(results, ensure_ascii=False, indent=2) + '\n')

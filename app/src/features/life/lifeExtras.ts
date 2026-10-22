@@ -19,7 +19,7 @@ export async function openLifeAiControls(): Promise<void> {
         <div class="life-ai-privacy-copy">
           <p>${iconHtml('ic-lock', 16)}<span><strong>本机保存：</strong>记录默认留在本机。</span></p>
           <p>${iconHtml('ic-cloud', 16)}<span><strong>按需发送：</strong>聊天与附件发送后、语音连接后，传给你配置的 AI 服务。</span></p>
-          <p>${iconHtml('ic-eye', 16)}<span><strong>先确认：</strong>整理记录、生成周刊、分析账本前，需确认内容。</span></p>
+          <p>${iconHtml('ic-eye', 16)}<span><strong>隐私确认：</strong>在整理记录、生成周刊、分析账单数据前，需确认发送内容。</span></p>
         </div>
         <details><summary>更多隐私说明</summary><p>关闭 AI 仍可记录、阅读已收藏周刊。单条记录可在「标题与更多」中排除。周刊可单独清理，不会自动生成，也不发送照片和账单。</p></details>
       </div>

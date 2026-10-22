@@ -14,20 +14,32 @@ export function bindHomeFastScroll(page: HTMLElement, actions: { bottom(): void;
   const top = control.querySelector<HTMLButtonElement>('[data-fast-top]')!;
   const bottom = control.querySelector<HTMLButtonElement>('[data-fast-bottom]')!;
   const grip = control.querySelector<HTMLElement>('[role="slider"]')!;
-  let exhausted = false, busy = false, frame = 0, settling = 0, fadeTimer = 0;
+  let exhausted = false, busy = false, frame = 0, settling = 0, hideTimer = 0;
+  let revealed = false, held = false, keyboardFocus = false, userScroll = false;
+  let lastY = page.scrollTop, lastAt = 0, fastSince = 0, lastFastAt = 0;
   let drag: { id: number; y: number; fraction: number; travel: number } | undefined;
   const range = () => Math.max(0, page.scrollHeight - page.clientHeight);
   const active = () => page.isConnected && !page.inert && page.classList.contains('is-active');
   const fraction = () => range() ? page.scrollTop / range() : 0;
 
+  function hideLater() {
+    window.clearTimeout(hideTimer);
+    hideTimer = window.setTimeout(() => {
+      userScroll = false; fastSince = 0;
+      if (held || drag || busy || (keyboardFocus && control.contains(document.activeElement))) return;
+      revealed = false;
+      update();
+    }, 800);
+  }
   function wake() {
-    control.classList.add('is-awake');
-    window.clearTimeout(fadeTimer);
-    fadeTimer = window.setTimeout(() => control.classList.remove('is-awake'), 1400);
+    revealed = true;
+    hideLater();
+    schedule();
   }
   function update() {
     frame = 0;
-    control.hidden = !active() || (range() < page.clientHeight * .8 && exhausted);
+    const extent = range();
+    control.hidden = !revealed || !active() || (extent < page.clientHeight * .8 && exhausted);
     top.disabled = page.scrollTop < 2;
     bottom.disabled = busy || (exhausted && range() - page.scrollTop < 3);
     bottom.setAttribute('aria-busy', String(busy));
@@ -42,6 +54,7 @@ export function bindHomeFastScroll(page: HTMLElement, actions: { bottom(): void;
     actions.cancel();
   }
   function move(value: number) {
+    userScroll = false; fastSince = 0;
     cancelAnimationFrame(settling);
     const target = Math.max(0, Math.min(1, value));
     page.scrollTop = range() * target;
@@ -56,7 +69,13 @@ export function bindHomeFastScroll(page: HTMLElement, actions: { bottom(): void;
     wake();
   }
   top.addEventListener('click', () => { cancel(); move(0); wake(); });
-  bottom.addEventListener('click', () => { cancel(); wake(); actions.bottom(); });
+  bottom.addEventListener('click', () => { cancel(); userScroll = false; wake(); actions.bottom(); });
+  control.addEventListener('pointerdown', () => { held = true; keyboardFocus = false; });
+  for (const event of ['pointerup', 'pointercancel']) window.addEventListener(event, () => {
+    if (held) { held = false; hideLater(); }
+  }, { passive: true });
+  control.addEventListener('keydown', () => { keyboardFocus = true; wake(); });
+  control.addEventListener('focusout', hideLater);
   grip.addEventListener('pointerdown', event => {
     if (!event.isPrimary || event.button !== 0) return;
     event.preventDefault(); cancel();
@@ -73,26 +92,46 @@ export function bindHomeFastScroll(page: HTMLElement, actions: { bottom(): void;
   grip.addEventListener('keydown', event => {
     const step = { ArrowUp: -.05, ArrowDown: .05, PageUp: -.2, PageDown: .2 }[event.key];
     if (step === undefined && !['Home', 'End'].includes(event.key)) return;
-    event.preventDefault(); event.stopPropagation(); cancel(); wake();
+    event.preventDefault(); event.stopPropagation(); keyboardFocus = true; cancel(); wake();
     if (event.key === 'End') actions.bottom();
     else move(event.key === 'Home' ? 0 : fraction() + step!);
   });
   // Cancel a pending jump as soon as the user resumes normal navigation.
   for (const event of ['pointerdown', 'touchstart', 'wheel', 'keydown']) {
     page.addEventListener(event, e => {
-      if (!control.contains(e.target as Node)) cancel();
+      if (!control.contains(e.target as Node)) {
+        cancel();
+        if (event === 'wheel' || event === 'touchstart' || (event === 'keydown' && ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes((e as KeyboardEvent).key))) {
+          userScroll = true;
+          if (!lastAt || performance.now() - lastAt > 200) { lastAt = performance.now(); lastY = page.scrollTop; fastSince = 0; }
+        }
+      }
     }, { passive: true });
   }
-  page.addEventListener('scroll', () => { schedule(); wake(); }, { passive: true });
+  page.addEventListener('scroll', () => {
+    const now = performance.now(), elapsed = now - lastAt, distance = Math.abs(page.scrollTop - lastY);
+    if (userScroll && active()) {
+      if (elapsed > 0 && elapsed < 200 && distance / elapsed >= .5) {
+        // Brief lift/re-touch gaps are still one sustained browsing gesture.
+        if (!fastSince || now - lastFastAt > 250) fastSince = lastAt;
+        lastFastAt = now;
+        if (now - fastSince >= 1000) revealed = true;
+      } else if (now - lastFastAt > 250) fastSince = 0;
+      hideLater();
+    }
+    lastAt = now; lastY = page.scrollTop;
+    schedule();
+  }, { passive: true });
   new ResizeObserver(schedule).observe(page);
   new MutationObserver(() => {
-    if (!active()) { cancel(); finishDrag(); }
+    if (!active()) { cancel(); finishDrag(); revealed = false; userScroll = false; fastSince = 0; keyboardFocus = false; window.clearTimeout(hideTimer); }
     schedule();
   }).observe(page, { attributes: true, attributeFilter: ['class', 'inert'] });
   update();
   return {
-    refresh(done: boolean, loading = false) { exhausted = done; busy = loading; schedule(); },
+    refresh(done: boolean, loading = false) { exhausted = done; if (busy && !loading) hideLater(); busy = loading; schedule(); },
     end() {
+      userScroll = false; fastSince = 0;
       // Deferred offscreen row layout can change scrollHeight when jumping to old records.
       let previous = -1, stable = 0, frames = 0;
       const settle = () => {

@@ -12,6 +12,7 @@ vi.mock('../src/features/home/spendingRhythm', () => ({
 }));
 // The actual DOM / pointer behavior is exercised by test_home_fast_scroll.py.
 vi.mock('../src/features/home/fastScroll', () => ({ bindHomeFastScroll: mocks.bindFastScroll }));
+vi.mock('../src/features/home/timelineRows', () => ({ bindTimelineRows: () => ({ reset() {}, observe() {} }) }));
 vi.mock('../src/assets/icons', () => ({ iconHtml: () => '' }));
 vi.mock('../src/core/store', () => ({ on: mocks.on }));
 vi.mock('../src/core/repo/entryRepo', () => ({

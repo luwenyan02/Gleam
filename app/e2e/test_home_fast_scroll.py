@@ -1,4 +1,4 @@
-"""Home fast navigation: real scrolling, isolated fictional ledger, no external services."""
+"""Fast-scroll gestures, bounded long-history DOM, and interaction after jumping."""
 import os
 import time
 from datetime import datetime
@@ -10,6 +10,17 @@ from test_browser_usability import assert_usable
 
 URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4617/')
 OUT = Path(__file__).parents[2] / '.tmp/tests/e2e/home-fast-scroll'
+
+
+def reveal(page):
+    home = page.locator('#page-home')
+    direction = home.evaluate('e=>e.scrollHeight-e.clientHeight-e.scrollTop<2600?-1:1')
+    box = home.bounding_box()
+    page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+    for _ in range(19):
+        page.mouse.wheel(0, direction * 100)
+        page.wait_for_timeout(70)
+    expect(page.locator('.hm-fast-scroll')).to_be_visible()
 
 
 def run(browser, width, theme='light', scale=1):
@@ -24,67 +35,80 @@ def run(browser, width, theme='light', scale=1):
         page.evaluate(SEED, 5); page.reload()
         expect(page.locator('#hm-days [data-entry-row]')).to_have_count(60)
         page.evaluate('([theme,scale])=>{document.documentElement.dataset.theme=theme;document.documentElement.style.setProperty("--seed-type",scale)}', [theme,str(scale)])
-        home = page.locator('#page-home')
-        controls = page.get_by_role('group', name='快速浏览流水')
-        expect(controls).to_be_visible()
+        home = page.locator('#page-home'); controls = page.locator('.hm-fast-scroll')
         top = controls.get_by_role('button', name='回到顶部')
         bottom = controls.get_by_role('button', name='直达底部')
         slider = controls.get_by_role('slider', name='拖动快速浏览流水')
-        expect(top).to_be_disabled()
-        page.wait_for_timeout(300)
-        initial_height = home.evaluate('e=>e.scrollHeight')
-        # Ordinary scrolling outside the small control stays native and does not expand history.
-        page.mouse.move(width / 2, 480); page.mouse.wheel(0, 1000)
-        page.wait_for_function('document.querySelector("#page-home").scrollTop>600')
+        expect(controls).to_be_hidden()
+        # Scripted jumps, slow scrolling, and a short flick do not reveal it.
+        home.evaluate('e=>e.scrollTop=600'); page.wait_for_timeout(150)
+        expect(controls).to_be_hidden()
+        page.mouse.move(width / 2, 480)
+        for _ in range(17):
+            page.mouse.wheel(0, 5); page.wait_for_timeout(75)
+        expect(controls).to_be_hidden()
+        for _ in range(5):
+            page.mouse.wheel(0, 100); page.wait_for_timeout(70)
+        expect(controls).to_be_hidden()
+        page.wait_for_timeout(900)
+        reveal(page)
         expect(page.locator('#hm-days [data-entry-row]')).to_have_count(60)
-        assert home.evaluate('e=>e.scrollHeight') == initial_height
         box = controls.bounding_box(); viewport = home.bounding_box()
-        assert box['x'] > viewport['x'] + viewport['width'] * .75
+        assert box['width'] >= 48
+        assert viewport['x'] + viewport['width'] - box['x'] - box['width'] >= 12
         assert .5 < (box['y'] + box['height']/2 - viewport['y']) / viewport['height'] < .75
         assert_usable(page, '.hm-fast-scroll')
         page.screenshot(path=str(OUT/f'flow-{width}-{theme}-{scale}.png'), animations='disabled')
-        # Dragging the grip moves by a large fraction of the list, not only 80px.
+        # Hide even if a prior pointer click focused a control; touching it keeps it alive.
         box = slider.bounding_box(); x = box['x'] + box['width']/2; y = box['y'] + box['height']/2
         before = home.evaluate('e=>e.scrollTop')
-        page.mouse.move(x,y); page.mouse.down(); page.mouse.move(x,y+80,steps=8); page.mouse.up()
-        assert home.evaluate('e=>e.scrollTop') > before + 500
+        page.mouse.move(x,y); page.mouse.down(); page.wait_for_timeout(1000)
+        expect(controls).to_be_visible()
+        page.mouse.move(x,y+65,steps=8); page.mouse.up()
+        assert home.evaluate('e=>e.scrollTop') > before + 300
         expect(page.locator('#sheet.open')).to_have_count(0)
-        # Button loads all remaining months once, including the oldest effective record.
         bottom.click()
         expect(page.locator('#hm-days [data-entry-row]')).to_have_count(140)
         expect(page.locator('#hm-more')).to_have_text('已展示全部流水')
         page.wait_for_function('(()=>{const e=document.querySelector("#page-home");return e.scrollHeight-e.clientHeight-e.scrollTop<3})()')
         expect(page.locator('[data-entry-row="121"]')).to_be_in_viewport()
         expect(bottom).to_be_disabled()
-        top.click()
-        page.wait_for_function('document.querySelector("#page-home").scrollTop<2')
+        top.click(); page.wait_for_function('document.querySelector("#page-home").scrollTop<2')
         expect(top).to_be_disabled()
         slider.focus(); slider.press('ArrowDown')
         assert home.evaluate('e=>e.scrollTop') > 100
+        page.wait_for_timeout(900); expect(controls).to_be_visible()
         slider.press('Home'); page.wait_for_function('document.querySelector("#page-home").scrollTop<2')
-        # Native browser touch delivery: ordinary swipes work, while the grip captures its own drag.
+        page.mouse.click(width / 2, 260)
+        page.wait_for_timeout(1000); expect(controls).to_be_hidden()
+        # Continuous native touch scrolling must also reveal the capsule.
         if width == 390:
             cdp = context.new_cdp_session(page)
-            def swipe(x, y, target):
-                cdp.send('Input.dispatchTouchEvent', {'type':'touchStart','touchPoints':[{'x':x,'y':y}]})
-                for i in range(1,9):
-                    cdp.send('Input.dispatchTouchEvent', {'type':'touchMove','touchPoints':[{'x':x,'y':y+(target-y)*i/8}]})
+            for _ in range(3):
+                cdp.send('Input.dispatchTouchEvent', {'type':'touchStart','touchPoints':[{'x':170,'y':680}]})
+                for i in range(1,13):
+                    cdp.send('Input.dispatchTouchEvent', {'type':'touchMove','touchPoints':[{'x':170,'y':680-i*30}]})
+                    page.wait_for_timeout(40)
                 cdp.send('Input.dispatchTouchEvent', {'type':'touchEnd','touchPoints':[]})
-            swipe(180,600,300)
-            page.wait_for_function('document.querySelector("#page-home").scrollTop>100')
-            top.click(); page.wait_for_function('document.querySelector("#page-home").scrollTop<2')
-            box=slider.bounding_box(); before=home.evaluate('e=>e.scrollTop')
-            swipe(box['x']+22,box['y']+22,box['y']+102)
-            assert home.evaluate('e=>e.scrollTop') > before+500
+            expect(controls).to_be_visible()
+        else:
+            reveal(page)
+        # Native touch can drag the grip without starting pagination or losing capture.
+        if width == 390:
+            box = slider.bounding_box()
+            x, y = box['x']+24, box['y']+24
+            before = home.evaluate('e=>e.scrollTop')
+            cdp.send('Input.dispatchTouchEvent', {'type':'touchStart','touchPoints':[{'x':x,'y':y}]})
+            for i in range(1,9):
+                cdp.send('Input.dispatchTouchEvent', {'type':'touchMove','touchPoints':[{'x':x,'y':y+i*8}]})
+            cdp.send('Input.dispatchTouchEvent', {'type':'touchEnd','touchPoints':[]})
+            assert home.evaluate('e=>e.scrollTop') > before+300
             assert not controls.evaluate('el=>el.classList.contains("is-dragging")')
-            top.click()
-        # Hidden while another page / subpage is active, without stealing touch targets.
-        page.locator('#btn-search').click(); expect(controls).to_be_hidden()
+        top.click(); page.locator('#btn-search').click(); expect(controls).to_be_hidden()
         page.locator('#sp-search [data-act="back"]').click()
-        page.locator('#sp-search').wait_for(state='detached'); expect(controls).to_be_visible()
+        page.locator('#sp-search').wait_for(state='detached'); expect(controls).to_be_hidden()
         page.locator('[data-page="page-acct"]').click(); expect(controls).to_be_hidden()
-        page.locator('[data-page="page-home"]').click(); expect(controls).to_be_visible()
-        # Empty / short data refresh removes the control; deleted history must not extend the list.
+        page.locator('[data-page="page-home"]').click(); expect(controls).to_be_hidden()
         page.evaluate('''async()=>{
           const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)});
           const tx=db.transaction(['entries','lifeNotes'],'readwrite');tx.objectStore('entries').clear();tx.objectStore('lifeNotes').clear();
@@ -95,8 +119,7 @@ def run(browser, width, theme='light', scale=1):
         assert not errors, errors
         assert not external, external
         print(f'PASS home fast scroll {width}px {theme} text {scale}', flush=True)
-    finally:
-        context.close()
+    finally: context.close()
 
 
 def long_history(browser):
@@ -109,25 +132,54 @@ def long_history(browser):
         page.evaluate('''async()=>{
           const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)});
           const tx=db.transaction(['entries','lifeNotes'],'readwrite');const entries=tx.objectStore('entries');entries.clear();
-          for(let i=0;i<5000;i++)entries.put({id:i+1,type:'expense',amount:1200,accountId:1,categoryId:1,note:'虚构历史流水',occurredAt:new Date(2026,9-Math.floor(i/250),10,12).getTime()+i,deletedAt:0,reimburseStatus:'none',createdAt:1,updatedAt:1});
+          for(let i=0;i<10000;i++)entries.put({id:i+1,type:'expense',amount:1200,accountId:1,categoryId:1,note:'虚构历史流水',occurredAt:new Date(2026,9-Math.floor(i/250),10,12).getTime()+i,deletedAt:0,reimburseStatus:'none',createdAt:1,updatedAt:1});
           const notes=tx.objectStore('lifeNotes');notes.clear();
-          notes.put({id:991,kind:'diary',title:'最早的生活记录',body:'虚构内容',occurredAt:new Date(2023,2,3).getTime(),deletedAt:0,createdAt:1,updatedAt:1});
+          notes.put({id:991,kind:'diary',title:'最早的生活记录',body:'虚构内容',occurredAt:new Date(2022,2,3).getTime(),deletedAt:0,createdAt:1,updatedAt:1});
           notes.put({id:992,kind:'diary',title:'已删除的更早记录',body:'不应出现',occurredAt:new Date(2020,0,1).getTime(),deletedAt:1,createdAt:1,updatedAt:1});
           await new Promise(r=>tx.oncomplete=r);db.close();
         }''')
-        page.reload();expect(page.locator('#hm-days [data-entry-row]')).to_have_count(750)
-        controls=page.get_by_role('group',name='快速浏览流水')
+        page.reload();expect(page.locator('#hm-days [data-entry-row]').first).to_be_visible()
+        controls=page.locator('.hm-fast-scroll');home=page.locator('#page-home')
+        cdp=context.new_cdp_session(page);cdp.send('Emulation.setCPUThrottlingRate',{'rate':4})
+        reveal(page)
         start=time.monotonic();controls.get_by_role('button',name='直达底部').click()
-        expect(page.locator('#hm-days [data-entry-row]')).to_have_count(5000,timeout=20000)
-        expect(page.locator('[data-home-life-note="991"]')).to_be_in_viewport(timeout=10000)
+        expect(page.locator('[data-home-life-note="991"]')).to_be_in_viewport(timeout=20000)
         expect(page.locator('#hm-more')).to_have_text('已展示全部流水')
         expect(page.locator('[data-home-life-note="992"]')).to_have_count(0)
         elapsed=time.monotonic()-start
         page.wait_for_function('(()=>{const e=document.querySelector("#page-home");return e.scrollHeight-e.clientHeight-e.scrollTop<3})()')
-        controls.get_by_role('button',name='回到顶部').click()
+        # All history is navigable without retaining 10,000 interactive rows.
+        assert page.locator('#hm-days [data-entry-row]').count() < 240
+        assert page.locator('#hm-days *').count() < 15000
+        reveal(page);controls.get_by_role('button',name='回到顶部').click()
         page.wait_for_function('document.querySelector("#page-home").scrollTop<2')
+        expect(page.locator('[data-entry-row="250"]')).to_be_visible()
+        for _ in range(3):
+            page.locator('[data-page="page-mine"]').click();expect(page.locator('#page-mine')).to_have_class('page is-active')
+            page.locator('[data-page="page-home"]').click()
+            expect(page.locator('[data-entry-row="250"]')).to_be_visible()
+        # Clicking an actual row still opens the correct detail after recycling.
+        page.locator('[data-entry="250"]').click();expect(page.locator('#sp-entry-view .entry-view-hero')).to_contain_text('-12.00')
+        page.locator('#sp-entry-view [data-act="back"]').click();expect(page.locator('#sp-entry-view')).to_have_count(0)
+        home.evaluate('e=>e.scrollTop=(e.scrollHeight-e.clientHeight)*.5')
+        page.wait_for_timeout(400)
+        assert 0 < page.locator('#hm-days [data-entry-row]').count() < 240
+        row=page.locator('#hm-days [data-entry]').first
+        assert 4000 < int(row.get_attribute('data-entry')) < 6500
+        home.evaluate('e=>e.scrollTop=0');page.wait_for_timeout(300)
+        frame_stats=page.evaluate('''async()=>{const h=document.querySelector('#page-home');let start=performance.now(),prev=start,max=0,n=0;return await new Promise(r=>{function tick(now){max=Math.max(max,now-prev);prev=now;h.scrollTop+=120;n++;if(now-start<2000)requestAnimationFrame(tick);else r({n,max})}requestAnimationFrame(tick)})}''')
+        assert page.locator('#hm-days [data-entry-row]').count() < 240
+        page.evaluate("""async()=>{
+          const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)});
+          const tx=db.transaction(['entries','lifeNotes'],'readwrite');tx.objectStore('entries').clear();const notes=tx.objectStore('lifeNotes');notes.clear();
+          for(let i=0;i<201;i++)notes.put({id:i+1,kind:'diary',title:'虚构生活记录'+i,body:'虚构内容',occurredAt:new Date(2026,9,10).getTime()+i,deletedAt:0,createdAt:1,updatedAt:1});
+          await new Promise(r=>tx.oncomplete=r);db.close();
+        }""")
+        page.reload();expect(page.locator('[data-home-life-note="201"]')).to_be_visible()
+        home.evaluate('e=>e.scrollTop=1000');page.wait_for_timeout(300)
+        expect(page.locator('#hm-month-overlay')).to_be_hidden()
         assert not errors,errors
-        print(f'PASS 5000 rows, multi-year history, life-only earliest date, deleted exclusion; jump {elapsed:.2f}s',flush=True)
+        print(f'PASS 10000 rows, bounded DOM, repeated tab switching, row details; jump {elapsed:.2f}s, frames {frame_stats}',flush=True)
     finally:context.close()
 
 

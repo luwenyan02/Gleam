@@ -47,8 +47,9 @@
 .home-empty>.chip{flex:none;padding:7px 11px;color:var(--primary);border-color:color-mix(in oklab,var(--seed-primary) 24%,var(--border))}
 
 /* 时间线加载提示 */
-/* 保留完整流水及左滑操作，屏外行由浏览器延后布局绘制；再次进入沿用实测高度。 */
-#page-home.hm-defer-rows #hm-days .entry-swipe{content-visibility:auto;contain-intrinsic-block-size:auto calc(44px * var(--seed-type) + 24px * var(--seed-density))}
+/* 长列表只挂载视口附近行；占位保留滚动范围和日分组。 */
+.hm-row-block{overflow-anchor:none}
+.hm-row-block:not(:last-child)>.entry-swipe:last-child,.hm-row-block:not(:last-child)>.entry:last-child{border-bottom:1px solid var(--border)}
 .hm-more{text-align:center;padding:6px 0 12px}
 .hm-more{min-height:48px;font-size:var(--text-meta);color:var(--primary)}
 .hm-more:disabled{color:var(--muted)}
@@ -105,12 +106,12 @@
 
 #hm-days [data-home-life-note]{cursor:pointer}
 
-/* 只占右缘 44px 触控区；零高度 sticky 锚点不挤动流水。 */
-.hm-fast-anchor{position:sticky;top:calc(61% - 66px);height:0;width:44px;align-self:flex-end;order:-2;z-index:9;margin-right:-14px}
-.hm-fast-scroll{position:relative;display:flex;flex-direction:column;width:44px;height:132px;color:var(--muted);opacity:.78;transition:opacity .18s ease}
-.hm-fast-scroll::before{content:'';position:absolute;inset:0 1px 0 13px;border-radius:24px;background:color-mix(in srgb,var(--surface) 58%,transparent);border:1px solid color-mix(in srgb,var(--border) 50%,transparent);pointer-events:none}
-.hm-fast-scroll button,.hm-fast-grip{position:relative;display:grid;place-items:center;width:44px;min-width:44px;height:44px;min-height:44px;border-radius:22px}
-.hm-fast-scroll svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;transform:translateX(6px)}
+/* 按需显示的 48px 胶囊，内收至页面留白；sticky 锚点不挤动流水。 */
+.hm-fast-anchor{position:sticky;top:calc(61% - 72px);height:0;width:48px;align-self:flex-end;order:-2;z-index:9;margin-right:0}
+.hm-fast-scroll{position:relative;display:flex;flex-direction:column;width:48px;height:144px;color:var(--muted);opacity:.78;transition:opacity .18s ease}
+.hm-fast-scroll::before{content:'';position:absolute;inset:0;border-radius:24px;background:color-mix(in srgb,var(--surface) 58%,transparent);border:1px solid color-mix(in srgb,var(--border) 50%,transparent);pointer-events:none}
+.hm-fast-scroll button,.hm-fast-grip{position:relative;display:grid;place-items:center;width:48px;min-width:48px;height:48px;min-height:48px;border-radius:24px}
+.hm-fast-scroll svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .hm-fast-grip{touch-action:none;user-select:none;cursor:ns-resize}
 .hm-fast-grip svg{stroke-width:3}
 .hm-fast-scroll button:disabled{opacity:.28}

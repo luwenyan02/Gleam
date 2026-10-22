@@ -40,6 +40,7 @@ import { openLifeNotePreview } from '../life/lifeNotePreview';
 
 import { bindSpendingRhythm, refreshSpendingRhythm, spendingRhythmHtml } from './spendingRhythm';
 import { bindHomeFastScroll } from './fastScroll';
+import { bindTimelineRows } from './timelineRows';
 
 let root: HTMLElement | null = null;
 let monthsShown = 3;
@@ -59,6 +60,7 @@ let needsRefresh = true;
 let refreshedDay = '';
 let jumpToEnd = false;
 let fastScroll: ReturnType<typeof bindHomeFastScroll> | undefined;
+let timelineRows: ReturnType<typeof bindTimelineRows> | undefined;
 
 function showHome(): void {
   if (needsRefresh || refreshedDay !== dayKey(Date.now())) scheduleRefresh();
@@ -192,6 +194,7 @@ function renderSkeleton(el: HTMLElement): void {
     if (summary) openLedgerSearch({ from: summary.from, to: summary.to }, `${monthTitle(summary.month)}明细`);
   });
   el.querySelector('#hm-more')!.addEventListener('click', () => loadMore(el, false));
+  timelineRows = bindTimelineRows(el);
   bindTimelineScroll(el);
   fastScroll = bindHomeFastScroll(el, {
     bottom() {
@@ -300,7 +303,8 @@ function refreshVisibleMonth(el: HTMLElement): void {
   if (el.inert || !el.classList.contains('is-active')) return;
   const overlay = el.querySelector<HTMLElement>('#hm-month-overlay')!;
   const sections = [...el.querySelectorAll<HTMLElement>('[data-home-month]')];
-  const latest = sections.length ? el.querySelector<HTMLElement>('#hm-days [data-entry-row]') : null;
+  const firstBlock = el.querySelector<HTMLElement>('#hm-days [data-home-rows][data-has-bill]');
+  const latest = sections.length ? (firstBlock?.querySelector<HTMLElement>('[data-entry-row]') ?? firstBlock ?? el.querySelector<HTMLElement>('#hm-days [data-entry-row]')) : null;
   // 以滚动容器的裁剪边界判断，浮层不占高度，出现／消失不会推动流水或反复触发。
   overlay.hidden = !latest || el.scrollTop <= 0 || latest.getBoundingClientRect().bottom > el.getBoundingClientRect().top + el.clientTop;
   if (overlay.hidden) return;
@@ -494,12 +498,13 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
 
   const days = [...groups.keys()].sort((a, b) => (a < b ? 1 : -1));
   const chunks = new Map<string, string[]>();
-  let renderedRows = 0;
+  timelineRows!.reset();
+  const virtual = items.length > 200;
+  const rowHtml = (it: TimelineItem) => it.kind === 'entry' ? entryHtml(it.entry, catMap, acctNames) : lifeHtml(it.note);
   days.forEach((key) => {
     const isToday = key === todayKey;
     if (isToday ? !showToday : !showPast) return;
     const list = groups.get(key)!;
-    renderedRows += list.length;
     const summary = summarizeLedgerEntries(
       list.filter((it): it is Extract<TimelineItem, { kind: 'entry' }> => it.kind === 'entry')
         .map((it) => it.entry),
@@ -509,11 +514,15 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
     const sums: string[] = [];
     if (expense) sums.push(`支出 ${formatFenCny(expense)}`);
     if (income) sums.push(`收入 ${formatFenCny(income)}`);
+    const parts: string[] = [];
+    if (virtual) {
+      for (let i = 0; i < list.length; i += 24) {
+        const rows = list.slice(i, i + 24);
+        parts.push(timelineRows!.slot(rows.length, () => rows.map(rowHtml).join(''), rows.some(it => it.kind === 'entry')));
+      }
+    }
     const body = list.length
-      ? `<div class="card list">${list.map((it) =>
-          it.kind === 'entry'
-            ? entryHtml(it.entry, catMap, acctNames)
-            : lifeHtml(it.note)).join('')}</div>`
+      ? `<div class="card list">${virtual ? parts.join('') : list.map(rowHtml).join('')}</div>`
       : `<div class="card list home-empty">
           <span class="e-ic">${iconHtml('ic-pen', 18)}</span>
           <div><p class="e-title">今天还没有记录</p><p class="e-meta">花了什么、赚了什么，随手记下就好</p></div>
@@ -528,13 +537,12 @@ async function refreshTimeline(el: HTMLElement, showToday: boolean, showPast: bo
       </section>`);
     chunks.set(month, listHtml);
   });
-  // 短列表保留完整布局，只有长时间线延后绘制屏外行。
-  el.classList.toggle('hm-defer-rows', renderedRows > 200);
   const html = window.periods.map(period => chunks.get(period.month)?.join('') ?? '').join('');
   const scroll = el.scrollTop;
   el.querySelector('#hm-days')!.innerHTML =
     (showToday || showPast) ? html : '<p class="tiny" style="text-align:center;padding:20px 0">流水模块已隐藏 · 可在右上角自定义首页</p>';
   el.scrollTop = scroll;
+  timelineRows!.observe();
   const more = el.querySelector<HTMLButtonElement>('#hm-more')!;
   more.hidden = !showPast || (exhausted && !items.length);
   more.disabled = exhausted;
