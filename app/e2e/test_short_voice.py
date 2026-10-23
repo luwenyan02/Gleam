@@ -177,6 +177,7 @@ def run(page, width, motion):
     page.on('request', lambda req: requests.append(req.url) if req.url.startswith('https://') else None)
     page.goto(URL); page.locator('#fab').wait_for(); seed_config(page)
     page.locator('[data-page="page-mine"]').click(); page.get_by_role('button', name='应用设置', exact=True).click()
+    page.get_by_role('button', name='AI 配置', exact=True).click()
     key = page.locator('#voice-bailian-key')
     key.wait_for(); key.scroll_into_view_if_needed()
     expect(key).to_be_enabled(); expect(key).to_have_value('')
@@ -207,10 +208,11 @@ def run(page, width, motion):
     assert not requests
     assert not any('synthetic-voice-test-key' in str(row) for row in read_rows(page,'settings'))
     assert page.evaluate("!JSON.stringify({...localStorage,...sessionStorage}).includes('synthetic-voice-test-key')")
-    assert 'synthetic-voice-test-key' not in page.locator('#sp-settings').inner_html()
-    assert_usable(page, '#sp-settings section[aria-label="百炼短语音"]')
+    assert 'synthetic-voice-test-key' not in page.locator('#sp-ai-settings').inner_html()
+    assert_usable(page, '#sp-ai-settings section[aria-label="百炼短语音"]')
     page.screenshot(path=str(OUT / f'settings-{width}-{motion}.png'), animations='disabled')
-    page.locator('#sp-settings [data-act="back"]').click()
+    page.locator('#sp-ai-settings [data-act="back"]').click()
+    page.locator('#sp-settings .sub-head [data-act="back"]').click()
     page.locator('[data-page="page-home"]').click()
 
     # Click only opens the shared idle surface. Holding is the recording consent.
@@ -259,6 +261,7 @@ def web_mode(page,width,motion):
     image(page,'web-fallback',width,motion)
     page.locator('[data-hv-close]').click();page.locator('#sp-ai-inbox [data-act="back"]').click()
     page.locator('[data-page="page-mine"]').click();page.get_by_role('button', name='应用设置', exact=True).click()
+    page.get_by_role('button', name='AI 配置', exact=True).click()
     expect(page.locator('#voice-bailian-key')).to_be_disabled()
     expect(page.locator('#voice-key-shared')).to_be_disabled()
     expect(page.locator('[data-voice-test]')).to_be_disabled()

@@ -37,14 +37,21 @@ def run(page,width,height,scale,theme):
  assert page.locator('#cat-jump input').count()==0
  # Choose a group and come back without changing category, amount, account or note.
  page.locator('[data-cat-jump]').last.click();page.locator('[data-cat-collapse]').click();expect(page.locator('#keypad')).to_be_visible();expect(page.locator('#amt')).to_have_text('8');expect(page.locator('#acct-name')).to_have_text('虚构账户2');expect(page.locator('#note')).to_have_value('虚构小米尺寸草稿')
- page.locator('#sheet-close').click();page.locator('[data-page="page-mine"]').click();page.get_by_role('button',name='应用设置',exact=True).click();settings=page.locator('#sp-settings');expect(settings.locator('#ai-thres')).to_be_attached();assert settings.evaluate('e=>e.scrollWidth<=e.clientWidth+1')
+ page.locator('#sheet-close').click();page.locator('[data-page="page-mine"]').click();page.get_by_role('button',name='应用设置',exact=True).click();settings=page.locator('#sp-settings');expect(settings.locator('[data-act="ai-settings"]')).to_be_attached();expect(settings.locator('#ai-thres')).to_have_count(0);assert settings.evaluate('e=>e.scrollWidth<=e.clientWidth+1')
+ settings.locator('[data-act="ai-settings"]').scroll_into_view_if_needed();page.screenshot(path=str(OUT/f'settings-{label}.png'),animations='disabled')
+ settings.get_by_role('button',name='AI 配置',exact=True).click();ai=page.locator('#sp-ai-settings')
+ expect(ai.locator('#ai-thres')).to_be_attached();expect(ai.locator('#ai-model')).to_be_hidden()
+ assert ai.evaluate('e=>e.scrollWidth<=e.clientWidth+1')
+ ai.locator('#ai-provider').scroll_into_view_if_needed();page.screenshot(path=str(OUT/f'ai-{label}.png'),animations='disabled')
+ ai.locator('[aria-label="百炼短语音"]').scroll_into_view_if_needed();page.screenshot(path=str(OUT/f'voice-{label}.png'),animations='disabled')
+ page.evaluate("document.dispatchEvent(new CustomEvent('gleam:system-back'))");expect(ai).to_have_count(0);expect(settings.locator('[data-act="ai-settings"]')).to_be_focused()
  assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1');assert not errors,errors;assert not external,external
  print('PASS Xiaomi14 browser simulation',label,flush=True)
 if __name__=='__main__':
  OUT.mkdir(parents=True,exist_ok=True)
  with sync_playwright() as p:
   b=p.chromium.launch()
-  for width,height,scale in [(400,890,1),(400,810,1),(393,873,1),(400,810,1.3)]:
+  for width,height,scale in [(400,890,1),(400,810,1),(393,873,1),(412,915,1),(400,810,1.3)]:
    for theme in ['light','dark']:
     c=b.new_context(viewport={'width':width,'height':height},device_scale_factor=3,is_mobile=True,has_touch=True,service_workers='block',reduced_motion='reduce',locale='zh-CN',timezone_id='Asia/Shanghai');run(c.new_page(),width,height,scale,theme);c.close()
   b.close()

@@ -233,11 +233,15 @@ def contextual_recommendation(page,width):
 def picker_back(page,width):
     fixture(page);page.locator('.tab[data-page="page-mine"]').click()
     page.get_by_role('button',name='应用设置',exact=True).click()
+    page.get_by_role('button',name='AI 配置',exact=True).click()
     page.locator('#ai-provider').click();page.locator('.picker-panel.open').wait_for();page.wait_for_timeout(300)
     page.go_back();page.wait_for_timeout(450)
     assert page.locator('.picker-mask').count()==0
-    assert page.locator('#sp-settings.open').count()==1,'选择器返回不能关闭其所属的设置页'
-    assert page.locator('#sp-settings').evaluate('e=>!e.inert&&!e.closest("[inert]")')
+    assert page.locator('#sp-ai-settings.open').count()==1,'选择器返回不能关闭其所属的设置页'
+    assert page.locator('#sp-ai-settings').evaluate('e=>!e.inert&&!e.closest("[inert]")')
+    page.go_back();page.wait_for_timeout(450)
+    assert page.locator('#sp-ai-settings').count()==0
+    assert page.locator('#sp-settings.open').count()==1
     page.go_back();page.wait_for_timeout(450)
     assert page.locator('#sp-settings').count()==0
     assert page.locator('.viewport').evaluate('e=>!e.inert')

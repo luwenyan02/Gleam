@@ -42,13 +42,13 @@
 .settings-details summary:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 .settings-manual{font-size:15px;line-height:1.75;color:var(--fg);overflow-wrap:anywhere}
 .settings-manual section+section{margin-top:22px}.settings-manual h4{font-size:17px;margin:0 0 8px}.settings-manual p{margin:0 0 10px}
-#sp-settings .field .sub{text-align:right;overflow-wrap:anywhere}
+:is(#sp-settings,#sp-ai-settings) .field .sub{text-align:right;overflow-wrap:anywhere}
 
 /* 模型名与能力说明分行，长平台前缀／兼容提示也能完整阅读。 */
-#sp-settings .picker-mask[aria-label="选择模型"] .picker-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;min-height:56px}
-#sp-settings .picker-mask[aria-label="选择模型"] .picker-item-label{grid-column:1;grid-row:1;white-space:normal;overflow:visible;overflow-wrap:anywhere;font-size:var(--text-body);line-height:1.5}
-#sp-settings .picker-mask[aria-label="选择模型"] .picker-item-note{grid-column:1;grid-row:2;min-width:0;white-space:normal;overflow-wrap:anywhere;font-size:var(--text-small);line-height:1.5}
-#sp-settings .picker-mask[aria-label="选择模型"] .picker-item-check{grid-column:2;grid-row:1 / 3}
+#sp-ai-settings .picker-mask[aria-label="选择模型"] .picker-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;min-height:56px}
+#sp-ai-settings .picker-mask[aria-label="选择模型"] .picker-item-label{grid-column:1;grid-row:1;white-space:normal;overflow:visible;overflow-wrap:anywhere;font-size:var(--text-body);line-height:1.5}
+#sp-ai-settings .picker-mask[aria-label="选择模型"] .picker-item-note{grid-column:1;grid-row:2;min-width:0;white-space:normal;overflow-wrap:anywhere;font-size:var(--text-small);line-height:1.5}
+#sp-ai-settings .picker-mask[aria-label="选择模型"] .picker-item-check{grid-column:2;grid-row:1 / 3}
 
 .manual-gallery{display:grid;grid-template-columns:minmax(0,1fr);gap:16px 12px}
 .manual-figure{min-width:0;margin:0}.manual-figure figcaption{font-size:13px;line-height:1.6;margin-top:8px}
@@ -70,3 +70,9 @@
 .manual-pictures[open] .manual-gallery{padding-bottom:12px}
 .settings-manual button:focus-visible,.settings-manual summary:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 @media(min-width:600px){.manual-gallery{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* 日常偏好页只呈现配置入口，完整表单位于独立子页。 */
+.settings-ai-entry{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px;width:100%;padding:4px 0;text-align:left;color:var(--fg)}
+.settings-ai-entry>span{display:flex;flex-direction:column;gap:5px;min-width:0}.settings-ai-entry strong{font-size:var(--text-body);font-weight:600}.settings-ai-entry .sub{font-size:var(--text-small);color:var(--muted);overflow-wrap:anywhere}.settings-ai-entry>svg{flex:none;width:20px;height:20px;color:var(--muted)}
+.ai-set label[hidden]{display:none}
+.ai-set input,.ai-pick-btn{min-width:0;max-width:100%;box-sizing:border-box}.ai-pick-btn{overflow-wrap:anywhere}

@@ -204,7 +204,7 @@ it('rerender does not preserve an unfocused untouched input or reinsert a previo
   expect(replacement.replaceWith).not.toHaveBeenCalled(); expect(current.value).toBe('');
 });
 it('the settings surface uses the empty key editor, refresh epoch guard and raw-input invalidation', () => {
-  const source = readFileSync('src/features/settings/settings.ts', 'utf8');
+  const source = readFileSync('src/features/settings/aiSettings.ts', 'utf8');
   expect(source).toContain('aiKeyInputHtml(aiKey)');
   expect(source).toContain('aiKeyEpoch !== getAiKeySettingsEpoch()');
   expect(source).toContain('preserveAiKeyDraft(el)');
