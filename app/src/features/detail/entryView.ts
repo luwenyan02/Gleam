@@ -11,6 +11,7 @@ import { formatFen, formatFenCny } from '../../core/money';
 import { on } from '../../core/store';
 import { LOAN_KIND_META, type Entry } from '../../core/types';
 import { getEntryViewData } from '../../core/repo/entryViewRepo';
+import { creditLimitStatus } from '../../core/repo/accountRepo';
 import { closeSubpage, SUBPAGE_CLOSE_EVENT } from '../shell/router';
 import { showToast } from '../shell/toast';
 import {
@@ -59,6 +60,8 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
     const accountText = entry.type === 'transfer' || entry.type === 'loan'
       ? `${accountMap.get(entry.fromAccountId ?? -1)?.name ?? '账户'} → ${accountMap.get(entry.toAccountId ?? -1)?.name ?? '账户'}`
       : account?.name ?? '未选择账户';
+    const creditLimit = account && entry.type === 'expense' && !entry.refundFlag && entry.amount >= 0
+      ? creditLimitStatus(account) : undefined;
     const categoryText = reconciliation ? '余额对账调整' : entry.type === 'loan'
       ? LOAN_KIND_META[entry.loanKind ?? 'borrow'].name
       : entry.type === 'transfer' ? '账户转账' : cat?.name ?? '未分类';
@@ -75,7 +78,7 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
       </section>
       <section class="card list entry-view-fields">
         <div class="detail-field"><span>时间</span><b class="num">${fullDateTime(entry.occurredAt)}</b></div>
-        <div class="detail-field"><span>${entry.type === 'expense' ? (entry.refundFlag || entry.amount < 0 ? '退款账户' : '付款账户') : '资金账户'}</span><b>${esc(accountText)}</b></div>
+        <div class="detail-field"><span>${entry.type === 'expense' ? (entry.refundFlag || entry.amount < 0 ? '退款账户' : '付款账户') : '资金账户'}</span><b${creditLimit ? ' class="entry-view-account"' : ''}><span>${esc(accountText)}</span>${creditLimit ? `<span class="entry-view-credit">（${creditLimit.overLimit > 0 ? '已超额' : '剩余额度'} <span class="num">${formatFenCny(creditLimit.overLimit || creditLimit.remaining)}）</span></span>` : ''}</b></div>
         <div class="detail-field"><span>分类</span><b>${esc(categoryText)}</b></div>
         <div class="detail-field"><span>商家</span><b>${merchant ? `<button class="chip" data-view-merchant="${merchant.id}">${esc(merchant.name)} ›</button>` : '无商家'}</b></div>
         ${entry.type === 'expense' && !entry.refundFlag && !entry.sourceAdjustment ? `<div class="detail-field"><span>报销</span><b>${reimbursement}</b></div>` : ''}
