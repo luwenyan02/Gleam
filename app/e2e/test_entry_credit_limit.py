@@ -41,7 +41,7 @@ def check_detail(page, entry_id, expected, screenshot=None):
     detail.locator('.entry-view-hero').wait_for()
     account_row = detail.locator('.entry-view-fields').first.locator('.detail-field').nth(1)
     if expected:
-        expect(account_row).to_contain_text(expected)
+        expect(account_row).to_contain_text(f'（{expected}）')
     else:
         expect(account_row).not_to_contain_text('剩余额度')
         expect(account_row).not_to_contain_text('已超额')
@@ -94,7 +94,7 @@ def main():
                 page.locator('#rf-keypad [data-rk="5"]').click()
                 page.locator('#rf-keypad [data-rk="save"]').click()
                 page.locator('#sp-entry-refund').wait_for(state='detached')
-                expect(page.locator('#sp-entry-view .entry-view-credit')).to_have_text('剩余额度 ¥7,005.00')
+                expect(page.locator('#sp-entry-view .entry-view-credit')).to_have_text('（剩余额度 ¥7,005.00）')
                 page.locator('#sp-entry-view .sub-head [data-act="back"]').click()
                 page.locator('#sp-entry-view').wait_for(state='detached')
             check_detail(page, 12, '剩余额度 ¥998,765.44', f'long-{label}.png')

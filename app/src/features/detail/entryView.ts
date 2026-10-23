@@ -78,7 +78,7 @@ export async function renderEntryView(body: HTMLElement): Promise<void> {
       </section>
       <section class="card list entry-view-fields">
         <div class="detail-field"><span>时间</span><b class="num">${fullDateTime(entry.occurredAt)}</b></div>
-        <div class="detail-field"><span>${entry.type === 'expense' ? (entry.refundFlag || entry.amount < 0 ? '退款账户' : '付款账户') : '资金账户'}</span><b${creditLimit ? ' class="entry-view-account"' : ''}><span>${esc(accountText)}</span>${creditLimit ? `<span class="entry-view-credit">${creditLimit.overLimit > 0 ? '已超额' : '剩余额度'} <span class="num">${formatFenCny(creditLimit.overLimit || creditLimit.remaining)}</span></span>` : ''}</b></div>
+        <div class="detail-field"><span>${entry.type === 'expense' ? (entry.refundFlag || entry.amount < 0 ? '退款账户' : '付款账户') : '资金账户'}</span><b${creditLimit ? ' class="entry-view-account"' : ''}><span>${esc(accountText)}</span>${creditLimit ? `<span class="entry-view-credit">（${creditLimit.overLimit > 0 ? '已超额' : '剩余额度'} <span class="num">${formatFenCny(creditLimit.overLimit || creditLimit.remaining)}）</span></span>` : ''}</b></div>
         <div class="detail-field"><span>分类</span><b>${esc(categoryText)}</b></div>
         <div class="detail-field"><span>商家</span><b>${merchant ? `<button class="chip" data-view-merchant="${merchant.id}">${esc(merchant.name)} ›</button>` : '无商家'}</b></div>
         ${entry.type === 'expense' && !entry.refundFlag && !entry.sourceAdjustment ? `<div class="detail-field"><span>报销</span><b>${reimbursement}</b></div>` : ''}
