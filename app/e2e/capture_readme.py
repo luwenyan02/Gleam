@@ -38,7 +38,7 @@ def seed(page):
       const accounts = [
         {id: 1, name: '日常钱包', group: 'cash', balance: 20000},
         {id: 2, name: '工资卡', group: 'debit', balance: 1500000},
-        {id: 3, name: '小林 · 应收', group: 'receivable', balance: 0},
+        {id: 3, name: '小李子 · 应收', group: 'receivable', balance: 0},
       ].map(a => ({...a, hidden: false, countInNetWorth: true, sortOrder: a.id}));
       put('categories', [
         {id: 1, name: '餐饮', kind: 'expense', icon: 'ic-bowl', sortOrder: 1},
