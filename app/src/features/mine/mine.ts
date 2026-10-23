@@ -11,7 +11,9 @@ import { appVersionText, getAppVersion, type AppVersionInfo } from '../../core/a
 import { iconHtml } from '../../assets/icons';
 import { on } from '../../core/store';
 import { formatFenCny } from '../../core/money';
-import { getMineEntrySummary } from '../../core/repo/mineRepo';
+import { getMineEntrySummary, getMineLifeNoteCount } from '../../core/repo/mineRepo';
+import { getLastLocalBackupAt } from '../backup/backupHistory';
+import { dismissBackupReminder, shouldRemindBackup } from '../backup/backupStatus';
 import { ensureMonthBudget } from '../../core/repo/budgetRepo';
 import { getAccountingMonth } from '../../core/repo/periodRepo';
 import { budgetUsage } from '../../core/repo/statsRepo';
@@ -39,9 +41,9 @@ function rowHtml(sub: string, icon: string, title: string, note: string): string
     </button>`;
 }
 
-function groupHtml(title: string, rows: string, label: string): string {
+function groupHtml(title: string, rows: string, label: string, footer = ''): string {
   return `<section class="mine-group" aria-label="${label}">
-    <h3>${title}</h3><div class="card list">${rows}</div>
+    <h3>${title}</h3><div class="card list">${rows}</div>${footer}
   </section>`;
 }
 
@@ -67,9 +69,12 @@ function renderContent(el: HTMLElement): void {
       ${rowHtml('sp-tags', 'ic-tag', '标签与商家', '排行与筛选维度')}
     `, '记账偏好')}
     ${groupHtml('数据与备份', `
-      ${rowHtml('sp-backup', 'ic-cloud', '备份与恢复', '备份 · 恢复 · Excel')}
+      ${rowHtml('sp-backup', 'ic-cloud', '备份与恢复', '读取中')}
       ${rowHtml('sp-trash', 'ic-trash', '回收站', '删除账单保留 30 天')}
-    `, '数据与备份')}
+    `, '数据与备份', `<aside class="mine-backup-reminder" data-backup-reminder hidden aria-label="备份提醒">
+      <p>账本保存在本机，建议备份一份。</p>
+      <div><button class="btn" data-backup-now>去备份</button><button class="btn" data-dismiss-backup>7 天后提醒</button></div>
+    </aside>`)}
     ${groupHtml('智能能力与通知', `
       ${rowHtml('sp-ai-inbox', 'ic-ai', 'AI 记账收件箱', '分享截图 · 粘贴账单')}
     `, '智能能力与通知')}
@@ -103,7 +108,8 @@ function refresh(): Promise<void> {
   const text = (selector: string, value: string) => {
     if (current()) { const node = el.querySelector(selector); if (node) node.textContent = value; }
   };
-  const stats = getMineEntrySummary().then(summary => {
+  const summary = getMineEntrySummary();
+  const stats = summary.then(summary => {
     text('[data-mine-stats]', `已记录 ${summary.days} 天 · ${summary.count} 条流水`);
     text('[data-sub="sp-reimburse"] .row-note', summary.pendingCount
       ? `${summary.pendingCount} 笔 · ${formatFenCny(summary.pendingAmount)}` : '待报销归集');
@@ -130,7 +136,16 @@ function refresh(): Promise<void> {
     if (current()) displayedVersion = info;
     text('[data-app-version]', `${appVersionText(info)} · ${info.platform}`);
   }).catch(() => text('[data-app-version]', '暂未读取'));
-  const task = Promise.all([stats, budget, loans, version]).then(() => undefined);
+  const backup = Promise.all([summary, getLastLocalBackupAt(), getMineLifeNoteCount()]).then(([summary, lastAt, lifeCount]) => {
+    const date = new Date(lastAt);
+    const time = `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+    text('[data-sub="sp-backup"] .row-note', lastAt ? `最近 ${time}` : '未备份');
+    if (current()) {
+      const reminder = el.querySelector<HTMLElement>('[data-backup-reminder]');
+      if (reminder) reminder.hidden = !shouldRemindBackup(lastAt, summary.count > 0 || lifeCount > 0);
+    }
+  }).catch(() => text('[data-sub="sp-backup"] .row-note', '暂未读取'));
+  const task = Promise.all([stats, budget, loans, version, backup]).then(() => undefined);
   pendingBody = el;
   pendingRefresh = task;
   void task.finally(() => {
@@ -158,6 +173,14 @@ export function initMine(): void {
       renderContent(el);
       el.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
+        if (target.closest('[data-dismiss-backup]')) {
+          dismissBackupReminder();
+          const reminder = el.querySelector<HTMLElement>('[data-backup-reminder]');
+          if (reminder) reminder.hidden = true;
+          el.querySelector<HTMLElement>('[data-sub="sp-backup"]')?.focus();
+          return;
+        }
+        if (target.closest('[data-backup-now]')) { openSubpage('sp-backup'); return; }
         const sub = target.closest<HTMLElement>('[data-sub]');
         if (sub) {
           // sp-tags 等待并行模块注册期间可能尚未就绪，兜底提示而非抛错
@@ -176,6 +199,7 @@ export function initMine(): void {
 
   // 隐藏页只标记失效，不在后台反复遍历账本；下次显示时读取。
   on('entries-changed', invalidate);
+  on('life-changed', invalidate);
   on('accounts-changed', invalidate);
   on('categories-changed', invalidate);
   on('budgets-changed', invalidate);

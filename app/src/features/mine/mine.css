@@ -6,3 +6,8 @@
 .mine-group .card{margin-bottom:12px}
 .mine-head h2{font-size:calc(17px * var(--seed-type));font-weight:600}
 .mine-head .icon-btn{margin-left:auto}
+.mine-backup-reminder{margin:-4px 0 14px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--fg);font-size:var(--text-meta)}
+.mine-backup-reminder p{margin:0 0 4px;line-height:1.5}
+.mine-backup-reminder>div{display:flex;gap:8px;flex-wrap:wrap}
+.mine-backup-reminder .btn{min-height:44px;padding:8px 12px;font-size:var(--text-meta)}
+#page-mine [data-sub="sp-backup"] .row-note{max-width:48%;text-align:right;line-height:1.4}

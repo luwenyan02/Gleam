@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { BackupRecord } from '../../core/types';
 import { addBackupRecord, listBackupRecords } from '../../core/repo/backupRepo';
+import { getRememberedLocalBackup, rememberLocalBackup } from './backupStatus';
 
 type Metadata = Omit<BackupRecord, 'id'>;
 interface ArchivedFile { id: string; savedAt: number; record: Metadata; blob: Blob }
@@ -25,12 +26,17 @@ export async function recordBackupFile(input: Omit<BackupRecord, 'id' | 'created
           else { count++; bytes += file.blob.size; }
         }
         await archiveDb.files.bulkDelete(remove);
-        await archiveDb.files.put({ id, savedAt: now, blob, record: { ...input, localFileId: id, createdAt: now, updatedAt: now } });
+        await archiveDb.files.put({ id, savedAt: 0, blob, record: { ...input, localFileId: id, createdAt: now, updatedAt: now } });
       });
       localFileId = id;
     } catch { /* 空间不足不把已下载/已上传/已发送的备份误报为失败。 */ }
   }
   await addBackupRecord({ ...input, localFileId }, now);
+  rememberLocalBackup(now);
+  if (localFileId) {
+    // 主库成功记录后才把该副本作为成功凭据；更新失败仍保留设备侧时间。
+    await archiveDb.files.update(localFileId, { savedAt: now }).catch(() => undefined);
+  }
   return !!localFileId;
 }
 
@@ -55,4 +61,10 @@ export async function listBackupHistory(): Promise<BackupHistoryItem[]> {
 export async function readBackupFile(id: string): Promise<File | undefined> {
   const file = await archiveDb.files.get(id);
   return file ? new File([file.blob], file.record.fileName, { type: 'application/octet-stream' }) : undefined;
+}
+
+/** 旧版独立本机副本也可证明本机曾备份；只读 savedAt 索引，不载入文件 Blob。 */
+export async function getLastLocalBackupAt(): Promise<number> {
+  const [latest] = await archiveDb.files.where('savedAt').above(0).reverse().limit(1).keys().catch(() => []);
+  return Math.max(getRememberedLocalBackup(), typeof latest === 'number' ? latest : 0);
 }

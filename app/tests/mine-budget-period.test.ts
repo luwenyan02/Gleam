@@ -4,6 +4,7 @@ import { db } from '../src/core/db';
 import { setSetting } from '../src/core/repo/settingsRepo';
 import { saveMonthlyBudget } from '../src/core/repo/budgetRepo';
 import { emit } from '../src/core/store';
+import { addLifeNote, softDeleteLifeNote, restoreLifeNote } from '../src/core/repo/lifeRepo';
 import * as mineRepo from '../src/core/repo/mineRepo';
 
 const router = vi.hoisted(() => ({ registerPage: vi.fn(), currentPage: vi.fn(() => 'page-mine') }));
@@ -19,7 +20,7 @@ vi.mock('../src/core/appVersion', () => ({
 import { initMine } from '../src/features/mine/mine';
 
 let element: HTMLElement;
-let nodes: Map<string, { textContent: string }>;
+let nodes: Map<string, { textContent: string; hidden?: boolean }>;
 async function openMine(): Promise<void> {
   initMine();
   const hooks = router.registerPage.mock.calls.at(-1)![1];
@@ -99,4 +100,44 @@ it('首次 render 加 onShow 只读取一次头部摘要，隐藏页不因账单
     await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1));
     await vi.waitFor(() => expect(nodes.get('[data-mine-stats]')?.textContent).toContain('3 条流水'));
   } finally { read.mockRestore(); }
+});
+
+it('我的页备份入口显示本机未备份状态，并预留可关闭的页内提醒', async () => {
+  await openMine();
+  await vi.waitFor(() => expect(nodes.get('[data-sub="sp-backup"] .row-note')?.textContent).toBe('未备份'));
+  expect(element.innerHTML).toContain('data-backup-reminder');
+  expect(element.innerHTML).toContain('data-dismiss-backup');
+});
+
+
+it('零流水但有照片生活记录时提醒备份，统计不读取正文或附件', async () => {
+  await db.entries.clear();
+  await addLifeNote({ kind: 'photo', occurredAt: Date.now(), body: '虚构生活记录'.repeat(1000), photoRefs: [1] });
+  const indexValues = vi.spyOn(IDBIndex.prototype, 'getAll');
+  const storeValues = vi.spyOn(IDBObjectStore.prototype, 'getAll');
+  const indexCursor = vi.spyOn(IDBIndex.prototype, 'openCursor');
+  const storeCursor = vi.spyOn(IDBObjectStore.prototype, 'openCursor');
+  try {
+    await openMine();
+    await vi.waitFor(() => expect(nodes.get('[data-backup-reminder]')?.hidden).toBe(false));
+    expect(nodes.get('[data-mine-stats]')?.textContent).toContain('0 条流水');
+    for (const spy of [indexValues, indexCursor]) {
+      expect(spy.mock.contexts.filter(index => ['lifeNotes', 'attachments'].includes(index.objectStore.name))).toHaveLength(0);
+    }
+    for (const spy of [storeValues, storeCursor]) {
+      expect(spy.mock.contexts.filter(store => ['lifeNotes', 'attachments'].includes(store.name))).toHaveLength(0);
+    }
+  } finally { indexValues.mockRestore(); storeValues.mockRestore(); indexCursor.mockRestore(); storeCursor.mockRestore(); }
+});
+
+it('空账本打开我的页后新增、删除及恢复生活记录，备份提醒随真实事件刷新', async () => {
+  await db.entries.clear();
+  await openMine();
+  await vi.waitFor(() => expect(nodes.get('[data-backup-reminder]')?.hidden).toBe(true));
+  const id = await addLifeNote({ kind: 'diary', occurredAt: Date.now(), body: '虚构日记' });
+  await vi.waitFor(() => expect(nodes.get('[data-backup-reminder]')?.hidden).toBe(false));
+  await softDeleteLifeNote(id);
+  await vi.waitFor(() => expect(nodes.get('[data-backup-reminder]')?.hidden).toBe(true));
+  await restoreLifeNote(id);
+  await vi.waitFor(() => expect(nodes.get('[data-backup-reminder]')?.hidden).toBe(false));
 });
