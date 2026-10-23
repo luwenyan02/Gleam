@@ -277,6 +277,8 @@ button.chip,.tab,.fab,.icon-btn,.btn,button.row,.seg button,.qa,.lf-check{min-wi
 .entry-view-fields{padding:2px 16px;margin-bottom:12px}
 .detail-field{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:54px;border-bottom:1px solid var(--border);font-size:var(--text-body)}
 .detail-field:last-child{border-bottom:0}.detail-field>span{color:var(--muted);flex:none}.detail-field>b{font-weight:500;text-align:right;overflow-wrap:anywhere}
+.entry-view-account{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:flex-end;gap:2px 8px;min-width:0;padding:8px 0}
+.entry-view-credit{font-size:var(--text-meta);font-weight:400;color:var(--muted)}.entry-view-credit .num{white-space:nowrap}
 .entry-view-fields.compact .detail-field{min-height:48px}
 .entry-view-note{min-height:64px;margin-bottom:12px;padding:15px 16px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);font-size:12.5px;line-height:1.65}
 .entry-view-note.empty{color:var(--faint)}
