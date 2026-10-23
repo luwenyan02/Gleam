@@ -127,7 +127,7 @@ def do_restore(page, path, password=None, expect_fail=False):
         page.fill('#rp-pwd', password)
         page.click('#sheet [data-act="ok"]')
     if expect_fail:
-        return dialog_ok(page, '恢复未执行')
+        return dialog_ok(page, '恢复未完成')
     dialog_ok(page, '确认恢复此备份')
     return dialog_ok(page, '恢复完成')
 

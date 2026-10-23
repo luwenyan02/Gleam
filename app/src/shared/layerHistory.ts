@@ -1,6 +1,6 @@
 /** 同文档弹层返回点：日期/选择器/抽屉先关闭自己，再返回其所属页面。 */
 const KEY = 'gleamLayer';
-interface Layer { id: string; cancel: () => void; pushed: boolean }
+interface Layer { id: string; cancel: () => void; pushed: boolean; blockBack: boolean }
 const layers: Layer[] = [];
 const owned = new Set<string>();
 const waitingWrites: (() => void)[] = [];
@@ -23,7 +23,15 @@ function dismissLayersAbove(target: unknown): boolean {
   for (let top = layers.at(-1); top?.pushed && top.id !== target; top = layers.at(-1)) {
     top.cancel();
     handled = true;
-    if (layers.at(-1) === top) break;
+    if (layers.at(-1) === top) {
+      if (top.blockBack) {
+        // 不可取消的写入仍在进行：恢复刚被浏览器移走的历史点。
+        // 共用异步回收队列，确保此时完成任务/打开结果层也不会留下旧标记。
+        awaitingBack = true;
+        window.history.forward();
+      }
+      break;
+    }
   }
   return handled;
 }
@@ -39,8 +47,8 @@ export function pushPageHistory(state: Record<string, unknown>): () => void {
 }
 
 /** 关闭按钮/确认/系统返回都调用 release；手动关闭时回收同一个历史点。 */
-export function trackHistoryLayer(cancel: () => void): () => void {
-  const layer: Layer = { id: `${Date.now()}-${++sequence}`, cancel, pushed: false };
+export function trackHistoryLayer(cancel: () => void, options: { blockBack?: boolean } = {}): () => void {
+  const layer: Layer = { id: `${Date.now()}-${++sequence}`, cancel, pushed: false, blockBack: options.blockBack ?? false };
   layers.push(layer);
   waitingWrites.push(() => {
     if (!layers.includes(layer)) return;

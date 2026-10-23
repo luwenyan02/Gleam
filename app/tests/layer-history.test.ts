@@ -1,25 +1,26 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 let api: typeof import('../src/shared/layerHistory');
-let entries: Record<string, unknown>[], index: number, pendingBack: number;
+let entries: Record<string, unknown>[], index: number, pendingBack: number, pendingForward: number;
 function pop(delta: number) {
   index += delta;
   if (index < 0 || index >= entries.length) throw new Error('Invalid mock history movement');
   return api.handleLayerHistory(entries[index]);
 }
-function settle() { while (pendingBack > 0) { pendingBack--; pop(-1); } }
+function settle() { while (pendingBack > 0 || pendingForward > 0) { if (pendingBack > 0) { pendingBack--; pop(-1); } else { pendingForward--; pop(1); } } }
 function layer() {
   const cancelled = vi.fn(() => release());
   const release = api.trackHistoryLayer(cancelled);
   return { cancelled, release, id: entries[index].gleamLayer };
 }
 beforeEach(async () => {
-  vi.resetModules(); entries = [{ gleamDepth: 0 }]; index = 0; pendingBack = 0;
+  vi.resetModules(); entries = [{ gleamDepth: 0 }]; index = 0; pendingBack = 0; pendingForward = 0;
   vi.stubGlobal('window', { history: {
     get state() { return entries[index]; },
     pushState(state: Record<string, unknown>) { entries.splice(index + 1); entries.push(state); index++; },
     replaceState(state: Record<string, unknown>) { entries[index] = state; },
     back() { pendingBack++; },
+    forward() { pendingForward++; },
   } });
   api = await import('../src/shared/layerHistory');
 });
@@ -77,4 +78,26 @@ it('Back through a removed non-top marker closes newer live layers before keepin
   expect(upper.cancelled).toHaveBeenCalledOnce(); expect(lower.cancelled).not.toHaveBeenCalled();
   expect(middle.cancelled).not.toHaveBeenCalled(); expect(entries[index].gleamLayer).toBe(lower.id);
   pop(-1); expect(lower.cancelled).toHaveBeenCalledOnce();
+});
+
+it('a blocking restore layer restores its history point after each browser Back', () => {
+  api.pushPageHistory({ gleamDepth: 1 });
+  const cancel = vi.fn();
+  const release = api.trackHistoryLayer(cancel, { blockBack: true });
+  const marker = entries[index].gleamLayer;
+  for (let i = 0; i < 3; i++) {
+    expect(pop(-1)).toBe(true); settle();
+    expect(index).toBe(2); expect(entries[index].gleamLayer).toBe(marker);
+  }
+  release(); settle();
+  expect(index).toBe(1); expect(entries[index]).toEqual({ gleamDepth: 1 });
+});
+it('finishing restore while Back is being rejected cleans up before the result layer opens', () => {
+  api.pushPageHistory({ gleamDepth: 1 });
+  const release = api.trackHistoryLayer(() => {}, { blockBack: true });
+  pop(-1); release();
+  const result = layer(); settle();
+  expect(index).toBe(2);
+  result.release(); settle();
+  expect(index).toBe(1); expect(entries[index]).toEqual({ gleamDepth: 1 });
 });

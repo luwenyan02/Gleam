@@ -82,13 +82,28 @@ export function sanitizeDumpForBackup(dump: TableDump): TableDump {
  * 任何一步失败由 Dexie 事务整体回滚，主库保持替换前状态。
  * 完成后广播全部数据事件。
  */
-export async function restoreAll(dump: Partial<TableDump>): Promise<void> {
+export interface RestoreProgress { completed: number; total: number }
+
+export async function restoreAll(dump: Partial<TableDump>, onProgress?: (progress: RestoreProgress) => void): Promise<void> {
   const tables = TABLE_NAMES.map((n) => db.table(n));
+  const total = TABLE_NAMES.reduce((sum, name) => sum + (dump[name]?.length ?? 0), 0);
+  let completed = 0;
+  const report = () => {
+    // 界面已关闭或绘制失败不能改变账本事务的结果。
+    try { onProgress?.({ completed, total }); } catch { /* progress is best effort */ }
+  };
+  report();
   await db.transaction('rw', tables, async () => {
     for (const name of TABLE_NAMES) {
       await db.table(name).clear();
       const rows = dump[name];
-      if (rows?.length) await db.table(name).bulkAdd(rows as never[]);
+      // 保持同一事务，限制同时排队的 IDB 请求；任一批失败仍整库回滚。
+      for (let offset = 0; rows && offset < rows.length; offset += 1000) {
+        const batch = rows.slice(offset, offset + 1000);
+        await db.table(name).bulkAdd(batch as never[]);
+        completed += batch.length;
+        report();
+      }
     }
     await db.settings.put({ key: 'life.aiEnabled', value: false, updatedAt: now() });
     // 语音凭据只属于原生安全存储；不采用任何备份中夹带的明文 Key。
@@ -103,7 +118,7 @@ export async function restoreAll(dump: Partial<TableDump>): Promise<void> {
 
 /* ── 快照（独立库，避免整库替换时被清掉） ── */
 
-/** 快照行：tables 为全库导出，metadata 用于列表展示 */
+/** 旧版完整快照；摘要和正文从 v2 起分表存放。 */
 export interface SnapshotRow {
   id: number;
   createdAt: number;
@@ -116,10 +131,30 @@ export interface SnapshotRow {
   tables: TableDump;
 }
 
+type SnapshotMetadata = Omit<SnapshotRow, 'tables'>;
+type SnapshotContents = Pick<SnapshotRow, 'id' | 'tables'>;
+
 const snapDb = new Dexie('GleamSnapshotDB') as Dexie & {
-  snapshots: EntityTable<SnapshotRow, 'id'>;
+  snapshots: EntityTable<SnapshotMetadata, 'id'>;
+  snapshotContents: EntityTable<SnapshotContents, 'id'>;
 };
 snapDb.version(1).stores({ snapshots: '++id, createdAt' });
+snapDb.version(2).stores({
+  snapshots: '++id, createdAt',
+  snapshotContents: 'id',
+}).upgrade(async transaction => {
+  const snapshots = transaction.table<SnapshotRow, number>('snapshots');
+  const contents = transaction.table<SnapshotContents, number>('snapshotContents');
+  // 仅聚合轻量主键，逐条读写大正文；任何失败都回滚整个版本升级，保留 v1 原件。
+  const ids = await snapshots.toCollection().primaryKeys();
+  for (const id of ids) {
+    const row = await snapshots.get(id);
+    if (!row) throw new Error('快照升级时原始记录缺失');
+    const { tables, ...metadata } = row;
+    await contents.add({ id, tables });
+    await transaction.table('snapshots').put(metadata);
+  }
+});
 
 /**
  * 创建当前数据快照（恢复 / 导入 / 分类合并前调用）。
@@ -127,30 +162,34 @@ snapDb.version(1).stores({ snapshots: '++id, createdAt' });
  */
 export async function createSnapshot(reason: SnapshotRow['reason'], label: string): Promise<number> {
   const dump = await exportAll();
-  return snapDb.snapshots.add({
-    createdAt: now(), reason, label, counts: countDump(dump), tables: dump,
-  } as SnapshotRow);
+  return snapDb.transaction('rw', snapDb.snapshots, snapDb.snapshotContents, async () => {
+    const id = await snapDb.snapshots.add({ createdAt: now(), reason, label, counts: countDump(dump) });
+    await snapDb.snapshotContents.add({ id, tables: dump });
+    return id;
+  });
 }
 
 /** 快照列表（不含 tables 大对象），createdAt 倒序 */
 export async function listSnapshots(): Promise<Omit<SnapshotRow, 'tables'>[]> {
-  const rows = await snapDb.snapshots.orderBy('createdAt').reverse().toArray();
-  return rows.map(({ tables: _t, ...meta }) => meta);
+  return snapDb.snapshots.orderBy('createdAt').reverse().toArray();
 }
 
 /**
  * 一键撤销：用快照内容整库替换主库，成功后删除该快照。
  */
 export async function undoSnapshot(id: number): Promise<void> {
-  const snap = await snapDb.snapshots.get(id);
+  const snap = await snapDb.snapshotContents.get(id);
   if (!snap) throw new Error('快照不存在或已过期清理');
   await restoreAll(snap.tables);
-  await snapDb.snapshots.delete(id);
+  await deleteSnapshot(id);
 }
 
 /** 删除单个快照 */
 export async function deleteSnapshot(id: number): Promise<void> {
-  await snapDb.snapshots.delete(id);
+  await snapDb.transaction('rw', snapDb.snapshots, snapDb.snapshotContents, async () => {
+    await snapDb.snapshots.delete(id);
+    await snapDb.snapshotContents.delete(id);
+  });
 }
 
 /**
@@ -159,9 +198,14 @@ export async function deleteSnapshot(id: number): Promise<void> {
  */
 export async function purgeSnapshots(retentionDays = SNAPSHOT_RETENTION_DAYS): Promise<number> {
   const cutoff = now() - retentionDays * 86400000;
-  const expired = await snapDb.snapshots.where('createdAt').below(cutoff).toArray();
-  if (expired.length) await snapDb.snapshots.bulkDelete(expired.map((s) => s.id));
-  return expired.length;
+  return snapDb.transaction('rw', snapDb.snapshots, snapDb.snapshotContents, async () => {
+    const ids = await snapDb.snapshots.where('createdAt').below(cutoff).primaryKeys();
+    if (ids.length) {
+      await snapDb.snapshots.bulkDelete(ids);
+      await snapDb.snapshotContents.bulkDelete(ids);
+    }
+    return ids.length;
+  });
 }
 
 /* ── 备份历史 ── */
