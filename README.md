@@ -1,8 +1,8 @@
 # 拾光 Gleam
 
-[![拾光新版介绍视频：记账，也记生活。点击打开视频](docs/assets/promo/gleam-warm-life-cover.jpg)](docs/assets/promo/gleam-warm-life.mp4?raw=true)
+https://github.com/user-attachments/assets/e23ed9e9-f84b-4ba6-a50a-91313b2ed70b
 
-**[▶ 观看 / 下载视频 · 64 秒](docs/assets/promo/gleam-warm-life.mp4?raw=true)** · 1080p · [v1.11.36](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.36)
+**[下载 1080p 原片](docs/assets/promo/gleam-warm-life.mp4?raw=true)** · 64 秒 · [查看封面](docs/assets/promo/gleam-warm-life-cover.jpg) · [v1.11.36](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.36)
 
 **记账，也记生活。**
 
