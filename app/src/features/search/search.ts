@@ -25,7 +25,7 @@ import {
   type BatchEntryOperation, type BatchEntryPreview, type BatchEntryResult,
 } from '../../core/repo/batchEntryRepo';
 import { getSetting, setSetting } from '../../core/repo/settingsRepo';
-import { registerSubpage, openSubpage, closeSubpage, switchPage } from '../shell/router';
+import { registerSubpage, openSubpage, closeSubpage, switchPage, SUBPAGE_CLOSE_EVENT } from '../shell/router';
 import { showToast } from '../shell/toast';
 import { confirmDialog } from '../shell/dialog';
 import { on } from '../../core/store';
@@ -69,9 +69,17 @@ let batchResultIds: number[] = [];
 let batchCategories: Category[] = [];
 let batchAccounts: Account[] = [];
 let batchTags: Tag[] = [];
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 100;
 let shown = PAGE_SIZE;
 let lastQueryKey = '';
+let cachedSearchKey = '';
+let renderCachedResults: (() => void) | undefined;
+
+function invalidateSearch(): void {
+  cachedSearchKey = '';
+  renderCachedResults = undefined;
+  ++searchToken;
+}
 
 interface PendingLedgerSearch {
   query: LedgerQuery;
@@ -253,12 +261,16 @@ async function doSearch(kw: string): Promise<void> {
   const hasStructuredQuery = accountScope != null || dateRange !== 'all' || !isFilterEmpty(filterState) || queryTypes.length > 0;
   // 没有关键词也没有任何结构化条件时才显示历史；报表下钻可直接列出全部匹配账单。
   if (!kw && !hasStructuredQuery) {
+    shown = PAGE_SIZE;
+    lastQueryKey = '';
+    invalidateSearch();
+    const historyToken = searchToken;
     batchResultIds = [];
     batchSelected.clear();
     batchMode = false;
     batchSelectAll = false;
     const history = await loadHistory();
-    if (token !== searchToken) return;
+    if (historyToken !== searchToken) return;
     renderHistory(resultsEl, history);
     resultsEl.setAttribute('aria-busy', 'false');
     const filters = body?.querySelector<HTMLElement>('#sr-active-filters');
@@ -270,6 +282,8 @@ async function doSearch(kw: string): Promise<void> {
 
 
   const win = rangeWindow();
+  const cacheKey = JSON.stringify([kw, win, fieldMode, filterState, queryTypes, ledgerOnly, accountScope]);
+  if (renderCachedResults && cachedSearchKey === cacheKey) { renderCachedResults(); return; }
   const countReimburseAsIncome = await getSetting('reimburse.countAsIncome');
   if (token !== searchToken || !resultsEl.isConnected) return;
   const [expenseCats, incomeCats, merchants, tags, entries, notes, accounts] = await Promise.all([
@@ -316,8 +330,6 @@ async function doSearch(kw: string): Promise<void> {
     keyword: kw || undefined,
     field: fieldMode,
   };
-  const queryKey = JSON.stringify([query, summaryFilter]);
-  if (queryKey !== lastQueryKey) { shown = PAGE_SIZE; lastQueryKey = queryKey; }
   const matchedEntries = filterLedgerEntries(entries, query, {
     categoryNames: catNames,
     accountNames,
@@ -328,90 +340,106 @@ async function doSearch(kw: string): Promise<void> {
   const summaryOptions = { reimburseMode: countReimburseAsIncome ? 'income' as const : 'offset' as const };
   const summary = summarizeLedgerEntries(matchedEntries, summaryOptions);
   const extras = searchExtraSummaries(matchedEntries);
-  if (!['all', 'expense', 'income'].includes(summaryFilter) && !extras.some(card => card.filter === summaryFilter)) summaryFilter = 'all';
-  renderActiveFilters({ catNames, accountNames, tagNames, merchantNames });
-
-  // 按汇总卡筛选显示
-  const displayEntries = filterSearchSummary(matchedEntries, summaryFilter);
-  batchResultIds = [...new Set(displayEntries.filter((entry) => entry.kind === 'entry').map((entry) => entry.id))];
-  if (batchMode && batchSelectAll) {
-    batchSelected.clear();
-    batchResultIds.forEach((id) => batchSelected.add(id));
-  } else {
-    for (const id of [...batchSelected]) if (!batchResultIds.includes(id)) batchSelected.delete(id);
-  }
-  const hitEntries = displayEntries.slice(0, shown);
-
   // 生活记录搜索（仅 all/note 模式下）
   const hitNotes = !ledgerOnly && !!kw && (fieldMode === 'all' || fieldMode === 'note')
     ? notes.filter(n => (!win || (n.occurredAt >= win.from && n.occurredAt < win.to)) && ((n.title ?? '').includes(kw) || (n.body ?? '').includes(kw))).slice(0, 50)
     : [];
 
-  const entryRow = (e: LedgerItem) => {
-    const text = entryRowText(e, catMap, accountNames);
-    const note = text.note ? ` <span class="e-sub">· ${esc(text.note)}</span>` : '';
-    const selectable = e.kind === 'entry';
-    const lead = batchMode && selectable
-      ? `<span class="ck${batchSelected.has(e.id) ? ' on' : ''}" aria-hidden="true"></span>`
-      : `<span class="e-ic${text.neutral ? ' neutral' : ''}">${iconHtml(text.icon, 18)}</span>`;
-    return `
-      <div class="entry-swipe${batchMode ? ' sr-batch-row' : ''}" data-eid="${e.id}"${e.kind === 'reimbursement' ? ' data-reimbursement' : ''}>
-        ${e.kind === 'reimbursement' || batchMode ? '' : entrySwipeActionsHtml(e)}
-        <button class="row entry-swipe-content">
-          ${lead}
-          <div class="e-main"><p class="e-title">${esc(text.title)}${note}</p>
-            <p class="e-meta">${esc(text.meta)}</p>
-            ${e.kind === 'reimbursement' ? '<p class="e-meta">点击查看原支出</p>' : e.type === 'expense' && e.reimburseStatus === 'done' ? `<p class="sr-net">原额 ${formatFen(e.amount)} · 已报销 ${formatFen(e.reimbursedAmount ?? 0)}${!countReimburseAsIncome ? ` · 净支出 ${formatFen((e.refundFlag ? -e.amount : e.amount) - (e.reimbursedAmount ?? 0))}` : ''}</p>` : ''}</div>
-          ${amountHtml(e)}
+  let displayFilter: SearchSummaryFilter | undefined;
+  let displayEntries: LedgerItem[] = [];
+  let resultIds: number[] = [];
+  let fullGroups = new Map<string, ReturnType<typeof summarizeLedgerEntries>>();
+  const renderResults = () => {
+    if (!resultsEl.isConnected) return;
+    if (!['all', 'expense', 'income'].includes(summaryFilter) && !extras.some(card => card.filter === summaryFilter)) summaryFilter = 'all';
+    const queryKey = JSON.stringify([cacheKey, summaryFilter]);
+    if (queryKey !== lastQueryKey) { shown = PAGE_SIZE; lastQueryKey = queryKey; }
+    renderActiveFilters({ catNames, accountNames, tagNames, merchantNames });
+
+    // 按汇总卡筛选显示
+    if (displayFilter !== summaryFilter) {
+      displayFilter = summaryFilter;
+      displayEntries = filterSearchSummary(matchedEntries, summaryFilter);
+      resultIds = [...new Set(displayEntries.filter((entry) => entry.kind === 'entry').map((entry) => entry.id))];
+      fullGroups = new Map(groupLedgerEntries(displayEntries).map(g => [g.day, summarizeLedgerEntries(g.entries, summaryOptions)]));
+    }
+    batchResultIds = resultIds;
+    if (batchMode && batchSelectAll) {
+      batchSelected.clear();
+      batchResultIds.forEach((id) => batchSelected.add(id));
+    } else {
+      for (const id of [...batchSelected]) if (!batchResultIds.includes(id)) batchSelected.delete(id);
+    }
+    const hitEntries = displayEntries.slice(0, shown);
+
+    const entryRow = (e: LedgerItem) => {
+      const text = entryRowText(e, catMap, accountNames);
+      const note = text.note ? ` <span class="e-sub">· ${esc(text.note)}</span>` : '';
+      const selectable = e.kind === 'entry';
+      const lead = batchMode && selectable
+        ? `<span class="ck${batchSelected.has(e.id) ? ' on' : ''}" aria-hidden="true"></span>`
+        : `<span class="e-ic${text.neutral ? ' neutral' : ''}">${iconHtml(text.icon, 18)}</span>`;
+      return `
+        <div class="entry-swipe${batchMode ? ' sr-batch-row' : ''}" data-eid="${e.id}"${e.kind === 'reimbursement' ? ' data-reimbursement' : ''}>
+          ${e.kind === 'reimbursement' || batchMode ? '' : entrySwipeActionsHtml(e)}
+          <button class="row entry-swipe-content">
+            ${lead}
+            <div class="e-main"><p class="e-title">${esc(text.title)}${note}</p>
+              <p class="e-meta">${esc(text.meta)}</p>
+              ${e.kind === 'reimbursement' ? '<p class="e-meta">点击查看原支出</p>' : e.type === 'expense' && e.reimburseStatus === 'done' ? `<p class="sr-net">原额 ${formatFen(e.amount)} · 已报销 ${formatFen(e.reimbursedAmount ?? 0)}${!countReimburseAsIncome ? ` · 净支出 ${formatFen((e.refundFlag ? -e.amount : e.amount) - (e.reimbursedAmount ?? 0))}` : ''}</p>` : ''}</div>
+            ${amountHtml(e)}
+          </button>
+        </div>`;
+    };
+    const noteRow = (n: LifeNote) => `
+      <button class="row" data-nid="${n.id}" data-note-at="${n.occurredAt}">
+        <div class="e-main"><p class="e-title">${esc(n.title || '（无标题）')}</p>
+          <p class="e-meta">${dayKey(n.occurredAt)}${n.body ? ` · ${esc(n.body.slice(0, 30))}` : ''}</p></div>
+        <span class="chev">${iconHtml('ic-right', 15)}</span>
+      </button>`;
+
+    const groupedEntries = groupLedgerEntries(hitEntries);
+
+    const summaryScroll = resultsEl.querySelector<HTMLElement>('.sr-summary-row')?.scrollLeft ?? 0;
+    const focusedSummary = resultsEl.contains(document.activeElement) ? (document.activeElement as HTMLElement)?.dataset.sf : undefined;
+    resultsEl.innerHTML = `
+      ${batchMode ? `<div class="sr-batch-scope"><b>批量处理当前全部结果</b><span>已载入 ${batchResultIds.length} 笔，不受分页限制</span></div>` : ''}
+      <div class="sr-summary-row" role="group" aria-label="搜索结果汇总，可横向滑动">
+        <button class="sr-summary-card${summaryFilter === 'all' ? ' active' : ''}" data-sf="all" aria-pressed="${summaryFilter === 'all'}">
+          <div class="sc-label">结余</div>
+          <div class="sc-amount">${summary.balance >= 0 ? '' : '-'}${formatFen(Math.abs(summary.balance))}</div>
         </button>
-      </div>`;
+        <button class="sr-summary-card${summaryFilter === 'expense' ? ' active' : ''}" data-sf="expense" aria-pressed="${summaryFilter === 'expense'}">
+          <div class="sc-label">支出(${summary.expenseCount})</div>
+          <div class="sc-amount">${formatFen(summary.expense)}</div>
+        </button>
+        <button class="sr-summary-card${summaryFilter === 'income' ? ' active' : ''}" data-sf="income" aria-pressed="${summaryFilter === 'income'}">
+          <div class="sc-label">收入(${summary.incomeCount})</div>
+          <div class="sc-amount">${formatFen(summary.income)}</div>
+        </button>
+        ${extras.map(card => `<button class="sr-summary-card${summaryFilter === card.filter ? ' active' : ''}" data-sf="${card.filter}" aria-pressed="${summaryFilter === card.filter}"><div class="sc-label">${card.label}(${card.count})</div><div class="sc-amount">${formatFen(card.amount)}</div></button>`).join('')}
+      </div>
+      ${!hitEntries.length && !hitNotes.length ? `<p class="sr-empty">当前${SUMMARY_LABELS[summaryFilter]}筛选下没有记录，可切换上方类型或清除筛选条件</p>` : ''}
+      ${groupedEntries.map((group) => {
+        const daySummary = fullGroups.get(group.day)!;
+        return `<div class="sr-day-head"><h3>${group.day}</h3><span>支出 ${formatFen(daySummary.expense)} · 收入 ${formatFen(daySummary.income)}</span></div>
+          <section class="card list sr-day-card" aria-label="${group.day}账单">${group.entries.map(entryRow).join('')}</section>`;
+      }).join('')}
+      ${displayEntries.length > shown ? `<div class="sr-pagination"><div class="btn-row" role="group" aria-label="加载搜索结果"><button class="btn ghost" id="sr-load-more">加载更多（${hitEntries.length}/${displayEntries.length}笔）</button><button class="btn ghost" id="sr-load-all">加载全部</button></div></div>` : displayEntries.length ? '<p class="tiny sr-list-end">已展示全部流水</p>' : ''}
+      ${hitNotes.length ? `
+      <section class="card list" aria-label="生活记录结果">
+        <div class="sr-list-head"><h3>生活记录（${hitNotes.length}）</h3></div>
+        ${hitNotes.map(noteRow).join('')}
+      </section>` : ''}`;
+    resultsEl.setAttribute('aria-busy', 'false');
+    const summaryRow = resultsEl.querySelector<HTMLElement>('.sr-summary-row');
+    if (summaryRow) summaryRow.scrollLeft = summaryScroll;
+    if (focusedSummary) resultsEl.querySelector<HTMLButtonElement>(`[data-sf="${focusedSummary}"]`)?.focus({ preventScroll: true });
+    updateBatchControls();
   };
-  const noteRow = (n: LifeNote) => `
-    <button class="row" data-nid="${n.id}" data-note-at="${n.occurredAt}">
-      <div class="e-main"><p class="e-title">${esc(n.title || '（无标题）')}</p>
-        <p class="e-meta">${dayKey(n.occurredAt)}${n.body ? ` · ${esc(n.body.slice(0, 30))}` : ''}</p></div>
-      <span class="chev">${iconHtml('ic-right', 15)}</span>
-    </button>`;
-
-  const groupedEntries = groupLedgerEntries(hitEntries);
-  const fullGroups = new Map(groupLedgerEntries(displayEntries).map(g => [g.day, summarizeLedgerEntries(g.entries, summaryOptions)]));
-
-  const summaryScroll = resultsEl.querySelector<HTMLElement>('.sr-summary-row')?.scrollLeft ?? 0;
-  const focusedSummary = resultsEl.contains(document.activeElement) ? (document.activeElement as HTMLElement)?.dataset.sf : undefined;
-  resultsEl.innerHTML = `
-    ${batchMode ? `<div class="sr-batch-scope"><b>批量处理当前全部结果</b><span>已载入 ${batchResultIds.length} 笔，不受分页限制</span></div>` : ''}
-    <div class="sr-summary-row" role="group" aria-label="搜索结果汇总，可横向滑动">
-      <button class="sr-summary-card${summaryFilter === 'all' ? ' active' : ''}" data-sf="all" aria-pressed="${summaryFilter === 'all'}">
-        <div class="sc-label">结余</div>
-        <div class="sc-amount">${summary.balance >= 0 ? '' : '-'}${formatFen(Math.abs(summary.balance))}</div>
-      </button>
-      <button class="sr-summary-card${summaryFilter === 'expense' ? ' active' : ''}" data-sf="expense" aria-pressed="${summaryFilter === 'expense'}">
-        <div class="sc-label">支出(${summary.expenseCount})</div>
-        <div class="sc-amount">${formatFen(summary.expense)}</div>
-      </button>
-      <button class="sr-summary-card${summaryFilter === 'income' ? ' active' : ''}" data-sf="income" aria-pressed="${summaryFilter === 'income'}">
-        <div class="sc-label">收入(${summary.incomeCount})</div>
-        <div class="sc-amount">${formatFen(summary.income)}</div>
-      </button>
-      ${extras.map(card => `<button class="sr-summary-card${summaryFilter === card.filter ? ' active' : ''}" data-sf="${card.filter}" aria-pressed="${summaryFilter === card.filter}"><div class="sc-label">${card.label}(${card.count})</div><div class="sc-amount">${formatFen(card.amount)}</div></button>`).join('')}
-    </div>
-    ${!hitEntries.length && !hitNotes.length ? `<p class="sr-empty">当前${SUMMARY_LABELS[summaryFilter]}筛选下没有记录，可切换上方类型或清除筛选条件</p>` : ''}
-    ${groupedEntries.map((group) => {
-      const daySummary = fullGroups.get(group.day)!;
-      return `<div class="sr-day-head"><h3>${group.day}</h3><span>支出 ${formatFen(daySummary.expense)} · 收入 ${formatFen(daySummary.income)}</span></div>
-        <section class="card list sr-day-card" aria-label="${group.day}账单">${group.entries.map(entryRow).join('')}</section>`;
-    }).join('')}
-    ${displayEntries.length > shown ? `<div class="sr-pagination"><div class="btn-row" role="group" aria-label="加载搜索结果"><button class="btn ghost" id="sr-load-more">加载更多（${hitEntries.length}/${displayEntries.length}笔）</button><button class="btn ghost" id="sr-load-all">加载全部</button></div></div>` : displayEntries.length ? '<p class="tiny sr-list-end">已展示全部流水</p>' : ''}
-    ${hitNotes.length ? `
-    <section class="card list" aria-label="生活记录结果">
-      <div class="sr-list-head"><h3>生活记录（${hitNotes.length}）</h3></div>
-      ${hitNotes.map(noteRow).join('')}
-    </section>` : ''}`;
-  resultsEl.setAttribute('aria-busy', 'false');
-  const summaryRow = resultsEl.querySelector<HTMLElement>('.sr-summary-row');
-  if (summaryRow) summaryRow.scrollLeft = summaryScroll;
-  if (focusedSummary) resultsEl.querySelector<HTMLButtonElement>(`[data-sf="${focusedSummary}"]`)?.focus({ preventScroll: true });
-  updateBatchControls();
+  cachedSearchKey = cacheKey;
+  renderCachedResults = renderResults;
+  renderResults();
 }
 
 /* ── 渲染搜索历史 ── */
@@ -496,6 +524,7 @@ export function initSearch(): void {
   registerSubpage('sp-search', {
     title: '搜索',
     render(el) {
+      invalidateSearch();
       body = el;
       const preset = pendingLedgerSearch;
       pendingLedgerSearch = undefined;
@@ -605,6 +634,8 @@ export function initSearch(): void {
 
       // 搜索输入
       input.addEventListener('input', () => {
+        ++searchToken;
+        if (!input.value.trim()) { shown = PAGE_SIZE; lastQueryKey = ''; invalidateSearch(); }
         clearBtn.hidden = !input.value;
         triggerSearch();
       });
@@ -927,11 +958,31 @@ export function initSearch(): void {
 
       bindEntrySwipeActions(el.querySelector<HTMLElement>('#sr-results')!);
 
-      // entries-changed 自动刷新
-      const off = on('entries-changed', () => {
-        if (!el.isConnected) { off(); return; }
-        void doSearch(input.value.trim());
-      });
+      // A query cache lives only as long as this search page. Coalesce related writes
+      // (e.g. an entry also changes its account balance) into one fresh query.
+      let refreshTimer = 0;
+      const refresh = () => {
+        invalidateSearch();
+        window.clearTimeout(refreshTimer);
+        refreshTimer = window.setTimeout(() => {
+          if (el.isConnected) void doSearch(input.value.trim());
+        }, 0);
+      };
+      const off = [
+        on('entries-changed', refresh), on('accounts-changed', refresh),
+        on('categories-changed', refresh), on('life-changed', refresh),
+        on('settings-changed', payload => {
+          const key = (payload as { key?: string } | undefined)?.key;
+          if (!key || key === 'reimburse.countAsIncome') refresh();
+        }),
+      ];
+      subpage.addEventListener(SUBPAGE_CLOSE_EVENT, () => {
+        off.forEach(unsubscribe => unsubscribe());
+        window.clearTimeout(timer);
+        window.clearTimeout(refreshTimer);
+        invalidateSearch();
+        if (body === el) body = undefined;
+      }, { once: true });
 
       // 异步加载最早账单日期并刷新显示
       void loadEarliestDate().then(() => updateDateDisplay());

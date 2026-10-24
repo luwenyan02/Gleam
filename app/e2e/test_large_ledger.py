@@ -111,8 +111,8 @@ def main() -> None:
         page.fill('#sr-input', '虚构可靠性账单')
         page.wait_for_selector('#sr-load-more')
         search_elapsed = time.monotonic() - started_at
-        assert page.locator('#sr-results [data-eid]').count() == 20
-        assert '（20/10000笔）' in page.locator('#sr-load-more').inner_text()
+        assert page.locator('#sr-results [data-eid]').count() == 100
+        assert '（100/10000笔）' in page.locator('#sr-load-more').inner_text()
         assert search_elapsed < 10, f'一万笔筛选耗时过长：{search_elapsed:.2f}s'
         assert page.get_attribute('#sr-results', 'aria-busy') == 'false'
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
@@ -121,7 +121,7 @@ def main() -> None:
         page.wait_for_selector('.sr-batch-scope')
         assert '已载入 10000 笔' in page.locator('.sr-batch-scope').inner_text()
         assert '已选 10000 / 10000 笔' in page.locator('#sr-batch-count').inner_text()
-        assert page.locator('#sr-results [data-eid]').count() == 20
+        assert page.locator('#sr-results [data-eid]').count() == 100
 
         page.click('[data-batch-act="category"]')
         picker = page.locator(
@@ -163,7 +163,7 @@ def main() -> None:
         assert not errors, errors
         print(
             f'PASS 10000 entries: search {search_elapsed:.2f}s, batch {batch_elapsed:.2f}s, '
-            '20-row page and complete transaction',
+            '100-row page and complete transaction',
             flush=True,
         )
         context.close()

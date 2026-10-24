@@ -59,35 +59,47 @@ function includesAccount(entry: Entry, ids: ReadonlySet<number>): boolean {
     .some((id) => id != null && ids.has(id));
 }
 
-function textIncludes(value: string | undefined, keyword: string): boolean {
-  return (value ?? '').toLocaleLowerCase('zh-CN').includes(keyword);
-}
-
-function matchesKeyword(entry: Entry, query: LedgerQuery, lookup: LedgerLookup): boolean {
+/** Prepare one query once; repeated account/category names share normalization. */
+function keywordMatcher(query: LedgerQuery, lookup: LedgerLookup): (entry: Entry) => boolean {
   const raw = query.keyword?.trim();
-  if (!raw) return true;
+  if (!raw) return () => true;
   const keyword = raw.toLocaleLowerCase('zh-CN');
   const field = query.field ?? 'all';
-  const category = lookup.categoryNames?.get(entry.categoryId ?? -1);
-  const accountNames = [entry.accountId, entry.fromAccountId, entry.toAccountId]
-    .filter((id): id is number => id != null)
-    .map((id) => lookup.accountNames?.get(id) ?? '');
-  const tags = lookup.tagNamesByEntry?.get(entry.id) ?? [];
-  const merchant = lookup.merchantNames?.get(entry.merchantId ?? -1);
-  const amountFen = Number.isFinite(Number(raw)) ? Math.round(Number(raw) * 100) : null;
-
-  if (field === 'category') return textIncludes(category, keyword);
-  if (field === 'account') return accountNames.some((name) => textIncludes(name, keyword));
-  if (field === 'tag') return tags.some((name) => textIncludes(name, keyword));
-  if (field === 'merchant') return textIncludes(merchant, keyword);
-  if (field === 'note') return textIncludes(entry.note, keyword);
-  if (field === 'amount') return amountFen != null && entry.amount === amountFen;
-  return textIncludes(category, keyword)
-    || accountNames.some((name) => textIncludes(name, keyword))
-    || tags.some((name) => textIncludes(name, keyword))
-    || textIncludes(merchant, keyword)
-    || textIncludes(entry.note, keyword)
-    || formatFen(entry.amount).replace(/,/g, '').includes(raw);
+  const normalizedNames = new Map<string, string>();
+  const nameIncludes = (value = '') => {
+    let normalized = normalizedNames.get(value);
+    if (normalized === undefined) {
+      normalized = value.toLocaleLowerCase('zh-CN');
+      normalizedNames.set(value, normalized);
+    }
+    return normalized.includes(keyword);
+  };
+  const noteIncludes = (entry: Entry) => (entry.note ?? '').toLocaleLowerCase('zh-CN').includes(keyword);
+  const categoryIncludes = (entry: Entry) => nameIncludes(lookup.categoryNames?.get(entry.categoryId ?? -1));
+  const accountIncludes = (entry: Entry) => [entry.accountId, entry.fromAccountId, entry.toAccountId]
+    .some(id => id != null && nameIncludes(lookup.accountNames?.get(id)));
+  const tagIncludes = (entry: Entry) => (lookup.tagNamesByEntry?.get(entry.id) ?? []).some(nameIncludes);
+  const merchantIncludes = (entry: Entry) => nameIncludes(lookup.merchantNames?.get(entry.merchantId ?? -1));
+  if (field === 'category') return categoryIncludes;
+  if (field === 'account') return accountIncludes;
+  if (field === 'tag') return tagIncludes;
+  if (field === 'merchant') return merchantIncludes;
+  if (field === 'note') return noteIncludes;
+  if (field === 'amount') {
+    const amountFen = Number.isFinite(Number(raw)) ? Math.round(Number(raw) * 100) : null;
+    return entry => amountFen != null && entry.amount === amountFen;
+  }
+  // Formatted amounts contain only digits, a decimal point and an optional minus.
+  const canMatchAmount = /^[\d.-]+$/.test(raw);
+  const amounts = new Map<number, string>();
+  const amountIncludes = (amount: number) => {
+    if (!canMatchAmount) return false;
+    let text = amounts.get(amount);
+    if (text === undefined) { text = formatFen(amount).replace(/,/g, ''); amounts.set(amount, text); }
+    return text.includes(raw);
+  };
+  return entry => categoryIncludes(entry) || accountIncludes(entry) || tagIncludes(entry)
+    || merchantIncludes(entry) || noteIncludes(entry) || amountIncludes(entry.amount);
 }
 
 /** 对已经载入内存的账单应用统一筛选；结果按发生时间倒序。 */
@@ -96,6 +108,7 @@ export function filterLedgerEntries<T extends Entry>(
   query: LedgerQuery = {},
   lookup: LedgerLookup = {},
 ): T[] {
+  const matchesKeyword = keywordMatcher(query, lookup);
   const typeSet = query.types?.length ? new Set(query.types) : null;
   const categorySet = query.categoryIds?.length ? new Set(query.categoryIds) : null;
   const accountSet = query.accountIds?.length ? new Set(query.accountIds) : null;
@@ -116,7 +129,7 @@ export function filterLedgerEntries<T extends Entry>(
     if (merchantSet && (entry.merchantId == null || !merchantSet.has(entry.merchantId))) return false;
     if (query.amountMin != null && entry.amount < query.amountMin) return false;
     if (query.amountMax != null && entry.amount > query.amountMax) return false;
-    return matchesKeyword(entry, query, lookup);
+    return matchesKeyword(entry);
   }).sort((a, b) => b.occurredAt - a.occurredAt || b.id - a.id);
 }
 

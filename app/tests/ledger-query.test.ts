@@ -102,3 +102,33 @@ describe('统一账单查询', () => {
     ]);
   });
 });
+
+describe('关键词预处理不改变匹配口径', () => {
+  const samples = [
+    entry({ id: 1, type: 'expense', amount: 123456, occurredAt: 1, note: '剪头 Hair İSTANBUL', accountId: 1 }),
+    entry({ id: 2, type: 'expense', amount: -123456, occurredAt: 2, categoryId: 1 }),
+    entry({ id: 3, type: 'transfer', amount: 100, occurredAt: 3, fromAccountId: 1, toAccountId: 2 }),
+  ];
+  const names: LedgerLookup = {
+    accountNames: new Map([[1, 'BANK'], [2, '信用卡']]),
+    categoryNames: new Map([[1, '服饰']]),
+    merchantNames: new Map([[1, '剪头店']]),
+    tagNamesByEntry: new Map([[1, ['Style']]]),
+  };
+  it.each([
+    [' 剪头 ', 'all', [1]], ['hair', 'note', [1]], ['İstanbul', 'note', [1]],
+    ['bank', 'account', [3, 1]], ['信用卡', 'all', [3]], ['STYLE', 'tag', [1]],
+    ['服饰', 'category', [2]], ['1234.56', 'all', [2, 1]], ['-1234', 'all', [2]],
+    ['.56', 'all', [2, 1]], ['1,234', 'all', []], ['1e0', 'amount', [3]],
+    ['剪头', 'amount', []], ['剪头', 'merchant', []], [' ', 'all', [3, 2, 1]],
+  ] as const)('%s / %s', (keyword, field, expected) => {
+    expect(filterLedgerEntries(samples, { keyword, field }, names).map(e => e.id)).toEqual(expected);
+  });
+  it('重新查询使用更新后的名称与备注，不跨查询保留旧匹配', () => {
+    const accounts = new Map([[1, '旧银行']]);
+    expect(filterLedgerEntries(samples, { keyword: '旧银行' }, { accountNames: accounts })).toHaveLength(2);
+    accounts.set(1, '新银行');
+    expect(filterLedgerEntries(samples, { keyword: '旧银行' }, { accountNames: accounts })).toHaveLength(0);
+    expect(filterLedgerEntries(samples, { keyword: '新银行' }, { accountNames: accounts })).toHaveLength(2);
+  });
+});

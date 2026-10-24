@@ -47,8 +47,8 @@ def lists(page):
     assert '101.00' in page.locator('[data-sf="expense"]').inner_text()
     assert '101.00' in page.locator('.sr-day-head').inner_text()
     rows = page.locator('#sr-results [data-eid]')
-    expect(rows).to_have_count(20)
-    for count in (40, 60, 80, 100, 101):
+    expect(rows).to_have_count(100)
+    for count in (101,):
         page.locator('#sr-load-more').click()
         expect(rows).to_have_count(count)
     assert page.locator('#sr-results [data-eid]').count()==101
