@@ -126,3 +126,5 @@
 
 /* ── 空状态 / 加载 ── */
 .sr-empty{text-align:center;padding:40px 16px;color:var(--muted);font-size:13px}
+
+.sr-pagination-status{margin:12px 0 8px;text-align:center;color:var(--muted)}

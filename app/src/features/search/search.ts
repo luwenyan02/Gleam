@@ -401,7 +401,7 @@ async function doSearch(kw: string): Promise<void> {
       return `<div class="sr-day-head"><h3>${group.day}</h3><span>支出 ${formatFen(daySummary.expense)} · 收入 ${formatFen(daySummary.income)}</span></div>
         <section class="card list sr-day-card" aria-label="${group.day}账单">${group.entries.map(entryRow).join('')}</section>`;
     }).join('')}
-    ${displayEntries.length > shown ? `<button class="btn ghost" id="sr-load-more">加载更多（已显示 ${hitEntries.length} / ${displayEntries.length} 笔）</button>` : displayEntries.length ? '<p class="tiny sr-list-end">已展示全部流水</p>' : ''}
+    ${displayEntries.length > shown ? `<div class="sr-pagination"><p class="tiny sr-pagination-status">已显示 ${hitEntries.length} / ${displayEntries.length} 笔</p><div class="btn-row" role="group" aria-label="加载搜索结果"><button class="btn ghost" id="sr-load-more">加载更多</button><button class="btn ghost" id="sr-load-all">加载全部</button></div></div>` : displayEntries.length ? '<p class="tiny sr-list-end">已展示全部流水</p>' : ''}
     ${hitNotes.length ? `
     <section class="card list" aria-label="生活记录结果">
       <div class="sr-list-head"><h3>生活记录（${hitNotes.length}）</h3></div>
@@ -844,6 +844,7 @@ export function initSearch(): void {
         const t = e.target as HTMLElement;
         const entity = t.closest<HTMLElement>('[data-entity-kind]');
         if (entity) { openEntityInsight(entity.dataset.entityKind as 'tag' | 'merchant', Number(entity.dataset.entityId)); return; }
+        if (t.closest('#sr-load-all')) { shown = Number.MAX_SAFE_INTEGER; void doSearch(input.value.trim()); return; }
         if (t.closest('#sr-load-more')) { shown += PAGE_SIZE; void doSearch(input.value.trim()); return; }
 
         const removeFilter = t.closest<HTMLElement>('[data-remove-filter]');
