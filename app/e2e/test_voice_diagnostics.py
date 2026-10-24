@@ -40,8 +40,7 @@ def run(page, width, motion):
     page.on('request', lambda req: requests.append(req.url) if req.url.startswith('https://') else None)
     page.goto(URL); page.locator('#fab').wait_for(); seed_config(page)
     page.locator('[data-page="page-mine"]').click()
-    page.get_by_role('button', name='应用设置', exact=True).click()
-    page.get_by_role('button', name='AI 配置', exact=True).click()
+    page.locator('#page-mine [data-sub="sp-ai-settings"]').click()
     key = page.locator('#voice-bailian-key')
     shared = page.locator('#voice-key-shared')
     button = page.locator('[data-voice-test]')
@@ -332,14 +331,12 @@ def run(page, width, motion):
     page.wait_for_function("typeof window.__finishTest==='function'")
     before, commits = count('cancel'), count('commitTestedKey')
     page.locator('#sp-ai-settings [data-act="back"]').click()
-    page.locator('#sp-settings .sub-head [data-act="back"]').click()
     page.wait_for_function('(n)=>window.__voiceCalls.filter(x=>x.method==="cancel").length>n', arg=before)
     page.evaluate('window.__finishTest()')
     # Closing marks the page inert immediately, then removes it after its exit transition.
     # Complete that lifecycle before reopening so locators cannot match both page instances.
     page.locator('#sp-ai-settings').wait_for(state='detached')
-    page.get_by_role('button', name='应用设置', exact=True).click()
-    page.get_by_role('button', name='AI 配置', exact=True).click()
+    page.locator('#page-mine [data-sub="sp-ai-settings"]').click()
     expect(button).not_to_have_attribute('data-state', 'success')
     expect(key).to_have_value(''); expect(key).to_have_attribute('placeholder', summary(BASE_KEY))
     expect(page.locator('#voice-bailian-workspace')).to_have_value('verified-workspace')
@@ -392,10 +389,8 @@ def run(page, width, motion):
     assert snapshot()['activeConfig'] == {'region': 'singapore', 'workspace': 'verified-workspace', 'model': DEFAULT_MODEL}
     assert page.evaluate("window.__voiceCalls.filter(x=>x.method==='testCandidate').at(-1).model") == DEFAULT_MODEL
     page.locator('#sp-ai-settings [data-act="back"]').click()
-    page.locator('#sp-settings .sub-head [data-act="back"]').click()
     page.locator('#sp-ai-settings').wait_for(state='detached')
-    page.get_by_role('button', name='应用设置', exact=True).click()
-    page.get_by_role('button', name='AI 配置', exact=True).click()
+    page.locator('#page-mine [data-sub="sp-ai-settings"]').click()
     expect(page.locator('#voice-bailian-model')).to_have_value(DEFAULT_MODEL)
     compact_controls()
 

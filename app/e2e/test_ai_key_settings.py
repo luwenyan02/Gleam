@@ -21,8 +21,7 @@ def stored(page):
 
 def open_settings(page):
     page.locator('[data-page="page-mine"]').click()
-    page.get_by_role('button', name='应用设置', exact=True).click()
-    page.get_by_role('button', name='AI 配置', exact=True).click()
+    page.locator('#page-mine [data-sub="sp-ai-settings"]').click()
     expect(page.locator('#sp-ai-settings')).to_have_count(1)
     expect(page.locator('#sp-ai-settings')).to_have_attribute('aria-hidden', 'false')
     expect(page.locator('#ai-key')).to_have_count(1)
@@ -109,7 +108,6 @@ def run(page, width):
     assert stored(page) == draft
 
     page.locator('#sp-ai-settings [data-act="back"]').click()
-    page.locator('#sp-settings .sub-head [data-act="back"]').click()
     # The router retains an inert exit-animation node until transitionend (400 ms
     # fallback). Assert its destruction before reopening, rather than selecting
     # around duplicate IDs and accidentally reading the outgoing settings page.

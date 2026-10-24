@@ -76,6 +76,7 @@ function renderContent(el: HTMLElement): void {
       <div><button class="btn" data-backup-now>去备份</button><button class="btn" data-dismiss-backup>7 天后提醒</button></div>
     </aside>`)}
     ${groupHtml('智能能力与通知', `
+      ${rowHtml('sp-ai-settings', 'ic-set', 'AI 配置', 'AI 记账 · 百炼短语音')}
       ${rowHtml('sp-ai-inbox', 'ic-ai', 'AI 记账收件箱', '分享截图 · 粘贴账单')}
     `, '智能能力与通知')}
     ${groupHtml('外观与安全', `

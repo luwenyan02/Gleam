@@ -76,8 +76,8 @@ def models(page, width):
       await new Promise(r=>tx.oncomplete=r);db.close();
       sessionStorage.setItem('gleam-secret:ai.apiKey','fictional-test-key');
     }''')
-    page.locator('.tab[data-page="page-mine"]').click();page.get_by_role('button',name='应用设置',exact=True).click()
-    page.get_by_role('button',name='AI 配置',exact=True).click()
+    page.locator('.tab[data-page="page-mine"]').click()
+    page.locator('#page-mine [data-sub="sp-ai-settings"]').click()
     page.locator('#ai-model').wait_for(state='attached')
     assert page.locator('#ai-model').input_value()=='qwen-vl-plus', '升级不得覆盖旧配置'
     expect(page.locator('#ai-model')).to_be_visible() # 未收录的旧配置仍可编辑

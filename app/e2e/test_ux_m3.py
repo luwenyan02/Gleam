@@ -129,10 +129,11 @@ def main() -> int:
             labels = page.locator('#sp-settings .sub-body>section.card').evaluate_all(
                 "els => els.map(el => el.getAttribute('aria-label'))"
             )
-            assert labels == ['记账偏好', '数据', '智能能力', '通知', '外观', '安全'], f'设置分组或顺序不符：{labels}'
+            assert labels == ['记账偏好', '数据', '通知', '外观', '安全'], f'设置分组或顺序不符：{labels}'
             assert page.locator('#sp-settings [data-freq], #sp-settings [data-sw="ntf-backup"]').count() == 0
             assert page.locator('#sp-settings #ai-key').count() == 0
-            expect(page.locator('#sp-settings [data-act="ai-settings"]')).to_be_visible()
+            expect(page.locator('#sp-settings [data-act="ai-settings"]')).to_have_count(0)
+            expect(page.locator('#page-mine [data-sub="sp-ai-settings"]')).to_have_count(1)
             assert page.locator('#sp-settings [data-act="settings-manual"]').count() == 0
             page.click('#sp-settings [data-act="back"]')
             page.wait_for_selector('#sp-settings', state='detached')

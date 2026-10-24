@@ -71,8 +71,6 @@
 .settings-manual button:focus-visible,.settings-manual summary:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 @media(min-width:600px){.manual-gallery{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
-/* 日常偏好页只呈现配置入口，完整表单位于独立子页。 */
-.settings-ai-entry{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px;width:100%;padding:4px 0;text-align:left;color:var(--fg)}
-.settings-ai-entry>span{display:flex;flex-direction:column;gap:5px;min-width:0}.settings-ai-entry strong{font-size:var(--text-body);font-weight:600}.settings-ai-entry .sub{font-size:var(--text-small);color:var(--muted);overflow-wrap:anywhere}.settings-ai-entry>svg{flex:none;width:20px;height:20px;color:var(--muted)}
+/* AI 配置独立子页：自定义模型按需显示，输入不撑宽窄屏。 */
 .ai-set label[hidden]{display:none}
 .ai-set input,.ai-pick-btn{min-width:0;max-width:100%;box-sizing:border-box}.ai-pick-btn{overflow-wrap:anywhere}

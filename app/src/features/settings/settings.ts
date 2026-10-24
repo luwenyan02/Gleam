@@ -1,6 +1,6 @@
 /**
  * 拾光 · 设置与安全子页（features/settings，PRD 4.19，覆盖 sp-settings）
- * 分区顺序：记账偏好 → 数据与备份 → 智能能力与通知 → 外观与安全。
+ * 分区顺序：记账偏好 → 数据 → 通知 → 外观与安全。
  * 入口：我的页右上角齿轮（data-sub="sp-settings"，M1 已接）。
  */
 import './settings.css';
@@ -27,7 +27,7 @@ let sheetAbort: AbortController | undefined;
 let settingsRefreshToken = 0;
 
 export { openAiSettings } from './aiSettings';
-import { initAiSettings, openAiSettings } from './aiSettings';
+import { initAiSettings } from './aiSettings';
 
 function sheetSignal(): AbortSignal {
   sheetAbort?.abort();
@@ -100,17 +100,10 @@ async function refresh(): Promise<void> {
     <section class="card" aria-label="数据">
       <h3 class="card-title">数据</h3>
       <div class="field"><span>回收站保留</span><span class="sub">${retention} 天后自动清除</span></div>
-    </section>
-
-    <section class="card" aria-label="智能能力">
-      <button class="settings-ai-entry" type="button" data-act="ai-settings" aria-label="AI 配置">
-        <span><strong>AI 配置</strong><span class="sub">AI 记账 · 百炼短语音</span></span>
-        ${iconHtml('ic-right')}
-      </button>
     </section>`;
 
-  // 固定信息架构：记账偏好 → 数据与备份 → 智能能力与通知 → 外观与安全。
-  const order = ['记账偏好', '备份', '数据', '智能能力', '通知', '外观', '安全'];
+  // 通用设置按使用频率排列；AI 配置从「我的」直接进入。
+  const order = ['记账偏好', '备份', '数据', '通知', '外观', '安全'];
   for (const label of order) {
     const section = el.querySelector<HTMLElement>(`section[aria-label="${label}"]`);
     if (section) el.appendChild(section);
@@ -194,8 +187,6 @@ export function initSettings(): void {
 
         } else if (act === 'change-pin') {
           openPinSheet('change');
-        } else if (act === 'ai-settings') {
-          openAiSettings();
         } else if (t.closest('#accounting-month-start')) {
           openPickList({
             container: el,

@@ -2,7 +2,7 @@
 import os
 import traceback
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 
 URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4601/')
 SHOTS = Path(os.environ.get('GLEAM_E2E_SCREENSHOTS', Path(__file__).parents[2] / '.tmp/tests/e2e/screenshots'))
@@ -232,8 +232,7 @@ def contextual_recommendation(page,width):
 
 def picker_back(page,width):
     fixture(page);page.locator('.tab[data-page="page-mine"]').click()
-    page.get_by_role('button',name='应用设置',exact=True).click()
-    page.get_by_role('button',name='AI 配置',exact=True).click()
+    page.locator('#page-mine [data-sub="sp-ai-settings"]').click()
     page.locator('#ai-provider').click();page.locator('.picker-panel.open').wait_for();page.wait_for_timeout(300)
     page.go_back();page.wait_for_timeout(450)
     assert page.locator('.picker-mask').count()==0
@@ -241,9 +240,8 @@ def picker_back(page,width):
     assert page.locator('#sp-ai-settings').evaluate('e=>!e.inert&&!e.closest("[inert]")')
     page.go_back();page.wait_for_timeout(450)
     assert page.locator('#sp-ai-settings').count()==0
-    assert page.locator('#sp-settings.open').count()==1
-    page.go_back();page.wait_for_timeout(450)
-    assert page.locator('#sp-settings').count()==0
+    expect(page.locator('#page-mine')).to_be_visible()
+    expect(page.locator('#page-mine [data-sub="sp-ai-settings"]')).to_be_focused()
     assert page.locator('.viewport').evaluate('e=>!e.inert')
 
 def date_confirm_reopen(page,width):
