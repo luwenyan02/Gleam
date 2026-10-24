@@ -1,6 +1,7 @@
 """可核对的账本分析：真实浏览器、虚构账本、模拟 AI；不使用真实模型或凭据。"""
 import json
 import os
+import time
 from pathlib import Path
 
 from playwright.sync_api import expect, sync_playwright
@@ -388,7 +389,9 @@ def run(page, width):
     old_cards = page.locator('[data-ledger-result]').count()
     page.locator('[data-ledger-approve]').click()
     expect(page.locator('#life-chat-status')).to_contain_text('正在想')
-    page.wait_for_timeout(100)
+    deadline = time.monotonic() + 5
+    while not held and time.monotonic() < deadline:
+        page.wait_for_timeout(25)
     assert len(held) == 1
     expect(page.locator('[data-ledger-result]')).to_have_count(old_cards)
     mutate_entry(page, 91601, {'amount':42000,'updatedAt':3})
@@ -410,7 +413,9 @@ def run(page, width):
     hold[0] = True
     page.locator('[data-ledger-approve]').click()
     expect(page.locator('#life-chat-status')).to_contain_text('正在想')
-    page.wait_for_timeout(100)
+    deadline = time.monotonic() + 5
+    while not held and time.monotonic() < deadline:
+        page.wait_for_timeout(25)
     assert len(held) == 1
     setting(page, 'ai.baseUrl', 'https://life-ai.invalid/v1')
     held.pop().fulfill(json={'choices':[{'message':{'content':'OLD_PROVIDER_REPLY_MUST_NOT_BECOME_SUCCESS'}}]})

@@ -7,7 +7,7 @@ import { openLifeComposer } from './lifeComposer';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { openPickList } from '../../shared/pickList';
 import { showToast } from '../shell/toast';
-import { openSubpage } from '../shell/router';
+import { openAiSettings } from '../settings/aiSettings';
 import { confirmDialog } from '../shell/dialog';
 
 export async function openLifeAiControls(): Promise<void> {
@@ -25,7 +25,7 @@ export async function openLifeAiControls(): Promise<void> {
       </div>
       <button class="life-ai-settings" data-life-ai-config><span>AI 接口设置</span>${iconHtml('ic-right', 18)}</button></div>`;
     el.querySelector('[data-life-close]')!.addEventListener('click', closeSheet);
-    el.querySelector('[data-life-ai-config]')!.addEventListener('click', () => { closeSheet(); openSubpage('sp-settings'); });
+    el.querySelector('[data-life-ai-config]')!.addEventListener('click', () => { closeSheet(); openAiSettings(); });
     el.querySelector<HTMLInputElement>('#life-ai-enabled')!.onchange = async event => {
       const checkbox = event.target as HTMLInputElement;
       const hadFocus = document.activeElement === checkbox;

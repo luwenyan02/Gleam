@@ -37,7 +37,7 @@ def run(browser,width):
     page.evaluate('document.documentElement.style.removeProperty("--seed-type")')
     history.locator('[data-history-file]').click()
     page.locator('#rp-pwd').fill('wrong-password');page.locator('#sheet [data-act="ok"]').click()
-    dialog_ok(page,'恢复未执行')
+    dialog_ok(page,'恢复未完成')
     history.locator('[data-history-file]').click()
     page.locator('#rp-pwd').fill('fictional-password');page.locator('#sheet [data-act="ok"]').click()
     dialog_ok(page,'确认恢复此备份');dialog_ok(page,'恢复完成')

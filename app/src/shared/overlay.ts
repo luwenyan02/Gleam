@@ -12,14 +12,14 @@ export function dismissTopOverlay(): boolean {
 }
 
 /** 兼容调用方先构建、再挂载的选择器；关闭时需调用返回的 release。 */
-export function manageOverlay(root: HTMLElement, cancel: () => void, options: { modal?: boolean; opener?: HTMLElement } = {}): () => void {
+export function manageOverlay(root: HTMLElement, cancel: () => void, options: { modal?: boolean; opener?: HTMLElement; blockBack?: boolean } = {}): () => void {
   const opener = options.opener ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
   const item = { root, cancel };
   let released = false;
   let releaseFocus: () => void = () => {};
   const states: {element:HTMLElement;inert:boolean;hidden:string|null}[] = [];
   overlays.push(item);
-  const releaseHistory = trackHistoryLayer(cancel);
+  const releaseHistory = trackHistoryLayer(cancel, { blockBack: options.blockBack });
   const escape = (event: KeyboardEvent) => {
     if (event.key !== 'Escape' || overlays.at(-1) !== item) return;
     event.preventDefault(); event.stopPropagation(); cancel();

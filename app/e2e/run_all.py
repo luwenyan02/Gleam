@@ -24,6 +24,7 @@ TESTS = (
     'test_overview_art.py',
     'test_upgrade_cache_unit.py', 'test_upgrade_cache.py',
     'test_ai_key_settings.py',
+    'test_mine_backup_reminder.py', 'test_restore_progress.py',
     'test_app_version.py',
     'test_app_update.py',
     'test_category_icons.py', 'test_category_merge_and_navigation.py', 'test_category_entry_counts.py', 'test_xiaomi14_layout.py',

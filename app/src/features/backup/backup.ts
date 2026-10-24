@@ -22,16 +22,18 @@ import { backupFileName, buildSkbak, parseSkbak, sniffEncrypted, type SkbakManif
 import { saveBlobFile } from './download';
 import { exportMonthExcel } from './excel';
 import { mountCloudBackup } from './cloudBackup';
-import { listBackupHistory, readBackupFile, recordBackupFile } from './backupHistory';
+import { getLastLocalBackupAt, listBackupHistory, readBackupFile, recordBackupFile } from './backupHistory';
 import { openImportWizardFor } from '../import/import';
 import type { ImportSource } from '../import/wacai';
 import { openMonthWheel } from '../../shared/dateTimeWheel';
 import type { Entry } from '../../core/types';
-import type { TableDump } from '../../core/repo/backupRepo';
+import { restoredEntryRange, restoreFailureMessage } from './restoreStatus';
+import { openRestoreProgress } from './restoreProgress';
 
 /* ── 模块状态 ── */
 let body: HTMLElement | undefined;
 let refreshToken = 0;
+let restoreRunning = false;
 /** #sheet 复用容器：重开抽屉前废止上次绑定 */
 let sheetAbort: AbortController | undefined;
 /** Excel 导出月份状态（年+月），切换时由 openMonthWheel 更新 */
@@ -64,7 +66,7 @@ async function refresh(): Promise<void> {
   const token = ++refreshToken;
   // [R09] 计数改走 countLocalStats（db 直接 count），避免每次刷新都全量导出附件 Blob
   const [counts, lastAt, records, snapshots] = await Promise.all([
-    countLocalStats(), getSetting('backup.lastBackupAt'),
+    countLocalStats(), getLastLocalBackupAt(),
     listBackupHistory(), listSnapshots(),
   ]);
   if (token !== refreshToken || !el.isConnected) return;
@@ -258,18 +260,7 @@ function askPassword(): Promise<string | undefined> {
 }
 
 /** 恢复完成报告（时点 / 条数 / 时间范围） */
-async function showRestoreReport(manifest: SkbakManifest, dump: TableDump): Promise<void> {
-  const entries = (dump.entries ?? []) as Entry[];
-  const live = entries.filter((e) => e.deletedAt === 0);
-  let range = '无账单';
-  if (live.length) {
-    const ts = live.map((e) => e.occurredAt);
-    const f = (t: number) => {
-      const d = new Date(t);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    };
-    range = `${f(Math.min(...ts))} ~ ${f(Math.max(...ts))}`;
-  }
+async function showRestoreReport(manifest: SkbakManifest, range: string): Promise<void> {
   await confirmDialog({
     title: '恢复完成',
     message: `备份时点：${fmtTime(manifest.generatedAt)} · 账单 ${manifest.counts.entries ?? 0} 条（流水范围 ${range}）、账户 ${manifest.counts.accounts ?? 0} 个、生活记录 ${manifest.counts.lifeNotes ?? 0} 条。恢复前的数据已存为快照，7 天内可在本页撤销。`,
@@ -291,15 +282,25 @@ function pickRestoreFile(): void {
 }
 
 async function runRestore(file: File): Promise<void> {
+  if (restoreRunning) { showToast('正在恢复，请稍候'); return; }
+  restoreRunning = true;
+  let committed = false;
+  let progress: ReturnType<typeof openRestoreProgress> | undefined;
   try {
+    progress = openRestoreProgress('读取备份文件…');
     const buf = await file.arrayBuffer();
     let password: string | undefined;
     if (sniffEncrypted(buf)) {
+      progress.close();
       password = await askPassword();
       if (password === undefined) return; // 用户取消
+      progress = openRestoreProgress('校验备份文件…');
     }
     // 第二步：校验（校验值 + schemaVersion + 口令）
+    progress.update('校验备份文件…');
     const { manifest, dump } = await parseSkbak(buf, password);
+    const range = restoredEntryRange((dump.entries ?? []) as Entry[]);
+    progress.close();
     const ok = await confirmDialog({
       title: '确认恢复此备份？',
       message: `备份时点 ${fmtTime(manifest.generatedAt)} · 账单 ${manifest.counts.entries ?? 0} 条。当前数据将被完全替换（恢复前会自动创建快照，7 天内可撤销）。`,
@@ -308,19 +309,27 @@ async function runRestore(file: File): Promise<void> {
     });
     if (!ok) return;
     // 第三步：自动快照
+    progress = openRestoreProgress('保留恢复前的数据快照…');
     await createSnapshot('restore', `恢复「${file.name}」前`);
     // 第四步：事务化整库替换（失败由 Dexie 回滚）
-    await restoreAll(dump);
+    await restoreAll(dump, values => progress?.update('正在写入账本…', values));
+    committed = true;
+    progress.close();
     // 第五步：完成报告
-    await showRestoreReport(manifest, dump);
-    void refresh();
+    await showRestoreReport(manifest, range);
+    await refresh();
   } catch (err) {
-    void confirmDialog({
-      title: '恢复未执行',
-      message: err instanceof Error ? err.message : String(err),
+    progress?.close();
+    const failure = restoreFailureMessage(committed);
+    await confirmDialog({
+      title: failure.title,
+      message: `${failure.message}\n${err instanceof Error ? err.message : String(err)}`,
       okText: '知道了',
       cancelText: '关闭',
     });
+  } finally {
+    progress?.close();
+    restoreRunning = false;
   }
 }
 

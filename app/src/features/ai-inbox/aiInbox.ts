@@ -32,6 +32,7 @@ import {
   updateAiPendingItem, type AiParsedBill,
 } from '../../core/repo/aiRepo';
 import { registerSubpage, openSubpage } from '../shell/router';
+import { openAiSettings } from '../settings/aiSettings';
 import { showToast } from '../shell/toast';
 import { openEntrySheet } from '../entry/entrySheet';
 import { openHoldVoice } from '../entry/holdVoice';
@@ -643,7 +644,7 @@ export function initAiInbox(): void {
         const tempId = t.closest<HTMLElement>('[data-temp]')?.dataset.temp;
         if (undo) { void undoBatch(Number(undo)); return; }
         if (!act) return;
-        if (act === 'go-settings') openSubpage('sp-settings');
+        if (act === 'go-settings') openAiSettings();
         else if (act === 'pick-img') el.querySelector<HTMLInputElement>('#ai-file')?.click();
         else if (act === 'short-voice') {
           const opener = el.querySelector<HTMLButtonElement>('[data-act="short-voice"]')!;

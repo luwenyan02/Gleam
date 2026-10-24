@@ -76,9 +76,11 @@ def models(page, width):
       await new Promise(r=>tx.oncomplete=r);db.close();
       sessionStorage.setItem('gleam-secret:ai.apiKey','fictional-test-key');
     }''')
-    page.locator('.tab[data-page="page-mine"]').click();page.get_by_role('button',name='应用设置',exact=True).click()
-    page.locator('#ai-model').wait_for()
+    page.locator('.tab[data-page="page-mine"]').click()
+    page.locator('#page-mine [data-sub="sp-ai-settings"]').click()
+    page.locator('#ai-model').wait_for(state='attached')
     assert page.locator('#ai-model').input_value()=='qwen-vl-plus', '升级不得覆盖旧配置'
+    expect(page.locator('#ai-model')).to_be_visible() # 未收录的旧配置仍可编辑
     page.locator('#ai-model-pick').click();page.locator('.picker-panel.open').wait_for()
     page.wait_for_timeout(300) # 完成弹层入场再核对实际排版
     labels=page.locator('.picker-item-label').all_inner_texts()
@@ -90,6 +92,12 @@ def models(page, width):
     page.screenshot(path=str(SHOTS/f'refined-models-{width}.png'))
     page.locator('.picker-item[data-value="deepseek-v4.1-flash-1017"]').click();page.locator('.picker-mask').wait_for(state='detached')
     expect(page.locator('#ai-model')).to_have_value('deepseek-v4.1-flash-1017')
+    expect(page.locator('#ai-model')).to_be_hidden()
+    page.locator('#ai-model-pick').click()
+    page.locator('.picker-item[data-value="__custom__"]').click()
+    page.locator('.picker-mask').wait_for(state='detached')
+    expect(page.locator('#ai-model')).to_be_visible()
+    expect(page.locator('#ai-model')).to_be_focused()
     expect(page.locator('#ai-model-capability')).to_have_text('图片、文字')
     page.locator('[data-act="ai-test"]').click();page.wait_for_function('document.querySelector("[data-act=ai-test]").textContent==="测试连接"')
     assert calls[-1]['model']=='deepseek-v4.1-flash-1017'
@@ -113,6 +121,7 @@ def models(page, width):
     expect(page.locator('.picker-item[data-value="api-extra-19"]')).to_be_visible()
     page.locator('.picker-item[data-value="api-extra-19"]').click();page.locator('.picker-mask').wait_for(state='detached')
     expect(page.locator('#ai-model')).to_have_value('api-extra-19')
+    expect(page.locator('#ai-model')).to_be_hidden()
     page.locator('#ai-model-pick').click();page.locator('.picker-item[data-value="gpt-6-astra"]').click();page.locator('.picker-mask').wait_for(state='detached')
     page.locator('#ai-model-pick').click();page.locator('.picker-panel.open').wait_for()
     # The slide-in class precedes modal focus setup; Escape must target the ready picker.
