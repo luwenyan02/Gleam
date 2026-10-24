@@ -54,6 +54,7 @@ def assert_inline(page):
     assert_usable(page,'.chat-voice-overlay')
     assert page.locator('.life-chat-page').evaluate('el=>el.scrollHeight<=el.clientHeight+1')
     assert page.locator('#sp-life-chat .sub-head').bounding_box()['y']>=0
+    assert page.locator('.app').evaluate('el=>el.scrollTop===0')
 
 
 def run(browser,width,height,theme,scale):
@@ -203,8 +204,8 @@ def run(browser,width,height,theme,scale):
     finally:context.close()
 
 
-def run_geometry(browser, width, height, theme, scale):
-    context=browser.new_context(viewport={'width':width,'height':height},service_workers='block',reduced_motion='reduce')
+def run_geometry(browser, width, height, theme, scale, xiaomi=False):
+    context=browser.new_context(viewport={'width':width,'height':height},device_scale_factor=3 if xiaomi else 1,service_workers='block',reduced_motion='no-preference' if xiaomi else 'reduce')
     page=context.new_page();page.add_init_script(MOCK);errors=[]
     page.on('pageerror',lambda e:errors.append(str(e)))
     page.route('https://**/*',lambda r:r.abort())
@@ -212,27 +213,37 @@ def run_geometry(browser, width, height, theme, scale):
         page.goto(URL);page.locator('#fab').wait_for();configure(page)
         page.locator('[data-page="page-life"]').click();page.locator('[data-life-chat]').click()
         page.evaluate('([theme,scale])=>{document.documentElement.dataset.theme=theme;document.documentElement.style.setProperty("--seed-type",scale)}',[theme,str(scale)])
+        if xiaomi:
+            page.evaluate("document.documentElement.style.setProperty('--safe-top','24px')")
         page.locator('[data-chat-voice]').click();page.locator('[data-voice-start]').click()
         expect(page.locator('[data-voice-mute]')).to_be_visible()
         page.evaluate("window.__liveEvent({state:'listening',messages:Array.from({length:24},(_,i)=>({role:i%2?'assistant':'user',content:'虚构历史 '+i+'。'+ '保留阅读位置。'.repeat(12)}))})")
         expect(page.locator('.life-chat-bubble')).to_have_count(24)
         page.locator('[data-voice-end]').click();expect(page.locator('[data-chat-voice]')).to_be_enabled()
         def layout():
-            return page.evaluate("""()=>{const m=document.querySelector('#life-chat-messages'),c=document.querySelector('.life-chat-input-wrap');return {top:m.getBoundingClientRect().top,bottom:m.getBoundingClientRect().bottom,scroll:m.scrollTop,composer:c.getBoundingClientRect().height,first:m.querySelector('.life-chat-bubble').getBoundingClientRect().top}}""")
-        for draft in ['', '保留多行草稿\n'*10]:
+            return page.evaluate("""()=>{const m=document.querySelector('#life-chat-messages'),c=document.querySelector('.life-chat-input-wrap'),i=document.querySelector('#life-chat-input');return {header:document.querySelector('#sp-life-chat .sub-head').getBoundingClientRect().top,appScroll:document.querySelector('.app').scrollTop,top:m.getBoundingClientRect().top,bottom:m.getBoundingClientRect().bottom,scroll:m.scrollTop,composer:c.getBoundingClientRect().height,first:m.querySelector('.life-chat-bubble').getBoundingClientRect().top,inputScroll:i.scrollTop,selectionStart:i.selectionStart,selectionEnd:i.selectionEnd}}""")
+        cases=[('',False,height),('保留多行草稿\n'*10,False,height),('保留多行草稿\n'*10,True,height)]
+        if xiaomi:cases.append(('键盘高度下的长草稿\n'*10,False,520))
+        for draft, at_bottom, viewport_height in cases:
+            page.set_viewport_size({'width':width,'height':viewport_height})
             page.locator('#life-chat-input').fill(draft)
-            page.locator('#life-chat-messages').evaluate('el=>el.scrollTop=240')
+            page.locator('#life-chat-messages').evaluate('(el,bottom)=>el.scrollTop=bottom?el.scrollHeight:240',at_bottom)
             baseline=layout()
+            assert baseline['appScroll']==0 and baseline['header']>=0,baseline
             OUT.mkdir(parents=True,exist_ok=True)
+            shot=f'{width}x{viewport_height}-{theme}-{scale}-{"bottom" if at_bottom else "history"}'
+            if draft:page.screenshot(path=str(OUT/f'long-before-{shot}.png'),animations='disabled')
             if not draft:page.screenshot(path=str(OUT/f'compact-before-{width}-{theme}-{scale}.png'),animations='disabled')
             def unchanged(state):
                 actual=layout()
                 assert all(abs(actual[k]-v)<1 for k,v in baseline.items()),(state,baseline,actual)
+                expect(page.locator('#life-chat-input')).to_have_value(draft)
                 if page.locator('.chat-voice-overlay').count():
                     assert_inline(page)
                     assert page.locator('.chat-voice-overlay').evaluate("el=>[...el.querySelectorAll('button')].filter(b=>b.getClientRects().length).every(b=>{const a=el.getBoundingClientRect(),r=b.getBoundingClientRect();return r.top>=a.top&&r.bottom<=a.bottom+1})")
             page.evaluate('window.__livePending=true;window.__resolveLiveStart=null')
             page.locator('[data-chat-voice]').click();expect(page.locator('[data-voice-start]')).to_be_enabled();unchanged('idle')
+            if draft:page.screenshot(path=str(OUT/f'long-voice-{shot}.png'),animations='disabled')
             expect(page.locator('.voice-consent')).to_have_count(0)
             if not draft:page.screenshot(path=str(OUT/f'compact-idle-{width}-{theme}-{scale}.png'),animations='disabled')
             page.locator('[data-voice-start]').click();page.wait_for_function('!!window.__resolveLiveStart');unchanged('connecting')
@@ -246,7 +257,10 @@ def run_geometry(browser, width, height, theme, scale):
             expect(page.locator('[data-voice-start]')).to_be_enabled();unchanged('error')
             if not draft:page.screenshot(path=str(OUT/f'compact-error-{width}-{theme}-{scale}.png'),animations='disabled')
             page.locator('[data-voice-close]').click();expect(page.locator('[data-chat-voice]')).to_be_enabled();unchanged('closed')
+            if draft:page.screenshot(path=str(OUT/f'long-closed-{shot}.png'),animations='disabled')
             expect(page.locator('#life-chat-input')).to_have_value(draft)
+            page.locator('[data-chat-voice]').click();expect(page.locator('[data-voice-start]')).to_be_enabled();unchanged('reopened')
+            page.keyboard.press('Escape');expect(page.locator('[data-chat-voice]')).to_be_enabled();unchanged('escape')
         assert not errors,errors
         print('PASS voice dock fixed composer geometry and scroll',width,theme,scale,flush=True)
     finally:context.close()
@@ -295,5 +309,8 @@ if __name__=='__main__':
         browser=p.chromium.launch()
         for profile in [(360,760,'light',1),(390,844,'light',1),(430,932,'dark',1),(360,560,'light',1.3),(400,810,'dark',1.3),(1280,900,'light',1)]:
             run(browser,*profile);run_geometry(browser,*profile)
+        for width,height,scale in [(400,890,1),(400,810,1),(393,873,1),(412,915,1),(400,810,1.3)]:
+            for theme in ['light','dark']:
+                run_geometry(browser,width,height,theme,scale,xiaomi=True)
         run_web_playback(browser)
         browser.close()
