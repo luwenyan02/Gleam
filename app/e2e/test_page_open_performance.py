@@ -113,7 +113,7 @@ def run(browser, width, theme):
             page.evaluate('''()=>{
               const observer=new MutationObserver(()=>{
                 const summary=document.querySelector('#page-acct [data-net-trend] summary');
-                if(summary){observer.disconnect();summary.click();}
+                if(summary){observer.disconnect();document.querySelector('[data-account-amount-toggle]').click();summary.click();}
               });
               observer.observe(document.querySelector('#page-acct'),{childList:true,subtree:true});
             }''')

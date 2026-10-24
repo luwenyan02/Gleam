@@ -27,6 +27,7 @@ def run(browser, width, height, scale, theme):
     page.reload(); page.locator('#fab').wait_for()
     page.evaluate('([scale,theme])=>{document.documentElement.style.setProperty("--seed-type",scale);document.documentElement.dataset.theme=theme}',[str(scale),theme])
     page.locator('[data-page="page-acct"]').click()
+    page.get_by_role('button', name='显示金额', exact=True).click()
     trend=page.locator('[data-net-trend] .balance-trend')
     expect(trend.locator('.balance-trend-line')).to_have_count(1)
     if not trend.evaluate('el=>el.open'): trend.locator('.balance-trend-heading').click()

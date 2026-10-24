@@ -129,7 +129,15 @@
 .asset-summary .label,.asset-summary .asset-row,.asset-summary .num{color:inherit}
 .asset-summary .asset-row{flex-wrap:wrap;gap:6px 20px;font-size:var(--text-meta)}
 .acct-hero>[data-net-trend]{border-top:1px solid var(--border)}
-.acct-hero>[data-net-trend]>.balance-trend{margin-top:0;border-top:0;padding:0 16px 8px}
+.acct-hero>[data-net-trend] .balance-trend{margin-top:0;border-top:0;padding:0 16px 8px}
+.acct-net-row{display:flex;align-items:center;gap:8px;margin:8px 0 14px;min-height:44px}
+.asset-summary .acct-net-row .big{margin:0;min-width:0}
+.acct-net-decimal{font-size:.65em;font-weight:600}
+.acct-amount-toggle{display:inline-flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;padding:0;border:0;border-radius:50%;background:transparent;color:inherit;cursor:pointer}
+.acct-amount-toggle:active{background:rgb(255 255 255 / 16%)}
+.acct-amount-toggle:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+.acct-trend-private{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:52px;margin:0;padding:0 16px}
+.acct-trend-private span{font-size:var(--text-small);color:var(--muted)}
 .account-detail-hero::after{display:none}
 .account-current-balance>p,.account-flow-total,.spark-cap,.account-detail-top small{opacity:1;color:var(--muted)}
 .account-current-balance>h3.neg{color:var(--expense)}

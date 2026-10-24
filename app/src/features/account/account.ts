@@ -45,6 +45,33 @@ const folded = new Set<AccountGroup>();
 let refreshToken = 0;
 let needsRefresh = true;
 let refreshedDay = '';
+/** 仅保留本次运行的选择；重新打开应用默认隐藏。 */
+let amountsVisible = false;
+
+function privateAmount(fen: number, net = false): string {
+  const formatted = formatFenCny(fen);
+  const [integer, decimal] = formatted.split('.');
+  const value = net ? `${integer}<span class="acct-net-decimal">.${decimal}</span>` : formatted;
+  return `<span data-account-visible ${amountsVisible ? '' : 'hidden'}>${value}</span><span data-account-masked ${amountsVisible ? 'hidden' : ''} aria-label="金额已隐藏">****</span>`;
+}
+
+function amountToggleIcon(): string {
+  return `<svg class="ic" width="22" height="22" aria-hidden="true"><use href="#ic-eye"/>${amountsVisible ? '' : '<path d="M4 4 20 20"/>'}</svg>`;
+}
+
+function applyAmountVisibility(): void {
+  if (!root) return;
+  root.querySelectorAll<HTMLElement>('[data-account-visible]').forEach(el => { el.hidden = !amountsVisible; });
+  root.querySelectorAll<HTMLElement>('[data-account-masked]').forEach(el => { el.hidden = amountsVisible; });
+  const button = root.querySelector<HTMLButtonElement>('[data-account-amount-toggle]');
+  button?.setAttribute('aria-label', amountsVisible ? '隐藏金额' : '显示金额');
+  button?.setAttribute('aria-pressed', String(amountsVisible));
+  if (button) button.innerHTML = amountToggleIcon();
+}
+
+function privateNetTrend(html: string): string {
+  return `<p class="acct-trend-private" data-account-masked ${amountsVisible ? 'hidden' : ''}><strong>净资产走势</strong><span>金额已隐藏</span></p><div data-account-visible ${amountsVisible ? '' : 'hidden'}>${html}</div>`;
+}
 
 function showAccounts(): void {
   if (needsRefresh || refreshedDay !== dayKey(Date.now())) void refresh();
@@ -106,11 +133,11 @@ function rowNote(a: Account): string {
   const limit = creditLimitStatus(a);
   const limitNote = limit
     ? limit.overLimit > 0
-      ? `已超额 ${formatFenCny(limit.overLimit)}`
-      : `剩余额度 ${formatFenCny(limit.remaining)}`
+      ? `已超额 ${privateAmount(limit.overLimit)}`
+      : `剩余额度 ${privateAmount(limit.remaining)}`
     : undefined;
   const creditNotes = [limitNote, repayNote(a)].filter(Boolean);
-  return creditNotes.length ? creditNotes.join(' · ') : a.note ?? '';
+  return creditNotes.length ? creditNotes.join(' · ') : esc(a.note ?? '');
 }
 
 /* ── 顶部资产卡 ── */
@@ -138,10 +165,10 @@ async function refresh(): Promise<void> {
     const subtotal = rows.reduce((sum, a) => sum + a.balance, 0);
     return `
       <section class="card list acct-group${folded.has(g) ? ' folded' : ''}" aria-label="${ACCOUNT_GROUP_NAMES[g]}账户">
-        <button class="row group-head" data-group="${g}" aria-expanded="${!folded.has(g)}">${ACCOUNT_GROUP_NAMES[g]}<span class="g-count">${rows.length} 个</span><span class="acct-amt num${subtotal < 0 ? ' neg' : ''}">${formatFenCny(subtotal)}</span><span class="chev">${iconHtml('ic-right')}</span></button>
+        <button class="row group-head" data-group="${g}" aria-expanded="${!folded.has(g)}">${ACCOUNT_GROUP_NAMES[g]}<span class="g-count">${rows.length} 个</span><span class="acct-amt num${subtotal < 0 ? ' neg' : ''}">${privateAmount(subtotal)}</span><span class="chev">${iconHtml('ic-right')}</span></button>
         <div class="g-rows">
           ${rows.map((a) => `
-            <button class="row acct-account-row" data-acct="${a.id}"><span class="e-ic">${iconHtml(GROUP_ICONS[g], 18)}</span><span class="acct-row-copy"><span class="acct-row-name">${esc(a.name)}</span>${rowNote(a) ? `<span class="row-note">${esc(rowNote(a))}</span>` : ''}</span><span class="acct-amt num${a.balance < 0 ? ' neg' : ''}">${formatFenCny(a.balance)}</span></button>`).join('')}
+            <button class="row acct-account-row" data-acct="${a.id}"><span class="e-ic">${iconHtml(GROUP_ICONS[g], 18)}</span><span class="acct-row-copy"><span class="acct-row-name">${esc(a.name)}</span>${rowNote(a) ? `<span class="row-note">${rowNote(a)}</span>` : ''}</span><span class="acct-amt num${a.balance < 0 ? ' neg' : ''}">${privateAmount(a.balance)}</span></button>`).join('')}
         </div>
       </section>`;
   }).join('');
@@ -158,16 +185,16 @@ async function refresh(): Promise<void> {
     <section class="card asset acct-hero">
       <div class="asset-summary overview-art">
         <p class="label">净资产</p>
-        <p class="big num">${formatFenCny(worth.net)}</p>
+        <div class="acct-net-row"><p class="big num">${privateAmount(worth.net, true)}</p><button type="button" class="acct-amount-toggle" data-account-amount-toggle aria-label="${amountsVisible ? '隐藏金额' : '显示金额'}" aria-pressed="${amountsVisible}">${amountToggleIcon()}</button></div>
         <div class="asset-row">
-          <p>总资产<span class="num">${formatFenCny(worth.assets)}</span></p>
-          <p>总负债<span class="num">${formatFenCny(worth.debts)}</span></p>
+          <p>总资产<span class="num">${privateAmount(worth.assets)}</span></p>
+          <p>总负债<span class="num">${privateAmount(worth.debts)}</span></p>
         </div>
       </div>
-      <div data-net-trend><details class="balance-trend" ${netTrendState.open ? 'open' : ''} aria-label="净资产走势">
+      <div data-net-trend>${privateNetTrend(`<details class="balance-trend" ${netTrendState.open ? 'open' : ''} aria-label="净资产走势">
         <summary class="balance-trend-heading"><strong>净资产走势</strong><span class="trend-expand">展开</span><span class="trend-collapse">收起</span></summary>
         <p class="sub" role="status">正在读取走势…</p>
-      </details></div>
+      </details>`)}</div>
     </section>
 
     ${groupCards || `
@@ -186,7 +213,7 @@ async function refresh(): Promise<void> {
   const details = host.querySelector<HTMLDetailsElement>('details');
   if (details) netTrendState.open = details.open;
   const focused = host.contains(document.activeElement);
-  host.innerHTML = balanceTrendHtml(trend, '净资产', netTrendState);
+  host.innerHTML = privateNetTrend(balanceTrendHtml(trend, '净资产', netTrendState));
   if (focused) host.querySelector<HTMLElement>('summary')?.focus();
   needsRefresh = false;
   refreshedDay = dayKey(Date.now());
@@ -732,6 +759,7 @@ function render(el: HTMLElement): void {
 
   el.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
+    if (target.closest('[data-account-amount-toggle]')) { amountsVisible = !amountsVisible; applyAmountVisibility(); return; }
     if (target.closest('[data-account-manage]')) { openSubpage('sp-account-manage'); return; }
     if (target.closest('[data-add]')) { void openAccountForm(); return; }
     const head = target.closest<HTMLElement>('[data-group]');

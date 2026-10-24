@@ -71,6 +71,7 @@ def run(page,width,theme):
     home_contrast=contrast_card(page,'.mc-overview',['.mc-label','.mc-unit','#m-spend'])
     page.locator('#page-home').screenshot(path=str(OUT/f'home-{width}-{theme}.png'),animations='disabled')
     page.locator('.tab[data-page="page-acct"]').click()
+    page.get_by_role('button', name='显示金额', exact=True).click()
     expect(page.locator('.asset-summary .big')).to_be_visible()
     asset=page.locator('.asset-summary')
     assert 'account-overview.webp' in asset.evaluate('e=>getComputedStyle(e).backgroundImage')

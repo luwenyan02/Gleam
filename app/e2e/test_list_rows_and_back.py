@@ -135,6 +135,7 @@ def date_tab_order(page,width):
 def asset_trend(page,width):
     fixture(page);before=ledger_snapshot(page)
     page.locator('.tab[data-page="page-acct"]').click()
+    page.get_by_role('button', name='显示金额', exact=True).click()
     chart=page.locator('#page-acct .balance-trend')
     chart.wait_for()
     assert not chart.locator('.balance-trend-chart').is_visible(),'默认收起趋势图'
