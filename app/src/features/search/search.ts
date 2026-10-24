@@ -69,7 +69,7 @@ let batchResultIds: number[] = [];
 let batchCategories: Category[] = [];
 let batchAccounts: Account[] = [];
 let batchTags: Tag[] = [];
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 20;
 let shown = PAGE_SIZE;
 let lastQueryKey = '';
 

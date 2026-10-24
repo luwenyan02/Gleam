@@ -41,7 +41,7 @@ TESTS = (
     'test_account_search_navigation.py', 'test_account_management_ui.py', 'test_account_active_months.py', 'test_account_footer_trend.py', 'test_net_worth_trend.py', 'test_account_amount_privacy.py',
     'test_account_detail_performance.py', 'test_account_detail_upgrade.py', 'test_account_detail_pagination.py',
     'test_entry_receipts.py', 'test_entry_credit_limit.py', 'test_entry_detail_performance.py', 'test_entry_detail_upgrade.py',
-    'test_entity_details.py', 'test_accounting_period.py', 'test_search_month_ranges.py', 'test_search_summary_layout.py', 'test_search_filter_groups.py',
+    'test_entity_details.py', 'test_accounting_period.py', 'test_search_month_ranges.py', 'test_search_pagination.py', 'test_search_summary_layout.py', 'test_search_filter_groups.py',
     'test_life_layout.py', 'test_entry_life_memory.py', 'test_life_ai.py', 'test_chat_experience.py', 'test_chat_stream_performance.py', 'test_chat_selection_copy.py', 'test_native_ai_stream.py', 'test_native_live_voice.py', 'test_long_live_voice.py', 'test_bluetooth_voice_feedback.py', 'test_voice_markdown.py', 'test_voice_search.py', 'test_chat_send_status.py', 'test_chat_resume.py', 'test_chat_web_search.py', 'test_chat_ai_settings.py',
     'test_browser_usability.py',
     'test_large_ledger.py',
