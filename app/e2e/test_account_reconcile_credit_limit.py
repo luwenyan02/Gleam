@@ -74,6 +74,7 @@ def run_case(page, width):
     page.locator('#sp-account-detail .sub-head [data-act="back"]').click()
     page.locator('#sp-account-detail').wait_for(state='detached')
     page.locator('[data-acct="2"]').wait_for()
+    page.get_by_role('button', name='显示金额', exact=True).click()
     assert '剩余额度 ¥7,000.00' in page.locator('[data-acct="2"]').inner_text()
 
     page.locator('[data-acct="2"]').click()

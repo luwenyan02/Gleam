@@ -46,8 +46,11 @@ def lists(page):
     seed(page,count=101,amount=100);search(page)
     assert '101.00' in page.locator('[data-sf="expense"]').inner_text()
     assert '101.00' in page.locator('.sr-day-head').inner_text()
-    if page.locator('#sr-load-more').count(): page.locator('#sr-load-more').click()
-    page.wait_for_function('document.querySelectorAll("#sr-results [data-eid]").length === 101')
+    rows = page.locator('#sr-results [data-eid]')
+    expect(rows).to_have_count(20)
+    for count in (40, 60, 80, 100, 101):
+        page.locator('#sr-load-more').click()
+        expect(rows).to_have_count(count)
     assert page.locator('#sr-results [data-eid]').count()==101
     page.locator('[data-sf="income"]').click();page.locator('.sr-empty').wait_for()
     page.locator('[data-sf="all"]').click();page.locator('#sr-results [data-eid]').first.wait_for()
