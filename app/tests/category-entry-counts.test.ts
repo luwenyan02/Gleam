@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../src/core/db';
 import type { Entry } from '../src/core/types';
 import { countCategoryEntries, moveCategory } from '../src/core/repo/categoryRepo';
@@ -57,4 +57,17 @@ describe('分类管理账单笔数', () => {
     expect(counts.has(3)).toBe(false);
     expect([counts.get(1), counts.get(4)]).toEqual([2, 2]);
   });
+});
+
+it('只读取分类索引的主键，不载入账单正文；不同类型与删除状态仍按原口径排除', async () => {
+  await db.entries.bulkPut([row(1), row(2, { type: 'income' }), row(3, { deletedAt: 1 })]);
+  const read = vi.spyOn(IDBObjectStore.prototype, 'getAll');
+  const cursor = vi.spyOn(IDBIndex.prototype, 'openCursor');
+  const indexRead = vi.spyOn(IDBIndex.prototype, 'getAll');
+  try {
+    expect((await countCategoryEntries()).get(3)).toBe(1);
+    expect(read.mock.contexts.filter(store => store.name === 'entries')).toHaveLength(0);
+    expect(indexRead.mock.contexts.filter(index => index.objectStore.name === 'entries')).toHaveLength(0);
+    expect(cursor.mock.contexts.filter(index => index.objectStore.name === 'entries')).toHaveLength(0);
+  } finally { read.mockRestore(); cursor.mockRestore(); indexRead.mockRestore(); }
 });

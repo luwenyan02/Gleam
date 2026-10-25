@@ -182,8 +182,8 @@ export async function softDeleteEntry(id: number): Promise<void> {
     if (!e || e.deletedAt !== 0) return;
     const deletedAt = now();
     if (!e.refundFlag) {
-      const refunds = await db.entries
-        .filter((entry) => entry.deletedAt === 0 && entry.refundFlag === true && entry.refundOfEntryId === id)
+      const refunds = await db.entries.where('refundOfEntryId').equals(id)
+        .filter(entry => entry.deletedAt === 0 && entry.refundFlag === true)
         .toArray();
       for (const refund of refunds) {
         await applyEffects(refund, -1);

@@ -718,6 +718,17 @@ export async function getImportBatch(id: number): Promise<ImportBatch | undefine
  * @param limit 返回条数上限，默认 3
  */
 export async function listAiBatches(limit = 3): Promise<ImportBatch[]> {
-  const rows = await db.importBatches.orderBy('createdAt').reverse().toArray();
-  return rows.filter((b) => b.source === 'ai').slice(0, limit);
+  if (limit <= 0) return [];
+  return db.importBatches.orderBy('createdAt').reverse().filter(b => b.source === 'ai').limit(limit).toArray();
+}
+
+/** 只读当前展示批次；空收件箱不查询流水。 */
+export async function countAiBatchEntries(ids: number[]): Promise<Map<number, number>> {
+  return new Map(await Promise.all([...new Set(ids)].map(async id => [id,
+    await db.entries.where('importBatchId').equals(id).and(entry => entry.deletedAt === 0).count(),
+  ] as const)));
+}
+
+export async function listAiBatchEntries(id: number) {
+  return db.entries.where('importBatchId').equals(id).and(entry => entry.deletedAt === 0).toArray();
 }

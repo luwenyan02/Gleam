@@ -29,6 +29,7 @@ let body: HTMLElement | undefined;
 let refreshToken = 0;
 let pendingRefresh: Promise<void> | undefined;
 let pendingBody: HTMLElement | undefined;
+let summaryTask: ReturnType<typeof getMineEntrySummary> | undefined;
 let displayedVersion: AppVersionInfo | undefined;
 
 /** 入口行 */
@@ -102,14 +103,15 @@ function renderContent(el: HTMLElement): void {
 /** 内容先显示，摘要分别更新；同一页面只保留一组读取，变化后再刷新。 */
 function refresh(): Promise<void> {
   const el = body;
-  if (!el?.isConnected || currentPage() !== 'page-mine') return Promise.resolve();
+  if (!el?.isConnected || currentPage() !== 'page-mine' || el.inert) return Promise.resolve();
   if (pendingRefresh && pendingBody === el) return pendingRefresh;
   const token = refreshToken;
-  const current = () => body === el && el.isConnected && token === refreshToken;
+  const current = () => body === el && el.isConnected && !el.inert && currentPage() === 'page-mine' && token === refreshToken;
   const text = (selector: string, value: string) => {
     if (current()) { const node = el.querySelector(selector); if (node) node.textContent = value; }
   };
-  const summary = getMineEntrySummary();
+  const summary = summaryTask ??= getMineEntrySummary(() => body === el && el.isConnected && !el.inert && currentPage() === 'page-mine');
+  void summary.catch(() => { if (summaryTask === summary) summaryTask = undefined; });
   const stats = summary.then(summary => {
     text('[data-mine-stats]', `已记录 ${summary.days} 天 · ${summary.count} 条流水`);
     text('[data-sub="sp-reimburse"] .row-note', summary.pendingCount
@@ -195,11 +197,12 @@ export function initMine(): void {
         }
       });
     },
-    onShow() { invalidate(); },
+    onShow() { summaryTask = undefined; invalidate(); },
+    onReveal() { summaryTask = undefined; invalidate(); },
   });
 
   // 隐藏页只标记失效，不在后台反复遍历账本；下次显示时读取。
-  on('entries-changed', invalidate);
+  on('entries-changed', () => { summaryTask = undefined; invalidate(); });
   on('life-changed', invalidate);
   on('accounts-changed', invalidate);
   on('categories-changed', invalidate);

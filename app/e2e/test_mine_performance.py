@@ -70,7 +70,8 @@ def run(browser,width,theme):
     if not BASELINE:
         assert result['ready_ms']<350,result
         assert result['summary_ms']<2000,result
-        assert result['values']<=4 and 1<=result['keys']<=DAYS+2,result
+        # Two range edges plus at most 15 shared dates across the 16 parallel cursors.
+        assert result['values']<=4 and 1<=result['keys']<=DAYS+19,result
         # Dynamic summaries must not replace focused entry buttons.
         page.locator('#page-mine [data-help-manual]').focus()
         page.wait_for_timeout(50)

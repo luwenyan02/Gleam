@@ -103,20 +103,24 @@ export async function listExpenseTree(): Promise<{ parent: Category; children: C
 /** 全部未删除收支的实体笔数（含退款）；支出大类包含自身及小类，不生成报销展示事件。 */
 export async function countCategoryEntries(): Promise<Map<number, number>> {
   return db.transaction('r', [db.categories, db.entries], async () => {
-    const [categories, entries] = await Promise.all([
-      db.categories.toArray(), db.entries.where('deletedAt').equals(0).toArray(),
+    const categories = await db.categories.toArray();
+    // 主键交集只传输数字，避免反序列化整本账单（备注、附件等）。
+    const [expenseIds, incomeIds, categoryIds] = await Promise.all([
+      db.entries.where('[deletedAt+type]').equals([0, 'expense']).primaryKeys(),
+      db.entries.where('[deletedAt+type]').equals([0, 'income']).primaryKeys(),
+      Promise.all(categories.map(category => db.entries.where('categoryId').equals(category.id).primaryKeys())),
     ]);
+    const valid = { expense: new Set(expenseIds), income: new Set(incomeIds) };
     const byId = new Map(categories.map(category => [category.id, category]));
     const counts = new Map(categories.map(category => [category.id, 0]));
-    for (const entry of entries) {
-      const category = entry.categoryId != null ? byId.get(entry.categoryId) : undefined;
-      if (!category || entry.type !== category.kind) continue;
-      counts.set(category.id, counts.get(category.id)! + 1);
+    categories.forEach((category, i) => {
+      const count = categoryIds[i].reduce((sum, id) => sum + Number(valid[category.kind].has(id)), 0);
+      counts.set(category.id, counts.get(category.id)! + count);
       const parent = category.parentId != null ? byId.get(category.parentId) : undefined;
       if (parent?.kind === category.kind && parent.id !== category.id) {
-        counts.set(parent.id, counts.get(parent.id)! + 1);
+        counts.set(parent.id, counts.get(parent.id)! + count);
       }
-    }
+    });
     return counts;
   });
 }

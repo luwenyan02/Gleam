@@ -13,8 +13,14 @@ URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4617/')
 OUT = Path(__file__).parents[2] / '.tmp/tests/e2e/page-open-performance'
 
 AUDIT=r'''(()=>{
- let pending=0,last=performance.now();window.__nav={rows:{},requests:{},active:true,start:0};
- window.__navPending=()=>pending;window.__navLast=()=>last;
+ let pending=0,transactions=0,last=performance.now();window.__nav={rows:{},requests:{},active:true,start:0};
+ const transaction=IDBDatabase.prototype.transaction;
+ IDBDatabase.prototype.transaction=function(...args){
+  const tx=transaction.apply(this,args);transactions++;
+  const done=()=>{transactions--;last=performance.now();};
+  tx.addEventListener('complete',done,{once:true});tx.addEventListener('abort',done,{once:true});return tx;
+ };
+ window.__navPending=()=>pending+transactions;window.__navLast=()=>last;
  for(const proto of [IDBObjectStore.prototype,IDBIndex.prototype])for(const method of ['get','getAll','getAllKeys','count','openCursor','openKeyCursor']){
   const original=proto[method];if(!original)continue;
   proto[method]=function(...args){const req=original.apply(this,args),n=this.objectStore?.name??this.name,index=this.objectStore?this.name:'store';

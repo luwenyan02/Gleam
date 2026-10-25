@@ -94,3 +94,31 @@ it('秋季夏令时的两次凌晨仍为同一天，负时间维持原先排除�
     expect(await getMineEntrySummary()).toEqual({ days: 2, count: 4, pendingCount: 4, pendingAmount: 40 });
   } finally { if (original === undefined) delete process.env.TZ; else process.env.TZ = original; }
 });
+
+it('离开页面可中断日期统计，不继续占用后台游标', async () => {
+  await db.entries.bulkPut(Array.from({length: 100}, (_, i) => ({id: i + 1, type: 'expense' as const,
+    amount: 1, occurredAt: new Date(2020, 0, i + 1).getTime(), deletedAt: 0,
+    reimburseStatus: 'none' as const, createdAt: 1, updatedAt: 1})));
+  await expect(getMineEntrySummary(() => false)).rejects.toMatchObject({name: 'AbortError'});
+  expect((await getMineEntrySummary()).days).toBe(100);
+});
+
+it('跨多年分段仍按本地自然日去重，包含分段交界与夏令时', async () => {
+  const original = process.env.TZ;
+  const entries: Entry[] = Array.from({ length: 700 }, (_, i) => ({ id: i + 1, type: 'expense',
+    amount: 1, occurredAt: Date.parse('2020-01-01T00:00:00Z') + Math.floor(i / 2) * 86400000 * 7 + i % 2 * 3600000,
+    deletedAt: i % 11 === 0 ? 1 : 0, reimburseStatus: 'none', createdAt: 1, updatedAt: 1 }));
+  await db.entries.bulkPut(entries);
+  try {
+    for (const zone of ['UTC', 'Asia/Shanghai', 'America/New_York']) {
+      process.env.TZ = zone;
+      const live = entries.filter(e => e.deletedAt === 0);
+      const days = new Set(live.map(e => { const d = new Date(e.occurredAt); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; })).size;
+      expect(await getMineEntrySummary()).toEqual({ days, count: live.length, pendingCount: 0, pendingAmount: 0 });
+    }
+    let steps = 0;
+    await expect(getMineEntrySummary(() => ++steps < 12)).rejects.toMatchObject({ name: 'AbortError' });
+    expect(await db.entries.count()).toBe(entries.length);
+    expect((await getMineEntrySummary()).count).toBe(entries.filter(e => e.deletedAt === 0).length);
+  } finally { if (original === undefined) delete process.env.TZ; else process.env.TZ = original; }
+});

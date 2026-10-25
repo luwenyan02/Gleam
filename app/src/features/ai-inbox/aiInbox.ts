@@ -22,11 +22,11 @@ import { listAccounts } from '../../core/repo/accountRepo';
 import { ensureMerchant, touchMerchant } from '../../core/repo/merchantRepo';
 import { saveImportAtomically } from '../../core/repo/importSaveRepo';
 import {
-  findDuplicates, importEntriesBatch, listEntries, softDeleteEntry,
+  findDuplicates, importEntriesBatch, softDeleteEntry,
   type ImportEntryItem, type NewEntry,
 } from '../../core/repo/entryRepo';
 import {
-  AiConfigError, addAiPendingItems, getAiAttachment, listAiBatches, listAiPendingItems,
+  AiConfigError, countAiBatchEntries, listAiBatchEntries, addAiPendingItems, getAiAttachment, listAiBatches, listAiPendingItems,
   mapAccountNameToId, mapCategoryNameToId, recognizeImage, recognizeText,
   removeAiPendingItems, replaceAiPendingItem, resetStuckRecognizing, saveAiAttachment,
   updateAiPendingItem, type AiParsedBill,
@@ -245,7 +245,7 @@ async function autoConfirm(): Promise<void> {
 
 /** 撤销一个 AI 批次：按 importBatchId 找出未删除账单逐条软删除（回收站 30 天可恢复） */
 async function undoBatch(batchId: number): Promise<void> {
-  const targets = (await listEntries()).filter((e) => e.importBatchId === batchId);
+  const targets = await listAiBatchEntries(batchId);
   if (!targets.length) { showToast('该批次账单已撤销或删除'); return; }
   for (const e of targets) await softDeleteEntry(e.id);
   showToast(`已撤销 ${targets.length} 笔，可在回收站恢复`);
@@ -463,15 +463,16 @@ async function refresh(): Promise<void> {
   const el = body;
   if (!el?.isConnected) return;
   const token = ++refreshToken;
-  const [items, batches, expenseCats, incomeCats, accounts, apiKey, baseUrl, model, entries] = await Promise.all([
+  const [items, batches, expenseCats, incomeCats, accounts, apiKey, baseUrl, model] = await Promise.all([
     listAiPendingItems(), listAiBatches(3),
     listCategories('expense'), listCategories('income'), listAccounts(),
     secretStore.get('ai.apiKey'), getSetting('ai.baseUrl'), getSetting('ai.model'),
-    listEntries(),
   ]);
   // 截图预览：附件 → object URL（旧 URL 统一回收）
   const attIds = [...new Set(items.map((it) => it.attachmentId).filter((id): id is number => id != null))];
-  const atts = await Promise.all(attIds.map((id) => getAiAttachment(id)));
+  const [atts, liveCountByBatch] = await Promise.all([
+    Promise.all(attIds.map(id => getAiAttachment(id))), countAiBatchEntries(batches.map(b => b.id)),
+  ]);
   if (token !== refreshToken || !el.isConnected) return;
   for (const url of previewUrls) URL.revokeObjectURL(url);
   previewUrls = [];
@@ -504,10 +505,6 @@ async function refresh(): Promise<void> {
   const configured = !!(apiKey?.trim() && baseUrl.trim() && model.trim());
   const ready = items.filter((it) => it.status === 'ready');
   const raws = items.filter((it) => it.status !== 'ready');
-  const liveCountByBatch = new Map<number, number>();
-  for (const e of entries) {
-    if (e.importBatchId != null) liveCountByBatch.set(e.importBatchId, (liveCountByBatch.get(e.importBatchId) ?? 0) + 1);
-  }
 
   const textDraft = el.querySelector<HTMLTextAreaElement>('#ai-text')?.value ?? '';
   // 保留入口身份，后台刷新不打断语音，也能在草稿关闭后恢复原入口焦点。
@@ -681,7 +678,6 @@ export function initAiInbox(): void {
         const tempId = t.closest<HTMLElement>('[data-temp]')?.dataset.temp;
         if (tempId && (t as HTMLElement).dataset.field) void applyInlineEdit(t, tempId);
       });
-      void refresh();
     },
     onShow() {
       void refresh();

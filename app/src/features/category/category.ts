@@ -14,7 +14,7 @@ import { on } from '../../core/store';
 import {
   addCategory, countCategoryEntries, deleteCategory, listCategories, listExpenseTree, moveCategory, updateCategory, reorderCategories,
 } from '../../core/repo/categoryRepo';
-import { registerSubpage } from '../shell/router';
+import { registerSubpage, SUBPAGE_CLOSE_EVENT } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { showToast } from '../shell/toast';
 import { confirmDialog } from '../shell/dialog';
@@ -41,6 +41,8 @@ export function initCategoryManager(): void {
     render(el) {
       let kind: CategoryKind = 'expense';
       let refreshToken = 0;
+      let countsTask: Promise<Map<number, number>> | undefined;
+      let closed = false;
       /** 最近一次加载的分类，按 id 索引（拖动排序与编辑用） */
       const byId = new Map<number, Category>();
 
@@ -57,17 +59,19 @@ export function initCategoryManager(): void {
         <button class="btn ghost" id="cm-add">新建大类</button>`;
 
       async function refresh(): Promise<void> {
-        if (!el.isConnected) return;
+        if (!el.isConnected || closed) return;
         const token = ++refreshToken;
         const selectedKind = kind;
-        const [counts, tree, cats] = await Promise.all([
-          countCategoryEntries(),
+        const task = countsTask ??= countCategoryEntries();
+        // 先显示可操作的分类，笔数独立补齐；同页切换收支复用当前统计。
+        void task.catch(() => { if (countsTask === task) countsTask = undefined; });
+        const [tree, cats] = await Promise.all([
           selectedKind === 'expense' ? listExpenseTree() : Promise.resolve([]),
           selectedKind === 'income' ? listCategories('income') : Promise.resolve([]),
         ]);
-        if (!el.isConnected || token !== refreshToken) return;
+        if (!el.isConnected || closed || token !== refreshToken) return;
         byId.clear();
-        const label = (category: Category) => `<span class="cm-category-label"><span class="cm-category-name" title="${esc(category.name)}">${esc(category.name)}</span><span class="cm-entry-count num" data-category-count="${category.id}" title="未删除账单，含退款${category.kind === 'expense' && category.parentId == null ? '及小类' : ''}">${(counts.get(category.id) ?? 0).toLocaleString('zh-CN')} 笔</span></span>`;
+        const label = (category: Category) => `<span class="cm-category-label"><span class="cm-category-name" title="${esc(category.name)}">${esc(category.name)}</span><span class="cm-entry-count num" data-category-count="${category.id}" title="未删除账单，含退款${category.kind === 'expense' && category.parentId == null ? '及小类' : ''}">— 笔</span></span>`;
         const list = el.querySelector('#cm-list')!;
         if (selectedKind === 'expense') {
           for (const g of tree) {
@@ -96,6 +100,16 @@ export function initCategoryManager(): void {
                 <span class="chev" style="margin-left:auto">${iconHtml('ic-right', 15)}</span>
               </button>`).join('') || '<p class="sub" style="padding:12px 2px">还没有收入分类</p>'}
           </section>`;
+        }
+        try {
+          const counts = await task;
+          if (!el.isConnected || closed || token !== refreshToken) return;
+          for (const node of el.querySelectorAll<HTMLElement>('[data-category-count]')) {
+            node.textContent = `${(counts.get(Number(node.dataset.categoryCount)) ?? 0).toLocaleString('zh-CN')} 笔`;
+          }
+        } catch {
+          if (!el.isConnected || closed || token !== refreshToken) return;
+          for (const node of el.querySelectorAll('[data-category-count]')) node.textContent = '暂未读取';
         }
       }
 
@@ -181,8 +195,12 @@ export function initCategoryManager(): void {
 
       const unsubscribe = ['categories-changed', 'entries-changed'].map(event => on(event as 'categories-changed' | 'entries-changed', () => {
         if (!el.isConnected) { unsubscribe.forEach(off => off()); return; }
+        countsTask = undefined;
         void refresh();
       }));
+      el.closest('.subpage')?.addEventListener(SUBPAGE_CLOSE_EVENT, () => {
+        closed = true; countsTask = undefined; unsubscribe.forEach(off => off());
+      }, { once: true });
       void refresh();
     },
   });
