@@ -141,7 +141,8 @@ def run(browser, width):
 
         page.locator('[data-page="page-acct"]').click()
         page.locator('[data-acct="3"]').wait_for()
-        page.get_by_role('button', name='显示金额', exact=True).click()
+        expect(page.get_by_role('button', name='显示金额', exact=True)).to_be_visible()
+        expect(page.locator('#page-acct [data-account-visible]:visible')).to_have_count(0)
         capture(page, 'accounts', width, '#page-acct')
 
         page.locator('[data-page="page-report"]').click()

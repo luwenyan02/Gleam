@@ -2,7 +2,7 @@
 
 https://github.com/user-attachments/assets/e23ed9e9-f84b-4ba6-a50a-91313b2ed70b
 
-**[下载 1080p 原片](docs/assets/promo/gleam-warm-life.mp4?raw=true)** · 64 秒 · [查看封面](docs/assets/promo/gleam-warm-life-cover.jpg) · [v1.11.36](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.36)
+**[下载 1080p 原片](docs/assets/promo/gleam-warm-life.mp4?raw=true)** · 64 秒 · [查看封面](docs/assets/promo/gleam-warm-life-cover.jpg) · 视频制作于 [v1.11.36](https://github.com/luwenyan02/Gleam/releases/tag/v1.11.36)
 
 **记账，也记生活。**
 
@@ -14,11 +14,11 @@ https://github.com/user-attachments/assets/e23ed9e9-f84b-4ba6-a50a-91313b2ed70b
 
 **[下载 Android 安装包](https://github.com/luwenyan02/Gleam/releases/latest)** · [看看界面](#看看界面) · [数据与备份](docs/data-backup.md) · [本地运行](#本地运行)
 
-这份介绍以 **v1.11.36** 已发布功能为准。视频使用虚构账目；语音及部分 AI 内容为模拟演示。
+这份介绍以 **v1.11.41** 已发布功能为准。视频使用虚构账目；语音及部分 AI 内容为模拟演示。
 
 ## 看看界面
 
-以下是 v1.11.32 网页生产构建的真实截图，使用虚构账目与本地模拟 AI 回复；语音画面通过模拟原生通道展示，未实际收音。点击可查看原图；[截图来源与复现方法](docs/assets/screenshots/README.md)单独记录。
+以下是网页生产构建的真实截图：账户页来自 v1.11.41，其余画面来自 v1.11.32。截图使用虚构账目与本地模拟 AI 回复；语音画面通过模拟原生通道展示，未实际收音。点击可查看原图；[截图来源与复现方法](docs/assets/screenshots/README.md)单独记录。
 
 <!-- SCREENSHOTS_START -->
 ### 开口记账，顺手聊聊
@@ -37,7 +37,7 @@ https://github.com/user-attachments/assets/e23ed9e9-f84b-4ba6-a50a-91313b2ed70b
 
 | 首页 | 账户 | 报表 |
 | --- | --- | --- |
-| [![首页：收支、预算和日常流水](docs/assets/screenshots/home-demo.png)](docs/assets/screenshots/home-demo.png) | [![账户：余额、应收应付与净资产](docs/assets/screenshots/accounts-demo.png)](docs/assets/screenshots/accounts-demo.png) | [![报表：分类排行与收支统计](docs/assets/screenshots/report-demo.png)](docs/assets/screenshots/report-demo.png) |
+| [![首页：收支、预算和日常流水](docs/assets/screenshots/home-demo.png)](docs/assets/screenshots/home-demo.png) | [![账户：默认隐藏金额，点击眼睛可显示](docs/assets/screenshots/accounts-demo.png)](docs/assets/screenshots/accounts-demo.png) | [![报表：分类排行与收支统计](docs/assets/screenshots/report-demo.png)](docs/assets/screenshots/report-demo.png) |
 
 | 生活记录 | 和拾光聊聊 | 拾光周刊 |
 | --- | --- | --- |
@@ -57,9 +57,11 @@ https://github.com/user-attachments/assets/e23ed9e9-f84b-4ba6-a50a-91313b2ed70b
 
 ## 想查一笔，或看清一个月
 
-记下来的账可以按日历翻，也可以用关键词、账户、分类、标签和商家组合筛选。流水多时，快速滑动会唤出右侧的快滑胶囊：拖动定位，或一键回到顶部、跳到已加载流水的末尾；停下来后自动收起。需要更早的记录，再到底部继续上拉加载。
+记下来的账可以按日历翻，也可以用关键词、账户、分类、标签和商家组合筛选。搜索先显示 100 笔，每次可再加载 100 笔，也可以一次查看全部；汇总金额和批量全选始终覆盖所有匹配结果。分类管理会先显示列表，笔数随后补齐。
 
-账户页可以看余额、逐笔余额变化和净资产走势，管理信用卡账单、额度与还款。报表支持周、月、年和自定义时段，预算也能按自己的财务月安排。
+首页流水多时，快速滑动会唤出右侧的快滑胶囊：拖动定位，或一键回到顶部、跳到已加载流水的末尾；停下来后自动收起。需要更早的记录，再到底部继续上拉加载。
+
+账户页默认隐藏净资产和账户金额，点击眼睛即可显示；重新打开应用后恢复隐藏。这里还能查看逐笔余额变化和净资产走势，管理信用卡账单、额度与还款；设置了额度的信用卡，在支出详情里也能看到当前剩余额度或超额金额。报表支持周、月、年和自定义时段，预算也能按自己的财务月安排。
 
 想让 AI 帮忙分析时，可以问「最近 30 天花了多少」「这个月哪里花得多」，或看上月对比、近 6 个月趋势。先确认分析范围，拾光在本机算好汇总，再交给模型解释；结果可以回到原账单核对，聊天不会自动改账。
 
@@ -76,7 +78,7 @@ https://github.com/user-attachments/assets/e23ed9e9-f84b-4ba6-a50a-91313b2ed70b
 
 ## 数据留在手里
 
-账单、生活记录、会话和附件默认保存在本机，不需要注册拾光账号。完整数据可以导出为加密 `.skbak` 备份，也可以备份到自己的 WebDAV、S3 兼容存储，或在 Android 上通过 QQ 邮箱发送加密备份。换设备时，用备份文件恢复。
+账单、生活记录、会话和附件默认保存在本机，不需要注册拾光账号。完整数据可以导出为加密 `.skbak` 备份，也可以备份到自己的 WebDAV、S3 兼容存储，或在 Android 上通过 QQ 邮箱发送加密备份。换设备时，用备份文件恢复；恢复过程中可以查看进度。
 
 聊天与附件点击发送后、语音连接后，会发送给你配置的 AI 服务；整理记录、生成周刊和分析账单数据前，会先确认发送内容。使用云盘或邮件备份时，备份文件会发送到你指定的目的地。服务密钥不打包进数据备份，换设备后需要重新配置。具体范围见[隐私说明](PRIVACY.md)。
 
@@ -86,7 +88,7 @@ https://github.com/user-attachments/assets/e23ed9e9-f84b-4ba6-a50a-91313b2ed70b
 
 **Android 7.0 及以上**：在 [Releases](https://github.com/luwenyan02/Gleam/releases/latest) 下载 APK，页面同时提供 SHA-256 校验文件。安装后即可手动记账；已有版本可从「我的 → 关于和帮助 → 关于拾光」检查新版，升级说明见对应 Release。
 
-**AI 功能**：在设置中选择平台、模型并填写自己的 API Key。图片识别需要支持图片的模型；Android 短语音和语音聊使用阿里百炼，需要完成语音配置与连接测试，服务可能按用量收费。[短语音记账](docs/SHORT_VOICE_ENTRY.md)和[语音聊](docs/REALTIME_VOICE.md)有具体说明。
+**AI 功能**：在「我的 → AI 配置」中选择平台、模型并填写自己的 API Key。图片识别需要支持图片的模型；Android 短语音和语音聊使用阿里百炼，需要完成语音配置与连接测试，服务可能按用量收费。[短语音记账](docs/SHORT_VOICE_ENTRY.md)和[语音聊](docs/REALTIME_VOICE.md)有具体说明。
 
 **PWA**：自行运行网页后可安装为网页应用，核心记账与记录功能可离线使用。开发网页版语音聊需要额外配置本机中转，离线 PWA 不包含该服务；Android 语音功能直接使用原生通道。
 
