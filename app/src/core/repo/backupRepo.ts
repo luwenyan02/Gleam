@@ -84,7 +84,21 @@ export function sanitizeDumpForBackup(dump: TableDump): TableDump {
  */
 export interface RestoreProgress { completed: number; total: number }
 
+let restoreRunning = false;
+
+/** 拒绝重叠恢复，避免事务排队后用另一份数据覆盖刚恢复的账本。 */
+async function withRestoreOperation<T>(operation: () => Promise<T>): Promise<T> {
+  if (restoreRunning) throw new Error('正在恢复，请稍候');
+  restoreRunning = true;
+  try { return await operation(); }
+  finally { restoreRunning = false; }
+}
+
 export async function restoreAll(dump: Partial<TableDump>, onProgress?: (progress: RestoreProgress) => void): Promise<void> {
+  await withRestoreOperation(() => applyRestore(dump, onProgress));
+}
+
+async function applyRestore(dump: Partial<TableDump>, onProgress?: (progress: RestoreProgress) => void): Promise<void> {
   const tables = TABLE_NAMES.map((n) => db.table(n));
   const total = TABLE_NAMES.reduce((sum, name) => sum + (dump[name]?.length ?? 0), 0);
   let completed = 0;
@@ -176,12 +190,24 @@ export async function listSnapshots(): Promise<Omit<SnapshotRow, 'tables'>[]> {
 
 /**
  * 一键撤销：用快照内容整库替换主库，成功后删除该快照。
+ * 仅主库提交前的失败抛错；独立快照库清理失败不能冒充账本回滚。
  */
-export async function undoSnapshot(id: number): Promise<void> {
-  const snap = await snapDb.snapshotContents.get(id);
-  if (!snap) throw new Error('快照不存在或已过期清理');
-  await restoreAll(snap.tables);
-  await deleteSnapshot(id);
+export type UndoSnapshotResult =
+  | { restored: true; snapshotDeleted: true }
+  | { restored: true; snapshotDeleted: false; cleanupError: unknown };
+
+export async function undoSnapshot(id: number, onProgress?: (progress: RestoreProgress) => void): Promise<UndoSnapshotResult> {
+  return withRestoreOperation(async () => {
+    const snap = await snapDb.snapshotContents.get(id);
+    if (!snap) throw new Error('快照不存在或已过期清理');
+    await applyRestore(snap.tables, onProgress);
+    try {
+      await deleteSnapshot(id);
+      return { restored: true, snapshotDeleted: true };
+    } catch (cleanupError) {
+      return { restored: true, snapshotDeleted: false, cleanupError };
+    }
+  });
 }
 
 /** 删除单个快照 */
