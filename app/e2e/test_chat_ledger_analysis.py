@@ -25,7 +25,7 @@ def seed(page):
     """固定日期覆盖退款、跨月报销、已删除账单、转账和借贷。"""
     page.evaluate('''async () => {
       const db = await new Promise(resolve => { const r = indexedDB.open('GleamDB'); r.onsuccess = () => resolve(r.result); });
-      const tx = db.transaction(['entries','accounts','categories','settings'], 'readwrite');
+      const tx = db.transaction(['entries','accounts','categories','settings','attachments','entryAttachments'], 'readwrite');
       tx.objectStore('entries').clear();
       const base = {type:'expense',categoryId:99101,accountId:99109,reimburseStatus:'none',deletedAt:0,createdAt:1,updatedAt:1,
         note:'RAW_LEDGER_NOTE_MUST_STAY_LOCAL',merchantId:99111};
@@ -50,6 +50,10 @@ def seed(page):
         {id:91606,amount:777777,deletedAt:Date.now()}, {id:91607,amount:888888,type:'transfer'},
         {id:91608,amount:999999,type:'loan',loanKind:'borrow'}
       ]) tx.objectStore('entries').put({...base,occurredAt:new Date(2026,5,10,12).getTime(),...row});
+      // 账单原有附件不得因聊天照片独立存储或回收而被改动。
+      const blob = new Blob(['fictional protected ledger attachment'], {type:'image/png'});
+      tx.objectStore('attachments').put({id:99201,name:'虚构账单附件.png',mime:blob.type,size:blob.size,blob,createdAt:1,updatedAt:1});
+      tx.objectStore('entryAttachments').put({entryId:91601,attachmentId:99201,sortOrder:0});
       await new Promise((resolve,reject) => {tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);}); db.close();
     }''')
     watch_writes(page)
@@ -85,12 +89,34 @@ def mutate_entry(page, entry_id, values):
 
 
 def ledger_snapshot(page):
-    return {name: read_rows(page, name) for name in LEDGER_STORES}
+    snapshot = {name: read_rows(page, name) for name in LEDGER_STORES}
+    snapshot['attachments'] = page.evaluate('''async () => {
+      const db=await new Promise(resolve=>{const r=indexedDB.open('GleamDB');r.onsuccess=()=>resolve(r.result)});
+      const rows=await new Promise(resolve=>{const r=db.transaction('attachments').objectStore('attachments').getAll();r.onsuccess=()=>resolve(r.result)});
+      db.close();
+      return Promise.all(rows.map(async ({blob,...row}) => ({...row,sha256:Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))),mime:blob.type})));
+    }''')
+    return snapshot
 
 
 def assert_read_only(page, snapshot):
-    assert page.evaluate('window.__ledgerWrites') == [], '账本分析和核对入口不得写账'
+    writes = page.evaluate('window.__ledgerWrites')
+    assert all(write == {'store':'attachments','operation':'add'} for write in writes), ('账本分析和核对入口不得写账', writes)
     actual = ledger_snapshot(page)
+    original_ids = {row['id'] for row in snapshot['attachments']}
+    added_ids = {row['id'] for row in actual['attachments']} - original_ids
+    draft_refs = set()
+    for draft in read_rows(page, 'lifeDrafts'):
+        if not draft['key'].startswith('chat:'):
+            continue
+        draft_refs.update(draft.get('existingPhotoRefs', []))
+        photos = list(draft.get('photos', []))
+        for message in draft.get('messages', []):
+            photos.extend(message.get('photos', []))
+            draft_refs.update(message.get('photoRefs', []))
+        draft_refs.update(photo['attachmentId'] for photo in photos if photo.get('attachmentId'))
+    assert added_ids <= draft_refs, '新增附件必须是当前保留的聊天照片'
+    actual['attachments'] = [row for row in actual['attachments'] if row['id'] in original_ids]
     assert actual == snapshot, {name: {'before':snapshot[name],'after':actual[name]} for name in LEDGER_STORES if actual[name] != snapshot[name]}
 
 

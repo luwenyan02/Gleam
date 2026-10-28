@@ -1,5 +1,5 @@
 /**
- * 拾光 · Dexie 数据库定义（schema v5）
+ * 拾光 · Dexie 数据库定义（schema v7）
  * 单库 GleamDB。UI 模块不得直接操作 db，一律经 repo/ 仓库层。
  *
  * 索引约定：
@@ -108,6 +108,37 @@ db.version(6).stores({
     '[deletedAt+occurredAt], [deletedAt+type], [occurredAt+type+amount+accountId], ' +
     'loanContactId, reimburseStatus, lifeNoteId, refundOfEntryId, fromAccountId, toAccountId, reimburseAccountId',
 });
+
+/** v7：会话标题直接放入索引键，翻页时无需反序列化正文或照片。 */
+db.version(7).stores({
+  lifeNotes: '++id, occurredAt, kind, deletedAt, [deletedAt+occurredAt], habitId, [id+deletedAt], [chatOrder+id+chatTitle]',
+  lifeDrafts: '&key, chatNoteId, [chatOrder+key+chatTitle+chatNoteId]',
+}).upgrade(async transaction => {
+  await transaction.table('lifeNotes').toCollection().modify(note => Object.assign(note, noteChatIndex(note)));
+  await transaction.table('lifeDrafts').toCollection().modify(draft => Object.assign(draft, draftChatIndex(draft)));
+});
+
+function noteChatIndex(note: LifeNote) {
+  return { chatOrder: !note.deletedAt && note.conversation?.length ? note.updatedAt : undefined,
+    chatTitle: (note.title || note.conversation?.[0]?.content || '照片里的片刻').slice(0, 80) };
+}
+
+function draftChatIndex(draft: LifeDraft) {
+  const listed = draft.key?.startsWith('chat:') && (draft.messages?.length || draft.photos?.length
+    || draft.pendingReply?.trim() || draft.aiText || draft.summaryProposal);
+  return { chatOrder: listed ? draft.chatUpdatedAt ?? draft.occurredAt : undefined,
+    chatTitle: (draft.messages?.find(message => message.role === 'user')?.content || draft.pendingReply || '照片里的片刻').slice(0, 80),
+    chatNoteId: listed ? draft.noteId ?? 0 : undefined };
+}
+
+// 同表派生字段与内容在同一次写入提交；备份恢复 bulkAdd 也走这些 hook。
+for (const [table, fields] of [[db.lifeNotes, noteChatIndex], [db.lifeDrafts, draftChatIndex]] as const) {
+  table.hook('creating', (_key, value) => { Object.assign(value, fields(value as never)); });
+  table.hook('updating', (changes, _key, value) => {
+    for (const [path, next] of Object.entries(changes)) Dexie.setByKeyPath(value, path, next);
+    return fields(value as never);
+  });
+}
 
 /** 当前时间戳（毫秒），统一出口便于测试替换 */
 export function now(): number {

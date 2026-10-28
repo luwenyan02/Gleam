@@ -343,15 +343,18 @@ export interface LifeSummaryProposal {
 
 export interface LifeDraftPhoto {
   name: string;
-  /** 本地原图 data URL；只有 UI 明确勾选后才可传给 AI。 */
+  /** 旧草稿及新选取图片的原图；持久化为附件后置空，不代表授权上传。 */
   dataUrl: string;
+  attachmentId?: number;
 }
 
-/** 本地编辑草稿；照片原图内联以便 JSON 备份，不代表已授权上传。 */
+/** 本地编辑草稿；兼容旧内联原图，聊天新照片共享 attachments，不代表授权上传。 */
 export interface LifeDraft {
   key: string;
   chatUpdatedAt?: number;
   sourceUpdatedAt?: number;
+  /** 只保存原会话摘要指纹，用于证明只读草稿可安全同步，不复制整段正文。 */
+  chatSource?: { conversationHash: string; messageCount: number; photoRefs: number[]; occurredAt: number; review?: LifeReview; aiExcluded?: boolean };
   title: string;
   body: string;
   occurredAt: number;

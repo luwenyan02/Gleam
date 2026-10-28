@@ -3,6 +3,7 @@ import time
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
 from test_life_ai import configure, open_life, read_rows, set_life_ai_enabled
+from chat_seed import index_chat_seed
 from test_chat_resume import MOCK, enter, leave
 from test_chat_web_search import BRIDGE, emit, finish
 from test_native_live_voice import MOCK as NATIVE
@@ -36,6 +37,7 @@ def seed(page, count=50):
       tx.objectStore('lifeDrafts').put({key:'chat:performance',title:'',body:'',occurredAt:1,chatUpdatedAt:Date.now(),existingPhotoRefs:[],photos:[],messages,aiExcluded:false});
       await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});db.close();
     }''', count)
+    index_chat_seed(page)
 
 
 def observe(page):

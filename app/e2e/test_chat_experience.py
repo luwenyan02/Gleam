@@ -1,7 +1,7 @@
 """聊天布局、会话隔离与语音权限验收；全部使用虚构数据和模拟接口。"""
 import json
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 from test_life_ai import URL, configure, open_life, read_rows, screenshot
 
 OUT = Path(__file__).parents[2] / '.tmp/tests/e2e/chat-experience'
@@ -74,7 +74,7 @@ def run(page, width):
     page.wait_for_timeout(450)
     page.locator('[data-chat-history]').click()
     page.locator('#chat-history-search').fill('虚构会话一')
-    assert page.locator('.chat-history-row').count() == 1
+    expect(page.locator('.chat-history-row')).to_have_count(1)
     page.locator('.chat-history-row').click()
     page.locator('.chat-message-text strong').first.wait_for()
     assert page.locator('.assistant .chat-reply-time').inner_text() == reply_time

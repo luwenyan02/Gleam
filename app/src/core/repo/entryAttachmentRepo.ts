@@ -18,6 +18,8 @@ export async function collectUnreferencedAttachments(ids: number[]): Promise<voi
     ...life.flatMap(note => (note.conversation ?? []).flatMap(message => message.photoRefs ?? [])),
     ...drafts.flatMap(draft => draft.existingPhotoRefs),
     ...drafts.flatMap(draft => (draft.messages ?? []).flatMap(message => message.photoRefs ?? [])),
+    ...drafts.flatMap(draft => [...(draft.photos ?? []), ...(draft.messages ?? []).flatMap(message => message.photos ?? [])]
+      .flatMap(photo => photo.attachmentId == null ? [] : [photo.attachmentId])),
     ...editions.flatMap(edition => edition.coverAttachmentId == null ? [] : [edition.coverAttachmentId]),
     ...(queue ?? []).flatMap(item => item.attachmentId == null ? [] : [item.attachmentId]),
   ]);
