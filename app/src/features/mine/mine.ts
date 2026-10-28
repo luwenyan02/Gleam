@@ -74,7 +74,7 @@ function renderContent(el: HTMLElement): void {
       ${rowHtml('sp-trash', 'ic-trash', '回收站', '删除账单保留 30 天')}
     `, '数据与备份', `<aside class="mine-backup-reminder" data-backup-reminder hidden aria-label="备份提醒">
       <p>账本保存在本机，建议备份一份。</p>
-      <div><button class="btn" data-backup-now>去备份</button><button class="btn" data-dismiss-backup>7 天后提醒</button></div>
+      <div class="mine-backup-actions"><button class="btn primary" data-backup-now>去备份</button><button class="btn ghost" data-dismiss-backup>7 天后提醒</button></div>
     </aside>`)}
     ${groupHtml('智能能力与通知', `
       ${rowHtml('sp-ai-settings', 'ic-set', 'AI 配置', 'AI 记账 · 百炼短语音')}
