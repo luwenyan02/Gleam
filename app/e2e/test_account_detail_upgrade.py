@@ -37,7 +37,7 @@ if __name__ == '__main__':
         page.goto(URL)
         page.locator('#fab').wait_for()
         after = page.evaluate(SNAPSHOT)
-        assert after['version'] == 60 and before['digest'] == after['digest'] and before['counts'] == after['counts'], (before,after)
+        assert after['version'] == 70 and before['digest'] == after['digest'] and before['counts'] == after['counts'], (before,after)
         page.locator('[data-page="page-acct"]').click()
         page.locator('[data-acct="1"]').click()
         detail = page.locator('#sp-account-detail')
@@ -47,4 +47,4 @@ if __name__ == '__main__':
         expect(detail.locator('[data-eid="20003"]')).to_have_count(1)
         assert not errors, errors
         browser.close()
-        print('PASS v5 -> v6: 20,003 entries preserved; historical transfer, loan and reimbursement indexed', flush=True)
+        print('PASS v5 -> v7: 20,003 entries preserved; historical transfer, loan and reimbursement indexed', flush=True)

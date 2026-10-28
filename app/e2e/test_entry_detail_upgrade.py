@@ -6,7 +6,7 @@ from test_entry_detail_performance import SEED, URL
 SCHEMA='''async()=>{
  const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)});
  const names=Array.from(db.objectStoreNames),tx=db.transaction(names);
- const stores=names.map(name=>{const s=tx.objectStore(name);return {name,keyPath:s.keyPath,autoIncrement:s.autoIncrement,indexes:Array.from(s.indexNames).filter(n=>!['refundOfEntryId','fromAccountId','toAccountId','reimburseAccountId'].includes(n)).map(name=>{const i=s.index(name);return {name,keyPath:i.keyPath,unique:i.unique,multiEntry:i.multiEntry}})}});
+ const stores=names.map(name=>{const s=tx.objectStore(name);return {name,keyPath:s.keyPath,autoIncrement:s.autoIncrement,indexes:Array.from(s.indexNames).filter(n=>!['refundOfEntryId','fromAccountId','toAccountId','reimburseAccountId','[id+deletedAt]','[chatOrder+id+chatTitle]','chatNoteId','[chatOrder+key+chatTitle+chatNoteId]'].includes(n)).map(name=>{const i=s.index(name);return {name,keyPath:i.keyPath,unique:i.unique,multiEntry:i.multiEntry}})}});
  const settings=await new Promise(r=>{const q=tx.objectStore('settings').getAll();q.onsuccess=()=>r(q.result)});
  db.close();return {stores,settings};
 }'''
@@ -37,7 +37,7 @@ if __name__=='__main__':
         page.goto(fixture);page.evaluate(LEGACY,schema);page.evaluate(SEED);before=page.evaluate(SNAPSHOT)
         assert before['version']==40
         page.goto(URL);page.locator('#fab').wait_for();after=page.evaluate(SNAPSHOT)
-        assert after['version']==60 and before['digest']==after['digest'] and before['counts']==after['counts'],(before,after)
+        assert after['version']==70 and before['digest']==after['digest'] and before['counts']==after['counts'],(before,after)
         page.locator('#hm-days [data-entry="1"]').click();expect(page.locator('#sp-entry-view .refund-links')).to_contain_text('85.00')
         assert not errors,errors
-        browser.close();print('PASS v4 -> v6: 20,001 entries, balances and metadata preserved; historical refund index populated',flush=True)
+        browser.close();print('PASS v4 -> v7: 20,001 entries, balances and metadata preserved; historical refund index populated',flush=True)
