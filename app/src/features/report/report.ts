@@ -68,14 +68,27 @@ let root: HTMLElement | undefined;
 let refreshToken = 0;
 let needsRefresh = true;
 let refreshedDay = '';
+/** 仅在本次可见访问中复用汇总结果，不缓存原始流水或跨页面连接的旧数据。 */
+let reportData: ReportData | undefined;
+let loadingToken: number | undefined;
 
 function showReport(): void {
-  if (needsRefresh || refreshedDay !== dayKey(Date.now())) void refresh();
+  // 重新进入/从明细返回时也检查独立连接、导入或后台任务写入的新数据。
+  if (period === 'month' && followsCurrentAccountingMonth) anchor = new Date();
+  invalidateReport();
 }
 
 function invalidateReport(): void {
+  reportData = undefined;
   needsRefresh = true;
+  ++refreshToken;
   void refresh();
+}
+
+function refreshView(): void {
+  if (!root || root.inert || currentPage() !== 'page-report') return;
+  if (reportData && !needsRefresh && refreshedDay === dayKey(Date.now())) paintReport(reportData);
+  else if (loadingToken == null) void refresh();
 }
 /** 待应用的切换过渡范围：'all'=周期切换整页内容淡入，'rank'=仅排行卡 */
 let pendingAnim: 'all' | 'rank' | null = null;
@@ -465,15 +478,11 @@ function animateIn(selectors: string[]): void {
   }
 }
 
-/** 重新取数并整页刷新（带并发令牌，丢弃过期结果） */
-async function refresh(): Promise<void> {
+/** 切维度和展开排行只绘制已经聚合的本周期结果。 */
+function paintReport(data: ReportData): void {
   if (!root || root.inert || currentPage() !== 'page-report') return;
-  needsRefresh = true;
-  const token = ++refreshToken;
   const anim = pendingAnim;
   pendingAnim = null;
-  const data = await loadData();
-  if (token !== refreshToken || !root || root.inert || currentPage() !== 'page-report') return;
   activeRange = data.range;
   root.querySelector<HTMLElement>('#r-label')!.textContent = data.label;
   root.querySelector<HTMLElement>('#r-spend')!.textContent = formatFenCny(data.summary.expense);
@@ -485,9 +494,30 @@ async function refresh(): Promise<void> {
   renderTrend(data.trend);
   renderDonut(data.cats);
   renderRank(data);
-  needsRefresh = false;
-  refreshedDay = dayKey(Date.now());
   if (anim) animateIn(anim === 'rank' ? ['#rank'] : ['.r-sum', '#trend', '.donut-wrap', '#rank']);
+}
+
+/** 日期/数据变化重新取数；快速切维度不重复发起正在进行的读取。 */
+async function refresh(): Promise<void> {
+  if (!root || root.inert || currentPage() !== 'page-report') return;
+  needsRefresh = true;
+  reportData = undefined;
+  const token = ++refreshToken;
+  loadingToken = token;
+  try {
+    const data = await loadData();
+    if (token !== refreshToken || !root || root.inert || currentPage() !== 'page-report') return;
+    reportData = data;
+    needsRefresh = false;
+    refreshedDay = dayKey(Date.now());
+    paintReport(data);
+  } catch {
+    if (token === refreshToken && root && !root.inert && currentPage() === 'page-report') {
+      showToast('报表暂时加载失败，请重试');
+    }
+  } finally {
+    if (loadingToken === token) loadingToken = undefined;
+  }
 }
 
 /** 渲染静态骨架并绑定交互（registerPage render） */
@@ -611,7 +641,7 @@ function render(el: HTMLElement): void {
     dimension = btn.dataset.dimension as ReportDimension;
     rankExpanded = false;
     pendingAnim = 'all';
-    void refresh();
+    refreshView();
   });
 
   el.addEventListener('click', (event) => {
@@ -620,7 +650,7 @@ function render(el: HTMLElement): void {
     if (more) {
       rankExpanded = !rankExpanded;
       pendingAnim = 'rank';
-      void refresh();
+      refreshView();
       return;
     }
 
@@ -671,6 +701,13 @@ function render(el: HTMLElement): void {
   });
   on('categories-changed', invalidateReport);
   on('accounts-changed', invalidateReport);
+  on('route-changed', () => {
+    if (currentPage() === 'page-report') return;
+    ++refreshToken;
+    reportData = undefined;
+    loadingToken = undefined;
+    needsRefresh = true;
+  });
 
   setPeriodButtons(el);
   for (const button of el.querySelectorAll<HTMLElement>('#report-dim button')) {
