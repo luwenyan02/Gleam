@@ -24,7 +24,7 @@ TESTS = (
     'test_overview_art.py',
     'test_upgrade_cache_unit.py', 'test_upgrade_cache.py',
     'test_ai_key_settings.py',
-    'test_mine_backup_reminder.py', 'test_restore_progress.py',
+    'test_mine_backup_reminder.py', 'test_restore_progress.py', 'test_snapshot_undo.py',
     'test_app_version.py',
     'test_app_update.py',
     'test_category_icons.py', 'test_category_merge_and_navigation.py', 'test_category_entry_counts.py', 'test_xiaomi14_layout.py',
@@ -36,15 +36,15 @@ TESTS = (
     'test_save_atomic.py', 'test_recurring_safety.py', 'test_import_safety.py', 'test_wacai_replace.py',
     'test_stats_safety.py', 'test_backup_integrity.py', 'test_email_backup.py', 'test_backup_history.py', 'test_backup_settings_clarity.py', 'test_text_clarity.py', 'test_ui_refinements.py', 'test_recurring_types_ui.py',
     'test_home_configuration.py', 'test_home_all_functions.py', 'test_query_integrity.py', 'test_budget_periods.py', 'test_budget_category_details.py',
-    'test_calendar_daylist.py', 'test_report_composition.py', 'test_report_trend_labels.py', 'test_credit_statements.py',
+    'test_calendar_daylist.py', 'test_report_composition.py', 'test_report_trend_labels.py', 'test_report_snapshot_reuse.py', 'test_credit_statements.py',
     'test_account_reconcile_credit_limit.py',
     'test_account_search_navigation.py', 'test_account_management_ui.py', 'test_account_active_months.py', 'test_account_footer_trend.py', 'test_net_worth_trend.py', 'test_account_amount_privacy.py',
     'test_account_detail_performance.py', 'test_account_detail_upgrade.py', 'test_account_detail_pagination.py',
     'test_entry_receipts.py', 'test_entry_credit_limit.py', 'test_entry_detail_performance.py', 'test_entry_detail_upgrade.py',
-    'test_entity_details.py', 'test_accounting_period.py', 'test_search_month_ranges.py', 'test_search_pagination.py', 'test_search_summary_layout.py', 'test_search_filter_groups.py',
-    'test_life_layout.py', 'test_entry_life_memory.py', 'test_life_ai.py', 'test_chat_experience.py', 'test_chat_stream_performance.py', 'test_chat_selection_copy.py', 'test_native_ai_stream.py', 'test_native_live_voice.py', 'test_long_live_voice.py', 'test_bluetooth_voice_feedback.py', 'test_voice_markdown.py', 'test_voice_search.py', 'test_chat_send_status.py', 'test_chat_resume.py', 'test_chat_web_search.py', 'test_chat_ai_settings.py',
+    'test_entity_details.py', 'test_accounting_period.py', 'test_search_month_ranges.py', 'test_search_pagination.py', 'test_search_windowing.py', 'test_search_summary_layout.py', 'test_search_filter_groups.py',
+    'test_life_layout.py', 'test_entry_life_memory.py', 'test_life_ai.py', 'test_chat_experience.py', 'test_chat_stream_performance.py', 'test_chat_selection_copy.py', 'test_native_ai_stream.py', 'test_native_live_voice.py', 'test_long_live_voice.py', 'test_bluetooth_voice_feedback.py', 'test_voice_markdown.py', 'test_voice_search.py', 'test_chat_send_status.py', 'test_chat_resume.py', 'test_chat_storage.py', 'test_chat_web_search.py', 'test_chat_ai_settings.py',
     'test_browser_usability.py',
-    'test_large_ledger.py',
+    'test_large_ledger.py', 'test_chat_save_retry.py',
 )
 
 
