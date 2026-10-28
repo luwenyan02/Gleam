@@ -80,6 +80,12 @@ def run(browser, width, scale=1, theme="light"):
         more.click(); expect(rows).to_have_count(200)
         page.locator('#sr-input').fill(''); page.locator('#sr-input').fill('虚构分页')
         expect(rows).to_have_count(100)
+        # The final partial page removes its button; keyboard focus continues at the first added row.
+        more.click(); expect(rows).to_have_count(200)
+        more.focus(); more.press('Enter'); expect(rows).to_have_count(245)
+        expect(page.locator('#sr-results [data-eid="201"] .entry-swipe-content')).to_be_focused()
+        page.locator('#sr-input').fill(''); page.locator('#sr-input').fill('虚构分页')
+        expect(rows).to_have_count(100)
         # A real repository write from details must invalidate cached matches/totals.
         rows.first.locator('.entry-swipe-content').click()
         page.locator('#sp-entry-view [data-view-action="delete"]').click()

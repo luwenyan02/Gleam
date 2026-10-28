@@ -45,6 +45,7 @@ import { manageOverlay } from '../../shared/overlay';
 import { entryRowText } from '../detail/entryRowText';
 import { sheetPick } from '../detail/detailShared';
 import { focusLifeRecord } from '../life/life';
+import { createSearchWindow, restoreSearchAnchor, searchAnchor, type SearchWindowBlock } from './searchWindow';
 
 let body: HTMLElement | undefined;
 let searchToken = 0;
@@ -74,6 +75,12 @@ let shown = PAGE_SIZE;
 let lastQueryKey = '';
 let cachedSearchKey = '';
 let renderCachedResults: (() => void) | undefined;
+let resultWindow: ReturnType<typeof createSearchWindow> | undefined;
+
+function disposeResultWindow(): void {
+  resultWindow?.destroy();
+  resultWindow = undefined;
+}
 
 function invalidateSearch(): void {
   cachedSearchKey = '';
@@ -271,6 +278,7 @@ async function doSearch(kw: string): Promise<void> {
     batchSelectAll = false;
     const history = await loadHistory();
     if (historyToken !== searchToken) return;
+    disposeResultWindow();
     renderHistory(resultsEl, history);
     resultsEl.setAttribute('aria-busy', 'false');
     const filters = body?.querySelector<HTMLElement>('#sr-active-filters');
@@ -353,7 +361,9 @@ async function doSearch(kw: string): Promise<void> {
     if (!resultsEl.isConnected) return;
     if (!['all', 'expense', 'income'].includes(summaryFilter) && !extras.some(card => card.filter === summaryFilter)) summaryFilter = 'all';
     const queryKey = JSON.stringify([cacheKey, summaryFilter]);
-    if (queryKey !== lastQueryKey) { shown = PAGE_SIZE; lastQueryKey = queryKey; }
+    const queryChanged = queryKey !== lastQueryKey;
+    const anchor = !queryChanged && body ? searchAnchor(resultsEl, body) : undefined;
+    if (queryChanged) { shown = PAGE_SIZE; lastQueryKey = queryKey; }
     renderActiveFilters({ catNames, accountNames, tagNames, merchantNames });
 
     // 按汇总卡筛选显示
@@ -372,7 +382,7 @@ async function doSearch(kw: string): Promise<void> {
     }
     const hitEntries = displayEntries.slice(0, shown);
 
-    const entryRow = (e: LedgerItem) => {
+    const entryRow = (e: LedgerItem, index: number) => {
       const text = entryRowText(e, catMap, accountNames);
       const note = text.note ? ` <span class="e-sub">· ${esc(text.note)}</span>` : '';
       const selectable = e.kind === 'entry';
@@ -380,7 +390,7 @@ async function doSearch(kw: string): Promise<void> {
         ? `<span class="ck${batchSelected.has(e.id) ? ' on' : ''}" aria-hidden="true"></span>`
         : `<span class="e-ic${text.neutral ? ' neutral' : ''}">${iconHtml(text.icon, 18)}</span>`;
       return `
-        <div class="entry-swipe${batchMode ? ' sr-batch-row' : ''}" data-eid="${e.id}"${e.kind === 'reimbursement' ? ' data-reimbursement' : ''}>
+        <div class="entry-swipe${batchMode ? ' sr-batch-row' : ''}" data-eid="${e.id}" data-sr-index="${index}"${e.kind === 'reimbursement' ? ' data-reimbursement' : ''}>
           ${e.kind === 'reimbursement' || batchMode ? '' : entrySwipeActionsHtml(e)}
           <button class="row entry-swipe-content">
             ${lead}
@@ -399,9 +409,38 @@ async function doSearch(kw: string): Promise<void> {
       </button>`;
 
     const groupedEntries = groupLedgerEntries(hitEntries);
+    const windowed = hitEntries.length > 300;
+    const blocks: SearchWindowBlock[] = [];
+    let rowIndex = 0;
+    const dayHead = (day: string) => {
+      const daySummary = fullGroups.get(day)!;
+      return `<div class="sr-day-head"><h3>${day}</h3><span>支出 ${formatFen(daySummary.expense)} · 收入 ${formatFen(daySummary.income)}</span></div>`;
+    };
+    const rowsHtml = groupedEntries.map(group => {
+      const first = rowIndex;
+      rowIndex += group.entries.length;
+      if (!windowed) return `${dayHead(group.day)}<section class="card list sr-day-card" aria-label="${group.day}账单">${group.entries.map((entry, index) => entryRow(entry, first + index)).join('')}</section>`;
+      for (let start = 0; start < group.entries.length; start += 25) {
+        const end = Math.min(start + 25, group.entries.length);
+        const isFirst = start === 0, isLast = end === group.entries.length;
+        blocks.push({
+          first: first + start, last: first + end - 1,
+          estimate: (end - start) * 90 + (isFirst ? 45 : 0) + (isLast ? 17 : 0),
+          html: () => `${isFirst ? dayHead(group.day) : ''}<section class="card list sr-day-card sr-day-part${isFirst ? ' sr-day-first' : ''}${isLast ? ' sr-day-last' : ''}" aria-label="${group.day}账单">${group.entries.slice(start, end).map((entry, index) => entryRow(entry, first + start + index)).join('')}</section>`,
+        });
+      }
+      return '';
+    }).join('');
 
     const summaryScroll = resultsEl.querySelector<HTMLElement>('.sr-summary-row')?.scrollLeft ?? 0;
-    const focusedSummary = resultsEl.contains(document.activeElement) ? (document.activeElement as HTMLElement)?.dataset.sf : undefined;
+    const focused = resultsEl.contains(document.activeElement) ? document.activeElement as HTMLElement : undefined;
+    const focusedSummary = focused?.dataset.sf;
+    const focusedIndex = focused?.closest<HTMLElement>('[data-sr-index]')?.dataset.srIndex;
+    const focusedAction = focused?.dataset.entryAction;
+    const focusedNote = focused?.dataset.nid;
+    const focusedId = focused?.id;
+    const previousCount = Number(resultsEl.querySelector<HTMLElement>('#sr-ledger-list')?.dataset.shown ?? 0);
+    disposeResultWindow();
     resultsEl.innerHTML = `
       ${batchMode ? `<div class="sr-batch-scope"><b>批量处理当前全部结果</b><span>已载入 ${batchResultIds.length} 笔，不受分页限制</span></div>` : ''}
       <div class="sr-summary-row" role="group" aria-label="搜索结果汇总，可横向滑动">
@@ -420,21 +459,34 @@ async function doSearch(kw: string): Promise<void> {
         ${extras.map(card => `<button class="sr-summary-card${summaryFilter === card.filter ? ' active' : ''}" data-sf="${card.filter}" aria-pressed="${summaryFilter === card.filter}"><div class="sc-label">${card.label}(${card.count})</div><div class="sc-amount">${formatFen(card.amount)}</div></button>`).join('')}
       </div>
       ${!hitEntries.length && !hitNotes.length ? `<p class="sr-empty">当前${SUMMARY_LABELS[summaryFilter]}筛选下没有记录，可切换上方类型或清除筛选条件</p>` : ''}
-      ${groupedEntries.map((group) => {
-        const daySummary = fullGroups.get(group.day)!;
-        return `<div class="sr-day-head"><h3>${group.day}</h3><span>支出 ${formatFen(daySummary.expense)} · 收入 ${formatFen(daySummary.income)}</span></div>
-          <section class="card list sr-day-card" aria-label="${group.day}账单">${group.entries.map(entryRow).join('')}</section>`;
-      }).join('')}
+      <div id="sr-ledger-list"${windowed ? ' class="sr-window-list"' : ''} data-shown="${hitEntries.length}">${rowsHtml}</div>
       ${displayEntries.length > shown ? `<div class="sr-pagination"><div class="btn-row" role="group" aria-label="加载搜索结果"><button class="btn ghost" id="sr-load-more">加载更多（${hitEntries.length}/${displayEntries.length}笔）</button><button class="btn ghost" id="sr-load-all">加载全部</button></div></div>` : displayEntries.length ? '<p class="tiny sr-list-end">已展示全部流水</p>' : ''}
       ${hitNotes.length ? `
       <section class="card list" aria-label="生活记录结果">
         <div class="sr-list-head"><h3>生活记录（${hitNotes.length}）</h3></div>
         ${hitNotes.map(noteRow).join('')}
       </section>` : ''}`;
+    if (body) {
+      if (queryChanged) body.scrollTop = 0;
+      const list = resultsEl.querySelector<HTMLElement>('#sr-ledger-list')!;
+      if (windowed) resultWindow = createSearchWindow(list, body, blocks, anchor);
+      else restoreSearchAnchor(list, body, anchor);
+    }
     resultsEl.setAttribute('aria-busy', 'false');
     const summaryRow = resultsEl.querySelector<HTMLElement>('.sr-summary-row');
     if (summaryRow) summaryRow.scrollLeft = summaryScroll;
     if (focusedSummary) resultsEl.querySelector<HTMLButtonElement>(`[data-sf="${focusedSummary}"]`)?.focus({ preventScroll: true });
+    else if (!queryChanged) {
+      const index = focusedIndex != null ? Number(focusedIndex)
+        : focusedId === 'sr-load-all' || (focusedId === 'sr-load-more' && shown >= displayEntries.length)
+          ? Math.min(previousCount, hitEntries.length - 1) : undefined;
+      if (index != null) {
+        const selector = focusedAction ? `[data-entry-action="${focusedAction}"]` : '.entry-swipe-content';
+        if (resultWindow) resultWindow.focus(index, selector, focusedIndex != null);
+        else resultsEl.querySelector<HTMLElement>(`[data-sr-index="${index}"] ${selector}`)?.focus({ preventScroll: true });
+      } else if (focusedNote) resultsEl.querySelector<HTMLElement>(`[data-nid="${focusedNote}"]`)?.focus({ preventScroll: true });
+      else if (focusedId) resultsEl.querySelector<HTMLElement>(`#${focusedId}`)?.focus({ preventScroll: true });
+    }
     updateBatchControls();
   };
   cachedSearchKey = cacheKey;
@@ -524,6 +576,7 @@ export function initSearch(): void {
   registerSubpage('sp-search', {
     title: '搜索',
     render(el) {
+      disposeResultWindow();
       invalidateSearch();
       body = el;
       const preset = pendingLedgerSearch;
@@ -977,6 +1030,7 @@ export function initSearch(): void {
         }),
       ];
       subpage.addEventListener(SUBPAGE_CLOSE_EVENT, () => {
+        disposeResultWindow();
         off.forEach(unsubscribe => unsubscribe());
         window.clearTimeout(timer);
         window.clearTimeout(refreshTimer);

@@ -67,6 +67,14 @@
 .sr-day-head span{font-size:12px;color:var(--faint)}
 .sr-day-head{flex-wrap:wrap}
 .sr-day-card{margin-bottom:10px}
+/* Adjacent chunks are one continuous daily card; only visible chunks are mounted. */
+.sr-window-list{position:relative;overflow-anchor:none}
+.sr-window-block{position:absolute;left:0;right:0;display:flow-root}
+.sr-day-card.sr-day-part{margin-bottom:0;border-radius:0;border-top:0;border-bottom:0;padding-top:0;padding-bottom:0;box-shadow:none}
+.sr-day-card.sr-day-first{border-top:1px solid var(--border);border-radius:var(--r) var(--r) 0 0;padding-top:calc(6px * var(--seed-density))}
+.sr-day-card.sr-day-last{border-bottom:1px solid var(--border);border-radius:0 0 var(--r) var(--r);padding-bottom:calc(6px * var(--seed-density));margin-bottom:10px}
+.sr-day-card.sr-day-first.sr-day-last{border-radius:var(--r)}
+.sr-day-part:not(.sr-day-last) .entry-swipe:last-child{border-bottom:1px solid var(--border)}
 .sr-state{display:inline-flex;align-items:center;margin-left:6px;padding:2px 5px;border-radius:999px;font-size:9px;font-weight:600;vertical-align:1px;color:var(--muted);background:color-mix(in oklab,var(--seed-fg) 7%,var(--surface))}
 .sr-state.refund,.sr-state.done{color:var(--income);background:color-mix(in oklab,var(--income) 10%,var(--surface))}
 .sr-state.pending{color:var(--primary);background:var(--accent-soft)}
