@@ -33,6 +33,7 @@ import { openRestoreProgress } from './restoreProgress';
 /* ── 模块状态 ── */
 let body: HTMLElement | undefined;
 let refreshToken = 0;
+/** 覆盖确认、读取和写入；子页销毁或重建都不能释放正在运行的操作。 */
 let restoreRunning = false;
 /** #sheet 复用容器：重开抽屉前废止上次绑定 */
 let sheetAbort: AbortController | undefined;
@@ -56,6 +57,24 @@ function fmtTime(ts: number): string {
 function fmtSize(bytes: number): string {
   if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function updateRestoreControls(): void {
+  for (const button of body?.querySelectorAll<HTMLButtonElement>('[data-act="restore"], [data-history-file], [data-undo]') ?? []) {
+    button.disabled = restoreRunning;
+  }
+}
+
+function beginRestore(): boolean {
+  if (restoreRunning) { showToast('正在恢复，请稍候'); return false; }
+  restoreRunning = true;
+  updateRestoreControls();
+  return true;
+}
+
+function finishRestore(): void {
+  restoreRunning = false;
+  updateRestoreControls();
 }
 
 /* ── 页面渲染 ── */
@@ -144,6 +163,8 @@ async function refresh(): Promise<void> {
       <p class="tiny">支持 .xlsx / .xls，导入前自动备份，7 天内可撤销</p>
     </section>`;
 
+  // 事务提交的关联事件可能重绘本页，此时入口仍需保持禁用。
+  updateRestoreControls();
   // [R06] 云端备份区挂载（内部自行异步加载配置与云端列表）
   const cloudHost = el.querySelector<HTMLElement>('#cloud-backup');
   if (cloudHost) {
@@ -271,6 +292,7 @@ async function showRestoreReport(manifest: SkbakManifest, range: string): Promis
 
 /** 恢复主流程：选文件 → 校验 → 快照 → 整库替换 → 报告 */
 function pickRestoreFile(): void {
+  if (restoreRunning) { showToast('正在恢复，请稍候'); return; }
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.skbak,application/octet-stream,application/zip';
@@ -281,13 +303,18 @@ function pickRestoreFile(): void {
   input.click();
 }
 
-async function runRestore(file: File): Promise<void> {
-  if (restoreRunning) { showToast('正在恢复，请稍候'); return; }
-  restoreRunning = true;
+async function runRestore(source: File | string): Promise<void> {
+  if (!beginRestore()) return;
   let committed = false;
   let progress: ReturnType<typeof openRestoreProgress> | undefined;
   try {
     progress = openRestoreProgress('读取备份文件…');
+    const file = typeof source === 'string' ? await readBackupFile(source) : source;
+    if (!file) {
+      showToast('本机副本已不可用，请选择备份文件');
+      await refresh();
+      return;
+    }
     const buf = await file.arrayBuffer();
     let password: string | undefined;
     if (sniffEncrypted(buf)) {
@@ -329,7 +356,50 @@ async function runRestore(file: File): Promise<void> {
     });
   } finally {
     progress?.close();
-    restoreRunning = false;
+    finishRestore();
+  }
+}
+
+async function runUndoSnapshot(id: number): Promise<void> {
+  if (!beginRestore()) return;
+  let committed = false;
+  let progress: ReturnType<typeof openRestoreProgress> | undefined;
+  try {
+    const ok = await confirmDialog({
+      title: '撤销到该快照？',
+      message: '当前全部数据将回滚到快照时点，之后记的账会丢失。',
+      okText: '撤销',
+      danger: true,
+    });
+    if (!ok) return;
+    progress = openRestoreProgress('读取快照…', '撤销到快照');
+    const result = await undoSnapshot(id, values => progress?.update('正在恢复快照…', values));
+    committed = true;
+    progress.close();
+    if (!result.snapshotDeleted) {
+      await confirmDialog({
+        title: '数据已恢复，快照清理未完成',
+        message: `账本已恢复至所选快照时点。快照仍保留，请勿重复撤销。\n${result.cleanupError instanceof Error ? result.cleanupError.message : String(result.cleanupError)}`,
+        okText: '知道了',
+        cancelText: '关闭',
+      });
+    } else {
+      showToast('已撤销到快照时点');
+    }
+    await refresh();
+  } catch (err) {
+    progress?.close();
+    await confirmDialog({
+      title: committed ? '数据已恢复' : '撤销未完成',
+      message: `${committed ? '结果页面未能显示，请重新打开账本检查，请勿重复撤销。' : '原数据未被替换。请检查快照是否仍可用后重试。'}\n${err instanceof Error ? err.message : String(err)}`,
+      okText: '知道了',
+      cancelText: '关闭',
+    });
+    // 确认期间快照可能已被清理；移除失效入口，刷新失败也不掩盖上面的结果。
+    await refresh().catch(() => undefined);
+  } finally {
+    progress?.close();
+    finishRestore();
   }
 }
 
@@ -381,30 +451,9 @@ export function initBackup(): void {
         const historyFile = t.closest<HTMLElement>('[data-history-file]')?.dataset.historyFile;
         const undoId = t.closest<HTMLElement>('[data-undo]')?.dataset.undo;
         if (historyFile) {
-          const button = t.closest<HTMLButtonElement>('[data-history-file]')!;
-          if (button.disabled) return;
-          button.disabled = true;
-          void (async () => {
-            try {
-              const file = await readBackupFile(historyFile);
-              if (file) await runRestore(file);
-              else { showToast('本机副本已不可用，请选择备份文件'); void refresh(); }
-            } catch { showToast('本机副本读取失败，请选择备份文件'); }
-            finally { button.disabled = false; }
-          })();
+          void runRestore(historyFile);
         } else if (undoId) {
-          void (async () => {
-            const ok = await confirmDialog({
-              title: '撤销到该快照？',
-              message: '当前全部数据将回滚到快照时点，之后记的账会丢失。',
-              okText: '撤销',
-              danger: true,
-            });
-            if (!ok) return;
-            await undoSnapshot(Number(undoId));
-            showToast('已撤销到快照时点');
-            void refresh();
-          })();
+          void runUndoSnapshot(Number(undoId));
         } else if (t.closest('[data-src]') && t.closest<HTMLElement>('[data-src]')!.dataset.src !== 'wacai') {
           showToast('当前仅支持挖财 Excel');
         } else if (act === 'backup') openBackupSheet();

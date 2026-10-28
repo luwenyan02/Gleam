@@ -2,11 +2,12 @@ import { manageOverlay } from '../../shared/overlay';
 import type { RestoreProgress } from '../../core/repo/backupRepo';
 
 /** 恢复写入时阻止重复操作和返回，事务结束后恢复原页面焦点。 */
-export function openRestoreProgress(label: string) {
+export function openRestoreProgress(label: string, title = '恢复备份') {
   const root = document.createElement('div');
   root.className = 'dialog-scrim show restore-progress';
-  root.setAttribute('aria-label', '恢复备份');
-  root.innerHTML = '<div class="dialog"><h3>恢复备份</h3><p class="sub" role="status" aria-live="polite" data-restore-stage></p><progress aria-label="恢复进度"></progress><p class="sub num" data-restore-count></p><p class="tiny">请保持应用打开，完成后会显示结果。</p></div>';
+  root.setAttribute('aria-label', title);
+  root.innerHTML = '<div class="dialog"><h3></h3><p class="sub" role="status" aria-live="polite" data-restore-stage></p><progress aria-label="恢复进度"></progress><p class="sub num" data-restore-count></p><p class="tiny">请保持应用打开，完成后会显示结果。</p></div>';
+  root.querySelector('h3')!.textContent = title;
   document.querySelector('.app')!.appendChild(root);
   const stage = root.querySelector<HTMLElement>('[data-restore-stage]')!;
   const count = root.querySelector<HTMLElement>('[data-restore-count]')!;

@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
 from test_life_ai import configure, open_life
+from chat_seed import index_chat_seed
 from test_chat_resume import MOCK, enter
 
 OUT=Path(__file__).parents[2]/'.tmp/tests/e2e/chat-selection-copy'
@@ -18,6 +19,7 @@ def setup(browser,width,failed=False):
     open_life(page);configure(page)
     if failed:
         page.evaluate('''async ([user,partial])=>{const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)});const tx=db.transaction('lifeDrafts','readwrite');tx.objectStore('lifeDrafts').put({key:'chat:selection',title:'',body:'',occurredAt:1,chatUpdatedAt:Date.now(),photos:[],existingPhotoRefs:[],aiExcluded:false,messages:[{role:'user',content:user}],chatReply:{messageIndex:0,regenerate:false,status:'failed',content:partial}});await new Promise(r=>tx.oncomplete=r);db.close();}''',[USER,PARTIAL])
+    index_chat_seed(page)
     enter(page)
     return context,page
 

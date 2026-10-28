@@ -1,3 +1,5 @@
+import Dexie from 'dexie';
+import { copyLifeDraft, lifeDraftAttachmentRefs, lifeDraftPhotos } from '../lifeDraftPhotos';
 import { db, now, stamp } from '../db';
 import type { Attachment, LifeChatMessage, LifeDraft, LifeDraftPhoto, LifeNote } from '../types';
 import { emitAfterCommit as emit } from './transactionEvents';
@@ -72,8 +74,9 @@ export async function claimLegacyLifeChatDraft(targetKey: string, legacyKeys: st
         claimed.pendingReply ||= migrated.pendingReply;
         claimed.entryId ??= migrated.entryId;
         claimed.existingPhotoRefs = [...new Set([...claimed.existingPhotoRefs, ...migrated.existingPhotoRefs])];
-        const seenPhotos = new Set(claimed.photos.map(photo => photo.dataUrl));
-        claimed.photos.push(...migrated.photos.filter(photo => !seenPhotos.has(photo.dataUrl)));
+        const photoKey = (photo: LifeDraftPhoto) => photo.attachmentId ?? photo.dataUrl;
+        const seenPhotos = new Set(claimed.photos.map(photoKey));
+        claimed.photos.push(...migrated.photos.filter(photo => !seenPhotos.has(photoKey(photo))));
       } else {
         claimed = migrated;
       }
@@ -100,6 +103,13 @@ function validatePhoto(photo: LifeDraftPhoto): { mime: string; base64: string; s
   return { mime: match[1], base64, size };
 }
 
+function validateDraftPhoto(photo: LifeDraftPhoto): void {
+  if (photo?.attachmentId != null) {
+    if (!Number.isSafeInteger(photo.attachmentId) || photo.attachmentId <= 0
+      || typeof photo.name !== 'string' || photo.dataUrl !== '') throw new Error('草稿照片引用无效');
+  } else validatePhoto(photo);
+}
+
 export function validateLifeDraft(input: unknown): asserts input is LifeDraft {
   const draft = input as LifeDraft;
   if (!draft || typeof draft.key !== 'string' || !draft.key.trim()) throw new Error('草稿 key 无效');
@@ -107,6 +117,10 @@ export function validateLifeDraft(input: unknown): asserts input is LifeDraft {
   if (!Number.isFinite(draft.occurredAt)) throw new Error('草稿发生时间无效');
   if (draft.chatUpdatedAt != null && !Number.isFinite(draft.chatUpdatedAt)) throw new Error('会话更新时间无效');
   if (draft.sourceUpdatedAt != null && !Number.isFinite(draft.sourceUpdatedAt)) throw new Error('草稿来源版本无效');
+  if (draft.chatSource != null && (!/^[a-f0-9]{64}$/.test(draft.chatSource.conversationHash)
+    || !Number.isSafeInteger(draft.chatSource.messageCount) || draft.chatSource.messageCount < 0
+    || !Number.isFinite(draft.chatSource.occurredAt) || !Array.isArray(draft.chatSource.photoRefs)
+    || draft.chatSource.photoRefs.some(id => !Number.isSafeInteger(id) || id <= 0))) throw new Error('会话来源基线无效');
   if (typeof draft.aiExcluded !== 'boolean' || [draft.aiText, draft.pendingReply, draft.mood, draft.originalBody, draft.migratedBodyMessage].some(value => value != null && typeof value !== 'string')) throw new Error('草稿可选字段无效');
   if (draft.tags != null && (!Array.isArray(draft.tags) || draft.tags.some(tag => typeof tag !== 'string'))) throw new Error('草稿标签无效');
   if (!Array.isArray(draft.existingPhotoRefs) || !Array.isArray(draft.photos) || !Array.isArray(draft.messages)) {
@@ -153,7 +167,7 @@ export function validateLifeDraft(input: unknown): asserts input is LifeDraft {
   if (draft.existingPhotoRefs.length + draft.photos.length + chatPhotos.length > MAX_ENTRY_ATTACHMENTS) {
     throw new Error(`每篇故事最多 ${MAX_ENTRY_ATTACHMENTS} 张照片`);
   }
-  for (const photo of draft.photos) validatePhoto(photo);
+  for (const photo of draft.photos) validateDraftPhoto(photo);
   for (const message of draft.messages) {
     if (!message || (message.role !== 'user' && message.role !== 'assistant') || typeof message.content !== 'string') {
       throw new Error('对话草稿结构无效');
@@ -167,7 +181,7 @@ export function validateLifeDraft(input: unknown): asserts input is LifeDraft {
       || !message.voiceDisplay.trim() || message.voiceDisplay.length > 12_000)) throw new Error('语音排版内容无效');
     if (message.search != null && (message.role !== 'assistant' || !validChatWebSearch(message.search))) throw new Error('对话搜索信息无效');
     if (message.photos != null && !Array.isArray(message.photos)) throw new Error('对话照片结构无效');
-    for (const photo of message.photos ?? []) validatePhoto(photo);
+    for (const photo of message.photos ?? []) validateDraftPhoto(photo);
     if (message.photoRefs != null && (!Array.isArray(message.photoRefs)
       || new Set(message.photoRefs).size !== message.photoRefs.length
       || message.photoRefs.some(id => !Number.isSafeInteger(id) || id <= 0 || !refs.has(id)))) {
@@ -185,13 +199,15 @@ function mergedUserText(draft: LifeDraft): string {
 
 function sameMessage(left: LifeChatMessage, right: LifeChatMessage): boolean {
   return left.role === right.role && left.content === right.content
-    && JSON.stringify(left.photoRefs ?? []) === JSON.stringify(right.photoRefs ?? []);
+    && JSON.stringify(left.photoRefs ?? []) === JSON.stringify(right.photoRefs ?? [])
+    && JSON.stringify(left.photos ?? []) === JSON.stringify(right.photos ?? []);
 }
 
 /** 去重/迁移可以补齐旧内容，但不能抹去相同消息已有的财务隐私标记。 */
 function preserveLedgerMarkers(preferred: LifeChatMessage[], known: LifeChatMessage[]): LifeChatMessage[] {
-  return preferred.map((message, index) => known[index]?.ledgerAnalysis && sameMessage(message, known[index])
-    ? { ...message, ledgerAnalysis: true } : message);
+  const identity = (message: LifeChatMessage) => JSON.stringify([message.role, message.content, message.photoRefs ?? [], message.photos ?? []]);
+  const marked = new Set(known.filter(message => message.ledgerAnalysis).map(identity));
+  return marked.size ? preferred.map(message => marked.has(identity(message)) ? { ...message, ledgerAnalysis: true } : message) : preferred;
 }
 
 function mergeConversation(
@@ -239,28 +255,152 @@ export async function getLifeDraft(key: string): Promise<LifeDraft | undefined> 
   return db.lifeDrafts.get(key);
 }
 
+function conversationIdentity(messages: LifeChatMessage[], privacy = true): string {
+  return JSON.stringify(messages.map(message => [message.role, message.content, message.photoRefs ?? [], message.photos ?? [],
+    message.voiceDisplay, message.chart, message.search, message.repliedAt, privacy ? !!message.ledgerAnalysis : false]));
+}
+
+async function conversationHash(messages: LifeChatMessage[]): Promise<string> {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(conversationIdentity(messages, false)));
+  return [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function chatSource(note: LifeNote): Promise<NonNullable<LifeDraft['chatSource']>> {
+  return { conversationHash: await conversationHash(note.conversation ?? []), messageCount: note.conversation?.length ?? 0,
+    photoRefs: [...(note.photoRefs ?? [])], occurredAt: note.occurredAt, review: structuredClone(note.review), aiExcluded: !!note.aiExcluded };
+}
+
+export async function newLifeChatDraft(key: string, note?: LifeNote): Promise<LifeDraft> {
+  return { key, noteId: note?.id, sourceUpdatedAt: note?.updatedAt, chatSource: note ? await chatSource(note) : undefined,
+    title: '', body: '', occurredAt: note?.occurredAt ?? Date.now(), existingPhotoRefs: [...(note?.photoRefs ?? [])],
+    photos: [], messages: structuredClone(note?.conversation ?? []), aiExcluded: note?.aiExcluded ?? false,
+    review: structuredClone(note?.review) };
+}
+
+export type LifeChatSourceState = 'ready' | 'conflict' | 'unavailable' | 'excluded';
+
+/** 来源相同的上下文可换新版本；无法证明无冲突时不更改任何用户内容。 */
+export async function reconcileLifeChatDraft(draft: LifeDraft, note?: LifeNote, active = false): Promise<LifeChatSourceState> {
+  if (draft.noteId == null) return 'ready';
+  if (!note || note.deletedAt) return 'unavailable';
+  if (note.aiExcluded) return 'excluded';
+  if (draft.aiExcluded && !draft.chatSource?.aiExcluded) return 'excluded';
+  const version = draft.chatUpdatedAt, messages = draft.messages;
+  const nextSource = await chatSource(note);
+  if (draft.chatUpdatedAt !== version || draft.messages !== messages) return 'conflict';
+  if (note.updatedAt === draft.sourceUpdatedAt) {
+    draft.chatSource ??= nextSource;
+    draft.aiExcluded = false;
+    return 'ready';
+  }
+  if (active) return 'conflict';
+  const source = draft.chatSource;
+  const currentMessages = note.conversation ?? [];
+  const matchesPrefix = draft.messages.length >= currentMessages.length
+    && conversationIdentity(draft.messages.slice(0, currentMessages.length), false) === conversationIdentity(currentMessages, false);
+  const samePhotos = JSON.stringify(draft.existingPhotoRefs) === JSON.stringify(note.photoRefs ?? []);
+  const unchangedSource = source ? source.messageCount === currentMessages.length && source.conversationHash === nextSource.conversationHash
+    : draft.messages.length === currentMessages.length && matchesPrefix;
+  if (unchangedSource && samePhotos) {
+    if (source && draft.occurredAt === source.occurredAt) draft.occurredAt = note.occurredAt;
+    if (source && JSON.stringify(draft.review) === JSON.stringify(source.review)) draft.review = structuredClone(note.review);
+    draft.messages = preserveLedgerMarkers(draft.messages, currentMessages);
+    draft.sourceUpdatedAt = note.updatedAt;
+    draft.chatSource = nextSource;
+    draft.aiExcluded = false;
+    return 'ready';
+  }
+  const unchanged = source && !draft.pendingReply?.trim() && !draft.photos.length && !draft.chatReply && !draft.summaryProposal
+    && !draft.body && !draft.title && !draft.aiText && !draft.originalBody && !draft.migratedBodyMessage && !draft.mood && !draft.tags?.length && !draft.entryId
+    && draft.messages.length === source.messageCount && await conversationHash(draft.messages) === source.conversationHash
+    && JSON.stringify(draft.existingPhotoRefs) === JSON.stringify(source.photoRefs)
+    && draft.occurredAt === source.occurredAt && JSON.stringify(draft.review) === JSON.stringify(source.review);
+  if (!unchanged || draft.chatUpdatedAt !== version || draft.messages !== messages) return 'conflict';
+  const fresh = await newLifeChatDraft(draft.key, note);
+  if (draft.chatUpdatedAt !== version || draft.messages !== messages) return 'conflict';
+  fresh.messages = preserveLedgerMarkers(fresh.messages, draft.messages);
+  Object.assign(draft, fresh);
+  return 'ready';
+}
+
+/** 先保留完整旧草稿和引用，再重新载入；来源限制随副本保留，不绕过隐私保护。 */
+export async function recoverLifeChatDraft(draft: LifeDraft): Promise<{ draft: LifeDraft; note: LifeNote; recoveredKey: string }> {
+  return db.transaction('rw', [db.lifeDrafts, db.lifeNotes], async () => {
+    const stored = await db.lifeDrafts.get(draft.key);
+    if (!stored || stored.chatUpdatedAt !== draft.chatUpdatedAt) throw new Error('会话已有更新，请重新打开后再恢复');
+    const note = draft.noteId == null ? undefined : await db.lifeNotes.get(draft.noteId);
+    if (!note || note.deletedAt) throw new Error('这条记录已删除，旧草稿仍保留');
+    const fresh = await Dexie.waitFor(newLifeChatDraft(draft.key, note));
+    const recoveredKey = `chat:recovered:${crypto.randomUUID()}`;
+    await db.lifeDrafts.put({ ...stored, key: recoveredKey, chatUpdatedAt: now() });
+    await db.lifeDrafts.delete(draft.key);
+    return { draft: fresh, note, recoveredKey };
+  });
+}
+
 export interface LifeChatSession { key: string; title: string; updatedAt: number; noteId?: number; saved: boolean; }
 
 /** 普通快速记录不混入聊天；已保存会话仍可从历史继续。 */
-export async function listLifeChatSessions(): Promise<LifeChatSession[]> {
-  const [drafts, notes] = await Promise.all([db.lifeDrafts.toArray(), db.lifeNotes.toArray()]);
-  const chats = drafts.filter(draft => draft.key.startsWith('chat:') && (isLifeChatDraft(draft) || draft.photos.length));
-  const sessions: LifeChatSession[] = chats.map(draft => ({ key: draft.key, noteId: draft.noteId,
-    title: draft.messages.find(message => message.role === 'user')?.content.slice(0, 80) || draft.pendingReply?.slice(0, 80) || '照片里的片刻',
-    updatedAt: draft.chatUpdatedAt ?? draft.occurredAt, saved: false }));
-  for (const note of notes) {
-    if (note.deletedAt || !note.conversation?.length || chats.some(draft => draft.noteId === note.id)) continue;
-    sessions.push({ key: `chat:note:${note.id}`, noteId: note.id, title: note.title || note.conversation[0].content.slice(0, 80), updatedAt: note.updatedAt, saved: true });
-  }
-  return sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+export async function listLifeChatSessions(options: { limit?: number; before?: LifeChatSession; query?: string; draftsOnly?: boolean } = {}): Promise<LifeChatSession[]> {
+  const limit = Math.max(1, Math.min(100, options.limit ?? 30));
+  const { before, query = '' } = options;
+  return db.transaction('r', [db.lifeDrafts, db.lifeNotes], async () => {
+    const read = async (saved: boolean): Promise<LifeChatSession[]> => {
+      if (saved && options.draftsOnly) return [];
+      const table = saved ? db.lifeNotes : db.lifeDrafts;
+      const index = saved ? '[chatOrder+id+chatTitle]' : '[chatOrder+key+chatTitle+chatNoteId]';
+      let upper: unknown[] = !before ? [Dexie.maxKey]
+        : saved ? before.saved ? [before.updatedAt, before.noteId] : [before.updatedAt, Dexie.maxKey]
+          : before.saved ? [before.updatedAt] : [before.updatedAt, before.key];
+      const result: LifeChatSession[] = [];
+      while (result.length < limit) {
+        // Index keys include only timestamp, identity and the short title.
+        const keys = await table.where(index).below(upper as never).reverse().limit(limit).keys() as unknown as Array<[number, string | number, string, number?]>;
+        if (!keys.length) break;
+        for (const key of keys) {
+          const [updatedAt, id, title, sourceId] = key;
+          if (!saved && options.draftsOnly && String(id).startsWith('chat:recovered:')) continue;
+          if (!title.includes(query)) continue;
+          const noteId = saved ? Number(id) : sourceId || undefined;
+          if (saved && (await db.lifeDrafts.where('chatNoteId').equals(noteId!).primaryKeys()).some(key => !key.startsWith('chat:recovered:'))) continue;
+          if (!saved && noteId != null && !(await db.lifeNotes.where('[id+deletedAt]').equals([noteId, 0]).count())) continue;
+          result.push({ key: saved ? `chat:note:${id}` : String(id), title, updatedAt, noteId, saved });
+          if (result.length === limit) break;
+        }
+        upper = keys.at(-1)!;
+        if (keys.length < limit) break;
+      }
+      return result;
+    };
+    const [drafts, notes] = await Promise.all([read(false), read(true)]);
+    return [...drafts, ...notes].sort((a, b) => b.updatedAt - a.updatedAt || Number(a.saved) - Number(b.saved)
+      || (a.saved ? b.noteId! - a.noteId! : a.key < b.key ? 1 : a.key > b.key ? -1 : 0)).slice(0, limit);
+  });
 }
 
 export async function putLifeDraft(draft: LifeDraft): Promise<void> {
   validateLifeDraft(draft);
+  const stored = copyLifeDraft(draft);
+  const sourcePhotos = lifeDraftPhotos(draft), storedPhotos = lifeDraftPhotos(stored);
   await db.transaction('rw', [db.lifeDrafts, db.lifeNotes, db.lifeEditions, db.attachments, db.entryAttachments, db.settings], async () => {
     const previous = await db.lifeDrafts.get(draft.key);
-    await db.lifeDrafts.put(structuredClone(draft));
-    await collectUnreferencedAttachments((previous?.existingPhotoRefs ?? []).filter(id => !draft.existingPhotoRefs.includes(id)));
+    const known = new Set(previous ? lifeDraftAttachmentRefs(previous) : []);
+    for (const photo of storedPhotos) {
+      if (photo.attachmentId != null) { if (!known.has(photo.attachmentId)) await validateExistingAttachment(photo.attachmentId); }
+      else if (draft.key.startsWith('chat:')) {
+        const parsed = validatePhoto(photo);
+        photo.attachmentId = await db.attachments.add(stamp({ mime: parsed.mime, name: photo.name || undefined,
+          size: parsed.size, blob: new Blob([bytesFromBase64(parsed.base64)], { type: parsed.mime }) }) as Attachment);
+        photo.dataUrl = '';
+      }
+    }
+    await db.lifeDrafts.put(stored);
+    const retained = new Set(lifeDraftAttachmentRefs(stored));
+    await collectUnreferencedAttachments((previous ? lifeDraftAttachmentRefs(previous) : []).filter(id => !retained.has(id)));
+  });
+  // Commit first: a failed write must leave the caller's original images recoverable.
+  sourcePhotos.forEach((photo, index) => {
+    if (storedPhotos[index].attachmentId != null) Object.assign(photo, storedPhotos[index]);
   });
 }
 
@@ -268,7 +408,7 @@ export async function deleteLifeDraft(key: string): Promise<void> {
   await db.transaction('rw', [db.lifeDrafts, db.lifeNotes, db.lifeEditions, db.attachments, db.entryAttachments, db.settings], async () => {
     const draft = await db.lifeDrafts.get(key);
     await db.lifeDrafts.delete(key);
-    await collectUnreferencedAttachments(draft?.existingPhotoRefs ?? []);
+    await collectUnreferencedAttachments(draft ? lifeDraftAttachmentRefs(draft) : []);
   });
 }
 
@@ -314,6 +454,7 @@ export async function saveLifeDraft(key: string): Promise<number> {
 
     await Promise.all(draft.existingPhotoRefs.map(validateExistingAttachment));
     const addPhoto = async (photo: LifeDraftPhoto): Promise<number> => {
+      if (photo.attachmentId != null) { await validateExistingAttachment(photo.attachmentId); return photo.attachmentId; }
       const parsed = validatePhoto(photo);
       const blob = new Blob([bytesFromBase64(parsed.base64)], { type: parsed.mime });
       return db.attachments.add(stamp({
@@ -341,7 +482,7 @@ export async function saveLifeDraft(key: string): Promise<number> {
         ...(messageRefs.length ? { photoRefs: messageRefs } : {}),
       });
     }
-    const photoRefs = [...draft.existingPhotoRefs, ...newPhotoRefs];
+    const photoRefs = [...new Set([...draft.existingPhotoRefs, ...newPhotoRefs])];
     const body = proposedBody || rawText || undefined;
     const originalBody = proposal ? rawText : undefined;
     const title = (proposal?.title ?? draft.title).trim() || undefined;

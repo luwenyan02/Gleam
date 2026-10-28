@@ -1,4 +1,5 @@
 import type { LifeDraft } from '../../core/types';
+import { lifeDraftPhotos } from '../../core/lifeDraftPhotos';
 import { esc } from '../../core/esc';
 import { getAttachment, listLifeLinkedEntries } from '../../core/repo/lifeRepo';
 import { openSheet, closeSheet } from '../shell/sheet';
@@ -94,10 +95,22 @@ export function openLifeSummarySheet(options: LifeSummarySheetOptions): void {
       }));
       el.querySelector<HTMLTextAreaElement>('#life-summary-review')!.oninput = update;
       let existingPhotoSources: string[] = [];
+      const photoSources = new Map<number, string>();
+      const loadPhotos = async () => {
+        const ids = [...new Set([...options.draft.existingPhotoRefs, ...lifeDraftPhotos(options.draft).flatMap(photo => photo.attachmentId == null ? [] : [photo.attachmentId])])];
+        for (const id of ids) {
+          if (photoSources.has(id)) continue;
+          const attachment = await getAttachment(id);
+          if (closed) return;
+          if (attachment?.blob) { const url = URL.createObjectURL(attachment.blob); objectUrls.push(url); photoSources.set(id, url); }
+        }
+        existingPhotoSources = options.draft.existingPhotoRefs.flatMap(id => photoSources.get(id) ? [photoSources.get(id)!] : []);
+        if (!closed) renderPhotos();
+      };
       const renderPhotos = () => {
-        const sentSources = options.draft.messages.flatMap(message => message.photos ?? []).map(photo => photo.dataUrl);
+        const sentSources = options.draft.messages.flatMap(message => message.photos ?? []).map(photo => photo.dataUrl || photoSources.get(photo.attachmentId!) || '');
         const readonlySources = [...existingPhotoSources, ...sentSources];
-        el.querySelector('#life-summary-photos')!.innerHTML = `${readonlySources.map((src, index) => `<div><img src="${src}" alt="已保留照片 ${index + 1}"></div>`).join('')}${options.draft.photos.map((photo, index) => `<div><img src="${photo.dataUrl}" alt="补充照片 ${index + 1}"><button class="chip" data-life-summary-remove-photo="${index}" aria-label="移除补充照片 ${index + 1}">移除</button></div>`).join('')}`;
+        el.querySelector('#life-summary-photos')!.innerHTML = `${readonlySources.map((src, index) => `<div><img src="${src}" alt="已保留照片 ${index + 1}"></div>`).join('')}${options.draft.photos.map((photo, index) => `<div><img src="${esc(photo.dataUrl || photoSources.get(photo.attachmentId!) || '')}" alt="补充照片 ${index + 1}"><button class="chip" data-life-summary-remove-photo="${index}" aria-label="移除补充照片 ${index + 1}">移除</button></div>`).join('')}`;
         el.querySelectorAll<HTMLButtonElement>('[data-life-summary-remove-photo]').forEach(button => button.onclick = () => {
           options.draft.photos.splice(Number(button.dataset.lifeSummaryRemovePhoto), 1);
           void options.persist(); renderPhotos();
@@ -115,7 +128,7 @@ export function openLifeSummarySheet(options: LifeSummarySheetOptions): void {
         if (files.length + options.draft.photos.length + options.draft.existingPhotoRefs.length + sent > 9) { showToast('这条记录最多保留 9 张照片'); return; }
         try {
           for (const file of Array.from(files)) { await prepareReceipt(file); options.draft.photos.push({ name: file.name, dataUrl: await dataUrl(file) }); }
-          await options.persist(); renderPhotos();
+          await options.persist(); await loadPhotos();
         } catch (error) { el.querySelector<HTMLElement>('#life-summary-status')!.textContent = error instanceof Error ? error.message : '照片添加失败'; }
       })(); };
       el.querySelector('[data-life-summary-date]')!.addEventListener('click', () => pickDate(options.draft.occurredAt, value => {
@@ -134,18 +147,7 @@ export function openLifeSummarySheet(options: LifeSummarySheetOptions): void {
         if (linked) linked.textContent = entries.length ? `已关联 ${entries.length} 笔账单；保存不会改变金额。` : '暂无关联账单。';
       });
       renderPhotos();
-      void Promise.all(options.draft.existingPhotoRefs.map(id => getAttachment(id))).then(attachments => {
-        if (closed) return;
-        const sources = attachments.flatMap(attachment => {
-          if (!attachment?.blob) return [];
-          const url = URL.createObjectURL(attachment.blob);
-          if (closed) { URL.revokeObjectURL(url); return []; }
-          objectUrls.push(url); return [url];
-        });
-        if (closed) { for (const url of sources) URL.revokeObjectURL(url); return; }
-        existingPhotoSources = sources;
-        renderPhotos();
-      });
+      void loadPhotos();
       el.querySelectorAll('[data-life-summary-return]').forEach(button => button.addEventListener('click', closeSheet));
       el.querySelector('[data-life-summary-regenerate]')!.addEventListener('click', async () => {
         if (saving) return;

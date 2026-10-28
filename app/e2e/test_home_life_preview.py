@@ -280,15 +280,9 @@ def run(browser, width, height, scale, theme, red=False):
     chat.wait_for(state='detached')
     expect(row).to_be_focused()
     assert abs(page.locator('#page-home').evaluate('e=>e.scrollTop')-scroll)<2
-    page.wait_for_function('''async()=>{
-      const db=await new Promise(resolve=>{const r=indexedDB.open('GleamDB');r.onsuccess=()=>resolve(r.result)});
-      const row=await new Promise(resolve=>{const r=db.transaction('lifeDrafts').objectStore('lifeDrafts').get('chat:note:101');r.onsuccess=()=>resolve(r.result)});
-      db.close();return row?.messages.length===2;
-    }''')
     after=page.evaluate(READ)
-    for name in ['entries','accounts','lifeNotes']:
+    for name in ['entries','accounts','lifeNotes','lifeDrafts']:
         assert after[name]==before[name], f'Opening original chat changed {name}'
-    assert [d for d in after['lifeDrafts'] if d['key']!='chat:note:101']==before['lifeDrafts']
     # Keep the rendered rows stale while their records disappear from IndexedDB.
     page.evaluate('''async()=>{
       const db=await new Promise(resolve=>{const r=indexedDB.open('GleamDB');r.onsuccess=()=>resolve(r.result)});

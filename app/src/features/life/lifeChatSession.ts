@@ -6,10 +6,12 @@ import { on } from '../../core/store';
 import type { LifeLedgerReview } from '../../core/repo/lifeLedgerContextRepo';
 import { parseChatChartResponse } from '../../core/chatChart';
 import { isChatChartQuestion, ledgerChatChart } from '../../core/lifeChatChart';
+import { copyLifeDraft, lifeDraftPhotos } from '../../core/lifeDraftPhotos';
 
 export const unsavedChatDrafts = new Map<string, LifeDraft>();
 interface DraftWrite {
   copy: LifeDraft;
+  photoSources: ReturnType<typeof lifeDraftPhotos>;
   waiters: Array<{ resolve(): void; reject(error: unknown): void }>;
 }
 interface DraftWrites { pending?: DraftWrite; }
@@ -18,8 +20,8 @@ const active = new Map<string, ChatReply>();
 const CHECKPOINT_INTERVAL = 1000;
 
 export function stageChatDraft(draft: LifeDraft): LifeDraft {
-  draft.chatUpdatedAt = Date.now();
-  const copy = structuredClone(draft);
+  draft.chatUpdatedAt = Math.max(Date.now(), (draft.chatUpdatedAt ?? 0) + 1);
+  const copy = { ...draft };
   unsavedChatDrafts.set(draft.key, copy);
   return copy;
 }
@@ -30,7 +32,15 @@ async function writeChatDrafts(key: string, queue: DraftWrites): Promise<void> {
       const batch = queue.pending;
       queue.pending = undefined;
       try {
+        const pictures = lifeDraftPhotos(batch.copy);
+        pictures.forEach((photo, index) => {
+          const original = batch.photoSources[index];
+          if (original.attachmentId != null) Object.assign(photo, original);
+        });
         await putLifeDraft(batch.copy);
+        pictures.forEach((photo, index) => {
+          if (photo.attachmentId != null) Object.assign(batch.photoSources[index], photo);
+        });
         if (unsavedChatDrafts.get(key) === batch.copy) unsavedChatDrafts.delete(key);
         for (const waiter of batch.waiters) waiter.resolve();
       } catch (error) {
@@ -44,7 +54,10 @@ async function writeChatDrafts(key: string, queue: DraftWrites): Promise<void> {
 
 /** 在途写入不取消；后续调用合并为最新快照，落盘后才结算对应调用。 */
 export function persistChatDraft(draft: LifeDraft): Promise<void> {
-  const copy = stageChatDraft(draft);
+  stageChatDraft(draft);
+  const copy = copyLifeDraft(draft);
+  const photoSources = lifeDraftPhotos(draft);
+  unsavedChatDrafts.set(copy.key, copy);
   const key = copy.key;
   const queue = writes.get(key) ?? {};
   const start = !writes.has(key);
@@ -52,8 +65,9 @@ export function persistChatDraft(draft: LifeDraft): Promise<void> {
   const current = new Promise<void>((resolve, reject) => {
     if (queue.pending) {
       queue.pending.copy = copy;
+      queue.pending.photoSources = photoSources;
       queue.pending.waiters.push({ resolve, reject });
-    } else queue.pending = { copy, waiters: [{ resolve, reject }] };
+    } else queue.pending = { copy, photoSources, waiters: [{ resolve, reject }] };
   });
   if (start) void Promise.resolve().then(() => writeChatDrafts(key, queue));
   return current;

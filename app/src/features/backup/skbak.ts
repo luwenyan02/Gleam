@@ -12,6 +12,7 @@ import type JSZipType from 'jszip';
 import { countDump, TABLE_NAMES, type TableDump } from '../../core/repo/backupRepo';
 import type { Attachment, LifeDraft, LifeEdition } from '../../core/types';
 import { validateLifeDraft } from '../../core/repo/lifeDraftRepo';
+import { lifeDraftAttachmentRefs } from '../../core/lifeDraftPhotos';
 import { validateChatChart } from '../../core/chatChart';
 import { validateLifeEdition } from '../../core/repo/lifeEditionRepo';
 
@@ -284,7 +285,7 @@ export async function parseSkbak(
     try {
       const draft = row as LifeDraft;
       validateLifeDraft(draft);
-      if (draftKeys.has(draft.key) || draft.existingPhotoRefs.some(id => !attachmentIds.has(id))) throw new Error('重复或缺少照片');
+      if (draftKeys.has(draft.key) || lifeDraftAttachmentRefs(draft).some(id => !attachmentIds.has(id))) throw new Error('重复或缺少照片');
       draftKeys.add(draft.key);
     } catch { throw new Error('备份包生活草稿损坏'); }
   }

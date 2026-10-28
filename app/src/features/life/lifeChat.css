@@ -116,6 +116,8 @@
 .chat-history-row[aria-current=true]{background:var(--accent-soft)}
 .chat-history-row strong{display:block;font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chat-history-row small{display:block;font-size:12px;color:var(--muted);margin-top:6px}
+.chat-history-pages{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0}.chat-history-pages span{flex:none;white-space:nowrap;font-size:13px;color:var(--muted)}.chat-history-pages button{flex:1;width:auto;min-width:0;min-height:44px}
+.chat-source-notice{flex-shrink:0;margin:8px 16px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}.chat-source-notice p{font-size:13px;line-height:1.6;margin:0 0 4px;overflow-wrap:anywhere}.chat-source-notice .btn{min-height:44px}
 .chat-options>button{display:flex;align-items:center;gap:12px;min-height:52px;width:100%;padding:10px 12px;background:transparent;border:0;border-radius:12px;font:inherit;color:var(--fg);text-align:left}
 .chat-options>button:hover{background:var(--bg)}
 .chat-options>button:disabled{opacity:.45}

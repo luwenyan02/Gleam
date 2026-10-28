@@ -71,7 +71,7 @@ it('从 v4 升级只补退款关联索引，原账单、余额及历史记录逐
   const account = { ...stamp, id: 1, name: '虚构账户', group: 'cash', hidden: false, balance: 12345, sortOrder: 1 };
   await legacy.table('entries').bulkPut(entries); await legacy.table('accounts').put(account); legacy.close();
   await db.open();
-  expect(db.verno).toBe(6); expect(db.entries.schema.idxByName.refundOfEntryId).toBeDefined();
+  expect(db.verno).toBe(7); expect(db.entries.schema.idxByName.refundOfEntryId).toBeDefined();
   expect(await db.entries.toArray()).toEqual(entries); expect(await db.accounts.get(1)).toEqual(account);
   expect((await listRefunds(1)).map(row => row.id)).toEqual([2]);
 });
