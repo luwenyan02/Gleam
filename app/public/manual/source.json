@@ -13,7 +13,7 @@
     "report.png": "662ef9eee76a3ccd3db6ef1687b5cdfaad84c216b2a1fc278185913a1139eb88",
     "voice-listening.png": "36efa1cb4568d46febfaf761568309e839facc8ee9eddd79db4a018c52c84891",
     "voice-review.png": "1da1c3a4094adef72135687e968b957c36a8dbfbf85889bb8af1c001bfec7b6d",
-    "voice-settings.png": "2f4b5fc752b35d55ba48e8c5d6a7b874a1ace823c2458265e2c7efeb202ace70",
+    "voice-settings.png": "0743178fb6c2a2f598eee8edd99faf8eb0c4ffd258440bad989b664d044b81f5",
     "voice-start.png": "b08a09c6a7ee217e4a48da0d7b2c5b193b9a25c9d66aa03829a0494b824ad9e6"
   },
   "sourceSha256": {
@@ -29,5 +29,13 @@
     "app/src/features/ai-inbox/aiInbox.css": "848340313bea18628198941ff66f6e7a463125e34b4600ac08c127e11acc113b",
     "app/src/features/entry/holdVoice.ts": "43a7483d3c1cd7f0abbc5278223dcb5875b05bb925ac426993f2a783316bc683",
     "app/src/features/entry/holdVoice.css": "75d5009982a6d2ab183daa4ff86737eafff851356a47488939cb3f5cf90dd695"
+  },
+  "imageUpdates": {
+    "voice-settings.png": {
+      "version": "1.11.43",
+      "captureCommit": "fee78af580848932f6cd351fb09bbbf8e1c2ee38",
+      "captureScriptSha256": "4cf1747404269820494a68c5ba06b504e60659ac04659f2805d7acbee71ccfed",
+      "captureContext": "Only the voice settings image was replaced: default Beijing shared service with collapsed advanced settings. Unmodified browser screenshot using fictional data and a simulated native bridge; no real microphone or service. Other eight images retain their original provenance above."
+    }
   }
 }
