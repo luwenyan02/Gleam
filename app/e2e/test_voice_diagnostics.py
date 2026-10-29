@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
-from test_short_voice import MOCK_NATIVE, seed_config
+from test_short_voice import MOCK_NATIVE, seed_config, open_voice_advanced
 from test_browser_usability import assert_usable
 from test_life_ai import read_rows
 
@@ -84,6 +84,7 @@ def run(page, width, motion):
         compact_controls()
 
     def set_region(name):
+        open_voice_advanced(page)
         value = {'北京': 'beijing', '新加坡': 'singapore'}[name]
         region = page.locator('#voice-bailian-region')
         previous = region.get_attribute('data-region')
@@ -113,6 +114,7 @@ def run(page, width, motion):
     expect(key).to_have_accessible_name('语音Key')
     expect(shared).not_to_be_checked()
     expect(button).to_be_disabled()
+    open_voice_advanced(page)
     expect(page.locator('[data-voice-save-key], [data-voice-clear-key], [data-voice-key-status]')).to_have_count(0)
     key.fill(BASE_KEY); key.press('Tab')
     page.locator('#voice-bailian-workspace').fill('verified-workspace')

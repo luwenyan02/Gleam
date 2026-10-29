@@ -11,8 +11,8 @@ export function validateBailianVoiceConfig(config: BailianVoiceConfig): BailianV
   if (!['beijing', 'singapore'].includes(config.region) || config.model !== BAILIAN_VOICE_MODEL) {
     throw new Error('百炼语音地域或模型无效，请检查设置');
   }
-  if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(config.workspace)) {
-    throw new Error('请填写对应 Key 的百炼业务空间 ID（最多 63 位字母、数字或连字符）');
+  if (typeof config.workspace !== 'string' || (config.workspace !== '' && !/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(config.workspace))) {
+    throw new Error('业务空间 ID 格式无效；留空可使用公网共享地址');
   }
   return { ...config };
 }
@@ -26,5 +26,6 @@ export async function getBailianVoiceConfig(): Promise<BailianVoiceConfig> {
 
 export function bailianVoiceDestination(config: BailianVoiceConfig): string {
   const checked = validateBailianVoiceConfig(config);
+  if (!checked.workspace) return checked.region === 'beijing' ? 'dashscope.aliyuncs.com' : 'dashscope-intl.aliyuncs.com';
   return `${checked.workspace}.${checked.region === 'beijing' ? 'cn-beijing' : 'ap-southeast-1'}.maas.aliyuncs.com`;
 }

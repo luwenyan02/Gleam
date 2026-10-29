@@ -3,6 +3,17 @@ import static org.junit.Assert.*;
 import okhttp3.Request;
 import org.junit.Test;
 public class GleamSpeechTransportTest {
+    @Test public void emptyWorkspaceUsesOfficialSharedServiceWithoutChangingRegion() {
+        Request request = GleamSpeechTransport.request("beijing", "", GleamSpeechTransport.MODEL, "fictional_key");
+        assertEquals("dashscope.aliyuncs.com", request.url().host());
+        assertEquals("/api-ws/v1/realtime", request.url().encodedPath());
+        assertEquals(GleamSpeechTransport.MODEL, request.url().queryParameter("model"));
+        assertEquals("Bearer fictional_key", request.header("Authorization"));
+        assertEquals("https", request.url().scheme());
+        assertEquals("wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime?model=qwen3.8-omni-flash-realtime", GleamSpeechTransport.endpoint("singapore", "", GleamSpeechTransport.MODEL));
+        assertFalse(GleamSpeechTransport.validWorkspace(null));
+        assertFalse(GleamSpeechTransport.validWorkspace(" "));
+    }
     @Test public void officialWorkspaceRegionOnly() {
         Request request = GleamSpeechTransport.request("beijing", "fictional-workspace", GleamSpeechTransport.MODEL, "fictional_key");
         assertEquals("fictional-workspace.cn-beijing.maas.aliyuncs.com", request.url().host());

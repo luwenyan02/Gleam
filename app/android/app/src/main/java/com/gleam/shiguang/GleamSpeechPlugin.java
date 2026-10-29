@@ -342,8 +342,8 @@ public final class GleamSpeechPlugin extends Plugin {
             case "SPEECH_PERMISSION_DENIED": return "未获麦克风权限，请在系统设置允许后重试";
             case "SPEECH_PERMISSION_CANCELLED": return "麦克风授权已取消，请重新开始";
             case "SPEECH_BUSY": return "上一段语音尚未结束，请稍后重试";
-            case "SPEECH_CONFIG_INVALID": return "请检查百炼语音地域、业务空间与模型配置";
-            case "SPEECH_AUTH": return "百炼语音鉴权失败，请检查所选地域的 Key 和业务空间";
+            case "SPEECH_CONFIG_INVALID": return "请检查百炼语音高级设置与模型配置";
+            case "SPEECH_AUTH": return "百炼语音鉴权失败，请检查语音Key及对应地域";
             case "SPEECH_RATE_LIMIT": return "百炼语音请求较多，请稍后重试";
             case "SPEECH_LIMIT": return "短语音超过 30 秒上限，请缩短后重试";
             case "SPEECH_TRANSCRIPT_LIMIT": return "转录超过 500 字上限，请分段输入";

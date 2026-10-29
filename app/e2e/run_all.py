@@ -24,6 +24,7 @@ TESTS = (
     'test_overview_art.py',
     'test_upgrade_cache_unit.py', 'test_upgrade_cache.py',
     'test_ai_key_settings.py',
+    'test_voice_shared_settings.py',
     'test_mine_backup_reminder.py', 'test_restore_progress.py', 'test_snapshot_undo.py',
     'test_app_version.py',
     'test_app_update.py',

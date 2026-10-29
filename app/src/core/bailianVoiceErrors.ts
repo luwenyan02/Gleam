@@ -8,8 +8,8 @@ const SAFE_ERRORS: Record<string, string> = {
   SPEECH_PERMISSION_DENIED: '麦克风未获授权，可在手机系统设置中允许后重试，或手动输入',
   SPEECH_PERMISSION_CANCELLED: '麦克风授权已取消，可重新开始或手动输入',
   SPEECH_BUSY: '已有语音或连接测试进行中，请先结束再重试',
-  SPEECH_CONFIG_INVALID: '百炼语音配置无效，请核对地域、业务空间与固定模型',
-  SPEECH_AUTH: '百炼语音鉴权失败，请核对语音Key、地域与业务空间',
+  SPEECH_CONFIG_INVALID: '百炼语音配置无效，请核对高级设置与固定模型',
+  SPEECH_AUTH: '百炼语音鉴权失败，请核对语音Key及高级设置中的地域',
   SPEECH_RATE_LIMIT: '百炼语音请求受限，请稍后重试',
   SPEECH_LIMIT: '本次录音已达30秒上限，已取消，请录更短的一句',
   SPEECH_TRANSCRIPT_LIMIT: '转录超过500字，未截断或入账，请录更短的一句',
@@ -24,7 +24,7 @@ const SAFE_ERRORS: Record<string, string> = {
   SPEECH_SESSION_INVALID: '本次语音会话已失效，请重新核对后开始',
   SPEECH_TRANSCRIPTION_FAILED: '百炼转写失败，请重试或使用文字输入',
   SPEECH_PROTOCOL: '会话配置核验未通过，已安全停止',
-  SPEECH_PROVIDER: '百炼服务未接受请求，请核对模型可用性、地域与业务空间后重试',
+  SPEECH_PROVIDER: '百炼服务未接受请求，请核对模型权限及高级设置后重试',
 };
 const SAFE_PHASES: Record<string, string> = {
   validation: '检查设置', permission: '麦克风授权', connecting: '连接服务',
@@ -117,6 +117,6 @@ export function shortVoiceError(error: unknown): string {
     ? reasons.map(reason => `${SAFE_REASONS[reason]} [${reason}]`).join('；') + (truncated ? '；仅显示前24项' : '')
     : '未能确定具体检查项 [PROTOCOL_REASON_UNKNOWN]'}` : '';
   // Never stringify the error, its message, unknown metadata, or actual/expected provider values.
-  return `${code ? SAFE_ERRORS[code] : '语音未完成，请检查权限、网络、Key 与业务空间，或改用手动输入'}（${code ?? 'SPEECH_UNKNOWN'}；阶段：${phase}${detail}）`;
+  return `${code ? SAFE_ERRORS[code] : '语音未完成，请检查权限、网络与语音配置，或改用手动输入'}（${code ?? 'SPEECH_UNKNOWN'}；阶段：${phase}${detail}）`;
 }
 

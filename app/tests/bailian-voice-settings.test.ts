@@ -17,11 +17,16 @@ it('浏览器仅展示 Android 可用提示，配置保留在默认收起的详�
  expect(html).toContain('id="voice-bailian-key"');
  expect(html).toMatch(/id="voice-bailian-key"[^>]*disabled/);
 });
-it('Android 保持完整语音配置，不在详情中隐藏连接测试', async () => {
+it('Android 将地域和可选业务空间放入收起的高级设置，Key 和测试直达', async () => {
  const html = await bailianVoiceSettingsHtml();
- expect(html).not.toContain('<details');
- expect(html).toContain('id="voice-bailian-region"');
- expect(html).toContain('data-voice-test');
+ const advanced = html.match(/<details[^>]*data-settings-detail="voice-advanced"[^>]*>([\s\S]*?)<\/details>/);
+ expect(advanced).not.toBeNull();
+ expect(advanced![0]).not.toMatch(/<details[^>]*\bopen\b/);
+ expect(advanced![1]).toContain('id="voice-bailian-region"');
+ expect(advanced![1]).toContain('id="voice-bailian-workspace"');
+ expect(advanced![1]).not.toContain('id="voice-bailian-key"');
+ expect(advanced![1]).not.toContain('data-voice-test');
+ expect(html).toContain('留空使用公网共享地址');
 });
 it('existing independent key retains its source and is displayed only as an empty-input mask', async () => {
  const html = await bailianVoiceSettingsHtml();

@@ -35,11 +35,11 @@
 .settings-status-row{display:flex;align-items:center;gap:12px;min-height:44px}
 .settings-status-row>.settings-status{flex:1;margin:0}
 .settings-status-row>.ai-actions{flex:none;margin-left:auto}
-.settings-details summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:var(--primary);font-size:14px}
-.settings-details summary::after{content:"⌄";margin-left:auto;transition:transform .15s}
-.settings-details[open] summary::after{transform:rotate(180deg)}
-.settings-details summary::-webkit-details-marker{display:none}
-.settings-details summary:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.settings-details>summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:var(--primary);font-size:14px}
+.settings-details>summary::after{content:"⌄";margin-left:auto;transition:transform .15s}
+.settings-details[open]>summary::after{transform:rotate(180deg)}
+.settings-details>summary::-webkit-details-marker{display:none}
+.settings-details>summary:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 .settings-manual{font-size:15px;line-height:1.75;color:var(--fg);overflow-wrap:anywhere}
 .settings-manual section+section{margin-top:22px}.settings-manual h4{font-size:17px;margin:0 0 8px}.settings-manual p{margin:0 0 10px}
 :is(#sp-settings,#sp-ai-settings) .field .sub{text-align:right;overflow-wrap:anywhere}

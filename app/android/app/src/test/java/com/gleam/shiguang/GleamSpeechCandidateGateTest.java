@@ -33,6 +33,19 @@ public class GleamSpeechCandidateGateTest {
         try { action.run(); fail("expected " + code); } catch (GleamSpeechCandidateGate.Failure failure) { assertEquals(code, failure.code); }
     }
     interface Throwing { void run() throws Exception; }
+    @Test public void sharedServiceConfigIsPersistedOnlyAfterTestingAndKeepsItsIdentity() throws Exception {
+        Fixture f = new Fixture();
+        GleamSpeechCandidateGate.Config shared = new GleamSpeechCandidateGate.Config("beijing", "", GleamSpeechTransport.MODEL);
+        f.gate.begin("session_one", "voice-old", "main-old", "config_current", "separate", "synthetic-candidate-key", shared);
+        assertEquals(0, f.store.writes);
+        String token = f.ack("session_one");
+        f.commit("session_one", token);
+        assertEquals(1, f.store.writes);
+        assertEquals(shared, f.store.config);
+        assertNotEquals(CONFIG, f.store.config);
+        assertNotEquals(new GleamSpeechCandidateGate.Config("singapore", "", GleamSpeechTransport.MODEL), f.store.config);
+        f.store.config.validate();
+    }
     @Test public void testOnlyAndAckNeverPersistBeforeExplicitCommit() throws Exception {
         Fixture f = new Fixture(); f.begin("session_one", "separate", "synthetic-candidate-key");
         assertEquals("synthetic-candidate-key", f.gate.transportKey("session_one")); assertEquals(0, f.store.writes);

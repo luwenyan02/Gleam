@@ -8,7 +8,7 @@ import okhttp3.Request;
 final class GleamSpeechTransport {
     static final String MODEL = "qwen3.8-omni-flash-realtime";
     static boolean validWorkspace(String workspace) {
-        return workspace != null && workspace.matches("[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?");
+        return workspace != null && (workspace.isEmpty() || workspace.matches("[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"));
     }
     static boolean validSessionId(String id) { return id != null && id.matches("[A-Za-z0-9_-]{8,80}"); }
     static boolean validKey(String value) { return value != null && value.matches("[!-~]{8,512}"); }
@@ -18,7 +18,10 @@ final class GleamSpeechTransport {
         if ("beijing".equals(region)) suffix = "cn-beijing";
         else if ("singapore".equals(region)) suffix = "ap-southeast-1";
         else throw new IllegalArgumentException("SPEECH_CONFIG_INVALID");
-        return "wss://" + workspace + "." + suffix + ".maas.aliyuncs.com/api-ws/v1/realtime?model=" + MODEL;
+        String host = workspace.isEmpty()
+            ? ("beijing".equals(region) ? "dashscope.aliyuncs.com" : "dashscope-intl.aliyuncs.com")
+            : workspace + "." + suffix + ".maas.aliyuncs.com";
+        return "wss://" + host + "/api-ws/v1/realtime?model=" + MODEL;
     }
     static Request request(String region, String workspace, String model, String key) {
         String endpoint = endpoint(region, workspace, model);

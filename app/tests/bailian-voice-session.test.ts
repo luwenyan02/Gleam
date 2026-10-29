@@ -117,7 +117,7 @@ it('安全错误按固定代码区分，不能回显远端消息或凭据', () =
 it('百炼地址严格由地域、workspace及固定模型推导，拒绝注入与任意第三方地址', () => {
   expect(bailianVoiceDestination(config)).toBe('synthetic-workspace.cn-beijing.maas.aliyuncs.com');
   expect(bailianVoiceDestination({ ...config, region: 'singapore' })).toBe('synthetic-workspace.ap-southeast-1.maas.aliyuncs.com');
-  for (const workspace of ['', '-space', 'space-', 'evil.example/path', 'space?x=1', 'x'.repeat(64), '空格']) {
+  for (const workspace of ['-space', 'space-', 'evil.example/path', 'space?x=1', 'x'.repeat(64), '空格']) {
     expect(() => validateBailianVoiceConfig({ ...config, workspace })).toThrow();
   }
   expect(() => validateBailianVoiceConfig({ ...config, region: 'evil' as never })).toThrow();

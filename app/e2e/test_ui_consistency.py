@@ -65,7 +65,7 @@ def run(page,width,theme):
     config=voice.locator('details.voice-web-details')
     expect(config).not_to_have_attribute('open','')
     expect(button).to_be_hidden()
-    config.locator('summary').click()
+    config.locator(':scope > summary').click()
     expect(button).to_be_visible()
     expect(button).to_be_disabled()
     for control in ('#voice-bailian-region','#voice-bailian-workspace','#voice-bailian-key'):

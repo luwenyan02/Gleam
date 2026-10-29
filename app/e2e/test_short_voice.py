@@ -144,6 +144,12 @@ MOCK_NATIVE = r'''(() => {
 })()'''.replace('__MOCK_APP_VERSION__', json.dumps(json.loads((Path(__file__).parents[1] / 'package.json').read_text())['version']))
 
 
+def open_voice_advanced(page):
+    details = page.locator('[data-settings-detail="voice-advanced"]')
+    if not details.evaluate('el=>el.open'):
+        details.locator(':scope > summary').click()
+
+
 def seed_config(page):
     page.evaluate('''async () => {
       const db=await new Promise(resolve=>{const r=indexedDB.open('GleamDB');r.onsuccess=()=>resolve(r.result)});
@@ -166,6 +172,8 @@ def image(page, name, width, motion):
 
 
 def run(page, width, motion):
+    shared_service = width == 400
+    expected_workspace = '' if shared_service else 'tested-workspace'
     errors, requests, payloads = [], [], []
     page.on('pageerror', lambda e: errors.append(str(e)))
     page.add_init_script(MOCK_NATIVE)
@@ -176,6 +184,9 @@ def run(page, width, motion):
     page.route('https://short-voice.invalid/**', model)
     page.on('request', lambda req: requests.append(req.url) if req.url.startswith('https://') else None)
     page.goto(URL); page.locator('#fab').wait_for(); seed_config(page)
+    if shared_service:
+        page.evaluate('''async()=>{const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)});const tx=db.transaction('settings','readwrite');tx.objectStore('settings').delete('voice.bailian.workspace');await new Promise(r=>tx.oncomplete=r);db.close();}''')
+        page.evaluate('motion=>{document.documentElement.dataset.theme=motion==="reduce"?"dark":"light";document.documentElement.style.setProperty("--seed-type",motion==="reduce"?"1.2":"1");document.documentElement.style.setProperty("--safe-top","24px");document.documentElement.style.setProperty("--safe-bottom","24px");}', motion)
     page.locator('[data-page="page-mine"]').click()
     page.locator('#page-mine [data-sub="sp-ai-settings"]').click()
     key = page.locator('#voice-bailian-key')
@@ -185,11 +196,14 @@ def run(page, width, motion):
     expect(page.locator('#voice-key-shared')).not_to_be_checked()
     expect(page.locator('[data-voice-save-key], [data-voice-clear-key], [data-voice-key-status]')).to_have_count(0)
     key.fill('synthetic-voice-test-key'); key.press('Tab')
-    page.locator('#voice-bailian-workspace').fill('tested-workspace')
-    page.locator('#voice-bailian-workspace').press('Tab')
+    expect(page.locator('[data-settings-detail="voice-advanced"]')).not_to_have_attribute('open', '')
+    if not shared_service:
+        open_voice_advanced(page)
+        page.locator('#voice-bailian-workspace').fill(expected_workspace)
+        page.locator('#voice-bailian-workspace').press('Tab')
     assert page.evaluate('window.__voiceCommitCount') == 0
     assert not any(row['method'] == 'testCandidate' for row in page.evaluate('window.__voiceCalls'))
-    assert next(row['value'] for row in read_rows(page,'settings') if row['key']=='voice.bailian.workspace') == 'synthetic-workspace'
+    assert next((row['value'] for row in read_rows(page,'settings') if row['key']=='voice.bailian.workspace'), '') == ('' if shared_service else 'synthetic-workspace')
     test_button = page.locator('[data-voice-test]')
     expect(test_button).to_have_text('测试语音连接')
     expect(page.locator('[data-voice-test-consent], [data-voice-test-confirm], [data-voice-test-cancel], [data-voice-test-status], [data-voice-test-copy], [data-voice-test-copy-status]')).to_have_count(0)
@@ -204,7 +218,7 @@ def run(page, width, motion):
     expect(key).to_have_value('')
     expect(key).to_have_attribute('placeholder', 'synth••••••t-key')
     assert page.evaluate('window.__voiceCommitCount') == 1
-    assert page.evaluate('window.__voiceSnapshot().activeConfig') == {'region': 'beijing', 'workspace': 'tested-workspace', 'model': 'qwen3.8-omni-flash-realtime'}
+    assert page.evaluate('window.__voiceSnapshot().activeConfig') == {'region': 'beijing', 'workspace': expected_workspace, 'model': 'qwen3.8-omni-flash-realtime'}
     assert not requests
     assert not any('synthetic-voice-test-key' in str(row) for row in read_rows(page,'settings'))
     assert page.evaluate("!JSON.stringify({...localStorage,...sessionStorage}).includes('synthetic-voice-test-key')")
@@ -225,7 +239,7 @@ def run(page, width, motion):
     page.mouse.move(*center(page.locator('[data-hv-hold]'))); page.mouse.down()
     expect(page.locator('.hold-voice-mask')).to_have_attribute('data-state','listening')
     assert page.evaluate("window.__voiceCalls.filter(x=>x.method==='start').length") == 1
-    assert page.evaluate("window.__voiceCalls.filter(x=>x.method==='start').at(-1).workspace") == 'tested-workspace'
+    assert page.evaluate("window.__voiceCalls.filter(x=>x.method==='start').at(-1).workspace") == expected_workspace
     assert page.evaluate("window.__voiceCalls.filter(x=>x.method==='start').at(-1).model") == 'qwen3.8-omni-flash-realtime'
     preview(page,'今天午餐28.01元，现金'); image(page,'listening',width,motion)
     release_at(page,'edit'); expect(page.locator('[data-hv-text]')).to_have_value('今天午餐28.01元，现金')
@@ -272,9 +286,9 @@ if __name__=='__main__':
     OUT.mkdir(parents=True,exist_ok=True)
     with sync_playwright() as p:
         browser=p.chromium.launch()
-        for width in (360,390,430,1280):
+        for width in (360,390,400,430,1280):
             for motion in ('reduce', 'no-preference'):
-                context=browser.new_context(viewport={'width':width,'height':844},service_workers='block',reduced_motion=motion)
+                context=browser.new_context(viewport={'width':width,'height':890 if width==400 else 844},device_scale_factor=3 if width==400 else 1,service_workers='block',reduced_motion=motion)
                 page = context.new_page()
                 try:
                     run(page,width,motion)

@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from playwright.sync_api import sync_playwright, expect
 from capture_readme import seed, DEMO_TIME
-from test_short_voice import MOCK_NATIVE, seed_config
+from test_short_voice import MOCK_NATIVE, seed_config, open_voice_advanced
 
 URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4602/')
 OUT = Path(__file__).parents[2] / '.tmp/tests/e2e/manual'
@@ -45,7 +45,8 @@ def main():
         ctx,page=context();page.add_init_script(MOCK_NATIVE);page.goto(URL);page.locator('#fab').wait_for();seed_config(page)
         page.locator('[data-page="page-mine"]').click()
         page.locator('#page-mine [data-sub="sp-ai-settings"]').click()
-        page.locator('#voice-bailian-key').fill('fictional-demo-voice-key');page.locator('#voice-bailian-workspace').fill('demo-workspace');page.locator('#voice-bailian-workspace').press('Tab');page.locator('[data-voice-test]').click();expect(page.locator('[data-voice-test]')).to_have_attribute('data-state','success')
+        page.locator('#voice-bailian-key').fill('fictional-demo-voice-key');open_voice_advanced(page);page.locator('#voice-bailian-workspace').fill('');page.locator('#voice-bailian-workspace').press('Tab');page.locator('[data-voice-test]').click();expect(page.locator('[data-voice-test]')).to_have_attribute('data-state','success')
+        page.locator('[data-settings-detail="voice-advanced"] > summary').click()
         page.locator('#sp-ai-settings section[aria-label="百炼短语音"]').evaluate('e=>e.scrollIntoView({block:"start"})');capture(page,'voice-settings','#voice-bailian-key')
         page.locator('#sp-ai-settings .sub-head [data-act="back"]').click();page.locator('#tab-home').click();page.locator('[data-qa="ai"]').click();page.locator('[data-act="short-voice"]').click();capture(page,'voice-start','[data-hv-hold]')
         button=page.locator('[data-hv-hold]').bounding_box();page.mouse.move(button['x']+button['width']/2,button['y']+button['height']/2);page.mouse.down()

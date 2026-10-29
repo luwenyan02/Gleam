@@ -43,6 +43,31 @@ function setup() {
 }
 afterEach(() => vi.useRealTimers());
 
+it('共享服务的空业务空间完成连接测试后才提交，回执必须保持同一目的地', async () => {
+  const s = setup();
+  const shared = { ...config, workspace: '' };
+  const run = s.controller.start(shared, readiness, candidate);
+  expect(s.controller.state).toBe('testing');
+  expect(s.bridge.testCandidate).toHaveBeenCalledWith(expect.objectContaining({ region: 'beijing', workspace: '' }));
+  expect(s.bridge.commitTestedKey).not.toHaveBeenCalled();
+  await s.connected();
+  s.commits[0].resolve(s.ack({ activeConfig: shared }));
+  await run;
+  expect(s.controller.state).toBe('success');
+  expect(s.committed).toHaveBeenCalledWith(expect.objectContaining({ activeConfig: shared }));
+});
+
+it('共享服务测试不能接受专属空间的提交回执', async () => {
+  const s = setup();
+  const run = s.controller.start({ ...config, workspace: '' }, readiness, candidate);
+  expect(s.controller.state).toBe('testing');
+  await s.connected();
+  s.commits[0].resolve(s.ack());
+  await run;
+  expect(s.controller.state).toBe('error');
+  expect(s.committed).not.toHaveBeenCalled();
+});
+
 it('cancellation before a late connection result prevents any commit, including after a newer start', async () => {
   const s = setup();
   const first = s.controller.start(config, readiness, candidate);
