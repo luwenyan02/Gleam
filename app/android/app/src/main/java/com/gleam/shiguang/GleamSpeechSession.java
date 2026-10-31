@@ -15,7 +15,8 @@ final class GleamSpeechSession {
     static final int MAX_AUDIO_BYTES = SAMPLE_RATE * 2 * 30;
     static final int MAX_TRANSCRIPT_CHARS = 500;
     static final int MAX_EVENT_CHARS = 65536;
-    static final String SESSION_UPDATE = "{\"type\":\"session.update\",\"session\":{\"modalities\":[\"text\"],\"turn_detection\":null,\"input_audio_transcription\":{\"model\":\"qwen3-asr-flash-realtime\"},\"enable_search\":false,\"tools\":[],\"audio\":{\"input\":{\"format\":{\"type\":\"pcm\",\"sample_rate\":16000,\"sample_format\":\"s16le\",\"channels\":1,\"packing\":\"interleaved\",\"channel_layout\":\"mono\"}}}}}";
+    // The shared service's default voice can fail during audio input even in text-only mode.
+    static final String SESSION_UPDATE = "{\"type\":\"session.update\",\"session\":{\"modalities\":[\"text\"],\"turn_detection\":null,\"input_audio_transcription\":{\"model\":\"qwen3-asr-flash-realtime\"},\"enable_search\":false,\"tools\":[],\"audio\":{\"input\":{\"format\":{\"type\":\"pcm\",\"sample_rate\":16000,\"sample_format\":\"s16le\",\"channels\":1,\"packing\":\"interleaved\",\"channel_layout\":\"mono\"}},\"output\":{\"voice\":\"Tina\"}}}}";
     interface Transport { boolean send(String message); void close(); }
     interface Audio { void start() throws Exception; default void start(Runnable ready) throws Exception { start(); ready.run(); } void stop(); }
     interface Listener { void state(String value); void complete(String text); void fail(String code); default void connected() {} default void partial(String text) {} }

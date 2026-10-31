@@ -3,6 +3,7 @@ package com.gleam.shiguang;
 import static org.junit.Assert.*;
 import java.util.ArrayList;
 import java.util.List;
+import org.json.JSONObject;
 import org.junit.Test;
 
 public class GleamSpeechSessionTest {
@@ -34,6 +35,22 @@ public class GleamSpeechSessionTest {
         void pcm() { session.audio(new byte[3200], 3200); }
         void committed() { session.event("input_audio_buffer.committed", "item-fictional", null, -1); }
         void finalText(String value) { session.event("conversation.item.input_audio_transcription.completed", "item-fictional", value, 0); }
+    }
+    @Test public void recordingAndConnectionTestSelectCompatibleVoiceWhileRemainingTextOnly() throws Exception {
+        for (boolean connectionOnly : new boolean[]{false, true}) {
+            Fixture f = connectionOnly ? diagnostic() : new Fixture();
+            f.session.begin(); f.created();
+            assertEquals(1, f.sent.size());
+            JSONObject session = new JSONObject(f.sent.get(0)).getJSONObject("session");
+            JSONObject output = session.getJSONObject("audio").optJSONObject("output");
+            assertNotNull("Text-only sessions still need an explicit compatible voice", output);
+            assertEquals("Tina", output.getString("voice"));
+            assertEquals(1, session.getJSONArray("modalities").length());
+            assertEquals("text", session.getJSONArray("modalities").getString(0));
+            assertTrue(session.has("turn_detection") && session.isNull("turn_detection"));
+            assertFalse(session.getBoolean("enable_search"));
+            assertEquals(0, session.getJSONArray("tools").length());
+        }
     }
     @Test public void listeningAndPcmWaitForAudioRouteAndCancellationRejectsLateReady() {
         Fixture f=new Fixture();f.deferAudio=true;f.ready();
