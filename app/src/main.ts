@@ -80,7 +80,7 @@ async function bootstrap(): Promise<void> {
   initSearch();
   initTemplateManage();
   initAiInbox();
-  // 解锁与界面就绪后消费原生插件缓冲的分享，才能安全选择「识别 / 凭证」。
+  // 解锁与界面就绪后消费原生插件缓冲的分享，直接进入 AI 记账识别。
   initShareListener();
   void initNativeEntry().catch(error => console.warn('[entry] 原生快捷入口初始化失败', error));
   initNativeWidget();

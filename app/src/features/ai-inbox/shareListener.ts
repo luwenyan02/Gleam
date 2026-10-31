@@ -12,24 +12,7 @@ import { CapacitorShareTarget, type ShareReceivedEvent, type SharedFile } from '
 import type { AiPendingItem } from '../../core/types';
 import { addAiPendingItems, saveAiAttachment } from '../../core/repo/aiRepo';
 import { notifyShareReceived } from './aiInbox';
-import { prepareReceipt } from '../entry/receiptEditor';
-import { attachSharedReceipts } from '../entry/entrySheet';
-import { openPickList } from '../../shared/pickList';
 import { showToast } from '../shell/toast';
-
-/** 先让用户决定用途，避免把只想留存的凭证发给 AI 服务。 */
-function chooseImageAction(): Promise<'receipt' | 'recognize' | undefined> {
-  return new Promise(resolve => openPickList({
-    container: document.querySelector<HTMLElement>('.app') ?? document.body,
-    title: '如何使用分享图片',
-    items: [
-      { value: 'receipt', label: '作为账单凭证', note: '保存在本机，不识别' },
-      { value: 'recognize', label: 'AI 识别记账', note: '使用已配置的 AI 服务' },
-    ],
-    onPick: value => resolve(value as 'receipt' | 'recognize'),
-    onCancel: () => resolve(undefined),
-  }));
-}
 
 /** 生成待识别素材项骨架 */
 function rawItem(partial: Partial<AiPendingItem>): AiPendingItem {
@@ -52,22 +35,6 @@ async function fetchSharedBlob(file: SharedFile): Promise<Blob> {
 
 /** shareReceived 事件处理：全部素材入队后打开收件箱并触发识别 */
 export async function handleShare(event: ShareReceivedEvent): Promise<void> {
-  const imageFiles = (event.files ?? []).filter(file => file.mimeType.startsWith('image/'));
-  if (imageFiles.length) {
-    const action = await chooseImageAction();
-    if (!action) return;
-    if (action === 'receipt') {
-      if (imageFiles.length > 9) throw new Error('每笔最多 9 张凭证，请减少分享图片');
-      const receipts = [];
-      for (const file of imageFiles) {
-        const blob = await fetchSharedBlob(file);
-        receipts.push(await prepareReceipt(new File([blob], file.name ?? '分享凭证', { type: file.mimeType })));
-      }
-      await attachSharedReceipts(receipts);
-      showToast('图片已加入账单草稿，保存后生效');
-      return;
-    }
-  }
   const items: AiPendingItem[] = [];
   for (const text of event.texts ?? []) {
     if (text.trim()) items.push(rawItem({ rawText: text.trim() }));
