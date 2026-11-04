@@ -128,10 +128,64 @@ def run(browser, width, dark=False):
     print('PASS recurring initial/save/backfill', width, 'dark large text' if dark else 'light', flush=True)
 
 
+def run_handoff(browser):
+    context = browser.new_context(viewport={'width': 400, 'height': 890}, device_scale_factor=3,
+                                  has_touch=True, is_mobile=True, timezone_id='Asia/Shanghai', service_workers='block')
+    context.route('**/*', lambda r: r.continue_() if urlsplit(r.request.url).netloc == urlsplit(URL).netloc else r.abort())
+    page = context.new_page(); errors = []
+    page.on('pageerror', lambda error: errors.append(str(error)))
+    page.clock.set_fixed_time(datetime.fromisoformat('2026-11-04T12:00:00+08:00'))
+    page.goto(URL); page.locator('#fab').wait_for(); seed(page, count=0); open_recurring(page)
+    page.locator('[data-rc-add]').click(); page.locator('#sheet.open #rc-name').wait_for()
+    page.locator('#rc-name').fill('虚构旧保存A'); page.locator('#rc-amount').fill('10'); page.locator('#rc-dom').fill('5')
+    # 只延迟只读排期查询的回调，模拟保存后的长时间补跑；不延迟写事务、不改生产代码。
+    page.evaluate(r'''() => {
+      const original = IDBObjectStore.prototype.getAll;
+      const success = Object.getOwnPropertyDescriptor(IDBRequest.prototype, 'onsuccess');
+      window.__heldRuleReads = []; window.__holdRuleReads = true;
+      IDBObjectStore.prototype.getAll = function(...args) {
+        const request = Reflect.apply(original, this, args);
+        if (this.name === 'recurringRules' && this.transaction.mode === 'readonly' && window.__holdRuleReads) {
+          Object.defineProperty(request, 'onsuccess', {
+            get() { return success.get.call(request); },
+            set(handler) { success.set.call(request, event => window.__heldRuleReads.push(() => handler.call(request, event))); },
+          });
+        }
+        return request;
+      };
+      window.__oldSavingButton = document.querySelector('#sheet [data-act="save"]');
+    }''')
+    page.locator('#sheet [data-act="save"]').click()
+    page.wait_for_function('window.__heldRuleReads.length > 0')
+    assert page.evaluate("""async()=>{
+      const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)});
+      const count=await new Promise(r=>{const q=db.transaction('recurringRules').objectStore('recurringRules').count();q.onsuccess=()=>r(q.result)});
+      db.close();return count;
+    }""") == 1
+    page.locator('#sheet [data-act="close"]').click()
+    page.locator('[data-rc-add]').click(); page.locator('#sheet.open #rc-name').wait_for()
+    page.locator('#rc-name').fill('虚构新草稿B'); page.locator('#rc-amount').fill('22.22'); page.locator('#rc-dom').fill('6')
+    page.evaluate("""() => {
+      window.__holdRuleReads = false;
+      window.__heldRuleReads.splice(0).forEach(release => release());
+    }""")
+    page.wait_for_function('!window.__oldSavingButton.disabled')
+    expect(page.locator('#sheet.open #rc-name')).to_have_value('虚构新草稿B')
+    expect(page.locator('#sheet.open #rc-amount')).to_have_value('22.22')
+    expect(page.locator('#sheet.open #rc-dom')).to_have_value('6')
+    page.locator('#sheet [data-act="save"]').click(); page.locator('#sheet.open').wait_for(state='hidden')
+    assert len(read_rows(page, 'recurringRules')) == 2
+    assert len(read_rows(page, 'entries')) == 0
+    assert not errors, errors
+    context.close()
+    print('PASS recurring save preserves a later draft 400', flush=True)
+
+
 if __name__ == '__main__':
     OUT.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
         browser = p.chromium.launch()
+        run_handoff(browser)
         for width in [360, 390, 400, 430, 1280]:
             run(browser, width)
         run(browser, 400, dark=True)

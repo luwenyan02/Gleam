@@ -459,7 +459,8 @@ async function openRuleForm(rule?: RecurringRule): Promise<void> {
           else savedRuleId = await addRule(input);
           savedThisAttempt = true;
           const result = await catchUpRecurringRules();
-          closeSheet();
+          // 旧保存完成时，新打开的草稿可能已经复用同一个抽屉。
+          if (el.contains(saveButton)) closeSheet();
           showToast(result.booked ? `已保存 · ${result.booked} 笔已入账`
             : result.pending.length ? `已保存 · ${result.pending.length} 笔待确认`
               : rule ? '周期账已更新' : `已创建 · ${freqText({ freq, days })}${amountConfirm ? '确认金额' : '自动入账'}`);
