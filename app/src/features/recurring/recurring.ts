@@ -13,12 +13,13 @@ import { on } from '../../core/store';
 import { formatFen, formatFenCny, parseYuanToFen } from '../../core/money';
 import {
   addRule, updateRule, setRuleEnabled, deleteRule, listRules, ruleSummary, confirmPendingOccurrence,
-  recurringRuleType, skipNextOccurrence,
+  recurringRuleType, skipNextOccurrence, hasInitialCatchUp, previewInitialCatchUp, applyInitialCatchUp,
   type NewRecurringRule, type PendingConfirm,
 } from '../../core/repo/recurringRepo';
 import { listAccounts } from '../../core/repo/accountRepo';
 import { listCategories, listExpenseTree } from '../../core/repo/categoryRepo';
-import { onPendingConfirm } from '../../core/scheduler';
+import { catchUpRecurringRules, onPendingConfirm } from '../../core/scheduler';
+import { getSetting } from '../../core/repo/settingsRepo';
 import { registerSubpage } from '../shell/router';
 import { openSheet, closeSheet } from '../shell/sheet';
 import { showToast } from '../shell/toast';
@@ -40,6 +41,7 @@ let sheetAbort: AbortController | undefined;
  * 入账后经 savePendingConfirms 回写移除，刷新页面启动时由 scheduler 回放。
  */
 const pendingQueue: PendingConfirm[] = [];
+const checkingBackfill = new Set<number>();
 
 function sheetSignal(): AbortSignal {
   sheetAbort?.abort();
@@ -88,11 +90,12 @@ async function refresh(): Promise<void> {
   const el = body;
   if (!el?.isConnected) return;
   const token = ++refreshToken;
-  const [summary, rules, accounts, tree, incomeCategories] = await Promise.all([
-    ruleSummary(), listRules(), listAccounts(), listExpenseTree(), listCategories('income'),
+  const [summary, rules, accounts, tree, incomeCategories, pending] = await Promise.all([
+    ruleSummary(), listRules(), listAccounts(), listExpenseTree(), listCategories('income'), getSetting('recurring.pendingConfirms'),
   ]);
   if (token !== refreshToken || !el.isConnected) return;
 
+  pendingQueue.splice(0, pendingQueue.length, ...pending);
   const acctName = new Map<number, string>(accounts.map((a) => [a.id, a.name]));
   const categories = categoryDisplayMap([...tree.flatMap(group => [group.parent, ...group.children]), ...incomeCategories]);
 
@@ -147,7 +150,50 @@ async function refresh(): Promise<void> {
       </div>
     </section>`;
 
-  el.innerHTML = pendingHtml + sumHtml + listHtml;
+  const legacy = rules.filter(rule => hasInitialCatchUp(rule));
+  const backfillHtml = legacy.length ? `<section class="card" aria-label="旧周期账补记">
+    <h3 class="card-title">检查漏记</h3>
+    <p class="tiny">核对旧规则在创建时漏掉的到期记录，确认后补记。</p>
+    ${legacy.map(rule => `<div class="field"><span>${esc(rule.name)}</span><button class="chip" data-backfill="${rule.id}" ${checkingBackfill.has(rule.id) ? 'disabled' : ''}>检查补记</button></div>`).join('')}
+  </section>` : '';
+  el.innerHTML = pendingHtml + backfillHtml + sumHtml + listHtml;
+}
+
+async function checkInitialBackfill(ruleId: number): Promise<void> {
+  if (checkingBackfill.has(ruleId)) return;
+  checkingBackfill.add(ruleId);
+  const button = body?.querySelector<HTMLButtonElement>(`[data-backfill="${ruleId}"]`);
+  if (button) button.disabled = true;
+  let applied = false;
+  try {
+    const preview = await previewInitialCatchUp(ruleId);
+    if (preview.dates.length) {
+      const dates = preview.dates.length <= 8 ? preview.dates.map(dateLabel).join('、')
+        : `${dateLabel(preview.dates[0])} 至 ${dateLabel(preview.dates.at(-1)!)}`;
+      const confirmation = preview.rule.amountConfirm;
+      const ok = await confirmDialog({
+        title: `补记「${preview.rule.name}」？`,
+        message: `${dates}，${preview.dates.length} 笔，${confirmation ? '约 ' : ''}${formatFenCny(preview.dates.length * preview.rule.amount)}。${confirmation ? '加入待确认，核对金额后入账。' : '按各期原日期入账。'}${preview.skipped ? `另有 ${preview.skipped} 期疑似已记或已处理，已跳过。` : ''}${preview.more ? '本次核对400期，完成后可继续检查。' : ''}`,
+        okText: confirmation ? '加入待确认' : '补记入账',
+      });
+      if (!ok) return;
+    }
+    const result = await applyInitialCatchUp(preview);
+    applied = true;
+    await catchUpRecurringRules();
+    showToast(result.booked ? `已补记 ${result.booked} 笔${preview.more ? '，可继续检查余下期次' : ''}`
+      : result.pending.length ? `${result.pending.length} 笔已加入待确认`
+        : preview.more ? '本批无须补记，可继续检查余下期次' : '未发现需要补记的期次');
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : String(err));
+  } finally {
+    checkingBackfill.delete(ruleId);
+    if (button?.isConnected) button.disabled = false;
+    if (applied) {
+      await refresh();
+      body?.querySelector<HTMLElement>(`[data-id="${ruleId}"]`)?.focus();
+    }
+  }
 }
 
 /* ── 新建 / 编辑规则抽屉 ── */
@@ -378,7 +424,14 @@ async function openRuleForm(rule?: RecurringRule): Promise<void> {
         return [...new Set(days)].sort((a, b) => a - b);
       }
 
+      let saving = false;
+      let savedRuleId = rule?.id;
       async function save(): Promise<void> {
+        if (saving) return;
+        saving = true;
+        const saveButton = el.querySelector<HTMLButtonElement>('[data-act="save"]')!;
+        saveButton.disabled = true;
+        let savedThisAttempt = false;
         try {
           const name = el.querySelector<HTMLInputElement>('#rc-name')!.value.trim();
           if (!name) throw new Error('请填写名称');
@@ -402,13 +455,23 @@ async function openRuleForm(rule?: RecurringRule): Promise<void> {
             endDate,
             transferToAccountId,
           };
-          if (rule) await updateRule(rule.id, input);
-          else await addRule(input);
+          if (savedRuleId != null) await updateRule(savedRuleId, input);
+          else savedRuleId = await addRule(input);
+          savedThisAttempt = true;
+          const result = await catchUpRecurringRules();
           closeSheet();
-          showToast(rule ? '周期账已更新' : `已创建 · ${freqText({ freq, days })}自动入账`);
+          showToast(result.booked ? `已保存 · ${result.booked} 笔已入账`
+            : result.pending.length ? `已保存 · ${result.pending.length} 笔待确认`
+              : rule ? '周期账已更新' : `已创建 · ${freqText({ freq, days })}${amountConfirm ? '确认金额' : '自动入账'}`);
           void refresh();
         } catch (err) {
-          showToast(err instanceof Error ? err.message : String(err));
+          const message = err instanceof Error ? err.message : String(err);
+          showToast(savedThisAttempt ? `规则已保存，入账未完成：${message}` : message);
+          if (savedThisAttempt) saveButton.textContent = '保存并重试';
+          void refresh();
+        } finally {
+          saving = false;
+          saveButton.disabled = false;
         }
       }
 
@@ -452,7 +515,7 @@ async function openPendingSheet(): Promise<void> {
             <p class="tiny" style="padding:0 0 6px">核对金额后入账，关闭后可稍后处理</p>
             ${pendingQueue.map((p, i) => `
               <div class="field">
-                <span>${esc(p.name)}<i class="rc-due">${p.type === 'income' ? '收入' : '支出'} · ${mdText(p.dueAt)} 到期 · ${esc(acctName.get(p.accountId) ?? '账户已删除')}</i></span>
+                <span>${esc(p.name)}<i class="rc-due">${p.transferToAccountId != null ? '转账' : p.type === 'income' ? '收入' : '支出'} · ${mdText(p.dueAt)} 到期 · ${esc(acctName.get(p.accountId) ?? '账户已删除')}${p.transferToAccountId != null ? ` → ${esc(acctName.get(p.transferToAccountId) ?? '账户已删除')}` : ''}</i></span>
                 <input class="note num" data-amt="${i}" inputmode="decimal" style="max-width:110px;margin-bottom:0;text-align:right" value="${yuanValue(p.amount)}" aria-label="${esc(p.name)}入账金额（元）">
                 <button class="chip" data-book="${i}">入账</button>
               </div>`).join('')}
@@ -549,6 +612,8 @@ export function initRecurring(): void {
       }
       el.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
+        const backfill = target.closest<HTMLElement>('[data-backfill]');
+        if (backfill) { void checkInitialBackfill(Number(backfill.dataset.backfill)); return; }
         const sw = target.closest<HTMLElement>('[data-toggle]');
         if (sw) {
           const enable = sw.getAttribute('aria-checked') !== 'true';

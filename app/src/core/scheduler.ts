@@ -6,7 +6,7 @@
  * 3. [M3] 快照超 7 天清理（backupRepo.purgeSnapshots）；
  */
 import { emit } from './store';
-import { runDueRules, type PendingConfirm } from './repo/recurringRepo';
+import { listRules, runDueRules, type PendingConfirm } from './repo/recurringRepo';
 import { purgeExpired } from './repo/trashRepo';
 import { purgeSnapshots } from './repo/backupRepo';
 import { getSetting } from './repo/settingsRepo';
@@ -67,28 +67,38 @@ export async function catchUp(): Promise<CatchUpResult> {
   if (running) return { booked: 0, pending: [], purged: 0 };
   running = true;
   try {
-    const { booked } = await runDueRules();
+    const { booked, pending } = await catchUpRecurringRules();
     const purged = await purgeExpired();
-    await purgeSnapshots(); // [M3] 清理超 7 天的恢复/导入前快照
-    if (booked > 0) emit('entries-changed');
+    await purgeSnapshots();
 
-    // runDueRules 已原子持久化；此处仅从最新队列按稳定身份回放一次。
-    const saved = await getSetting('recurring.pendingConfirms');
-    const dispatch = saved.filter((item) => {
-      const key = `${item.ruleId}@${item.dueAt}`;
-      if (dispatchedPendingKeys.has(key)) return false;
-      dispatchedPendingKeys.add(key);
-      return true;
-    });
-    if (dispatch.length) {
-      if (pendingListeners.length) for (const cb of pendingListeners) cb(dispatch);
-      else bufferedPending.push(...dispatch); // 见上方 M2-C 最小修复说明
-    }
-
-    return { booked, pending: dispatch, purged };
+    return { booked, pending, purged };
   } finally {
     running = false;
   }
+}
+
+/** 保存规则后立即处理到期账；独立于清理任务，避免后台补跑守卫吞掉刚保存的规则。 */
+export async function catchUpRecurringRules(): Promise<Pick<CatchUpResult, 'booked' | 'pending'>> {
+  const asOf = Date.now();
+  let booked = 0;
+  // 单笔事务仍限制每规则400期；续批到本次检查时刻，离开或失败后由持久化游标接续。
+  for (;;) {
+    booked += (await runDueRules(asOf)).booked;
+    if (!(await listRules()).some(rule => rule.enabled && rule.nextRunAt <= Math.min(asOf, rule.endDate ?? Infinity))) break;
+  }
+  if (booked > 0) emit('entries-changed');
+  const saved = await getSetting('recurring.pendingConfirms');
+  const dispatch = saved.filter((item) => {
+    const key = `${item.ruleId}@${item.dueAt}`;
+    if (dispatchedPendingKeys.has(key)) return false;
+    dispatchedPendingKeys.add(key);
+    return true;
+  });
+  if (dispatch.length) {
+    if (pendingListeners.length) for (const cb of pendingListeners) cb(dispatch);
+    else bufferedPending.push(...dispatch);
+  }
+  return { booked, pending: dispatch };
 }
 
 /**

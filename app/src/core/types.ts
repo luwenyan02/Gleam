@@ -236,12 +236,16 @@ export interface RecurringRule extends Timestamps {
   enabled: boolean;
   /** 下次入账时间（毫秒时间戳），由调度器推进 */
   nextRunAt: number;
-  /** 每 N 个周期执行一次（周/月/年；缺省 1） */
+  /** 每 N 个周期执行一次（天/周/月/年；缺省 1） */
   interval?: number;
   /** 生效开始时间（含）；早于该时间的期次不生成 */
   startDate?: number;
   /** 生效结束时间（含）；晚于该时间不再生成新期次 */
   endDate?: number;
+  /** 已核对的首次历史补跑边界；旧规则缺省，补记按批次推进，不重置正常排期。 */
+  initialCatchUpThrough?: number;
+  /** 用户主动跳过的原定入账时间；漏期检查不能重新生成这些期次。 */
+  skippedOccurrences?: number[];
   /** 周期转账目标账户；设置后生成 accountId → 该账户的转账流水 */
   transferToAccountId?: number;
 }
@@ -514,7 +518,7 @@ export const SETTING_DEFAULTS = {
   'voice.bailian.model': 'qwen3.8-omni-flash-realtime' as const,
   /** 周期账 amountConfirm 待确认项持久化（刷新不丢失，确认/入账后移除） */
   'recurring.pendingConfirms': [] as {
-    ruleId: number; name: string; type?: CategoryKind; amount: number; dueAt: number; accountId: number; categoryId: number;
+    ruleId: number; name: string; type?: CategoryKind; amount: number; dueAt: number; accountId: number; categoryId: number; transferToAccountId?: number;
   }[],
   /* ── [AI] 记账收件箱设置键 ── */
   /** OpenAI 兼容 API 根地址（如 https://api.openai.com 或 https://xx.com/v1） */
