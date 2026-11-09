@@ -5,6 +5,34 @@ from playwright.sync_api import sync_playwright, expect
 from test_acceptance_fixes import seed, SHOTS
 
 URL = os.environ.get('GLEAM_E2E_URL', 'http://127.0.0.1:4601/')
+FIXTURE_KEYS = {provider: f'fixture-{provider}-accounting-key' for provider in ('dashscope','openai','deepseek','siliconflow','moonshot','zhipu')}
+PROVIDER_DEFAULTS = {
+    'openai': ('https://api.openai.com','gpt-6.1-sol'),
+    'deepseek': ('https://api.deepseek.com','deepseek-flash'),
+    'siliconflow': ('https://api.siliconflow.cn/v1','deepseek-ai/DeepSeek-V4.1-Flash'),
+    'moonshot': ('https://api.moonshot.cn/v1','kimi-k3'),
+    'zhipu': ('https://open.bigmodel.cn/api/paas/v4','glm-5.3-flash'),
+}
+
+def assert_provider_key(page, key):
+    expect(page.locator('#ai-key')).to_have_value('')
+    assert page.evaluate("sessionStorage.getItem('gleam-secret:ai.apiKey')")==key, '平台不能继承另一平台的Key'
+
+def fill_provider_key(page, provider):
+    key=FIXTURE_KEYS[provider]
+    page.locator('#ai-key').fill(key);page.locator('#ai-key').press('Tab')
+    expect(page.locator('#ai-key')).to_have_attribute('placeholder',f'{key[:5]}••••••{key[-5:]}')
+    assert_provider_key(page,key)
+
+def test_model_connection(page, provider, calls, destinations):
+    before=len(calls);model=page.locator('#ai-model').input_value()
+    base=page.locator('#ai-base').input_value().rstrip('/')
+    page.locator('[data-act="ai-test"]').click()
+    page.wait_for_function('document.querySelector("[data-act=ai-test]").textContent==="测试连接"')
+    assert len(calls)==before+1, '本次连接测试必须发出一次新请求'
+    assert calls[-1]['model']==model
+    endpoint=base+('/chat/completions' if base.endswith(('/v1','/v4')) else '/v1/chat/completions')
+    assert destinations[-1]==(endpoint,f'Bearer {FIXTURE_KEYS[provider]}'), '请求地址和Key必须属于当前平台'
 
 def fixture(page):
     seed(page, amount=4865025)
@@ -60,13 +88,14 @@ def swap(page, width):
 
 def models(page, width):
     page.clock.set_fixed_time(datetime(2026,10,22,12,tzinfo=timezone.utc))
-    calls=[]
+    calls=[];destinations=[]
     page.route('https://**/*',lambda route:route.abort()) # 本测试禁止真实 AI 请求
     def chat(route):
         calls.append(route.request.post_data_json)
+        destinations.append((route.request.url,route.request.headers.get('authorization')))
         route.fulfill(json={'choices':[{'message':{'content':'OK'}}]})
     page.route('**/chat/completions',chat)
-    page.evaluate('''async()=>{
+    page.evaluate('''async(key)=>{
       const db=await new Promise(r=>{const q=indexedDB.open('GleamDB');q.onsuccess=()=>r(q.result)});
       const tx=db.transaction('settings','readwrite'),s=tx.objectStore('settings');
       s.put({key:'ai.baseUrl',value:'https://dashscope.aliyuncs.com/compatible-mode/v1'});
@@ -74,8 +103,8 @@ def models(page, width):
       s.put({key:'ai.recentModels',value:['wrong-unscoped-model']});
       s.put({key:'ai.modelCatalogCache',value:{baseUrl:'https://api.deepseek.com',ids:['wrong-platform-model']}});
       await new Promise(r=>tx.oncomplete=r);db.close();
-      sessionStorage.setItem('gleam-secret:ai.apiKey','fictional-test-key');
-    }''')
+      sessionStorage.setItem('gleam-secret:ai.apiKey',key);
+    }''',FIXTURE_KEYS['dashscope'])
     page.locator('.tab[data-page="page-mine"]').click()
     page.locator('#page-mine [data-sub="sp-ai-settings"]').click()
     page.locator('#ai-model').wait_for(state='attached')
@@ -99,17 +128,21 @@ def models(page, width):
     expect(page.locator('#ai-model')).to_be_visible()
     expect(page.locator('#ai-model')).to_be_focused()
     expect(page.locator('#ai-model-capability')).to_have_text('图片、文字')
-    page.locator('[data-act="ai-test"]').click();page.wait_for_function('document.querySelector("[data-act=ai-test]").textContent==="测试连接"')
+    test_model_connection(page,'dashscope',calls,destinations)
     assert calls[-1]['model']=='deepseek-v4.1-flash-1017'
     page.locator('#ai-model-pick').click();page.locator('.picker-panel.open').wait_for()
     page.locator('.picker-item[data-value="qwen3.8-flash"]').click();page.locator('.picker-mask').wait_for(state='detached')
     page.wait_for_function('document.querySelector("#ai-model").value==="qwen3.8-flash"')
-    page.locator('[data-act="ai-test"]').click();page.wait_for_function('document.querySelector("[data-act=ai-test]").textContent==="测试连接"')
+    test_model_connection(page,'dashscope',calls,destinations)
     assert calls[-1]['enable_thinking'] is False and calls[-1]['temperature']==0
     page.locator('#ai-provider').click();page.locator('.picker-item[data-value="openai"]').click();page.locator('.picker-mask').wait_for(state='detached')
+    expect(page.locator('#ai-base')).to_have_value(PROVIDER_DEFAULTS['openai'][0])
+    expect(page.locator('#ai-model')).to_have_value(PROVIDER_DEFAULTS['openai'][1])
+    assert_provider_key(page,None)
+    fill_provider_key(page,'openai')
     page.locator('#ai-model-pick').click();page.locator('.picker-item[data-value="gpt-6-astra"]').click();page.locator('.picker-mask').wait_for(state='detached')
     page.wait_for_function('document.querySelector("#ai-model").value==="gpt-6-astra"')
-    page.locator('[data-act="ai-test"]').click();page.wait_for_function('document.querySelector("[data-act=ai-test]").textContent==="测试连接"')
+    test_model_connection(page,'openai',calls,destinations)
     assert calls[-1]['model']=='gpt-6-astra' and 'temperature' not in calls[-1]
     page.route('**/models',lambda route:route.fulfill(json={'data':[{'id':'gpt-6-astra'}]+[{'id':f'api-extra-{i}'} for i in range(20)]}))
     page.locator('[data-act="ai-models"]').click()
@@ -128,13 +161,17 @@ def models(page, width):
     expect(page.get_by_role('textbox',name='搜索选项')).to_be_focused()
     page.keyboard.press('Escape');page.locator('.picker-mask').wait_for(state='detached')
     page.locator('#ai-provider').click();page.locator('.picker-item[data-value="dashscope"]').click();page.locator('.picker-mask').wait_for(state='detached')
+    expect(page.locator('#ai-base')).to_have_value('https://dashscope.aliyuncs.com/compatible-mode/v1')
+    expect(page.locator('#ai-model')).to_have_value('qwen3.8-flash')
+    assert_provider_key(page,FIXTURE_KEYS['dashscope'])
     page.locator('#ai-model-pick').click();page.locator('.picker-panel.open').wait_for()
     assert not any('api-extra-' in label for label in page.locator('.picker-item-label').all_inner_texts()), '拉取缓存不能串平台'
     expect(page.get_by_role('textbox',name='搜索选项')).to_be_focused()
     page.keyboard.press('Escape');page.locator('.picker-mask').wait_for(state='detached')
-    catalog_models(page, width, calls)
+    catalog_models(page, width, calls, destinations)
 
-def catalog_models(page, width, calls):
+def catalog_models(page, width, calls, destinations):
+    saved_models={'dashscope':'qwen3.8-flash','openai':'gpt-6-astra'}
     cases=[('openai','gpt-6.1-sol','图片、文字'),
            ('deepseek','deepseek-flash','图片、文字'),
            ('siliconflow','deepseek-ai/DeepSeek-V4.1-Flash','图片、文字'),
@@ -145,12 +182,23 @@ def catalog_models(page, width, calls):
            ('moonshot','kimi-k2.7-code-highspeed','图片、文字'),
            ('deepseek','deepseek-v4-flash','图片、文字')]
     for provider,model,capability in cases:
-        saved=page.locator('#ai-model').input_value()
         page.locator('#ai-provider').click();page.locator(f'.picker-item[data-value="{provider}"]').click();page.locator('.picker-mask').wait_for(state='detached')
-        expect(page.locator('#ai-model')).to_have_value(saved)
+        expect(page.locator('#ai-base')).to_have_value(PROVIDER_DEFAULTS[provider][0])
+        expect(page.locator('#ai-model')).to_have_value(saved_models.get(provider,PROVIDER_DEFAULTS[provider][1]))
+        assert_provider_key(page,FIXTURE_KEYS[provider] if provider in saved_models else None)
+        if provider not in saved_models:fill_provider_key(page,provider)
         page.locator('#ai-model-pick').click();page.locator('.picker-panel.open').wait_for()
         groups=page.locator('.picker-group-title').all_inner_texts()
-        assert '推荐模型' in groups and '兼容旧版' in groups, (provider,groups)
+        assert '兼容旧版' in groups, (provider,groups)
+        if '推荐模型' not in groups:
+            # The selected recommended default moves to 当前配置 and is deduplicated;
+            # a sole recommendation must still exist exactly once in that group.
+            current=page.locator('#ai-model').input_value()
+            assert current==PROVIDER_DEFAULTS[provider][1], (provider,current,groups)
+            recommended=page.locator(f'.picker-item[data-value="{current}"]')
+            expect(recommended).to_have_count(1)
+            expect(recommended).to_have_attribute('aria-selected','true')
+            assert recommended.evaluate('''el=>{for(let p=el.previousElementSibling;p;p=p.previousElementSibling){if(p.classList.contains('picker-group-title'))return p.textContent;}return '';}''')=='当前配置'
         assert page.locator('.picker-item-label').evaluate_all('els=>els.every(e=>e.scrollWidth<=e.clientWidth+1)')
         assert page.locator('.picker-item').evaluate_all('els=>els.every(e=>e.getBoundingClientRect().right<=innerWidth+1)')
         if width==390:
@@ -161,7 +209,8 @@ def catalog_models(page, width, calls):
         page.locator(f'.picker-item[data-value="{model}"]').click();page.locator('.picker-mask').wait_for(state='detached')
         expect(page.locator('#ai-model')).to_have_value(model)
         expect(page.locator('#ai-model-capability')).to_have_text(capability)
-        page.locator('[data-act="ai-test"]').click();page.wait_for_function('document.querySelector("[data-act=ai-test]").textContent==="测试连接"')
+        test_model_connection(page,provider,calls,destinations)
+        saved_models[provider]=model
         payload=calls[-1]
         assert payload['model']==model, payload
         if provider in ('openai','moonshot','zhipu'):
