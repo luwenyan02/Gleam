@@ -525,6 +525,8 @@ export const SETTING_DEFAULTS = {
   'ai.baseUrl': '' as string,
   /** 图片／文本模型名，必须与平台的调用 ID 一致。 */
   'ai.model': '' as string,
+  /** 显式平台选择；旧配置为空时按地址识别。各平台凭据与已验证配置保存在安全存储。 */
+  'ai.providerId': '' as string,
   /** 旧版迁移占位；正式 API Key 由 SecretStore 保存。 */
   'ai.apiKey': '' as string,
   /** 静默入账置信度阈值（0-100）；有效置信度 ≥ 阈值且分类/账户映射成功时自动入账 */

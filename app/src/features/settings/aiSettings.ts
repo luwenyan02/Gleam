@@ -1,20 +1,39 @@
 import './settings.css';
 import { esc } from '../../core/esc';
 import { on } from '../../core/store';
-import { getSetting, setSetting } from '../../core/repo/settingsRepo';
+import { getSetting } from '../../core/repo/settingsRepo';
 import { testAiConnection, listAiModels } from '../../core/repo/aiRepo';
 import { AI_PROVIDERS, buildModelChoices, matchProviderId, modelPreset } from './providers';
 import { registerSubpage, openSubpage, SUBPAGE_CLOSE_EVENT } from '../shell/router';
 import { showToast } from '../shell/toast';
 import { openPickList } from '../../shared/pickList';
-import { secretStore } from '../../core/secretStore';
+import { initializeAiProviderProfiles, setAiBaseUrl, setAiConfigField, switchAiProvider, testAndSaveAiProvider } from '../../core/repo/aiProviderRepo';
 import { bailianVoiceSettingsHtml, handleVoiceSettingsChange, handleVoiceSettingsInput, handleVoiceSettingsClick, isVoiceKeyWritePending } from './bailianVoiceSettings';
 import { getVoiceSettingsEpoch, invalidateVoiceConnectionTest, mountVoiceConnectionTest, syncVoiceConnectionTest } from './bailianVoiceTestSettings';
-import { aiKeyInputHtml, getAiKeySettingsEpoch, handleAiKeyChange, handleAiKeyInput, preserveAiKeyDraft } from './aiKeySettings';
+import { aiKeyInputHtml, getAiKeySettingsEpoch, handleAiKeyChange, handleAiKeyInput, preserveAiKeyDraft, waitForAiKeyWrites } from './aiKeySettings';
 
 let body: HTMLElement | undefined;
 let settingsRefreshToken = 0;
 let customModel = false;
+let aiActionPending = false;
+let pendingSettingWrites: Promise<void> = Promise.resolve();
+const failedSettingWrites = new Set<string>();
+function syncAiAction(el: HTMLElement): void {
+  const card = el.querySelector<HTMLElement>('[aria-label="AI 记账"]');
+  card?.setAttribute('aria-busy', String(aiActionPending));
+  card?.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button').forEach(control => { control.disabled = aiActionPending; });
+}
+async function aiAction(el: HTMLElement, operation: () => Promise<void>): Promise<void> {
+  if (aiActionPending) return;
+  aiActionPending = true; syncAiAction(el);
+  try {
+    await pendingSettingWrites;
+    if (failedSettingWrites.size) throw new Error('AI 配置保存失败，请重新填写后重试');
+    await waitForAiKeyWrites(); await operation();
+  }
+  catch (error) { showToast(error instanceof Error ? error.message : 'AI 配置操作失败，请重试'); }
+  finally { aiActionPending = false; void refresh(); }
+}
 
 /** 直接叠放在来源页面上，关闭后保留来源草稿与焦点。 */
 export function openAiSettings(): void { openSubpage('sp-ai-settings'); }
@@ -28,13 +47,20 @@ async function refresh(): Promise<void> {
   const voiceSettings = await bailianVoiceSettingsHtml();
   if (!el.isConnected) return;
   // [AI] AI 记账配置（OpenAI 兼容接口 + 自动入账阈值）
-  const [aiBase, aiModel, aiKey, aiThreshold, modelCache] = await Promise.all([
-    getSetting('ai.baseUrl'), getSetting('ai.model'), secretStore.get('ai.apiKey'), getSetting('ai.autoConfirmThreshold'), getSetting('ai.modelCatalogCache'),
-  ]);
+  const loaded = await Promise.all([
+    initializeAiProviderProfiles(), getSetting('ai.modelCatalogCache'),
+  ]).catch(() => undefined);
+  if (!loaded) {
+    if (token !== settingsRefreshToken || !el.isConnected) return;
+    el.innerHTML = `<section class="card"><h3 class="card-title">AI 记账</h3><p role="alert">平台配置暂时无法读取或保存，原设置未清除，请重试。</p><button class="chip" data-act="ai-reload">重新加载</button></section>${voiceSettings}`;
+    syncVoiceConnectionTest(el);
+    return;
+  }
+  const [config, modelCache] = loaded;
+  const { baseUrl: aiBase, model: aiModel, apiKey: aiKey, threshold: aiThreshold, providerId } = config;
   if (!el.isConnected) return;
 
   // [AI] 平台回显（按 baseUrl 前缀匹配，匹配不上=自定义）
-  const providerId = matchProviderId(aiBase);
   const providerLabel = providerId !== 'custom'
     ? (AI_PROVIDERS.find((p) => p.id === providerId)?.name ?? '自定义')
     : '自定义';
@@ -46,7 +72,9 @@ async function refresh(): Promise<void> {
   // A slow settings read must never restore stale readiness, consent, or test success.
   if (voiceEpoch !== getVoiceSettingsEpoch()) { void refresh(); return; }
   if (aiKeyEpoch !== getAiKeySettingsEpoch()) { void refresh(); return; }
-  const restoreAiKeyDraft = preserveAiKeyDraft(el);
+  const restoreAiKeyDraft = el.dataset.aiProvider === providerId && el.dataset.aiBase === aiBase ? preserveAiKeyDraft(el) : () => {};
+  el.dataset.aiProvider = providerId;
+  el.dataset.aiBase = aiBase;
   const voiceWorkspaceInput = el.querySelector<HTMLInputElement>('#voice-bailian-workspace');
   const voiceWorkspaceDraft = voiceWorkspaceInput?.dataset.voiceDirty ? voiceWorkspaceInput.value : undefined;
   const voiceKeyDraft = isVoiceKeyWritePending() ? '' : el.querySelector<HTMLInputElement>('#voice-bailian-key')?.value ?? '';
@@ -68,7 +96,7 @@ async function refresh(): Promise<void> {
         </label>
         <label id="ai-custom-model"${showCustomModel ? '' : ' hidden'}>自定义模型名<input id="ai-model" type="text" value="${esc(aiModel)}" placeholder="如 qwen3.8-flash / kimi-k3" autocomplete="off"></label>
         <div class="field"><span>识别类型</span><span class="sub" id="ai-model-capability">${selectedModel ? selectedModel.vision ? '图片、文字' : '文字' : '以接口为准'}</span></div>
-        <label>API Key${aiKeyInputHtml(aiKey)}</label>
+        <label>API Key${aiKeyInputHtml(aiKey, { providerId, baseUrl: aiBase })}</label>
         <label>自动入账阈值
           <div class="ai-thres"><input id="ai-thres" type="range" min="50" max="100" step="5" value="${aiThreshold}"><span class="num" id="ai-thres-val">${aiThreshold}%</span></div>
         </label>
@@ -102,6 +130,7 @@ async function refresh(): Promise<void> {
   const workspaceInput = el.querySelector<HTMLInputElement>('#voice-bailian-workspace');
   if (workspaceInput && voiceWorkspaceDraft !== undefined) { workspaceInput.value = voiceWorkspaceDraft; workspaceInput.dataset.voiceDirty = 'true'; }
   syncVoiceConnectionTest(el);
+  syncAiAction(el);
 }
 
 export function initAiSettings(): void {
@@ -118,16 +147,18 @@ export function initAiSettings(): void {
         const t = e.target as HTMLElement;
         if (handleVoiceSettingsClick(t, el)) return;
         const act = t.closest<HTMLElement>('[data-act]')?.dataset.act;
-        if (act === 'ai-test') {
+        if (act === 'ai-reload') { void refresh(); }
+        else if (act === 'ai-test') {
           // [AI] 发一次最小请求验证 baseUrl/model/apiKey 可用
           const btn = t.closest<HTMLButtonElement>('[data-act]')!;
           if (btn.disabled) return;
           btn.disabled = true;
           btn.textContent = '测试中…';
-          void testAiConnection()
-            .then(() => showToast('连接成功，AI 接口可用'))
-            .catch((err) => showToast(err instanceof Error ? err.message : String(err)))
-            .finally(() => void refresh());
+          const expected = { providerId: el.dataset.aiProvider!, baseUrl: el.dataset.aiBase! };
+          void aiAction(el, async () => {
+            await testAndSaveAiProvider(testAiConnection, expected);
+            showToast('连接成功，已保存此平台配置');
+          });
         } else if (act === 'ai-models') {
           // [AI] 拉取平台 /models：成功后存 'ai.recentModels' 并重渲染进下拉；失败 toast 引导
           const btn = t.closest<HTMLButtonElement>('[data-act]')!;
@@ -140,9 +171,9 @@ export function initAiSettings(): void {
             .catch((err) => showToast(err instanceof Error ? err.message : String(err)))
             .finally(() => void refresh());
         } else if (t.closest('#ai-provider')) {
-          // [AI] 平台 pickList：选预设 → 填 baseUrl → dispatchEvent change → 持久化链路
+          // Restore a complete profile; never combine a new address with another platform's key.
           const curBase = el.querySelector<HTMLInputElement>('#ai-base')?.value ?? '';
-          const curPid = matchProviderId(curBase);
+          const curPid = el.dataset.aiProvider || matchProviderId(curBase);
           openPickList({
             container: el,
             title: '选择平台',
@@ -151,15 +182,11 @@ export function initAiSettings(): void {
               ...AI_PROVIDERS.map((p) => ({ value: p.id, label: p.name })),
             ],
             selected: curPid,
-            onPick(value, label) {
-              const btn = el.querySelector<HTMLButtonElement>('#ai-provider');
-              if (btn) btn.textContent = label;
-              if (value === 'custom') return;
-              const p = AI_PROVIDERS.find((it) => it.id === String(value));
-              const input = el.querySelector<HTMLInputElement>('#ai-base');
-              if (!p || !input) return;
-              input.value = p.baseUrl;
-              input.dispatchEvent(new Event('change', { bubbles: true }));
+            onPick(value) {
+              void aiAction(el, async () => {
+                await switchAiProvider(String(value));
+                customModel = false;
+              });
             },
           });
         } else if (t.closest('#ai-model-pick')) {
@@ -203,9 +230,16 @@ export function initAiSettings(): void {
         const t = e.target as HTMLInputElement;
         if (handleVoiceSettingsChange(t)) return;
         if (handleAiKeyChange(t)) return;
-        if (t.id === 'ai-base') void setSetting('ai.baseUrl', t.value.trim());
-        else if (t.id === 'ai-model') void setSetting('ai.model', t.value.trim());
-        else if (t.id === 'ai-thres') void setSetting('ai.autoConfirmThreshold', Number(t.value));
+        const value = t.value.trim();
+        if (t.id === 'ai-base' || t.id === 'ai-model' || t.id === 'ai-thres') {
+          const key = t.id === 'ai-base' ? 'ai.baseUrl' : t.id === 'ai-model' ? 'ai.model' : 'ai.autoConfirmThreshold';
+          const expected = { providerId: el.dataset.aiProvider!, baseUrl: el.dataset.aiBase! };
+          pendingSettingWrites = pendingSettingWrites.then(async () => {
+            if (key === 'ai.baseUrl') await setAiBaseUrl(value, expected);
+            else await setAiConfigField(key, key === 'ai.model' ? value : Number(value), expected);
+            failedSettingWrites.delete(key);
+          }).catch(() => { failedSettingWrites.add(key); showToast('AI 配置保存失败，请重试'); });
+        }
       });
       // A renderer-induced change can consume the browser's native change flag.
       // The next real blur still commits our dirty draft; the editor deduplicates both events.

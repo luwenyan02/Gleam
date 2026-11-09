@@ -1,6 +1,7 @@
 import { esc } from '../../core/esc';
 import { maskSecret, SECRET_MASK } from '../../core/maskSecret';
 import { secretStore } from '../../core/secretStore';
+import { setActiveAiKey, type AiProviderDestination } from '../../core/repo/aiProviderRepo';
 import { emit } from '../../core/store';
 import { showToast } from '../shell/toast';
 
@@ -10,15 +11,21 @@ let epoch = 0;
 let editRevision = 0;
 let writeRevision = 0;
 let pendingWrites = 0;
+let writeFailed = false;
 let writeQueue: Promise<void> = Promise.resolve();
 
 export function getAiKeySettingsEpoch(): number { return epoch; }
 export function isAiKeyWritePending(): boolean { return pendingWrites > 0; }
+export async function waitForAiKeyWrites(): Promise<void> {
+  await writeQueue;
+  if (writeFailed) throw new Error('API Key 保存失败，请重新输入');
+}
 
 /** Stored keys are summarized only in the placeholder, never in value or dataset. */
-export function aiKeyInputHtml(savedKey: string | null): string {
+export function aiKeyInputHtml(savedKey: string | null, destination?: AiProviderDestination): string {
   const placeholder = pendingWrites ? 'API Key 保存中…' : maskSecret(savedKey) || 'sk-...';
-  return `<input id="ai-key" type="password" value="" placeholder="${esc(placeholder)}" autocomplete="new-password" autocapitalize="off" spellcheck="false">`;
+  const binding = destination ? ` data-ai-provider="${esc(destination.providerId)}" data-ai-base="${esc(destination.baseUrl)}"` : '';
+  return `<input id="ai-key" type="password" value="" placeholder="${esc(placeholder)}"${binding} autocomplete="new-password" autocapitalize="off" spellcheck="false">`;
 }
 
 export function handleAiKeyInput(input: HTMLInputElement): boolean {
@@ -63,17 +70,20 @@ export function handleAiKeyChange(input: HTMLInputElement): boolean {
   input.value = '';
   epoch++;
   if (value.includes(SECRET_MASK)) {
+    writeRevision++;
+    writeFailed = true;
     showToast('请输入完整的 API Key');
     return true;
   }
   const request = ++writeRevision;
+  const expected = input.dataset.aiProvider !== undefined ? { providerId: input.dataset.aiProvider, baseUrl: input.dataset.aiBase ?? '' } : undefined;
   const edit = editRevision;
   pendingWrites++;
   // Native writes may resolve out of order. Serialize them so the newest requested key wins.
   writeQueue = writeQueue.then(async () => {
     try {
-      if (value) await secretStore.set('ai.apiKey', value);
-      else await secretStore.remove('ai.apiKey');
+      await setActiveAiKey(value, expected);
+      if (request === writeRevision) writeFailed = false;
       input.placeholder = maskSecret(value) || 'sk-...';
       if (request === writeRevision && edit === editRevision) {
         showToast(value
@@ -81,6 +91,7 @@ export function handleAiKeyChange(input: HTMLInputElement): boolean {
           : 'API Key 已清除');
       }
     } catch {
+      writeFailed = true;
       if (request === writeRevision && edit === editRevision) showToast('API Key 保存失败，请重新输入');
     } finally {
       pendingWrites--; epoch++;

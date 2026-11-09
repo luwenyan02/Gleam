@@ -3,10 +3,11 @@ import { readFileSync } from 'node:fs';
 
 const mocks = vi.hoisted(() => ({ set: vi.fn(), remove: vi.fn(), emit: vi.fn(), toast: vi.fn() }));
 vi.mock('../src/core/secretStore', () => ({ secretStore: { kind: 'android-keystore', set: mocks.set, remove: mocks.remove } }));
+vi.mock('../src/core/repo/aiProviderRepo', () => ({ setActiveAiKey: (value: string) => value ? mocks.set('ai.apiKey', value) : mocks.remove('ai.apiKey') }));
 vi.mock('../src/core/store', () => ({ emit: mocks.emit }));
 vi.mock('../src/features/shell/toast', () => ({ showToast: mocks.toast }));
 import { maskSecret } from '../src/core/maskSecret';
-import { aiKeyInputHtml, getAiKeySettingsEpoch, handleAiKeyChange, handleAiKeyInput, isAiKeyWritePending, preserveAiKeyDraft } from '../src/features/settings/aiKeySettings';
+import { aiKeyInputHtml, getAiKeySettingsEpoch, handleAiKeyChange, handleAiKeyInput, isAiKeyWritePending, preserveAiKeyDraft, waitForAiKeyWrites } from '../src/features/settings/aiKeySettings';
 
 function input(value = '', placeholder = maskSecret('fixture-old-private-main-key')): HTMLInputElement {
   return { id: 'ai-key', value, placeholder, dataset: {}, focus: vi.fn() } as unknown as HTMLInputElement;
@@ -91,14 +92,26 @@ it('a superseded save cannot clear or falsely report an unsaved newer draft', as
   expect(field.value).toBe('fixture-unsaved-newer-key'); expect(mocks.toast).not.toHaveBeenCalled();
   handleAiKeyChange(field); await flush();
 });
+it('an older pending save cannot clear the failure of a newer rejected masked paste', async () => {
+  let release!: () => void;
+  mocks.set.mockImplementationOnce(() => new Promise<void>(done => { release = done; }));
+  const field = input('fixture-pending-valid-key'); handleAiKeyInput(field); handleAiKeyChange(field); await flush();
+  field.value = maskSecret('fixture-newer-masked-key'); handleAiKeyInput(field); handleAiKeyChange(field);
+  release(); await flush();
+  await expect(waitForAiKeyWrites()).rejects.toThrow('API Key 保存失败');
+  field.value = 'fixture-complete-key-retry'; handleAiKeyInput(field); handleAiKeyChange(field); await flush();
+  await expect(waitForAiKeyWrites()).resolves.toBeUndefined();
+});
 it('failed writes sanitize errors, preserve the saved summary, and do not block a later save', async () => {
   const field = input('fixture-rejected-private-key'); const oldSummary = field.placeholder;
   mocks.set.mockRejectedValueOnce(new Error('fixture-rejected-private-key remote sensitive body'));
   handleAiKeyInput(field); handleAiKeyChange(field); await flush();
   expect(field.value).toBe(''); expect(field.placeholder).toBe(oldSummary); expect(isAiKeyWritePending()).toBe(false);
   expect(mocks.toast).toHaveBeenCalledExactlyOnceWith('API Key 保存失败，请重新输入');
+  await expect(waitForAiKeyWrites()).rejects.toThrow('API Key 保存失败');
   field.value = 'fixture-retry-private-key'; handleAiKeyInput(field); handleAiKeyChange(field); await flush();
   expect(field.placeholder).toBe(maskSecret('fixture-retry-private-key'));
+  await expect(waitForAiKeyWrites()).resolves.toBeUndefined();
 });
 it('rerender keeps only a user-edited input node, never reconstructing a raw saved-key value', () => {
   const field = input('fixture-unsaved-draft'); handleAiKeyInput(field);
@@ -205,7 +218,7 @@ it('rerender does not preserve an unfocused untouched input or reinsert a previo
 });
 it('the settings surface uses the empty key editor, refresh epoch guard and raw-input invalidation', () => {
   const source = readFileSync('src/features/settings/aiSettings.ts', 'utf8');
-  expect(source).toContain('aiKeyInputHtml(aiKey)');
+  expect(source).toContain('aiKeyInputHtml(aiKey, { providerId, baseUrl: aiBase })');
   expect(source).toContain('aiKeyEpoch !== getAiKeySettingsEpoch()');
   expect(source).toContain('preserveAiKeyDraft(el)');
   expect(source).toMatch(/addEventListener\('focusout',[\s\S]*?handleAiKeyChange\(/);

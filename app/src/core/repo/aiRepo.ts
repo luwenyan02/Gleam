@@ -13,11 +13,11 @@ import type { Account, AiPendingItem, Attachment, Category, ChatWebSearch, Impor
 import { getSetting, setSetting } from './settingsRepo';
 import { listCategories } from './categoryRepo';
 import { listAccounts } from './accountRepo';
-import { secretStore } from '../secretStore';
 import { assertImageModel, chatOptions } from '../aiChatOptions';
 import { collectUnreferencedAttachments } from './entryAttachmentRepo';
 import { requestWebSearchChat, searchInstructions, webSearchEndpoint } from '../chatWebSearch';
 import { fetchAiStream } from '../aiStreamTransport';
+import { getActiveAiConfig, type AiProviderConfig } from './aiProviderRepo';
 
 /* ── 识别结果与错误 ─────────────────── */
 
@@ -76,9 +76,7 @@ function modelsEndpoint(baseUrl: string): string {
 
 /** 读取 AI 配置；未配置抛 AiConfigError */
 async function loadConfig(): Promise<{ baseUrl: string; model: string; apiKey: string }> {
-  const [baseUrl, model, apiKey] = await Promise.all([
-    getSetting('ai.baseUrl'), getSetting('ai.model'), secretStore.get('ai.apiKey'),
-  ]);
+  const { baseUrl, model, apiKey } = await getActiveAiConfig();
   if (!baseUrl.trim() || !model.trim() || !apiKey?.trim()) throw new AiConfigError();
   return { baseUrl, model, apiKey };
 }
@@ -106,10 +104,13 @@ function cancelledError(): Error {
 /**
  * OpenAI 兼容对话的共享出站边界。私密内容模式不读取或记录错误响应正文。
  */
-export async function requestAiChat({
+export async function requestAiChat(request: AiChatRequest): Promise<string> {
+  return requestConfiguredChat(await loadConfig(), request);
+}
+
+async function requestConfiguredChat({ baseUrl, model, apiKey }: { baseUrl: string; model: string; apiKey: string }, {
   messages, signal, requireImageModel = false, privateContent = false, expectedDestination, onDelta, onSearch,
 }: AiChatRequest): Promise<string> {
-  const { baseUrl, model, apiKey } = await loadConfig();
   if (expectedDestination && (baseUrl.trim() !== expectedDestination.baseUrl || model.trim() !== expectedDestination.model)) {
     throw new Error('AI 配置已变化，请重新确认发送目的地');
   }
@@ -220,8 +221,15 @@ async function callChat(messages: unknown[]): Promise<string> {
 /**
  * 测试连接：发一次最小请求验证 baseUrl/model/apiKey 可用，失败抛错。
  */
-export async function testAiConnection(): Promise<void> {
-  await callChat([{ role: 'user', content: '只回复两个字符：OK' }]);
+export async function testAiConnection(config?: AiProviderConfig): Promise<void> {
+  const candidate = config ?? await loadConfig();
+  if (!candidate.baseUrl.trim() || !candidate.model.trim() || !candidate.apiKey.trim()) throw new AiConfigError();
+  try {
+    await requestConfiguredChat(candidate, { messages: [{ role: 'user', content: '只回复两个字符：OK' }], privateContent: true });
+  } catch (error) {
+    if (error instanceof Error) throw new Error(error.message.replace(/^生活 AI/, 'AI 接口'));
+    throw new Error('AI 接口连接失败，请重试');
+  }
 }
 
 /* ── 模型列表拉取（设置页「获取模型列表」） ── */
@@ -239,7 +247,7 @@ const MODEL_VISION_RE = /vl|vision|omni|4o|v-/i;
  * @throws 未配置地址/Key、Key 无效（401/403）、平台不支持拉取或网络失败的引导文案
  */
 export async function listAiModels(preferred: string[] = []): Promise<string[]> {
-  const [baseUrl, apiKey] = await Promise.all([getSetting('ai.baseUrl'), secretStore.get('ai.apiKey')]);
+  const { baseUrl, apiKey } = await getActiveAiConfig();
   if (!baseUrl.trim() || !apiKey?.trim()) throw new Error('请先填写 API 地址与 API Key');
 
   const ctrl = new AbortController();

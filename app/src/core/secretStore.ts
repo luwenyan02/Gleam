@@ -3,6 +3,8 @@ import { getSetting, setSetting } from './repo/settingsRepo';
 
 export type SecretKey =
   | 'ai.apiKey'
+  | 'ai.activeCredential'
+  | `ai.provider.${string}`
   | 'cloud.webdav.password'
   | 'cloud.email.authCode'
   | 'cloud.s3.accessKey'
