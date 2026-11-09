@@ -1,5 +1,6 @@
 import { esc } from '../../core/esc';
 import { lifeDraftPhotos } from '../../core/lifeDraftPhotos';
+import { prepareLifeSummary } from '../../core/lifeSummaryContext';
 import { VoiceDraftCheckpoint } from '../../core/voiceTranscript';
 import type { LifeChatMessage, LifeDraft, LifeNote } from '../../core/types';
 import { getAttachment, getLifeNote } from '../../core/repo/lifeRepo';
@@ -831,12 +832,22 @@ function renderChat(host: HTMLElement, launch: Launch): void {
     setBusy(true);
     try {
       if (!await refreshSource()) return;
-      const expectedDestination = await confirmLifeAi(sourcePreview([]), signal);
-      if (!expectedDestination || disposed) return;
+      const messages = structuredClone(draft.messages);
+      const plan = prepareLifeSummary('', messages);
+      const description = plan.sources.length > 1
+        ? `完整会话：${messages.length} 条消息，${plan.characters.toLocaleString('zh-CN')} 字。将分 ${plan.sources.length} 段依次整理，再合并为一条建议稿；用时和调用次数会增加。原始对话完整保留。\n\n`
+        : '';
+      const expectedDestination = await confirmLifeAi(description + sourcePreview([]), signal);
+      if (!expectedDestination || disposed || signal.aborted) return;
       status('正在整理成一条记录…');
-      draft.summaryProposal = await generateLifeSummary({ body: '', messages: structuredClone(draft.messages), signal, noteId: draft.noteId, sourceUpdatedAt: draft.sourceUpdatedAt, expectedDestination });
+      const proposal = await generateLifeSummary({ body: '', messages, signal, noteId: draft.noteId, sourceUpdatedAt: draft.sourceUpdatedAt, expectedDestination,
+        onSummaryProgress: progress => status(progress.stage === 'segments' ? `正在整理第 ${progress.current}/${progress.total} 段…`
+          : progress.stage === 'merge' ? `正在合并素材 ${progress.current}/${progress.total}…` : '正在生成记录草稿…'),
+      });
+      if (disposed || signal.aborted || !isCurrentSession()) return;
+      draft.summaryProposal = proposal;
       await persist();
-      openSummary();
+      if (!disposed && !signal.aborted && isCurrentSession()) openSummary();
     } catch (error) { status(signal.aborted ? '已停止，原始对话仍保留。' : error instanceof Error ? error.message : '暂时无法整理，请重试', !signal.aborted && needsAiConfig(error)); }
     finally { if (!disposed) setBusy(false); controller = undefined; }
   }
